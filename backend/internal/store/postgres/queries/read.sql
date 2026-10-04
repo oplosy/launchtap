@@ -62,7 +62,9 @@ WHERE t.chain_id = sqlc.arg(chain_id) AND t.phase = sqlc.arg(phase)
 ORDER BY COALESCE(s.volume_24h_eth_wad,0::numeric) DESC, t.token_address DESC LIMIT sqlc.arg(page_size)::integer;
 
 -- name: ListCandlesAggregated :many
-SELECT min(c.bucket_start_time) AS bucket_start_time,
+-- Each row is keyed by its UTC-aligned group start (not the first stored source bucket), so
+-- sparse groups report a stable timestamp and the next-page cursor can skip a whole group.
+SELECT c.group_start AS bucket_start_time,
        (array_agg(c.open_price_wad ORDER BY c.bucket_start_time ASC))[1] AS open_price_wad,
        max(c.high_price_wad) AS high_price_wad,
        min(c.low_price_wad) AS low_price_wad,
@@ -70,16 +72,23 @@ SELECT min(c.bucket_start_time) AS bucket_start_time,
        sum(c.gross_eth_volume)::numeric AS gross_eth_volume,
        sum(c.token_volume)::numeric AS token_volume,
        sum(c.trade_count)::BIGINT AS trade_count
-FROM candles AS c
-WHERE c.chain_id = sqlc.arg(chain_id)
-  AND c.token_address = sqlc.arg(token_address)
-  AND c.interval = sqlc.arg(source_interval)
-  AND c.bucket_start_time >= sqlc.arg(from_time)
-  AND c.bucket_start_time < sqlc.arg(to_time)
-GROUP BY CASE WHEN sqlc.arg(target_interval)::text = '6h'
-             THEN date_trunc('day', c.bucket_start_time) + floor(extract(hour FROM c.bucket_start_time) / 6) * interval '6 hours'
-             ELSE date_trunc('day', c.bucket_start_time) END
-ORDER BY bucket_start_time ASC
+FROM (
+    SELECT source.bucket_start_time, source.open_price_wad, source.high_price_wad,
+           source.low_price_wad, source.close_price_wad, source.gross_eth_volume,
+           source.token_volume, source.trade_count,
+           CASE WHEN sqlc.arg(target_interval)::text = '6h'
+                THEN date_trunc('day', source.bucket_start_time, 'UTC')
+                     + floor(extract(hour FROM source.bucket_start_time AT TIME ZONE 'UTC') / 6) * interval '6 hours'
+                ELSE date_trunc('day', source.bucket_start_time, 'UTC') END AS group_start
+    FROM candles AS source
+    WHERE source.chain_id = sqlc.arg(chain_id)
+      AND source.token_address = sqlc.arg(token_address)
+      AND source.interval = sqlc.arg(source_interval)
+      AND source.bucket_start_time >= sqlc.arg(from_time)
+      AND source.bucket_start_time < sqlc.arg(to_time)
+) AS c
+GROUP BY c.group_start
+ORDER BY c.group_start ASC
 LIMIT sqlc.arg(page_size)::integer;
 
 -- name: TokenExists :one

@@ -123,7 +123,9 @@ func newProjectionDifferentialFixture() projectionDifferentialFixture {
 	transferToHolder := ledger.Transfer{EventCoordinates: coordinates(2, 2, 1, base.Add(10*time.Second)), Token: token, From: curve, To: address(8), Value: amount(100)}
 	tradeTwo := ledger.Trade{EventCoordinates: coordinates(3, 3, 0, base.Add(20*time.Second)), Token: token, Trader: address(7), IsBuy: true, ETHGross: amount(11), ETHRefund: amount(0), TokenAmount: amount(11), ProtocolFee: amount(1), CreatorFee: amount(1), NewETHReserve: amount(31), NewTokenReserve: amount(79)}
 	transferReacquire := ledger.Transfer{EventCoordinates: coordinates(3, 3, 1, base.Add(20*time.Second)), Token: token, To: address(8), Value: amount(5)}
-	graduation := ledger.Graduation{EventCoordinates: coordinates(3, 3, 2, base.Add(20*time.Second)), Token: token, LPPair: pair, ETHToPool: amount(31), TokensToPool: amount(20), LPLiquidityBurned: amount(1)}
+	// On chain, pair.mint emits the opening Sync before the curve emits Graduated.
+	openingSync := ledger.PoolSync{EventCoordinates: coordinates(3, 3, 2, base.Add(20*time.Second)), Pair: pair, Reserve0: amount(20), Reserve1: amount(20)}
+	graduation := ledger.Graduation{EventCoordinates: coordinates(3, 3, 3, base.Add(20*time.Second)), Token: token, LPPair: pair, ETHToPool: amount(20), TokensToPool: amount(20), LPLiquidityBurned: amount(1)}
 	syncOne := ledger.PoolSync{EventCoordinates: coordinates(4, 4, 0, base.Add(time.Minute)), Pair: pair, Reserve0: amount(20), Reserve1: amount(31)}
 	swapOne := ledger.PoolSwap{EventCoordinates: coordinates(4, 4, 1, base.Add(time.Minute)), Pair: pair, Sender: address(9), Amount0In: amount(1), Amount1In: amount(2), Amount0Out: amount(3), Amount1Out: amount(4), To: address(10)}
 	syncTwo := ledger.PoolSync{EventCoordinates: coordinates(4, 4, 2, base.Add(time.Minute)), Pair: pair, Reserve0: amount(30), Reserve1: amount(40)}
@@ -143,6 +145,8 @@ func newProjectionDifferentialFixture() projectionDifferentialFixture {
 			return a.IngestTrade(ctx, tradeTwo)
 		}, func(ctx context.Context, a *storepostgres.Adapter) (ledger.InsertResult, error) {
 			return a.IngestTransfer(ctx, transferReacquire)
+		}, func(ctx context.Context, a *storepostgres.Adapter) (ledger.InsertResult, error) {
+			return a.IngestPoolSync(ctx, openingSync)
 		}, func(ctx context.Context, a *storepostgres.Adapter) (ledger.InsertResult, error) {
 			return a.IngestGraduation(ctx, graduation)
 		}}},
@@ -174,7 +178,7 @@ func newProjectionDifferentialFixture() projectionDifferentialFixture {
 		return a.IngestTrade(ctx, zeroFill)
 	})
 	unpaired := swapOne
-	unpaired.EventCoordinates = coordinates(3, 3, 3, base.Add(20*time.Second))
+	unpaired.EventCoordinates = coordinates(3, 5, 0, base.Add(20*time.Second))
 	fixture.chunks[2].events = append(fixture.chunks[2].events, func(ctx context.Context, a *storepostgres.Adapter) (ledger.InsertResult, error) {
 		return a.IngestPoolSwap(ctx, unpaired)
 	})

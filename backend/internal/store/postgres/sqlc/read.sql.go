@@ -256,7 +256,7 @@ func (q *Queries) GetTokenQuoteState(ctx context.Context, arg GetTokenQuoteState
 }
 
 const listCandlesAggregated = `-- name: ListCandlesAggregated :many
-SELECT min(c.bucket_start_time) AS bucket_start_time,
+SELECT c.group_start AS bucket_start_time,
        (array_agg(c.open_price_wad ORDER BY c.bucket_start_time ASC))[1] AS open_price_wad,
        max(c.high_price_wad) AS high_price_wad,
        min(c.low_price_wad) AS low_price_wad,
@@ -264,26 +264,33 @@ SELECT min(c.bucket_start_time) AS bucket_start_time,
        sum(c.gross_eth_volume)::numeric AS gross_eth_volume,
        sum(c.token_volume)::numeric AS token_volume,
        sum(c.trade_count)::BIGINT AS trade_count
-FROM candles AS c
-WHERE c.chain_id = $1
-  AND c.token_address = $2
-  AND c.interval = $3
-  AND c.bucket_start_time >= $4
-  AND c.bucket_start_time < $5
-GROUP BY CASE WHEN $6::text = '6h'
-             THEN date_trunc('day', c.bucket_start_time) + floor(extract(hour FROM c.bucket_start_time) / 6) * interval '6 hours'
-             ELSE date_trunc('day', c.bucket_start_time) END
-ORDER BY bucket_start_time ASC
+FROM (
+    SELECT source.bucket_start_time, source.open_price_wad, source.high_price_wad,
+           source.low_price_wad, source.close_price_wad, source.gross_eth_volume,
+           source.token_volume, source.trade_count,
+           CASE WHEN $1::text = '6h'
+                THEN date_trunc('day', source.bucket_start_time, 'UTC')
+                     + floor(extract(hour FROM source.bucket_start_time AT TIME ZONE 'UTC') / 6) * interval '6 hours'
+                ELSE date_trunc('day', source.bucket_start_time, 'UTC') END AS group_start
+    FROM candles AS source
+    WHERE source.chain_id = $2
+      AND source.token_address = $3
+      AND source.interval = $4
+      AND source.bucket_start_time >= $5
+      AND source.bucket_start_time < $6
+) AS c
+GROUP BY c.group_start
+ORDER BY c.group_start ASC
 LIMIT $7::integer
 `
 
 type ListCandlesAggregatedParams struct {
+	TargetInterval string
 	ChainID        int64
 	TokenAddress   Address
 	SourceInterval string
 	FromTime       pgtype.Timestamptz
 	ToTime         pgtype.Timestamptz
-	TargetInterval string
 	PageSize       int32
 }
 
@@ -298,14 +305,16 @@ type ListCandlesAggregatedRow struct {
 	TradeCount      int64
 }
 
+// Each row is keyed by its UTC-aligned group start (not the first stored source bucket), so
+// sparse groups report a stable timestamp and the next-page cursor can skip a whole group.
 func (q *Queries) ListCandlesAggregated(ctx context.Context, arg ListCandlesAggregatedParams) ([]ListCandlesAggregatedRow, error) {
 	rows, err := q.db.Query(ctx, listCandlesAggregated,
+		arg.TargetInterval,
 		arg.ChainID,
 		arg.TokenAddress,
 		arg.SourceInterval,
 		arg.FromTime,
 		arg.ToTime,
-		arg.TargetInterval,
 		arg.PageSize,
 	)
 	if err != nil {

@@ -275,6 +275,9 @@ func TestPriceChangeBigintDownMigrationRejectsLossyNarrowing(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("rollback UTC rebuild migration: %v", err)
+	}
 	pool := openPool(t, ctx, database.URL)
 
 	const chainID int64 = 48009

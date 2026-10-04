@@ -51,6 +51,25 @@ WHERE sync.chain_id=$1 AND sync.tx_hash=$2 AND sync.log_index=$3
 ON CONFLICT (chain_id, token_address) DO UPDATE SET reserve_source=EXCLUDED.reserve_source, eth_reserve=EXCLUDED.eth_reserve, token_reserve=EXCLUDED.token_reserve, source_block_number=EXCLUDED.source_block_number, source_block_hash=EXCLUDED.source_block_hash, source_block_time=EXCLUDED.source_block_time, source_tx_hash=EXCLUDED.source_tx_hash, source_log_index=EXCLUDED.source_log_index
 WHERE (EXCLUDED.source_block_number, (SELECT transaction_index FROM pool_syncs WHERE chain_id=$1 AND tx_hash=$2 AND log_index=$3), EXCLUDED.source_log_index) > (token_reserves.source_block_number, COALESCE(CASE token_reserves.reserve_source WHEN 'curve' THEN (SELECT transaction_index FROM trades WHERE chain_id=token_reserves.chain_id AND tx_hash=token_reserves.source_tx_hash AND log_index=token_reserves.source_log_index) ELSE (SELECT transaction_index FROM pool_syncs WHERE chain_id=token_reserves.chain_id AND tx_hash=token_reserves.source_tx_hash AND log_index=token_reserves.source_log_index) END, -1), token_reserves.source_log_index);
 
+-- The pair's opening Sync is emitted by pair.mint before the curve emits Graduated, so the
+-- per-Sync projection above sees the token still in the curve phase. Graduation therefore
+-- re-applies the pair's latest Sync, matching rebuild_token_projections.
+-- name: ApplyGraduationPoolSyncReserveProjection :exec
+INSERT INTO token_reserves (chain_id, token_address, reserve_source, eth_reserve, token_reserve, source_block_number, source_block_hash, source_block_time, source_tx_hash, source_log_index)
+SELECT sync.chain_id, token.token_address, 'pair', CASE WHEN token.token_is_token0 THEN sync.reserve1 ELSE sync.reserve0 END, CASE WHEN token.token_is_token0 THEN sync.reserve0 ELSE sync.reserve1 END, sync.block_number, sync.block_hash, sync.block_time, sync.tx_hash, sync.log_index
+FROM graduations AS graduation
+JOIN tokens AS token ON token.chain_id=graduation.chain_id AND token.token_address=graduation.token_address AND token.phase='graduated'
+JOIN LATERAL (
+    SELECT candidate.chain_id, candidate.reserve0, candidate.reserve1, candidate.block_number, candidate.block_hash, candidate.block_time, candidate.tx_hash, candidate.log_index
+    FROM pool_syncs AS candidate
+    WHERE candidate.chain_id=token.chain_id AND candidate.pair_address=token.lp_pair
+    ORDER BY candidate.block_number DESC, candidate.transaction_index DESC, candidate.log_index DESC
+    LIMIT 1
+) AS sync ON TRUE
+WHERE graduation.chain_id=$1 AND graduation.tx_hash=$2 AND graduation.log_index=$3
+ON CONFLICT (chain_id, token_address) DO UPDATE SET reserve_source=EXCLUDED.reserve_source, eth_reserve=EXCLUDED.eth_reserve, token_reserve=EXCLUDED.token_reserve, source_block_number=EXCLUDED.source_block_number, source_block_hash=EXCLUDED.source_block_hash, source_block_time=EXCLUDED.source_block_time, source_tx_hash=EXCLUDED.source_tx_hash, source_log_index=EXCLUDED.source_log_index
+WHERE (EXCLUDED.source_block_number, (SELECT transaction_index FROM pool_syncs WHERE chain_id=EXCLUDED.chain_id AND tx_hash=EXCLUDED.source_tx_hash AND log_index=EXCLUDED.source_log_index), EXCLUDED.source_log_index) > (token_reserves.source_block_number, COALESCE(CASE token_reserves.reserve_source WHEN 'curve' THEN (SELECT transaction_index FROM trades WHERE chain_id=token_reserves.chain_id AND tx_hash=token_reserves.source_tx_hash AND log_index=token_reserves.source_log_index) ELSE (SELECT transaction_index FROM pool_syncs WHERE chain_id=token_reserves.chain_id AND tx_hash=token_reserves.source_tx_hash AND log_index=token_reserves.source_log_index) END, -1), token_reserves.source_log_index);
+
 -- name: ApplyTransferProjection :one
 WITH deltas AS (
     SELECT holder, sum(delta) AS delta FROM (
@@ -83,16 +102,16 @@ SELECT (SELECT ok FROM valid) AND EXISTS (SELECT 1 FROM applied) AS applied;
 
 -- name: ApplyMarketTradeCandles :exec
 WITH bucketed AS (
-    SELECT market.*, '1m'::text AS bucket_interval, date_trunc('minute', market.block_time) AS bucket_start_time
+    SELECT market.*, '1m'::text AS bucket_interval, date_trunc('minute', market.block_time, 'UTC') AS bucket_start_time
     FROM market_trades AS market WHERE market.chain_id=$1 AND market.tx_hash=$2 AND market.log_index=$3 AND market.execution_price_wad IS NOT NULL
     UNION ALL
-    SELECT market.*, '5m'::text, date_trunc('hour', market.block_time) + floor(extract(minute FROM market.block_time) / 5) * interval '5 minutes'
+    SELECT market.*, '5m'::text, date_trunc('hour', market.block_time, 'UTC') + floor(extract(minute FROM market.block_time AT TIME ZONE 'UTC') / 5) * interval '5 minutes'
     FROM market_trades AS market WHERE market.chain_id=$1 AND market.tx_hash=$2 AND market.log_index=$3 AND market.execution_price_wad IS NOT NULL
     UNION ALL
-    SELECT market.*, '1h'::text, date_trunc('hour', market.block_time)
+    SELECT market.*, '1h'::text, date_trunc('hour', market.block_time, 'UTC')
     FROM market_trades AS market WHERE market.chain_id=$1 AND market.tx_hash=$2 AND market.log_index=$3 AND market.execution_price_wad IS NOT NULL
     UNION ALL
-    SELECT market.*, '1d'::text, date_trunc('day', market.block_time)
+    SELECT market.*, '1d'::text, date_trunc('day', market.block_time, 'UTC')
     FROM market_trades AS market WHERE market.chain_id=$1 AND market.tx_hash=$2 AND market.log_index=$3 AND market.execution_price_wad IS NOT NULL
 )
 INSERT INTO candles (chain_id, token_address, interval, bucket_start_time, open_price_wad, high_price_wad, low_price_wad, close_price_wad, gross_eth_volume, token_volume, trade_count)
@@ -154,29 +173,31 @@ WITH clock AS (
     LEFT JOIN token_reserves AS reserve
       ON reserve.chain_id = t.chain_id AND reserve.token_address = t.token_address
     WHERE t.chain_id = $1 AND t.token_address = $2
+-- Every trade is bucketed into all four candle intervals; ATH, baseline, latest, and volume
+-- read only the finest ('1m') series so each trade is counted once.
 ), candles_ath AS (
     SELECT c.chain_id, c.token_address, c.high_price_wad, c.bucket_start_time
     FROM candles AS c
-    WHERE c.chain_id = $1 AND c.token_address = $2
+    WHERE c.chain_id = $1 AND c.token_address = $2 AND c.interval = '1m'
     ORDER BY c.high_price_wad DESC, c.bucket_start_time ASC
     LIMIT 1
 ), baseline AS (
     SELECT c.close_price_wad
     FROM candles AS c CROSS JOIN clock
-    WHERE c.chain_id = $1 AND c.token_address = $2
+    WHERE c.chain_id = $1 AND c.token_address = $2 AND c.interval = '1m'
       AND c.bucket_start_time <= clock.now_at - interval '24 hours'
     ORDER BY c.bucket_start_time DESC
     LIMIT 1
 ), latest AS (
     SELECT c.close_price_wad
     FROM candles AS c
-    WHERE c.chain_id = $1 AND c.token_address = $2
+    WHERE c.chain_id = $1 AND c.token_address = $2 AND c.interval = '1m'
     ORDER BY c.bucket_start_time DESC
     LIMIT 1
 ), rolling AS (
     SELECT COALESCE(sum(c.gross_eth_volume), 0) AS volume_24h
     FROM candles AS c CROSS JOIN clock
-    WHERE c.chain_id = $1 AND c.token_address = $2
+    WHERE c.chain_id = $1 AND c.token_address = $2 AND c.interval = '1m'
       AND c.bucket_start_time >= clock.now_at - interval '24 hours'
 ), holders AS (
     SELECT
@@ -258,13 +279,14 @@ ON CONFLICT (chain_id,token_address) DO UPDATE SET
 -- name: ClearProtocolDaily :exec
 DELETE FROM protocol_daily WHERE chain_id=$1;
 
+-- Trades are market_trades (curve trades plus DEX swaps), the same source as volume. Days are
+-- UTC calendar days regardless of the session TimeZone.
 -- name: RecomputeProtocolDaily :exec
 WITH daily AS (
- SELECT block_time::date AS day, sum(gross_eth_volume) AS volume, 0::bigint AS launches, count(*)::bigint AS trades, 0::bigint AS graduations
- FROM market_trades WHERE chain_id=$1 GROUP BY block_time::date
- UNION ALL SELECT block_time::date,0,count(*)::bigint,0,0 FROM token_launches WHERE chain_id=$1 GROUP BY block_time::date
- UNION ALL SELECT block_time::date,0,0,count(*)::bigint,0 FROM trades WHERE chain_id=$1 GROUP BY block_time::date
- UNION ALL SELECT block_time::date,0,0,0,count(*)::bigint FROM graduations WHERE chain_id=$1 GROUP BY block_time::date
+ SELECT (block_time AT TIME ZONE 'UTC')::date AS day, sum(gross_eth_volume) AS volume, 0::bigint AS launches, count(*)::bigint AS trades, 0::bigint AS graduations
+ FROM market_trades WHERE chain_id=$1 GROUP BY 1
+ UNION ALL SELECT (block_time AT TIME ZONE 'UTC')::date,0,count(*)::bigint,0,0 FROM token_launches WHERE chain_id=$1 GROUP BY 1
+ UNION ALL SELECT (block_time AT TIME ZONE 'UTC')::date,0,0,0,count(*)::bigint FROM graduations WHERE chain_id=$1 GROUP BY 1
 ), daily_rollup AS (
  SELECT day,coalesce(sum(volume),0) volume,coalesce(sum(launches),0)::integer launches,coalesce(sum(trades),0)::integer trades,coalesce(sum(graduations),0)::integer graduations
  FROM daily GROUP BY day
@@ -283,8 +305,8 @@ SELECT $1,
  COALESCE((SELECT sum(gross_eth_volume) FROM market_trades WHERE chain_id=$1),0),
  (SELECT count(*) FROM token_launches WHERE chain_id=$1 AND block_time>=now()-interval '24 hours'),
  (SELECT count(*) FROM token_launches WHERE chain_id=$1),
- (SELECT count(*) FROM trades WHERE chain_id=$1 AND block_time>=now()-interval '24 hours'),
- (SELECT count(*) FROM trades WHERE chain_id=$1),
+ (SELECT count(*) FROM market_trades WHERE chain_id=$1 AND block_time>=now()-interval '24 hours'),
+ (SELECT count(*) FROM market_trades WHERE chain_id=$1),
  (SELECT count(*) FROM graduations WHERE chain_id=$1 AND block_time>=now()-interval '24 hours'),
  (SELECT count(*) FROM graduations WHERE chain_id=$1),now()
 ON CONFLICT (chain_id) DO UPDATE SET

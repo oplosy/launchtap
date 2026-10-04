@@ -266,7 +266,13 @@ func ReadAggregatedCandles(ctx context.Context, pool PoolReadBeginner, chainID i
 			if err != nil {
 				return pagination.ErrInvalidCursor
 			}
-			arg.FromTime = pgtype.Timestamptz{Time: after.Add(time.Microsecond), Valid: true}
+			// The cursor key is a group start; resume at the next group so the rest of the
+			// last returned group is not re-read as a partial duplicate.
+			groupLength := 6 * time.Hour
+			if query.Interval == "all" {
+				groupLength = 24 * time.Hour
+			}
+			arg.FromTime = pgtype.Timestamptz{Time: after.Add(groupLength), Valid: true}
 		}
 		if query.Interval == "all" {
 			arg.SourceInterval = "1d"

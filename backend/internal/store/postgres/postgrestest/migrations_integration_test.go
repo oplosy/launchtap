@@ -25,8 +25,8 @@ func TestMigrationsUpDownUp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first migration up: %v", err)
 	}
-	assertMigrationResults(t, firstUp, []migrationResultWant{{version: 1, direction: "up"}, {version: 2, direction: "up"}, {version: 3, direction: "up"}, {version: 4, direction: "up"}, {version: 5, direction: "up"}, {version: 6, direction: "up"}, {version: 7, direction: "up"}, {version: 8, direction: "up"}, {version: 9, direction: "up"}, {version: 10, direction: "up"}, {version: 11, direction: "up"}})
-	assertMigrationStates(t, ctx, database.DB, map[int64]string{1: "applied", 2: "applied", 3: "applied", 4: "applied", 5: "applied", 6: "applied", 7: "applied", 8: "applied", 9: "applied", 10: "applied", 11: "applied"})
+	assertMigrationResults(t, firstUp, []migrationResultWant{{version: 1, direction: "up"}, {version: 2, direction: "up"}, {version: 3, direction: "up"}, {version: 4, direction: "up"}, {version: 5, direction: "up"}, {version: 6, direction: "up"}, {version: 7, direction: "up"}, {version: 8, direction: "up"}, {version: 9, direction: "up"}, {version: 10, direction: "up"}, {version: 11, direction: "up"}, {version: 12, direction: "up"}})
+	assertMigrationStates(t, ctx, database.DB, map[int64]string{1: "applied", 2: "applied", 3: "applied", 4: "applied", 5: "applied", 6: "applied", 7: "applied", 8: "applied", 9: "applied", 10: "applied", 11: "applied", 12: "applied"})
 	assertTableExists(t, ctx, database.DB, "sync_state", true)
 	assertTableExists(t, ctx, database.DB, "indexed_blocks", true)
 	assertTableExists(t, ctx, database.DB, "token_launches", true)
@@ -36,8 +36,8 @@ func TestMigrationsUpDownUp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("migration down: %v", err)
 	}
-	assertMigrationResults(t, down, []migrationResultWant{{version: 11, direction: "down"}})
-	assertMigrationStates(t, ctx, database.DB, map[int64]string{1: "applied", 2: "applied", 3: "applied", 4: "applied", 5: "applied", 6: "applied", 7: "applied", 8: "applied", 9: "applied", 10: "applied", 11: "pending"})
+	assertMigrationResults(t, down, []migrationResultWant{{version: 12, direction: "down"}})
+	assertMigrationStates(t, ctx, database.DB, map[int64]string{1: "applied", 2: "applied", 3: "applied", 4: "applied", 5: "applied", 6: "applied", 7: "applied", 8: "applied", 9: "applied", 10: "applied", 11: "applied", 12: "pending"})
 	assertTableExists(t, ctx, database.DB, "sync_state", true)
 	assertTableExists(t, ctx, database.DB, "indexed_blocks", true)
 	assertTableExists(t, ctx, database.DB, "token_launches", true)
@@ -47,8 +47,8 @@ func TestMigrationsUpDownUp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second migration up: %v", err)
 	}
-	assertMigrationResults(t, secondUp, []migrationResultWant{{version: 11, direction: "up"}})
-	assertMigrationStates(t, ctx, database.DB, map[int64]string{1: "applied", 2: "applied", 3: "applied", 4: "applied", 5: "applied", 6: "applied", 7: "applied", 8: "applied", 9: "applied", 10: "applied", 11: "applied"})
+	assertMigrationResults(t, secondUp, []migrationResultWant{{version: 12, direction: "up"}})
+	assertMigrationStates(t, ctx, database.DB, map[int64]string{1: "applied", 2: "applied", 3: "applied", 4: "applied", 5: "applied", 6: "applied", 7: "applied", 8: "applied", 9: "applied", 10: "applied", 11: "applied", 12: "applied"})
 	assertTableExists(t, ctx, database.DB, "sync_state", true)
 	assertTableExists(t, ctx, database.DB, "indexed_blocks", true)
 	assertTableExists(t, ctx, database.DB, "token_launches", true)
@@ -59,6 +59,9 @@ func TestMetadataLaunchIdentityMigrationQuarantinesLegacyRowsAndProtectsDown(t *
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("rollback UTC rebuild migration: %v", err)
+	}
 
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
 		t.Fatalf("rollback price-change migration: %v", err)
@@ -125,8 +128,10 @@ func TestMetadataLaunchIdentityMigrationQuarantinesLegacyRowsAndProtectsDown(t *
 	`, chainID, token, txHash, imageContent, len(imageContent), imageHash[:], at); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
-		t.Fatalf("rollback price-change migration before testing launch-identity guard: %v", err)
+	for range 2 {
+		if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+			t.Fatalf("rollback UTC/price-change migrations before testing launch-identity guard: %v", err)
+		}
 	}
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err == nil || !strings.Contains(err.Error(), "multiple metadata or image rows exist") {
 		t.Fatalf("down migration with legacy and scoped rows error=%v", err)
