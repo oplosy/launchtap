@@ -103,5 +103,6 @@ external audit report. Advisory counts are time-specific and must be refreshed a
 
 Without hosting/DNS, a reviewed mainnet manifest, production Privy inputs, monitoring
 ownership, governance evidence, and an external audit, this package must not be promoted.
-The live testnet graduation exercise is deferred by the product owner because the faucet
-limit cannot fund the 4.2 ETH threshold. This is a deferral, not a passed acceptance test.
+The live testnet graduation exercise was cancelled by the product owner because the faucet
+limit cannot fund the 4.2 ETH threshold. This removes the exercise from scope; it is not a
+passed acceptance test.

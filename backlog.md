@@ -53,29 +53,6 @@
 
 ---
 
-## Deferred
-
-### Robinhood testnet live acceptance
-
-- **Date:** 2026-10-04
-- **Reason:** product-owner scope decision; the faucet limit is 0.05 test ETH/day and cannot
-  practically fund the 4.2 ETH graduation threshold. The owner requested production preparation
-  instead. This is not a passed live acceptance gate or permission to bypass production approval.
-- **Verified progress:** Creator login and token launch succeeded on chain 46630. Transaction
-  `0x8df54e34cc9e137113b03cd9ed46bb2e202e678762ac2d57c0d658ecdaee9114` has receipt status
-  `0x1` at block `128661022`. Token: `0xf51c4cde6f9e168ee67ebea0ece130025bdca8ed`;
-  curve: `0x84ed988b14736bbd477f9f8d74d8c6ef1fd6ed31`.
-- **Remaining:** separate-trader buy/sell, graduation and burned LP, API/indexer visibility,
-  finality/reorg acceptance. The local indexer was more than 9.7 million blocks behind the
-  launch block; its catch-up must be addressed before relying on live API data.
-- **Related files:** `docs/runbooks/robinhood-testnet-deployment.md`,
-  `contracts/deployments/robinhood-testnet-v1.json`. Local receipt/evidence files are preserved
-  in `backend/.cache/live-launch-*-20261004.json`; temporary acceptance services are stopped.
-- **Resume:** Only when the owner resumes this scope and sufficient test funding exists, use
-  creator `0x08B42F27E4CF57a8f46c0f7d2eE452BA43bdCAee` and distinct trader
-  `0xf4cc408c6003ACD688b18DfDB00B0BCaaA02aC5A`; resolve indexer catch-up and finish the runbook.
-  Do not change launch economics or invent a later indexing watermark to pass acceptance.
-
 ## Done
 
 ### Robinhood testnet deployment manifest
@@ -93,7 +70,8 @@
   build, and deployment drift checks passed. GitHub contracts and web workflows for
   `0f198c2` passed; its backend workflow was still running when this item was closed.
 - **Boundary:** This closes dependency bootstrap and deployment-manifest activation. The
-  first live end-to-end product acceptance remains separately tracked above.
+  remaining live testnet acceptance was cancelled by the product owner on 2026-10-04
+  because test funding is impractical; it was not verified or passed.
 
 ### ETH/USD enrichment source selection
 
