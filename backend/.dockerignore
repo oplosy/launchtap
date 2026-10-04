@@ -1,0 +1,6 @@
+.*
+!/.golangci.yml
+bin
+Dockerfile
+*.test
+*.out

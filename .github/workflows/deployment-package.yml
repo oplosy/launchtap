@@ -1,0 +1,34 @@
+name: deployment package
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - "backend/**"
+      - "web/**"
+      - "deploy/**"
+      - ".github/workflows/deployment-package.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "web/**"
+      - "deploy/**"
+      - ".github/workflows/deployment-package.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  containers:
+    name: deployment package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Build and verify disposable runtime
+        shell: pwsh
+        run: ./deploy/check.ps1 -Build

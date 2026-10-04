@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import { cacheHeaders, securityHeaders } from "./src/security/headers";
 
 const nextConfig: NextConfig = {
+  output: process.env.CONTAINER_BUILD === "1" ? "standalone" : undefined,
   typedRoutes: true,
   async headers() {
     return [

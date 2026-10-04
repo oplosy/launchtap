@@ -1,0 +1,140 @@
+name: launchpad
+
+x-backend: &backend
+  image: launchpad-backend:${RELEASE_TAG:?Set RELEASE_TAG to the reviewed commit}
+  build:
+    context: ../backend
+  env_file: ${BACKEND_ENV_FILE:?Set BACKEND_ENV_FILE to an external backend env file}
+  environment: &backend-env
+    CHAIN_ID: ${NEXT_PUBLIC_CHAIN_ID:?Set the reviewed chain ID}
+    DEPLOYMENT_ID: ${NEXT_PUBLIC_DEPLOYMENT_ID:?Set the reviewed deployment ID}
+    PRIVY_APP_ID: ${NEXT_PUBLIC_PRIVY_APP_ID:?Set the production Privy app ID}
+    API_ALLOWED_ORIGINS: https://${WEB_DOMAIN:?Set WEB_DOMAIN}
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging: &logging
+    driver: local
+    options:
+      max-size: 10m
+      max-file: "3"
+
+services:
+  postgres:
+    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    environment:
+      POSTGRES_USER: launchpad
+      POSTGRES_DB: launchpad
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes: [postgres_data:/var/lib/postgresql]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U launchpad -d launchpad"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    logging: *logging
+
+  preflight:
+    image: launchpad-web:${RELEASE_TAG:?Set RELEASE_TAG to the reviewed commit}
+    build:
+      context: ../web
+      args: &public-env
+        NEXT_PUBLIC_PRIVY_APP_ID: ${NEXT_PUBLIC_PRIVY_APP_ID:?Set the production Privy app ID}
+        NEXT_PUBLIC_DEPLOYMENT_ID: ${NEXT_PUBLIC_DEPLOYMENT_ID:?Set the reviewed deployment ID}
+        NEXT_PUBLIC_CHAIN_ID: ${NEXT_PUBLIC_CHAIN_ID:?Set the reviewed chain ID}
+        NEXT_PUBLIC_API_BASE_URL: https://${API_DOMAIN:?Set API_DOMAIN}
+        NEXT_PUBLIC_RPC_URL: ${NEXT_PUBLIC_RPC_URL:?Set the public HTTPS RPC URL}
+        NEXT_PUBLIC_WEB_ORIGIN: https://${WEB_DOMAIN:?Set WEB_DOMAIN}
+    environment: *public-env
+    command: [node, scripts/container-preflight.mjs]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging: *logging
+
+  migrate:
+    <<: *backend
+    command: [/app/migrate, up]
+    depends_on:
+      postgres: { condition: service_healthy }
+      preflight: { condition: service_completed_successfully }
+
+  api:
+    <<: *backend
+    command: [/app/api]
+    environment:
+      <<: *backend-env
+      API_ADDR: :8080
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/healthz]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  indexer:
+    <<: *backend
+    command: [/app/indexer]
+    environment:
+      <<: *backend-env
+      INDEXER_HEALTH_ADDR: :8081
+      INDEXER_WORKER_ID: production-indexer-1
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    # Operators access this endpoint locally; it is never exposed by the proxy.
+    ports: ["127.0.0.1:8081:8081"]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8081/healthz]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  web:
+    image: launchpad-web:${RELEASE_TAG:?Set RELEASE_TAG to the reviewed commit}
+    depends_on:
+      preflight: { condition: service_completed_successfully }
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache:uid=1000,gid=1000
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:3000/]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    logging: *logging
+
+  proxy:
+    image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    environment:
+      WEB_DOMAIN: ${WEB_DOMAIN:?Set WEB_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN:?Set API_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?Set the certificate contact email}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports: ["80:80", "443:443"]
+    depends_on:
+      web: { condition: service_healthy }
+      api: { condition: service_healthy }
+    restart: unless-stopped
+    logging: *logging
+
+secrets:
+  postgres_password:
+    file: ${POSTGRES_PASSWORD_FILE:?Set POSTGRES_PASSWORD_FILE to an external secret file}
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
