@@ -39,6 +39,19 @@ func TestVerifierAcceptsMatchingTokensAndOnlyLinkedEVMWallets(t *testing.T) {
 	}
 }
 
+func TestVerifierToleratesBoundedClockSkewForFreshTokens(t *testing.T) {
+	verifier, private := testVerifier(t)
+	now := verifier.now().Unix()
+	accessClaims := baseClaims(now, "did:privy:user")
+	accessClaims["iat"] = now + maxClockSkew
+	accessClaims["nbf"] = now + maxClockSkew
+	identityClaims := baseClaims(now, "did:privy:user")
+	identityClaims["linked_accounts"] = `[]`
+	if _, err := verifier.Verify(context.Background(), signClaims(t, private, "ES256", accessClaims), signClaims(t, private, "ES256", identityClaims)); err != nil {
+		t.Fatalf("token issued within clock skew rejected: %v", err)
+	}
+}
+
 func TestVerifierRejectsInvalidTokenConditions(t *testing.T) {
 	verifier, private := testVerifier(t)
 	now := verifier.now().Unix()
@@ -63,7 +76,12 @@ func TestVerifierRejectsInvalidTokenConditions(t *testing.T) {
 		}, func() string { return validIdentity }},
 		{"not yet valid", func() string {
 			c := cloneClaims(validAccessClaims)
-			c["nbf"] = now + 1
+			c["nbf"] = now + maxClockSkew + 1
+			return signClaims(t, private, "ES256", c)
+		}, func() string { return validIdentity }},
+		{"issued beyond clock skew", func() string {
+			c := cloneClaims(validAccessClaims)
+			c["iat"] = now + maxClockSkew + 1
 			return signClaims(t, private, "ES256", c)
 		}, func() string { return validIdentity }},
 		{"wrong issuer", func() string {
