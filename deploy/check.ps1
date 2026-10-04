@@ -28,7 +28,7 @@ try {
         '-e', 'POSTGRES_PASSWORD=disposable-smoke-only', 'postgres:18.6-alpine') | Out-Null
     $ready = $false
     for ($attempt = 0; $attempt -lt 30; $attempt++) {
-        & docker exec $db pg_isready -U launchpad -d launchpad 2>$null | Out-Null
+        & docker exec $db pg_isready -h 127.0.0.1 -U launchpad -d launchpad 2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) { $ready = $true; break }
         Start-Sleep -Seconds 1
     }

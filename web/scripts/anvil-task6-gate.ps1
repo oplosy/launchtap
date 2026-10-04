@@ -85,12 +85,13 @@ function Wait-Http([string]$Url, [int]$ExpectedStatus = 200, [int]$Attempts = 12
 function Wait-Postgres {
     for ($attempt = 0; $attempt -lt 120; $attempt++) {
         try {
-            # Do not pipe this native command: on pwsh/Linux the pipeline can mask
-            # docker exec's exit code and race the container's readiness.
-            $readyOutput = & docker exec $postgresContainer pg_isready -U postgres -d postgres 2>$null
+            # The image's temporary init server accepts Unix sockets only. Probe TCP
+            # so readiness cannot pass before that server stops and the final server starts.
+            # Do not pipe this command: pwsh/Linux can mask docker exec's exit code.
+            $readyOutput = & docker exec $postgresContainer pg_isready -h 127.0.0.1 -U postgres -d postgres 2>$null
             $readyExitCode = $LASTEXITCODE
             if ($readyExitCode -eq 0) {
-                $probeOutput = & docker exec $postgresContainer psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c "SELECT 1" 2>$null
+                $probeOutput = & docker exec -e PGPASSWORD=postgres $postgresContainer psql -h 127.0.0.1 -v ON_ERROR_STOP=1 -U postgres -d postgres -c "SELECT 1" 2>$null
                 if ($LASTEXITCODE -eq 0) { return }
             }
         } catch { }
