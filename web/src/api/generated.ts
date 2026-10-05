@@ -656,7 +656,10 @@ export type $defs = Record<string, never>;
 export interface operations {
     events: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Forward only token hints for this address, plus reorgs. */
+                token?: string;
+            };
             header?: {
                 "Last-Event-ID"?: string;
             };

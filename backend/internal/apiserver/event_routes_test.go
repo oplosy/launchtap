@@ -59,6 +59,51 @@ func TestSSEInitialRetryEventHeartbeatAndCancellation(t *testing.T) {
 	}
 }
 
+func TestSSETokenFilterAndCoalescing(t *testing.T) {
+	hub := realtime.NewHub(4, 32)
+	server := New(DefaultConfig(), ReadyFunc(func(context.Context) error { return nil }), nil)
+	server.RegisterEventRoutes(EventRoutes{Hub: hub, ChainID: 46630, DeploymentID: "testnet", Heartbeat: time.Hour, Coalesce: 50 * time.Millisecond})
+	httpServer := httptest.NewServer(server.Handler)
+	defer httpServer.Close()
+
+	invalid, err := http.Get(httpServer.URL + "/v1/events?token=not-an-address")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = invalid.Body.Close()
+	if invalid.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("invalid token filter status=%d", invalid.StatusCode)
+	}
+
+	token := "0x00000000000000000000000000000000000000AA"
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, httpServer.URL+"/v1/events?token="+strings.ToLower(token), nil)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = response.Body.Close() })
+	reader := bufio.NewReader(response.Body)
+	readUntil(t, reader, "refresh-only", time.Second)
+	for deadline := time.Now().Add(time.Second); hub.Active() != 1 && time.Now().Before(deadline); {
+		time.Sleep(time.Millisecond)
+	}
+	hub.Publish(realtime.Event{Type: "launch", ChainID: 46630, DeploymentID: "testnet", Token: "0x00000000000000000000000000000000000000bb", AsOfBlock: 1})
+	hub.Publish(realtime.Event{Type: "token", ChainID: 46630, DeploymentID: "testnet", Token: "0x00000000000000000000000000000000000000bb", AsOfBlock: 2})
+	for block := int64(3); block <= 7; block++ {
+		hub.Publish(realtime.Event{Type: "token", ChainID: 46630, DeploymentID: "testnet", Token: token, AsOfBlock: block})
+	}
+	batch := readUntil(t, reader, `"as_of_block":7`, time.Second)
+	if strings.Count(batch, "event: token") != 1 || strings.Contains(batch, "event: launch") || strings.Contains(batch, "0x00000000000000000000000000000000000000bb") {
+		t.Fatalf("filtered and coalesced batch=%q", batch)
+	}
+	hub.Publish(realtime.Event{Type: "reorg", ChainID: 46630, DeploymentID: "testnet", AsOfBlock: 8, CommonAncestor: 5})
+	if reorg := readUntil(t, reader, `"common_ancestor":5`, time.Second); !strings.Contains(reorg, "event: reorg") {
+		t.Fatalf("reorg=%q", reorg)
+	}
+}
+
 func TestSSEOutlivesServerWriteTimeout(t *testing.T) {
 	hub := realtime.NewHub(2, 2)
 	server := New(DefaultConfig(), ReadyFunc(func(context.Context) error { return nil }), nil)

@@ -68,6 +68,8 @@ function tokenLabel(token: TokenCardData) {
   return token.name.trim() || token.symbol.trim() || "Unnamed token";
 }
 
+const DISCOVERY_REFRESH_INTERVAL_MS = 2_000;
+
 const SORT_VIEWS: ReadonlyArray<{
   value: TokenListQueryState["sort"];
   label: string;
@@ -228,11 +230,14 @@ export function TokenDiscovery({
       url: `${configuration.apiBaseUrl}/v1/events`,
       queryClient: {
         invalidateQueries: async () => {
-          if (refreshTimerRef.current) return;
+          // Hints arrive for every trade on every token. Refresh page one at most once per
+          // interval, and never replace pages the reader has already appended.
+          if (refreshTimerRef.current || pagesRef.current.length > 1) return;
           refreshTimerRef.current = setTimeout(() => {
             refreshTimerRef.current = null;
+            if (pagesRef.current.length > 1) return;
             void loadPage(latestState.current, undefined, false);
-          }, 80);
+          }, DISCOVERY_REFRESH_INTERVAL_MS);
         },
       },
       queryKeyForEvent: (event) => {
