@@ -205,9 +205,18 @@ func (r MetadataRoutes) replaceImage(ctx context.Context, input *imageWriteInput
 	if declared != detected {
 		return nil, apiProblem(http.StatusUnsupportedMediaType, "image_type_mismatch", "Declared and detected image types differ")
 	}
-	hash := sha256.Sum256(input.RawBody)
+	// Uploads often come straight from a phone camera; EXIF can carry GPS location and device
+	// serials, so only the rendering data is stored and served.
+	content, err := stripImageMetadata(detected, input.RawBody)
+	if err == nil {
+		_, err = detectImage(content)
+	}
+	if err != nil {
+		return nil, apiProblem(http.StatusUnprocessableEntity, "invalid_image", "Image must be a valid file of at most 4096x4096 pixels")
+	}
+	hash := sha256.Sum256(content)
 	next, err := r.Store.ReplaceImage(ctx, r.ChainID, tokenAddress, principal.Wallets, metadata.Image{
-		ContentType: detected, Content: append([]byte(nil), input.RawBody...), SHA256: hash, Revision: revision, UpdatedAt: time.Now().UTC(),
+		ContentType: detected, Content: content, SHA256: hash, Revision: revision, UpdatedAt: time.Now().UTC(),
 	})
 	if err != nil {
 		return nil, mapMetadataError(ctx, err)
