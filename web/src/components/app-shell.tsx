@@ -16,7 +16,7 @@ import {
   UserCircle,
 } from "./icons";
 import { SafeExternalLink, Sheet } from "./primitives";
-import { WalletConnectButton } from "@/wallet/connection";
+import { WalletConnectButton } from "@/wallet/connection-context";
 import { publicConfiguration } from "@/config/public";
 
 const navItems = [
