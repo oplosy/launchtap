@@ -8,6 +8,7 @@ import { ILaunchErrors } from "../src/interfaces/ILaunchErrors.sol";
 import { LaunchFactory } from "../src/LaunchFactory.sol";
 import { LaunchTypes } from "../src/types/LaunchTypes.sol";
 import { DeployLaunchpad } from "../script/DeployLaunchpad.s.sol";
+import { DeployCurveImplementation } from "../script/DeployCurveImplementation.s.sol";
 import { DeploymentValidation } from "../script/deployment/DeploymentValidation.sol";
 import { LocalUniswapV2Factory } from "../script/local/LocalUniswapV2Factory.sol";
 import { LocalUniswapV2Pair } from "../script/local/LocalUniswapV2Pair.sol";
@@ -94,6 +95,7 @@ contract FactoryWithoutPairHashGetter {
 
 contract DeploymentTest is Test {
     uint16 private constant ENGINE_VERSION = 1;
+    bool private constant ENGINE_ENABLED = true;
     uint256 private constant TOTAL_SUPPLY = 1_000_000_000 ether;
     uint256 private constant CURVE_TOKENS = 800_000_000 ether;
     uint256 private constant LP_TOKENS = 200_000_000 ether;
@@ -197,6 +199,36 @@ contract DeploymentTest is Test {
         curve.buy{ value: 5 ether }(CREATOR, CREATOR, 0, block.timestamp);
         assertEq(uint256(curve.phase()), uint256(LaunchTypes.Phase.Graduated));
         assertGt(LocalUniswapV2Pair(pairAddress).balanceOf(LP_BURN_ADDRESS), 0);
+    }
+
+    function testCurveImplementationUpgradeScriptSwitchesEngineAndProvesRecipientGuard() external {
+        (LocalWETH weth, LocalUniswapV2Factory uniswapFactory) = _validatedLocalStack();
+        address previous = address(new BondingCurveV1());
+        LaunchFactory factory = _factory(previous, address(weth), address(uniswapFactory));
+        vm.setEnv("DEPLOYMENT_TARGET", "anvil");
+        vm.setEnv("DEPLOYER", vm.toString(CREATOR));
+        vm.setEnv("LAUNCH_FACTORY", vm.toString(address(factory)));
+
+        DeployCurveImplementation script = new DeployCurveImplementation();
+        (address implementation, bytes memory configureCalldata) = script.run();
+
+        assertNotEq(implementation, previous);
+        assertGt(implementation.code.length, 0);
+        assertEq(factory.curveImplementation(ENGINE_VERSION), implementation);
+        assertEq(
+            configureCalldata,
+            abi.encodeCall(
+                LaunchFactory.configureEngine, (ENGINE_VERSION, implementation, ENGINE_ENABLED)
+            )
+        );
+
+        vm.setEnv("DEPLOYER", vm.toString(TIMELOCK));
+        vm.expectRevert(
+            abi.encodeWithSelector(DeployCurveImplementation.AuthorityOverlap.selector, TIMELOCK)
+        );
+        // The expected revert precedes any return value.
+        // forge-lint: disable-next-line(unused-return)
+        script.run();
     }
 
     function _validatedLocalStack()
