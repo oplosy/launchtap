@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
+import budgetMatrix from "../performance-budgets.json" with { type: "json" };
 import {
   evaluateBuildBudget,
   maxInitialJavaScriptBytes,
@@ -13,10 +14,33 @@ import {
 describe("release bundle and performance budgets", () => {
   it("requires every profile and core route, including populated token detail", () => {
     expect(validatePerformanceBudgetMatrix()).toEqual([]);
-    expect(validatePerformanceBudgetMatrix({ version: 1, routes: ["/"], profiles: {} })).toEqual(
+    expect(
+      validatePerformanceBudgetMatrix({
+        version: 2,
+        profiles: {},
+        routeClasses: {
+          "read-only": { routes: ["/"], transferredBytes: 1, initialJavaScriptBytes: 1 },
+        },
+      }),
+    ).toEqual(
       expect.arrayContaining([
         "performance budget is missing mobile profile",
+        "performance budget is missing the wallet route class",
         "performance budget is missing the populated token fixture route",
+      ]),
+    );
+  });
+
+  it("keeps wallet routes out of the read-only class and its budget below wallet routes", () => {
+    const matrix = structuredClone(budgetMatrix);
+    matrix.routeClasses["read-only"].routes.push("/create");
+    matrix.routeClasses["read-only"].initialJavaScriptBytes =
+      matrix.routeClasses.wallet.initialJavaScriptBytes;
+    expect(validatePerformanceBudgetMatrix(matrix)).toEqual(
+      expect.arrayContaining([
+        "/create is budgeted by both read-only and wallet",
+        "wallet route /create cannot use the read-only budget",
+        "read-only initial JavaScript budget must be below the wallet budget",
       ]),
     );
   });
