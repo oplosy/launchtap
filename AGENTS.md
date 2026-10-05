@@ -184,6 +184,10 @@ pre-large-refactor design review, documentation/spec update review.
   commits, pushes.
 - **Milestones.** Do not merge `dev` → `main` per task. At a milestone: open one PR
   `dev` → `main`, let CI pass, eyeball the diff, merge, optionally `git tag vX.Y.Z`.
+  Right after the merge, fast-forward `dev` to `main`'s merge commit
+  (`git push origin origin/main:dev`, only when `origin/dev` is an ancestor of `origin/main`;
+  never force). Otherwise `dev` never contains that merge commit and the next milestone PR is
+  behind `main`, which `main`'s up-to-date rule blocks.
 - **Commit messages.** Conventional prefix (`feat: fix: test: chore: docs: refactor:`),
   imperative, one logical change; reference the plan task where relevant (`Plan 1 Task 6`).
 
