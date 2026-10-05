@@ -9,7 +9,7 @@ import { formatBaseUnits } from "@/amounts";
 import { publicConfiguration } from "@/config/public";
 import { Button, Badge } from "@/components/primitives";
 import { useWalletReadiness } from "@/wallet/readiness";
-import { WalletConnectButton } from "@/wallet/connection";
+import { WalletConnectButton } from "@/wallet/connection-context";
 import { shortAddress } from "@/token/address";
 
 type ProfileAction = NonNullable<ProfileResponse["items"]>[number];

@@ -4,7 +4,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { AppShell } from "@/components/app-shell";
 import { RouteTransition } from "@/components/route-transition";
-import { Providers } from "./providers";
+import { Providers, WalletRouteGate } from "./providers";
 
 const display = localFont({
   src: "../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2",
@@ -38,7 +38,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body className={`${display.variable} ${body.variable} ${mono.variable}`}>
         <Providers>
           <AppShell>
-            <RouteTransition>{children}</RouteTransition>
+            <RouteTransition>
+              <WalletRouteGate>{children}</WalletRouteGate>
+            </RouteTransition>
           </AppShell>
         </Providers>
       </body>

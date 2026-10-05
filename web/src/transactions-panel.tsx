@@ -9,7 +9,7 @@ import { browserAbis, type ReviewedDeployment } from "@/contracts/generated";
 import { publicConfiguration } from "@/config/public";
 import { addressExplorerUrl } from "@/wallet/explorer";
 import { useWalletReadiness } from "@/wallet/readiness";
-import { WalletConnectButton } from "@/wallet/connection";
+import { WalletConnectButton } from "@/wallet/connection-context";
 import {
   calculateLaunchValue,
   classifyTransactionFailure,
