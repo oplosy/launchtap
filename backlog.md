@@ -15,42 +15,32 @@
 
 ## Active
 
-### 2026-10-05 logic review — remaining remediation
+### Operator actions: testnet engine switch and fork RPC secret
 
 - **Date:** 2026-10-05
-- **Reason:** scope decision (fixed the security/speed findings that were safe to land in one
-  pass on branch `task/audit-remediation`; the items below need deployment access, design
-  work, or CI-only tooling)
-- **Where it stopped:** Landed on `task/audit-remediation`: graduation-DoS recipient check,
-  sells open during trading pause, `claim*To`, cursor validity across tip advances, per-client
-  rate limit + SSE cap, LIKE escaping, image dimension limit + cache header, quote without
-  per-trade sums, holder/pool-swap indexes, batched header RPC + in-process RPC backoff,
-  nonce-based script CSP, 50% slippage cap, Caddy compression. Speed follow-ups also landed:
-  topic-only curve log discovery, per-token SSE filter + coalescing, indexable metric sorts
-  (`tokens.sort_*` mirrored by triggers), and an on-demand Privy/wagmi stack (non-wallet routes
-  no longer download the ~2 MB Privy chunk up front).
-- **Related files:** `contracts/src/BondingCurveV1.sol`, `contracts/slither.db.json`,
-  `contracts/deployments/robinhood-testnet-v1.json`, `web/performance-budgets.json`,
-  `web/scripts/check-budgets.mjs`, `deploy/Caddyfile`
+- **Reason:** scope decision (needs the owner's keystores and repository secrets)
+- **Where it stopped:** `contracts/script/DeployCurveImplementation.s.sol` and the runbook
+  section "Engine implementation upgrade" in `docs/runbooks/robinhood-testnet-deployment.md`
+  are merged (PR #11); the fork dry-run passed. The testnet v1 curve implementation and every
+  existing clone still accept a buy whose token recipient is the pair (permanent graduation
+  freeze). Separately, the `ROBINHOOD_MAINNET_ARCHIVE_RPC_URL` repository secret fails the TLS
+  handshake (`received fatal alert: InternalError`, contracts run `37326499597`, both
+  attempts), so the `Release gate` and `Robinhood mainnet fork` jobs cannot pass until it is
+  replaced; the Slither step of the same run passed.
+- **Related files:** `contracts/script/DeployCurveImplementation.s.sol`,
+  `docs/runbooks/robinhood-testnet-deployment.md`,
+  `contracts/deployments/robinhood-testnet-v1.json`, `backend/deployments/testdata/`,
+  `.github/workflows/contracts.yml`
 - **Resume (next step):**
-  1. Testnet: the deployed v1 curve implementation and every existing clone still accept a
-     buy whose token recipient is the pair (permanent graduation freeze). Deploy the fixed
-     `BondingCurveV1`, call `configureEngine(1, <new impl>, true)` through the timelock,
-     record the new runtime-code hash in the deployment manifest, and re-run the indexer
-     bytecode verification. Existing clones cannot be fixed.
-  2. Run the manual `contracts` workflow (`Release gate`) to confirm the two re-triaged
-     Slither findings; `contracts/slither.db.json` now stores those two as full Slither result
-     objects (functional, but verbose) — trim them to the file's four-field shape if wanted.
-  3. Validate `deploy/Caddyfile` and `deploy/compose.yaml` through the `deployment-package`
-     workflow (`caddy validate` needs Docker, unavailable locally).
-  4. Images: strip metadata by re-encoding and serve from object storage/CDN (infrastructure).
-  5. Token and pair log discovery still use address batches (standard ERC-20/Uniswap topics
-     cannot be queried by topic alone); revisit if token count makes this the bottleneck.
-- **Pitfalls / notes:** Pages are now dynamically rendered because the CSP nonce is per
-  request; keep that in mind for CDN caching. On non-wallet routes a previously connected
-  wallet shows as disconnected until the reader clicks Connect or opens a wallet route (the
-  stack is idle-prefetched but not mounted). The external audit is still required before
-  mainnet; this review does not replace it.
+  1. Follow the runbook: deploy the implementation with the deployer keystore, fund the
+     timelock, and call `configureEngine(1, <new impl>, true)` from the timelock keystore.
+     With the transaction hashes, record `curveImplementation` and
+     `bytecodeHashes.bondingCurveV1` in the manifest and its backend testdata copy, regenerate
+     the web contracts, and re-run the indexer bytecode verification.
+  2. Replace the archive RPC secret with a working endpoint and re-run the `contracts`
+     workflow through `workflow_dispatch`.
+- **Pitfalls / notes:** Existing clones cannot be fixed. Do not commit the RPC URL, keys, or a
+  predicted implementation address before its deployment receipt exists.
 
 ### Production release, governance, and audit inputs
 
@@ -70,7 +60,9 @@
 - **Resume (next step):** Product/infrastructure/security owners must fill every `<pending>`
   row in `docs/runbooks/production-readiness.md`, provision values through the approved
   secret/variable manager, and run `node scripts/verify-release.mjs --target=production`.
-  Provision hosting/domain and production Privy inputs, complete dependency impact review,
+  Provision hosting/domain and production Privy inputs, choose object storage/CDN delivery
+  for token images (today they are stored in PostgreSQL and served by the API with an ETag and
+  a short public cache), complete dependency impact review,
   obtain a reviewed mainnet deployment manifest, then build/promote using `deploy/README.md`.
   Production approval still requires signed governance and external-audit evidence. An independent
   infrastructure review of the deployment package is still outstanding.
@@ -91,6 +83,29 @@
 ---
 
 ## Done
+
+### 2026-10-05 logic review remediation
+
+- **Completed:** 2026-10-05
+- **Evidence:** PR #9 landed the security and speed fixes (graduation-DoS recipient check,
+  sells open during pause, `claim*To`, cursor validity across tip advances, per-client rate
+  limit and SSE cap, image decode-bomb limit, nonce CSP, slippage cap, read-path indexes,
+  batched header RPC, topic-only curve discovery, SSE filtering/coalescing, indexed metric
+  sorts, on-demand wallet stack). PR #11 added the engine upgrade script and runbook; PR #12
+  split performance budgets by route class. Contracts run `37326499597` printed
+  `Slither analysis verified.` for the re-triaged `contracts/slither.db.json`. The
+  `deployment package` workflow validates the Caddyfile with `caddy validate` on every PR and
+  now also resolves `deploy/compose.yaml` and rejects a missing required value. Token image
+  uploads are stored without EXIF, XMP, IPTC, comments, or embedded previews
+  (`backend/internal/apiserver/image_metadata.go`, lossless container rewrite, no pixel
+  re-encoding).
+- **Boundary:** Token and pair log discovery stays address-batched by design: ERC-20
+  `Transfer` and Uniswap `Swap`/`Sync` topics are shared by every token and pair on the chain,
+  so a topic-only query would scan unrelated contracts. Revisit only if measurements show
+  the address batches as the bottleneck. The testnet engine switch moved to "Operator
+  actions"; image object storage/CDN moved to the production item. Images uploaded before the
+  metadata change keep their metadata until re-uploaded. Two `slither.db.json` entries remain
+  stored as full Slither result objects (functional, verbose).
 
 ### Robinhood testnet deployment manifest
 
