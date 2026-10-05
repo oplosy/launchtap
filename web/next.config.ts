@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
   typedRoutes: true,
   async headers() {
     return [
-      { source: "/(.*)", headers: securityHeaders(process.env) },
+      { source: "/(.*)", headers: securityHeaders() },
       // Leave content-hashed Next assets on the framework's immutable cache path.
       { source: "/((?!_next/static|_next/image|favicon.ico).*)", headers: cacheHeaders },
     ];

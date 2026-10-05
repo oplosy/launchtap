@@ -1099,7 +1099,7 @@ function TradingPanelReady({
               setReviewIntent(null);
             }}
             inputMode="decimal"
-            hint="Minimum output is rounded down on-chain."
+            hint="Minimum output is rounded down on-chain. At most 50%."
           />
           {quoteError ? (
             <p className="transaction-error" role="alert">
@@ -1816,6 +1816,7 @@ function GraduatedSwapPanel({
               setReviewIntent(null);
             }}
             inputMode="decimal"
+            hint="At most 50%."
           />
           {output !== null ? (
             <div className="quote-summary">

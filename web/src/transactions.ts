@@ -67,10 +67,16 @@ export function observeCanonicalTransaction(args: {
   return { ...args.state, status, error: undefined };
 }
 
+/**
+ * Tolerances above 50% leave a minimum output so low that the trade is free value for any
+ * sandwiching searcher, so the review form refuses them.
+ */
+export const MAX_SLIPPAGE_BPS = 5_000n;
+
 export function parseSlippageBps(value: string): bigint | null {
   try {
     const bps = parseDecimal(value, 2);
-    return bps >= 0n && bps <= 10_000n ? bps : null;
+    return bps >= 0n && bps <= MAX_SLIPPAGE_BPS ? bps : null;
   } catch {
     return null;
   }

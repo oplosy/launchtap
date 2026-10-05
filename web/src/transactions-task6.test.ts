@@ -67,8 +67,9 @@ describe("task 6 transaction math and safety", () => {
 
   it("bounds slippage before render and never throws for an invalid percentage", () => {
     expect(parseSlippageBps("5")).toBe(500n);
-    expect(parseSlippageBps("100")).toBe(10_000n);
-    expect(parseSlippageBps("100.01")).toBeNull();
+    expect(parseSlippageBps("50")).toBe(5_000n);
+    expect(parseSlippageBps("50.01")).toBeNull();
+    expect(parseSlippageBps("100")).toBeNull();
     expect(parseSlippageBps("-1")).toBeNull();
     expect(parseSlippageBps("not-a-number")).toBeNull();
   });
