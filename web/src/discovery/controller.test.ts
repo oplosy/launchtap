@@ -10,10 +10,15 @@ const snapshot = (block: number) => ({
   finality: "safe",
 });
 
-const page = (block: number, name: string, next_cursor?: string): TokenListResponse => ({
+const page = (
+  block: number,
+  name: string,
+  next_cursor?: string,
+  address = "0x0000000000000000000000000000000000000001",
+): TokenListResponse => ({
   items: [
     {
-      address: "0x0000000000000000000000000000000000000001",
+      address,
       holder_count: 1,
       launch_block: block,
       launch_time: "2026-09-10T00:00:00.000000Z",
@@ -69,21 +74,26 @@ describe("token discovery append recovery", () => {
     expect(result.pages[0]?.items?.[0]?.name).toBe("recovered");
   });
 
-  it("discards accumulated pages when the cursor response changes snapshot", async () => {
+  it("keeps accumulated pages when the indexer tip advances and drops moved duplicates", async () => {
     const requests: Array<string | undefined> = [];
+    const second = "0x0000000000000000000000000000000000000002";
     const result = await loadTokenDiscoveryPage({
       state,
       cursor: "cursor-1",
-      existingPages: [page(10, "stale", "cursor-1")],
+      existingPages: [page(10, "first", "cursor-1")],
       fetchPage: async (query) => {
         requests.push(query.cursor);
-        return query.cursor ? page(11, "mismatched") : page(12, "recovered", "cursor-2");
+        const next = page(11, "second", undefined, second);
+        next.items = [...(page(11, "moved").items ?? []), ...(next.items ?? [])];
+        return next;
       },
     });
-    expect(requests).toEqual(["cursor-1", undefined]);
-    expect(result.reset).toBe(true);
-    expect(result.pages).toHaveLength(1);
-    expect(result.pages[0]?.items?.[0]?.name).toBe("recovered");
+    expect(requests).toEqual(["cursor-1"]);
+    expect(result.reset).toBe(false);
+    expect(result.pages.flatMap((entry) => entry.items?.map((item) => item.name))).toEqual([
+      "first",
+      "second",
+    ]);
   });
 
   it("appends a matching cursor page without discarding the existing chain", async () => {
@@ -91,7 +101,8 @@ describe("token discovery append recovery", () => {
       state,
       cursor: "cursor-1",
       existingPages: [page(10, "first", "cursor-1")],
-      fetchPage: async () => page(10, "second"),
+      fetchPage: async () =>
+        page(10, "second", undefined, "0x0000000000000000000000000000000000000002"),
     });
     expect(result.reset).toBe(false);
     expect(result.pages.map((entry) => entry.items?.[0]?.name)).toEqual(["first", "second"]);

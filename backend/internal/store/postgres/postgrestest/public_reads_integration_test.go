@@ -75,4 +75,23 @@ func TestPublicReadsUseOneCanonicalSnapshot(t *testing.T) {
 	if len(trades.Items) != 1 || trades.Items[0].ETHVolume.String() != "100" {
 		t.Fatalf("trades=%+v", trades)
 	}
+
+	// Tip advancement keeps a canonical cursor usable; removing its block (a reorg) does not.
+	nextHash := hashBytes(0x68)
+	mustInsertBlock(t, ctx, database.DB, chainID, 101, nextHash, blockHash, at.Add(time.Second), "observed")
+	if _, err := database.DB.ExecContext(ctx, `UPDATE sync_state SET observed_number=101, observed_hash=$3 WHERE chain_id=$1 AND deployment_id=$2`, chainID, deployment, nextHash); err != nil {
+		t.Fatal(err)
+	}
+	advanced, err := tokens.List(ctx, token.ListQuery{ChainID: chainID, Phase: "curve", Sort: "newest", Limit: 1, Cursor: &decoded})
+	if err != nil {
+		t.Fatalf("cursor from an older canonical block was rejected: %v", err)
+	}
+	if advanced.Snapshot.BlockNumber != 101 || len(advanced.Items) != 0 {
+		t.Fatalf("advanced page=%+v", advanced)
+	}
+	orphaned := decoded
+	orphaned.Snapshot.BlockHash = [32]byte(hashBytes(0x69))
+	if _, err := tokens.List(ctx, token.ListQuery{ChainID: chainID, Phase: "curve", Sort: "newest", Limit: 1, Cursor: &orphaned}); !errors.Is(err, pagination.ErrCursorInvalidated) {
+		t.Fatalf("cursor from an orphaned block was accepted: %v", err)
+	}
 }

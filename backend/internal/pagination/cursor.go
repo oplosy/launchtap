@@ -76,15 +76,37 @@ func (c Cursor) ValidateShape() error {
 	return nil
 }
 
-func (c Cursor) ValidateRequest(endpoint, sort, filters, direction string, snapshot Snapshot) error {
+// CanonicalCheck reports whether an older cursor snapshot block is still on the indexed
+// canonical chain.
+type CanonicalCheck func(Snapshot) (bool, error)
+
+// ValidateRequest accepts a cursor whose snapshot is the current one or an older block that is
+// still canonical. Tip advancement alone does not invalidate a cursor: keyset pages may then
+// reflect newer rows, but only a reorg that removed the cursor's block forces a restart.
+func (c Cursor) ValidateRequest(endpoint, sort, filters, direction string, current Snapshot, canonical CanonicalCheck) error {
 	if err := c.ValidateShape(); err != nil {
 		return err
 	}
 	if c.Endpoint != endpoint || c.Sort != sort || c.Filters != filters || c.Direction != direction {
 		return fmt.Errorf("%w: request changed", ErrInvalidCursor)
 	}
-	if c.Snapshot.ChainID != snapshot.ChainID || c.Snapshot.BlockNumber != snapshot.BlockNumber ||
-		c.Snapshot.BlockHash != snapshot.BlockHash {
+	if c.Snapshot.ChainID != current.ChainID || c.Snapshot.BlockNumber > current.BlockNumber {
+		return ErrCursorInvalidated
+	}
+	if c.Snapshot.BlockNumber == current.BlockNumber {
+		if c.Snapshot.BlockHash != current.BlockHash {
+			return ErrCursorInvalidated
+		}
+		return nil
+	}
+	if canonical == nil {
+		return ErrCursorInvalidated
+	}
+	ok, err := canonical(c.Snapshot)
+	if err != nil {
+		return err
+	}
+	if !ok {
 		return ErrCursorInvalidated
 	}
 	return nil
