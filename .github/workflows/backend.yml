@@ -16,14 +16,7 @@ on:
     branches:
       - main
       - dev
-    paths:
-      - "backend/**"
-      - "contracts/deployments/**"
-      - "contracts/vectors/**"
-      - "contracts/abi/v1/**"
-      - "contracts/fixtures/**"
-      - ".gitattributes"
-      - ".github/workflows/backend.yml"
+    # No path filter: these checks are required on dev and main, so they must always report.
   workflow_dispatch:
 
 permissions:

@@ -12,10 +12,7 @@ on:
     branches:
       - main
       - dev
-    paths:
-      - "contracts/**"
-      - ".gitmodules"
-      - ".github/workflows/contracts.yml"
+    # No path filter: these checks are required on dev and main, so they must always report.
   workflow_dispatch:
 
 permissions:

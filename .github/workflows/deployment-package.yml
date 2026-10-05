@@ -10,11 +10,7 @@ on:
       - ".github/workflows/deployment-package.yml"
   pull_request:
     branches: [main, dev]
-    paths:
-      - "backend/**"
-      - "web/**"
-      - "deploy/**"
-      - ".github/workflows/deployment-package.yml"
+    # No path filter: these checks are required on dev and main, so they must always report.
 
 permissions:
   contents: read

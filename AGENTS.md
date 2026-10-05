@@ -194,6 +194,10 @@ pre-large-refactor design review, documentation/spec update review.
   `dev`, on PRs into `dev` (a `task/<slug>` branch merging back), and on the milestone PR.
 - `main` is branch-protected: the `backend` check must pass and the branch must be up to
   date before merge. No required human reviewer.
+- `dev` is branch-protected: `backend`, `web`, `deployment package`, and `Foundry` must pass
+  before a PR merges, and repository auto-merge is enabled so a `task/<slug>` PR can merge
+  itself once green. Pull-request runs have no path filter so required checks always report.
+  Direct pushes to `dev` by repository admins are not blocked (admins are not enforced).
 - PRs are used for the `dev` → `main` milestone merge and, optionally, for a `task/<slug>`
   branch merging back into `dev` so its CI runs before the merge. The routine Claude↔Codex
   loop still happens in `dev` via hash review, not PRs.
