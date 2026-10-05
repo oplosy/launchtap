@@ -15,6 +15,46 @@
 
 ## Active
 
+### 2026-10-05 logic review — remaining remediation
+
+- **Date:** 2026-10-05
+- **Reason:** scope decision (fixed the security/speed findings that were safe to land in one
+  pass on branch `task/audit-remediation`; the items below need deployment access, design
+  work, or CI-only tooling)
+- **Where it stopped:** Landed on `task/audit-remediation`: graduation-DoS recipient check,
+  sells open during trading pause, `claim*To`, cursor validity across tip advances, per-client
+  rate limit + SSE cap, LIKE escaping, image dimension limit + cache header, quote without
+  per-trade sums, holder/pool-swap indexes, batched header RPC + in-process RPC backoff,
+  nonce-based script CSP, 50% slippage cap, Caddy compression.
+- **Related files:** `contracts/src/BondingCurveV1.sol`, `contracts/slither.db.json`,
+  `contracts/deployments/robinhood-testnet-v1.json`, `backend/internal/chain/discovery.go`,
+  `backend/internal/realtime/hub.go`, `backend/internal/store/postgres/queries/read.sql`,
+  `web/app/providers.tsx`, `web/performance-budgets.json`, `deploy/Caddyfile`
+- **Resume (next step):**
+  1. Testnet: the deployed v1 curve implementation and every existing clone still accept a
+     buy whose token recipient is the pair (permanent graduation freeze). Deploy the fixed
+     `BondingCurveV1`, call `configureEngine(1, <new impl>, true)` through the timelock,
+     record the new runtime-code hash in the deployment manifest, and re-run the indexer
+     bytecode verification. Existing clones cannot be fixed.
+  2. Run the manual `contracts` workflow (`Release gate`) to confirm the two re-triaged
+     Slither findings; `contracts/slither.db.json` now stores those two as full Slither result
+     objects (functional, but verbose) — trim them to the file's four-field shape if wanted.
+  3. Validate `deploy/Caddyfile` and `deploy/compose.yaml` through the `deployment-package`
+     workflow (`caddy validate` needs Docker, unavailable locally).
+  4. Indexer: discovery issues ~`3 × tokens/500` `eth_getLogs` per poll. Query curve events by
+     topic only and filter emitters locally; this needs a redesign of the fail-closed
+     `EmitterError` path in `discovery.go`.
+  5. SSE: broadcast hints reach every subscriber and trigger REST refetches. Add per-token
+     subscriptions and coalesce bursts per token.
+  6. Token list `market_cap`/`volume_24h` sorts cannot use an index (`COALESCE` over a LEFT
+     JOIN plus the phase filter on `tokens`); denormalize phase and metrics into one table.
+  7. Web: load Privy/wagmi only where a wallet is needed and tighten
+     `performance-budgets.json` (1.8 MB initial JS today).
+  8. Images: strip metadata by re-encoding and serve from object storage/CDN.
+- **Pitfalls / notes:** Pages are now dynamically rendered because the CSP nonce is per
+  request; keep that in mind for CDN caching. The external audit is still required before
+  mainnet; this review does not replace it.
+
 ### Production release, governance, and audit inputs
 
 - **Date:** 2026-10-04
