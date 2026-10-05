@@ -20,7 +20,20 @@ var ErrRPCUnhealthy = errors.New("indexer RPC unavailable")
 const (
 	defaultReorgSearchDepth uint64 = 128
 	maxReorgSearchDepth     uint64 = 100000
+	// headerBatchSize stays within common provider JSON-RPC batch limits.
+	headerBatchSize = 100
+	// Transient RPC failures are retried in-process with capped exponential backoff; a long
+	// outage still exits so the orchestrator restarts the process and alerts.
+	maxRPCRetryDelay          = 30 * time.Second
+	maxConsecutiveRPCFailures = 20
 )
+
+// BatchHeaderSource is implemented by sources that can fetch many headers in one round trip.
+type BatchHeaderSource interface {
+	HeadersByNumbers(context.Context, []uint64) ([]*types.Header, error)
+}
+
+var _ BatchHeaderSource = (*chain.Client)(nil)
 
 type Engine struct {
 	settings  Settings
@@ -112,12 +125,18 @@ func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
 	if to-from >= e.settings.ChunkSize {
 		to = from + e.settings.ChunkSize - 1
 	}
+	prefetched, err := e.prefetchHeaders(ctx, from, to)
+	if err != nil {
+		return false, err
+	}
 	blocks := make(map[int64]ledger.IndexedBlock)
 	previous := state.Observed
 	for number := from; number <= to; number++ {
-		header, err := e.source.HeaderByNumber(ctx, uint64(number))
-		if err != nil {
-			return false, rpcFailure("read chunk header", err)
+		header := prefetched[number]
+		if header == nil {
+			if header, err = e.source.HeaderByNumber(ctx, uint64(number)); err != nil {
+				return false, rpcFailure("read chunk header", err)
+			}
 		}
 		block, err := e.block(header)
 		if err != nil {
@@ -249,22 +268,69 @@ func rpcFailure(operation string, err error) error {
 	return fmt.Errorf("%w while %s: %w", ErrRPCUnhealthy, operation, err)
 }
 
+// prefetchHeaders reads a chunk's headers with batched RPC calls when the source supports it.
+// The caller still validates numbering and parent links for every header.
+func (e *Engine) prefetchHeaders(ctx context.Context, from, to int64) (map[int64]*types.Header, error) {
+	batcher, ok := e.source.(BatchHeaderSource)
+	if !ok || from > to {
+		return nil, nil
+	}
+	headers := make(map[int64]*types.Header, to-from+1)
+	for start := from; start <= to; start += headerBatchSize {
+		end := min(start+headerBatchSize-1, to)
+		numbers := make([]uint64, 0, end-start+1)
+		for number := start; number <= end; number++ {
+			numbers = append(numbers, uint64(number))
+		}
+		batch, err := batcher.HeadersByNumbers(ctx, numbers)
+		if err != nil {
+			return nil, rpcFailure("read chunk headers", err)
+		}
+		if len(batch) != len(numbers) {
+			return nil, errors.New("RPC header batch length differs from request")
+		}
+		for index, header := range batch {
+			headers[int64(numbers[index])] = header
+		}
+	}
+	return headers, nil
+}
+
 func (e *Engine) Run(ctx context.Context) error {
+	failures := 0
 	for {
 		advanced, err := e.Step(ctx)
 		if err != nil {
-			return err
+			if !errors.Is(err, ErrRPCUnhealthy) || ctx.Err() != nil {
+				return err
+			}
+			failures++
+			if failures >= maxConsecutiveRPCFailures {
+				return err
+			}
+			if err := sleep(ctx, min(e.settings.PollInterval<<min(failures, 6), maxRPCRetryDelay)); err != nil {
+				return err
+			}
+			continue
 		}
+		failures = 0
 		if advanced {
 			continue
 		}
-		timer := time.NewTimer(e.settings.PollInterval)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return ctx.Err()
-		case <-timer.C:
+		if err := sleep(ctx, e.settings.PollInterval); err != nil {
+			return err
 		}
+	}
+}
+
+func sleep(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }
 

@@ -285,6 +285,74 @@ func TestEngineReportsTypedRPCFailure(t *testing.T) {
 		t.Fatalf("reported error = %v, want RPC health error", reported)
 	}
 }
+
+type batchSource struct {
+	*fakeSource
+	batches [][]uint64
+}
+
+func (s *batchSource) HeadersByNumbers(_ context.Context, numbers []uint64) ([]*types.Header, error) {
+	s.batches = append(s.batches, append([]uint64(nil), numbers...))
+	headers := make([]*types.Header, 0, len(numbers))
+	for _, number := range numbers {
+		header, ok := s.headers[number]
+		if !ok {
+			return nil, errors.New("header missing")
+		}
+		headers = append(headers, header)
+	}
+	return headers, nil
+}
+
+func TestChunkHeadersUseOneBatchWhenSupported(t *testing.T) {
+	e, store, source := newTestEngine(t)
+	batcher := &batchSource{fakeSource: source}
+	e.source = batcher
+	if advanced, err := e.Step(t.Context()); err != nil || !advanced {
+		t.Fatalf("step: %t %v", advanced, err)
+	}
+	if len(batcher.batches) != 1 || len(batcher.batches[0]) != 2 || batcher.batches[0][0] != 1 || batcher.batches[0][1] != 2 {
+		t.Fatalf("batches = %v", batcher.batches)
+	}
+	if source.headerRequestsAt(1) != 0 {
+		t.Fatalf("chunk header fetched individually despite batch support: %v", source.requests)
+	}
+	if store.unit.state.Observed.BlockNumber != 2 {
+		t.Fatalf("observed = %+v", store.unit.state.Observed)
+	}
+}
+
+func TestRunRetriesTransientRPCFailuresInProcess(t *testing.T) {
+	e, store, source := newTestEngine(t)
+	source.headsErr = errors.New("RPC unavailable")
+	failures := 0
+	ctx, cancel := context.WithCancel(t.Context())
+	e.settings.OnFailure = func(error) {
+		failures++
+		if failures == 2 {
+			source.headsErr = nil
+		}
+	}
+	e.settings.OnCommitted = func(state State) {
+		if state.Observed != nil && state.Observed.BlockNumber == 5 {
+			cancel()
+		}
+	}
+	if err := e.Run(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run() error = %v, want cancellation after recovery", err)
+	}
+	if failures != 2 || store.unit.state.Observed.BlockNumber != 5 {
+		t.Fatalf("failures=%d observed=%+v", failures, store.unit.state.Observed)
+	}
+
+	e, _, _ = newTestEngine(t)
+	stored := e.store.(*memoryStore)
+	stored.unit.fail = true
+	if err := e.Run(t.Context()); err == nil || errors.Is(err, ErrRPCUnhealthy) {
+		t.Fatalf("non-RPC failure was retried or hidden: %v", err)
+	}
+}
+
 func TestSafeHashMismatchStopsBeforeWrites(t *testing.T) {
 	e, store, source := newTestEngine(t)
 	if _, err := e.Step(t.Context()); err != nil {

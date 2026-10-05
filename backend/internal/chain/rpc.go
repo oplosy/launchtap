@@ -12,6 +12,7 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -49,6 +50,35 @@ func (c *Client) Close() {
 
 func (c *Client) HeaderByNumber(ctx context.Context, number uint64) (*types.Header, error) {
 	return c.header(ctx, new(big.Int).SetUint64(number))
+}
+
+// HeadersByNumbers fetches the requested headers in one JSON-RPC batch. A missing block or a
+// failed batch element fails the whole call, so callers never see a partial range.
+func (c *Client) HeadersByNumbers(ctx context.Context, numbers []uint64) ([]*types.Header, error) {
+	headers := make([]*types.Header, len(numbers))
+	err := c.retry(ctx, false, func(callContext context.Context) error {
+		batch := make([]rpc.BatchElem, len(numbers))
+		for index, number := range numbers {
+			headers[index] = nil
+			batch[index] = rpc.BatchElem{Method: "eth_getBlockByNumber", Args: []any{hexutil.EncodeUint64(number), false}, Result: &headers[index]}
+		}
+		if err := c.rpc.BatchCallContext(callContext, batch); err != nil {
+			return err
+		}
+		for index, element := range batch {
+			if element.Error != nil {
+				return element.Error
+			}
+			if headers[index] == nil {
+				return fmt.Errorf("header %d: %w", numbers[index], ethereum.NotFound)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return headers, nil
 }
 
 func (c *Client) HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error) {
