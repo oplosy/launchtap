@@ -1,26 +1,37 @@
 {
-  "version": 1,
-  "routes": [
-    "/",
-    "/graduated",
-    "/create",
-    "/analytics",
-    "/docs",
-    "/profile",
-    "/token/0x0000000000000000000000000000000000000001?fixture=populated"
-  ],
+  "version": 2,
   "profiles": {
     "small-laptop": {
-      "viewport": { "width": 1280, "height": 800 },
-      "navigationMs": 5000,
-      "transferredBytes": 4000000,
-      "initialJavaScriptBytes": 1800000
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "navigationMs": 5000
     },
     "mobile": {
-      "viewport": { "width": 360, "height": 800 },
-      "navigationMs": 5500,
-      "transferredBytes": 4000000,
-      "initialJavaScriptBytes": 1800000
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "navigationMs": 5500
+    }
+  },
+  "routeClasses": {
+    "read-only": {
+      "description": "Routes that render without the Privy/wagmi wallet stack. Measured 2026-10-05: ~210 KB initial JS, ~258 KB transferred.",
+      "routes": ["/", "/graduated", "/analytics", "/docs"],
+      "transferredBytes": 400000,
+      "initialJavaScriptBytes": 300000
+    },
+    "wallet": {
+      "description": "Routes whose content signs or reads wallet state and loads the wallet stack. Measured 2026-10-05: ~990 KB initial JS, ~1.03 MB transferred.",
+      "routes": [
+        "/create",
+        "/profile",
+        "/token/0x0000000000000000000000000000000000000001?fixture=populated"
+      ],
+      "transferredBytes": 1400000,
+      "initialJavaScriptBytes": 1300000
     }
   }
 }
