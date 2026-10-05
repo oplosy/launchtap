@@ -20,7 +20,38 @@ function Invoke-Docker {
     return $output
 }
 
+# Resolves compose.yaml with placeholder public values (never real secrets); Compose fails on a
+# malformed file or a required variable without a value. Needs no running Docker daemon.
+function Test-ComposeConfig {
+    param([string]$SecretFile)
+    $values = [ordered]@{
+        RELEASE_TAG = 'prep-validation'
+        BACKEND_ENV_FILE = "$PSScriptRoot/backend.env.example"
+        POSTGRES_PASSWORD_FILE = $SecretFile
+        NEXT_PUBLIC_CHAIN_ID = '46630'
+        NEXT_PUBLIC_DEPLOYMENT_ID = 'compose-validation'
+        NEXT_PUBLIC_PRIVY_APP_ID = 'compose-validation'
+        NEXT_PUBLIC_RPC_URL = 'https://rpc.example.invalid'
+        WEB_DOMAIN = 'web.example.invalid'
+        API_DOMAIN = 'api.example.invalid'
+        ACME_EMAIL = 'ops@example.invalid'
+    }
+    $envFile = "$SecretFile.env"
+    try {
+        [IO.File]::WriteAllLines($envFile, [string[]]($values.Keys | ForEach-Object { "$_=$($values[$_])" }))
+        Invoke-Docker @('compose', '-f', "$PSScriptRoot/compose.yaml", '--env-file', $envFile, 'config', '--quiet') | Out-Null
+        [IO.File]::WriteAllLines($envFile, [string[]]($values.Keys | Where-Object { $_ -ne 'WEB_DOMAIN' } |
+            ForEach-Object { "$_=$($values[$_])" }))
+        & docker compose -f "$PSScriptRoot/compose.yaml" --env-file $envFile config --quiet 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { throw 'Compose accepted a configuration without WEB_DOMAIN' }
+    } finally {
+        Remove-Item -LiteralPath $envFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
+$composeSecret = New-TemporaryFile
 try {
+    Test-ComposeConfig -SecretFile $composeSecret.FullName
     if ($Build) {
         Invoke-Docker @('build', '-t', $backendImage, "$repoRoot/backend")
         Invoke-Docker @('build', '-t', $webImage, "$repoRoot/web")
@@ -84,9 +115,10 @@ try {
         '-e', 'API_DOMAIN=api.example.invalid', '-e', 'ACME_EMAIL=ops@example.invalid',
         '-v', "${PSScriptRoot}/Caddyfile:/etc/caddy/Caddyfile:ro", 'caddy:2.10.2-alpine',
         'caddy', 'validate', '--config', '/etc/caddy/Caddyfile', '--adapter', 'caddyfile') | Out-Null
-    Write-Output 'PASS: migrations, backup/restore, non-root read-only API/web, HTML/assets/CSP, readiness rejection, production preflight rejection, Caddy validation.'
+    Write-Output 'PASS: migrations, backup/restore, non-root read-only API/web, HTML/assets/CSP, readiness rejection, production preflight rejection, Compose configuration, Caddy validation.'
 } finally {
     # Only random-name resources created by this check are removed; no production volume is touched.
     & docker rm -f -v $api $web $db 2>$null | Out-Null
     & docker network rm $network 2>$null | Out-Null
+    Remove-Item -LiteralPath $composeSecret.FullName -Force -ErrorAction SilentlyContinue
 }

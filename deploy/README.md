@@ -84,10 +84,12 @@ Run the disposable local package check with PowerShell 7 and Docker:
 pwsh -NoProfile -File deploy/check.ps1 -Build
 ```
 
-The `deployment package` workflow runs this same check on relevant dev pushes and milestone
-PRs. It supplies no production credentials and does not publish images or promote a release.
+The `deployment package` workflow runs this same check on relevant dev pushes and on every
+PR into `dev` or `main`. It supplies no production credentials and does not publish images or
+promote a release.
 
-It builds images with empty public configuration, starts a disposable PostgreSQL/API/web
+It first resolves `compose.yaml` with placeholder public values (`docker compose config`) and
+confirms that a missing required value is rejected, then builds images with empty public configuration, starts a disposable PostgreSQL/API/web
 stack bound only to loopback, verifies migration and static asset delivery, checks that an
 unindexed database is unready and that production preflight rejects the unconfigured image,
 then removes only its own containers and network. It does not prove production activation,
