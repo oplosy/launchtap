@@ -12,7 +12,7 @@ on:
       - "contracts/deployments/**"
       - ".github/workflows/web.yml"
   pull_request:
-    branches: [main]
+    branches: [main, dev]
     paths:
       - "web/**"
       - "backend/openapi/**"

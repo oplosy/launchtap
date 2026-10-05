@@ -9,7 +9,7 @@ on:
       - "deploy/**"
       - ".github/workflows/deployment-package.yml"
   pull_request:
-    branches: [main]
+    branches: [main, dev]
     paths:
       - "backend/**"
       - "web/**"
