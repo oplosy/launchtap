@@ -190,11 +190,13 @@ pre-large-refactor design review, documentation/spec update review.
 ### GitHub
 
 - Public repo — origin of record + off-machine backup + CI.
-- CI (`.github/workflows/backend.yml`) runs on every push to `dev` and on the milestone PR.
+- CI (`backend`, `contracts`, `web`, `deployment-package` workflows) runs on every push to
+  `dev`, on PRs into `dev` (a `task/<slug>` branch merging back), and on the milestone PR.
 - `main` is branch-protected: the `backend` check must pass and the branch must be up to
   date before merge. No required human reviewer.
-- PRs are used **only** for the `dev` → `main` milestone merge. The Claude↔Codex loop
-  happens in `dev` via hash review, not PRs.
+- PRs are used for the `dev` → `main` milestone merge and, optionally, for a `task/<slug>`
+  branch merging back into `dev` so its CI runs before the merge. The routine Claude↔Codex
+  loop still happens in `dev` via hash review, not PRs.
 - No GitHub issues / project board — the plan docs are the task list.
 
 ## Sync rule
