@@ -192,8 +192,11 @@ pre-large-refactor design review, documentation/spec update review.
 - Public repo — origin of record + off-machine backup + CI.
 - CI (`backend`, `contracts`, `web`, `deployment-package` workflows) runs on every push to
   `dev`, on PRs into `dev` (a `task/<slug>` branch merging back), and on the milestone PR.
-- `main` is branch-protected: the `backend` check must pass and the branch must be up to
-  date before merge. No required human reviewer.
+- `main` is branch-protected: `backend`, `web`, `deployment package`, and `Foundry` must pass
+  and the branch must be up to date before merge; force pushes and deletion are blocked. No
+  required human reviewer, and admins are not enforced. The `release gate` workflow runs on
+  milestone PRs that touch code but is not required, because its path filter would leave a
+  docs-only PR waiting forever.
 - `dev` is branch-protected: `backend`, `web`, `deployment package`, and `Foundry` must pass
   before a PR merges, and repository auto-merge is enabled so a `task/<slug>` PR can merge
   itself once green. Pull-request runs have no path filter so required checks always report.
