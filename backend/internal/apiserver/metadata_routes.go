@@ -1,10 +1,15 @@
 package apiserver
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -20,7 +25,11 @@ import (
 
 const (
 	maxImageBytes            = 5 << 20
+	maxImageDimension        = 4096
 	maxSubjectLimiterEntries = 10_000
+	// Image URLs carry no content hash, so browsers revalidate after a short window and the
+	// ETag turns repeat loads into bodiless 304 responses.
+	imageCacheControl = "public, max-age=60, stale-while-revalidate=600"
 )
 
 type MetadataRoutes struct {
@@ -87,6 +96,7 @@ type imageOutput struct {
 	ETag          string `header:"ETag"`
 	Revision      int64  `header:"X-Revision"`
 	NoSniff       string `header:"X-Content-Type-Options"`
+	CacheControl  string `header:"Cache-Control"`
 	Body          []byte
 }
 
@@ -114,6 +124,7 @@ func (r MetadataRoutes) Register(api huma.API) {
 					"ETag":                   {Description: "Image content hash validator.", Schema: &huma.Schema{Type: "string"}},
 					"X-Revision":             {Description: "Image revision.", Schema: &huma.Schema{Type: "integer", Format: "int64"}},
 					"X-Content-Type-Options": {Description: "Image response security policy.", Schema: &huma.Schema{Type: "string"}},
+					"Cache-Control":          {Description: "Image cache policy.", Schema: &huma.Schema{Type: "string"}},
 				},
 			},
 			"default": {
@@ -215,9 +226,9 @@ func (r MetadataRoutes) getImage(ctx context.Context, input *imageReadInput) (*i
 	}
 	etag := `"sha256-` + hex.EncodeToString(image.SHA256[:]) + `"`
 	if matchesETag(input.IfNoneMatch, etag) {
-		return &imageOutput{Status: http.StatusNotModified, ETag: etag, Revision: image.Revision, NoSniff: "nosniff"}, nil
+		return &imageOutput{Status: http.StatusNotModified, ETag: etag, Revision: image.Revision, NoSniff: "nosniff", CacheControl: imageCacheControl}, nil
 	}
-	out := &imageOutput{Status: http.StatusOK, ContentType: image.ContentType, ContentLength: len(image.Content), ETag: etag, Revision: image.Revision, NoSniff: "nosniff", Body: append([]byte(nil), image.Content...)}
+	out := &imageOutput{Status: http.StatusOK, ContentType: image.ContentType, ContentLength: len(image.Content), ETag: etag, Revision: image.Revision, NoSniff: "nosniff", CacheControl: imageCacheControl, Body: image.Content}
 	return out, nil
 }
 
@@ -275,16 +286,54 @@ func detectImage(content []byte) (string, error) {
 	if len(content) == 0 || len(content) > maxImageBytes {
 		return "", apiProblem(http.StatusRequestEntityTooLarge, "invalid_image", "Image must be between 1 byte and 5 MiB")
 	}
-	if len(content) >= 8 && string(content[:8]) == "\x89PNG\r\n\x1a\n" {
-		return "image/png", nil
+	var contentType string
+	var config image.Config
+	var err error
+	switch {
+	case len(content) >= 8 && string(content[:8]) == "\x89PNG\r\n\x1a\n":
+		contentType = "image/png"
+		config, err = png.DecodeConfig(bytes.NewReader(content))
+	case len(content) >= 3 && content[0] == 0xff && content[1] == 0xd8 && content[2] == 0xff:
+		contentType = "image/jpeg"
+		config, err = jpeg.DecodeConfig(bytes.NewReader(content))
+	case len(content) >= 12 && string(content[:4]) == "RIFF" && string(content[8:12]) == "WEBP":
+		contentType = "image/webp"
+		config.Width, config.Height, err = webpDimensions(content)
+	default:
+		return "", apiProblem(http.StatusUnsupportedMediaType, "invalid_image", "Only PNG, JPEG, and WebP images are accepted")
 	}
-	if len(content) >= 3 && content[0] == 0xff && content[1] == 0xd8 && content[2] == 0xff {
-		return "image/jpeg", nil
+	// Browsers decode the full bitmap; a small file can declare a huge canvas (a decode bomb).
+	if err != nil || config.Width < 1 || config.Height < 1 || config.Width > maxImageDimension || config.Height > maxImageDimension {
+		return "", apiProblem(http.StatusUnprocessableEntity, "invalid_image", "Image must be a valid file of at most 4096x4096 pixels")
 	}
-	if len(content) >= 12 && string(content[:4]) == "RIFF" && string(content[8:12]) == "WEBP" {
-		return "image/webp", nil
+	return contentType, nil
+}
+
+// webpDimensions reads the canvas size from the first chunk of a RIFF WebP file.
+func webpDimensions(content []byte) (int, int, error) {
+	invalid := errors.New("invalid WebP header")
+	if len(content) < 30 {
+		return 0, 0, invalid
 	}
-	return "", apiProblem(http.StatusUnsupportedMediaType, "invalid_image", "Only PNG, JPEG, and WebP images are accepted")
+	switch string(content[12:16]) {
+	case "VP8 ":
+		if content[23] != 0x9d || content[24] != 0x01 || content[25] != 0x2a {
+			return 0, 0, invalid
+		}
+		return int(binary.LittleEndian.Uint16(content[26:28]) & 0x3fff), int(binary.LittleEndian.Uint16(content[28:30]) & 0x3fff), nil
+	case "VP8L":
+		if content[20] != 0x2f {
+			return 0, 0, invalid
+		}
+		bits := binary.LittleEndian.Uint32(content[21:25])
+		return int(bits&0x3fff) + 1, int((bits>>14)&0x3fff) + 1, nil
+	case "VP8X":
+		width := int(content[24]) | int(content[25])<<8 | int(content[26])<<16
+		height := int(content[27]) | int(content[28])<<8 | int(content[29])<<16
+		return width + 1, height + 1, nil
+	default:
+		return 0, 0, invalid
+	}
 }
 
 func parseRevision(value string) (int64, error) {

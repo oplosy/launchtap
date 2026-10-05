@@ -1023,6 +1023,7 @@ export interface operations {
             /** @description Token image */
             200: {
                 headers: {
+                    "Cache-Control"?: string;
                     "Content-Length"?: number;
                     "Content-Type"?: string;
                     ETag?: string;
@@ -1039,6 +1040,8 @@ export interface operations {
             /** @description Not modified when If-None-Match matches; the response has no body. */
             304: {
                 headers: {
+                    /** @description Image cache policy. */
+                    "Cache-Control"?: string;
                     /** @description Image content hash validator. */
                     ETag?: string;
                     /** @description Image response security policy. */

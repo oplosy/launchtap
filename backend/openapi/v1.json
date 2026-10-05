@@ -1817,6 +1817,11 @@
             },
             "description": "Token image",
             "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Content-Length": {
                 "schema": {
                   "format": "int64",
@@ -1849,6 +1854,12 @@
           "304": {
             "description": "Not modified when If-None-Match matches; the response has no body.",
             "headers": {
+              "Cache-Control": {
+                "description": "Image cache policy.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "ETag": {
                 "description": "Image content hash validator.",
                 "schema": {
