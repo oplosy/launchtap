@@ -15,7 +15,9 @@ type EventRoutes struct {
 	ChainID      int64
 	DeploymentID string
 	Heartbeat    time.Duration
-	shutdown     <-chan struct{}
+	// Streams caps concurrent streams per client; nil disables the per-client cap.
+	Streams  *StreamLimiter
+	shutdown <-chan struct{}
 }
 
 type eventInput struct {
@@ -56,6 +58,12 @@ func (r EventRoutes) stream(ctx context.Context, _ *eventInput, send sse.Sender)
 	if r.Hub == nil {
 		return
 	}
+	release, ok := r.Streams.Acquire(ClientKey(ctx))
+	if !ok {
+		_ = send(sse.Message{Comment: "per-client stream limit reached", Retry: 10000})
+		return
+	}
+	defer release()
 	subscription, err := r.Hub.Subscribe()
 	if err != nil {
 		_ = send(sse.Message{Comment: "subscriber capacity reached", Retry: 3000})

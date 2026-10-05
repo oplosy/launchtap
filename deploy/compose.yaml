@@ -68,6 +68,9 @@ services:
     environment:
       <<: *backend-env
       API_ADDR: :8080
+      # The API port is never published; only the proxy on the private compose network
+      # reaches it, so its X-Forwarded-For entry identifies the client for rate limiting.
+      API_TRUSTED_PROXY_CIDRS: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
     depends_on:
       migrate: { condition: service_completed_successfully }
     healthcheck:
