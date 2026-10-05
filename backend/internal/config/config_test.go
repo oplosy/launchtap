@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"net/netip"
 	"reflect"
 	"strings"
 	"testing"
@@ -28,6 +29,11 @@ func TestLoadParsesCompleteConfiguration(t *testing.T) {
 	env["INDEXER_WORKER_ID"] = " worker-a "
 	env["INDEXER_CONFIRMATIONS"] = "12"
 	env["ETH_USD_SOURCE"] = " unconfigured-source "
+	env["API_TRUSTED_PROXY_CIDRS"] = "172.16.0.0/12, 10.1.2.3/8"
+	env["API_RATE_LIMIT_PER_MINUTE"] = "1200"
+	env["API_RATE_LIMIT_BURST"] = "200"
+	env["API_SSE_MAX_PER_CLIENT"] = "8"
+	env["DATABASE_MAX_CONNS"] = "24"
 
 	got, err := Load(mapGetenv(env))
 	if err != nil {
@@ -56,6 +62,11 @@ func TestLoadParsesCompleteConfiguration(t *testing.T) {
 		IndexerWorkerID:            "worker-a",
 		IndexerConfirmations:       &wantConfirmations,
 		ETHUSDSource:               "unconfigured-source",
+		APITrustedProxyCIDRs:       []netip.Prefix{netip.MustParsePrefix("172.16.0.0/12"), netip.MustParsePrefix("10.0.0.0/8")},
+		APIRateLimitPerMinute:      1200,
+		APIRateLimitBurst:          200,
+		APISSEMaxPerClient:         8,
+		DatabaseMaxConns:           24,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Load() = %#v, want %#v", got, want)
@@ -75,6 +86,11 @@ func TestConfigEnvironmentMapping(t *testing.T) {
 		"LogLevel":                   "LOG_LEVEL",
 		"APIAddr":                    "API_ADDR",
 		"APIAllowedOrigins":          "API_ALLOWED_ORIGINS",
+		"APITrustedProxyCIDRs":       "API_TRUSTED_PROXY_CIDRS",
+		"APIRateLimitPerMinute":      "API_RATE_LIMIT_PER_MINUTE",
+		"APIRateLimitBurst":          "API_RATE_LIMIT_BURST",
+		"APISSEMaxPerClient":         "API_SSE_MAX_PER_CLIENT",
+		"DatabaseMaxConns":           "DATABASE_MAX_CONNS",
 		"IndexerHealthAddr":          "INDEXER_HEALTH_ADDR",
 		"IndexerChunkSize":           "INDEXER_CHUNK_SIZE",
 		"IndexerReorgSearchDepth":    "INDEXER_REORG_SEARCH_DEPTH",
@@ -486,5 +502,26 @@ func assertError(t *testing.T, err error, wantField string, wantCause error) {
 	}
 	if !errors.Is(err, wantCause) {
 		t.Errorf("error = %v, want cause %v", err, wantCause)
+	}
+}
+
+func TestAPIAbuseLimitDefaultsAndValidation(t *testing.T) {
+	got, err := Load(mapGetenv(validEnvironment()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.APIRateLimitPerMinute != 600 || got.APIRateLimitBurst != 120 || got.APISSEMaxPerClient != 4 || got.DatabaseMaxConns != 0 || got.APITrustedProxyCIDRs != nil {
+		t.Fatalf("defaults = %+v", got)
+	}
+	for field, value := range map[string]string{
+		"API_TRUSTED_PROXY_CIDRS":   "not-a-cidr",
+		"API_RATE_LIMIT_PER_MINUTE": "0",
+		"API_RATE_LIMIT_BURST":      "0",
+		"API_SSE_MAX_PER_CLIENT":    "1001",
+		"DATABASE_MAX_CONNS":        "2",
+	} {
+		env := validEnvironment()
+		env[field] = value
+		assertFieldError(t, Load, env, field, ErrInvalid)
 	}
 }

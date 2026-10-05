@@ -66,7 +66,8 @@ type TokenStats struct {
 	HolderCount                                          int64
 }
 
-// ComputeTokenStats mirrors RecomputeTokenStats. PreviousATH is supplied for
+// ComputeTokenStats mirrors RecomputeTokenStats. Candles is the '1m' series only; the
+// coarser intervals repeat the same trades. PreviousATH is supplied for
 // ordinary aggregation so ATH remains monotonic; rollback callers omit it
 // after deleting the invalidated token_stats row. It returns an error when the
 // computed price change cannot be represented exactly by API clients.

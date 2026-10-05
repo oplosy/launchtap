@@ -90,8 +90,11 @@ func (r TokenReader) ReadQuoteState(ctx context.Context, chainID int64, address 
 		out.Detail.ReserveHash = common.Hash(row.ReserveBlockHash)
 		out.Detail.Snapshot = s.Identity
 		out.Detail.Finality = finality(s.State, s.Identity.BlockNumber)
-		out.ProtocolFees = numericBig(row.ProtocolFee)
-		out.CreatorFees = numericBig(row.CreatorFee)
+		// Accumulated fees only feed the curve's uint256 overflow guard, which no real ETH
+		// balance can reach. Summing every trade per quote made quotes O(trades), so the
+		// informational quote starts from zero accrued fees.
+		out.ProtocolFees = new(big.Int)
+		out.CreatorFees = new(big.Int)
 		return nil
 	})
 	return out, err
@@ -118,7 +121,7 @@ func (r MarketReader) ListTrades(ctx context.Context, q trading.Query) (trading.
 		}
 		args := sqlc.ListMarketTradesParams{ChainID: q.ChainID, TokenAddress: sqlc.Address(q.Token), PageSize: int32(q.Limit)}
 		if q.Cursor != nil {
-			if err := q.Cursor.ValidateRequest("trades", "newest", filters, "next", s.Identity); err != nil {
+			if err := q.Cursor.ValidateRequest("trades", "newest", filters, "next", s.Identity, a.canonicalCursorCheck(ctx)); err != nil {
 				return err
 			}
 			if len(q.Cursor.Key) != 3 {
@@ -179,7 +182,7 @@ func (r MarketReader) ListHolders(ctx context.Context, q holder.Query) (holder.P
 		}
 		args := sqlc.ListTokenHoldersParams{ChainID: q.ChainID, TokenAddress: sqlc.Address(q.Token), PageSize: int32(q.Limit)}
 		if q.Cursor != nil {
-			if err := q.Cursor.ValidateRequest("holders", "balance", filters, "next", s.Identity); err != nil {
+			if err := q.Cursor.ValidateRequest("holders", "balance", filters, "next", s.Identity, a.canonicalCursorCheck(ctx)); err != nil {
 				return err
 			}
 			if len(q.Cursor.Key) != 2 || !common.IsHexAddress(q.Cursor.Key[1]) {

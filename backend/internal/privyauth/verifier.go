@@ -26,6 +26,10 @@ const (
 	maxHeaderBytes  = 2 << 10
 	maxClaimsBytes  = 32 << 10
 	maxAccountsJSON = 24 << 10
+
+	// maxClockSkew tolerates a server clock slightly behind Privy's for freshly issued tokens.
+	// It applies only to iat/nbf; expiry stays strict.
+	maxClockSkew int64 = 30
 )
 
 var ErrInvalidCredentials = errors.New("invalid Privy credentials")
@@ -142,7 +146,7 @@ func (v *ES256Verifier) verifyJWT(token string) (map[string]json.RawMessage, err
 	}
 	now := v.now().Unix()
 	issuedAt, err := requiredInteger(claims, "iat")
-	if err != nil || issuedAt > now {
+	if err != nil || issuedAt > now+maxClockSkew {
 		return nil, errors.New("JWT issued-at time is invalid")
 	}
 	expiresAt, err := requiredInteger(claims, "exp")
@@ -151,7 +155,7 @@ func (v *ES256Verifier) verifyJWT(token string) (map[string]json.RawMessage, err
 	}
 	if raw, ok := claims["nbf"]; ok {
 		notBefore, err := integer(raw)
-		if err != nil || notBefore > now {
+		if err != nil || notBefore > now+maxClockSkew {
 			return nil, errors.New("JWT is not yet valid")
 		}
 	}

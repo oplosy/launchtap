@@ -69,3 +69,19 @@ func observedIdentity(state SyncState) (pagination.Snapshot, error) {
 	}
 	return pagination.Snapshot{ChainID: state.ChainID, BlockNumber: state.ObservedNumber.Int64, BlockHash: [32]byte(*state.ObservedHash)}, nil
 }
+
+// canonicalCursorCheck confirms an older cursor block is still the indexed canonical block at
+// its height. Indexed blocks above a reorg ancestor are deleted, so a missing row or a
+// different hash both mean the cursor was taken on an abandoned branch.
+func (adapter *Adapter) canonicalCursorCheck(ctx context.Context) pagination.CanonicalCheck {
+	return func(snapshot pagination.Snapshot) (bool, error) {
+		block, err := adapter.GetIndexedBlockByNumber(ctx, snapshot.ChainID, snapshot.BlockNumber)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return block.BlockHash == snapshot.BlockHash, nil
+	}
+}

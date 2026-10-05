@@ -301,6 +301,9 @@ func (adapter *Adapter) IngestGraduation(ctx context.Context, event ledger.Gradu
 	if err := adapter.queries.ApplyGraduationProjection(ctx, sqlc.ApplyGraduationProjectionParams(identity)); err != nil {
 		return ledger.InsertResult{}, fmt.Errorf("apply graduation projection: %w", err)
 	}
+	if err := adapter.queries.ApplyGraduationPoolSyncReserveProjection(ctx, sqlc.ApplyGraduationPoolSyncReserveProjectionParams(identity)); err != nil {
+		return ledger.InsertResult{}, fmt.Errorf("apply graduation pool sync reserve projection: %w", err)
+	}
 	if err := adapter.queries.MarkTokenDirty(ctx, sqlc.MarkTokenDirtyParams{ChainID: event.ChainID, TokenAddress: sqlc.Address(event.Token)}); err != nil {
 		return ledger.InsertResult{}, fmt.Errorf("mark token dirty: %w", err)
 	}

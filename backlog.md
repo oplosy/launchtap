@@ -15,44 +15,57 @@
 
 ## Active
 
-### Robinhood testnet live acceptance
+### Operator actions: testnet engine switch and fork RPC secret
 
-- **Date:** 2026-09-13
-- **Reason:** external test-wallet funding and live acceptance operation
-- **Where it stopped:** The reviewed chain-46630 dependency and Launchpad manifests are
-  active. Contract receipts, runtime hashes, configuration getters, repository gates, and
-  local backend/web verification passed. The first live product acceptance run has not yet
-  been performed with separate creator and trader wallets.
-- **Current test identities:** creator `0x08B42F27E4CF57a8f46c0f7d2eE452BA43bdCAee`,
-  trader `0xf4cc408c6003ACD688b18DfDB00B0BCaaA02aC5A`, and deployment operator/deployer
-  `0x12cB30400339831107589695E5C71455e223Bf02`. The creator and trader are distinct from
-  the deployer; read-only RPC checks confirmed non-zero testnet ETH balances for all three.
-- **Related files:** `docs/runbooks/robinhood-testnet-deployment.md`,
-  `contracts/deployments/robinhood-testnet-v1.json`,
-  `backend/deployments/testdata/robinhood-testnet-v1.json`
-- **Resume (next step):** Create and faucet-fund fresh test-only creator and trader wallets,
-  start PostgreSQL plus the API/indexer against the reviewed testnet manifest, execute the
-  create/buy/sell/graduation acceptance flow, and record the exact manifest digest,
-  deployment block, transaction hashes, API/indexer health output, and finality/reorg
-  observations required by the runbook.
-- **Pitfalls / notes:** Do not reuse pause, timelock, treasury, or deployer identities as the
-  creator/trader pair. Never commit wallet private keys, passwords, or private RPC URLs.
+- **Date:** 2026-10-05
+- **Reason:** scope decision (needs the owner's keystores and repository secrets)
+- **Where it stopped:** `contracts/script/DeployCurveImplementation.s.sol` and the runbook
+  section "Engine implementation upgrade" in `docs/runbooks/robinhood-testnet-deployment.md`
+  are merged (PR #11); the fork dry-run passed. The testnet v1 curve implementation and every
+  existing clone still accept a buy whose token recipient is the pair (permanent graduation
+  freeze). Separately, the `ROBINHOOD_MAINNET_ARCHIVE_RPC_URL` repository secret fails the TLS
+  handshake (`received fatal alert: InternalError`, contracts run `37326499597`, both
+  attempts), so the `Release gate` and `Robinhood mainnet fork` jobs cannot pass until it is
+  replaced; the Slither step of the same run passed.
+- **Related files:** `contracts/script/DeployCurveImplementation.s.sol`,
+  `docs/runbooks/robinhood-testnet-deployment.md`,
+  `contracts/deployments/robinhood-testnet-v1.json`, `backend/deployments/testdata/`,
+  `.github/workflows/contracts.yml`
+- **Resume (next step):**
+  1. Follow the runbook: deploy the implementation with the deployer keystore, fund the
+     timelock, and call `configureEngine(1, <new impl>, true)` from the timelock keystore.
+     With the transaction hashes, record `curveImplementation` and
+     `bytecodeHashes.bondingCurveV1` in the manifest and its backend testdata copy, regenerate
+     the web contracts, and re-run the indexer bytecode verification.
+  2. Replace the archive RPC secret with a working endpoint and re-run the `contracts`
+     workflow through `workflow_dispatch`.
+- **Pitfalls / notes:** Existing clones cannot be fixed. Do not commit the RPC URL, keys, or a
+  predicted implementation address before its deployment receipt exists.
 
 ### Production release, governance, and audit inputs
 
-- **Date:** 2026-09-01
+- **Date:** 2026-10-04
 - **Reason:** production-only external coordination
-- **Where it stopped:** The repository now contains the production input sheet, Privy
-  dashboard checklist, governance handoff, health/rollback procedure, monitoring ownership
-  checklist, and audit evidence checklist. No live organization, signer, policy, endpoint,
-  hosting, monitoring, or auditor values have been invented.
+- **Where it stopped:** A Docker Compose deployment package now includes pinned backend/web,
+  PostgreSQL and HTTPS proxy images, migrations before API/indexer startup, public configuration
+  preflight, external secret files, backup/restore instructions, and a disposable runtime check.
+  Container build/runtime, database dump/restore, web unit/browser, and configuration rejection
+  checks passed locally. Runtime npm audit has zero critical/high advisories, with 39 low/moderate
+  advisories still requiring impact review. Hosting and domain are not provisioned; no mainnet
+  manifest, production Privy allowlist, signer, monitoring owner, or external audit is invented.
 - **Related files:** `docs/runbooks/production-readiness.md`,
   `docs/runbooks/web-release.md`, `web/.env.example`, `backend/.env.example`,
-  `scripts/verify-release.mjs`
+  `scripts/verify-release.mjs`, `deploy/README.md`, `deploy/compose.yaml`, `deploy/check.ps1`,
+  `.github/workflows/deployment-package.yml`
 - **Resume (next step):** Product/infrastructure/security owners must fill every `<pending>`
   row in `docs/runbooks/production-readiness.md`, provision values through the approved
   secret/variable manager, and run `node scripts/verify-release.mjs --target=production`.
-  Production approval still requires signed governance and external-audit evidence.
+  Provision hosting/domain and production Privy inputs, choose object storage/CDN delivery
+  for token images (today they are stored in PostgreSQL and served by the API with an ETag and
+  a short public cache), complete dependency impact review,
+  obtain a reviewed mainnet deployment manifest, then build/promote using `deploy/README.md`.
+  Production approval still requires signed governance and external-audit evidence. An independent
+  infrastructure review of the deployment package is still outstanding.
 - **Pitfalls / notes:** These do not authorize changing existing launch economics or adding
   a reserve rescue path. Do not commit credentials, private RPC URLs, wallet keys, or guessed
   deployment addresses.
@@ -71,6 +84,29 @@
 
 ## Done
 
+### 2026-10-05 logic review remediation
+
+- **Completed:** 2026-10-05
+- **Evidence:** PR #9 landed the security and speed fixes (graduation-DoS recipient check,
+  sells open during pause, `claim*To`, cursor validity across tip advances, per-client rate
+  limit and SSE cap, image decode-bomb limit, nonce CSP, slippage cap, read-path indexes,
+  batched header RPC, topic-only curve discovery, SSE filtering/coalescing, indexed metric
+  sorts, on-demand wallet stack). PR #11 added the engine upgrade script and runbook; PR #12
+  split performance budgets by route class. Contracts run `37326499597` printed
+  `Slither analysis verified.` for the re-triaged `contracts/slither.db.json`. The
+  `deployment package` workflow validates the Caddyfile with `caddy validate` on every PR and
+  now also resolves `deploy/compose.yaml` and rejects a missing required value. Token image
+  uploads are stored without EXIF, XMP, IPTC, comments, or embedded previews
+  (`backend/internal/apiserver/image_metadata.go`, lossless container rewrite, no pixel
+  re-encoding).
+- **Boundary:** Token and pair log discovery stays address-batched by design: ERC-20
+  `Transfer` and Uniswap `Swap`/`Sync` topics are shared by every token and pair on the chain,
+  so a topic-only query would scan unrelated contracts. Revisit only if measurements show
+  the address batches as the bottleneck. The testnet engine switch moved to "Operator
+  actions"; image object storage/CDN moved to the production item. Images uploaded before the
+  metadata change keep their metadata until re-uploaded. Two `slither.db.json` entries remain
+  stored as full Slither result objects (functional, verbose).
+
 ### Robinhood testnet deployment manifest
 
 - **Completed:** 2026-09-13
@@ -86,7 +122,8 @@
   build, and deployment drift checks passed. GitHub contracts and web workflows for
   `0f198c2` passed; its backend workflow was still running when this item was closed.
 - **Boundary:** This closes dependency bootstrap and deployment-manifest activation. The
-  first live end-to-end product acceptance remains separately tracked above.
+  remaining live testnet acceptance was cancelled by the product owner on 2026-10-04
+  because test funding is impractical; it was not verified or passed.
 
 ### ETH/USD enrichment source selection
 

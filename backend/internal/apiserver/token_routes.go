@@ -10,13 +10,15 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
+const maxSearchBytes = 64
+
 type TokenRoutes struct {
 	Reader  token.Reader
 	ChainID int64
 }
 type tokenListInput struct {
 	Phase  string `query:"phase"`
-	Query  string `query:"q"`
+	Query  string `query:"q" maxLength:"64"`
 	Sort   string `query:"sort"`
 	Cursor string `query:"cursor"`
 	Limit  int    `query:"limit" minimum:"1" maximum:"100"`
@@ -59,6 +61,9 @@ func (r TokenRoutes) list(ctx context.Context, in *tokenListInput) (*tokenListOu
 	}
 	if in.Sort == "" {
 		in.Sort = "newest"
+	}
+	if len(in.Query) > maxSearchBytes {
+		return nil, apiProblem(http.StatusBadRequest, "invalid_query", "Search text must be at most 64 bytes")
 	}
 	if in.Phase != "curve" && in.Phase != "graduated" {
 		return nil, apiProblem(http.StatusBadRequest, "invalid_phase", "Unsupported token phase")

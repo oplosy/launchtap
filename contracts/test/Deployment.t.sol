@@ -4,9 +4,11 @@ pragma solidity 0.8.36;
 import { Test } from "forge-std/Test.sol";
 import { BondingCurveV1 } from "../src/BondingCurveV1.sol";
 import { IBondingCurveV1 } from "../src/interfaces/IBondingCurveV1.sol";
+import { ILaunchErrors } from "../src/interfaces/ILaunchErrors.sol";
 import { LaunchFactory } from "../src/LaunchFactory.sol";
 import { LaunchTypes } from "../src/types/LaunchTypes.sol";
 import { DeployLaunchpad } from "../script/DeployLaunchpad.s.sol";
+import { DeployCurveImplementation } from "../script/DeployCurveImplementation.s.sol";
 import { DeploymentValidation } from "../script/deployment/DeploymentValidation.sol";
 import { LocalUniswapV2Factory } from "../script/local/LocalUniswapV2Factory.sol";
 import { LocalUniswapV2Pair } from "../script/local/LocalUniswapV2Pair.sol";
@@ -93,6 +95,7 @@ contract FactoryWithoutPairHashGetter {
 
 contract DeploymentTest is Test {
     uint16 private constant ENGINE_VERSION = 1;
+    bool private constant ENGINE_ENABLED = true;
     uint256 private constant TOTAL_SUPPLY = 1_000_000_000 ether;
     uint256 private constant CURVE_TOKENS = 800_000_000 ether;
     uint256 private constant LP_TOKENS = 200_000_000 ether;
@@ -109,6 +112,7 @@ contract DeploymentTest is Test {
         0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f;
     bytes32 private constant FIELD_PAUSE_AUTHORITY = "pauseAuthority";
     bytes32 private constant FIELD_WETH = "weth";
+    bytes32 private constant FIELD_TOKEN_RECIPIENT = "tokenRecipient";
     address private constant PROBE_TOKEN_A = 0x0000000000000000000000000000000000001001;
     address private constant PROBE_TOKEN_B = 0x0000000000000000000000000000000000001002;
 
@@ -168,6 +172,63 @@ contract DeploymentTest is Test {
         assertNotEq(factory.pauseAuthority(), address(this));
         assertNotEq(factory.timelock(), address(this));
         _assertLocalGraduation(factory, weth, uniswapFactory);
+    }
+
+    function testDustBuyToCanonicalPairCannotBlockLocalGraduation() external {
+        (LocalWETH weth, LocalUniswapV2Factory uniswapFactory) = _validatedLocalStack();
+        LaunchFactory factory =
+            _factory(address(new BondingCurveV1()), address(weth), address(uniswapFactory));
+        vm.prank(CREATOR);
+        // Only the curve and pair are needed for this attack path.
+        // forge-lint: disable-next-line(unused-return)
+        (, address curveAddress, address pairAddress) = factory.launch(_request());
+        IBondingCurveV1 curve = IBondingCurveV1(curveAddress);
+
+        vm.deal(CREATOR, 6 ether);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILaunchErrors.InvalidRecipient.selector, FIELD_TOKEN_RECIPIENT, pairAddress
+            )
+        );
+        vm.prank(CREATOR);
+        // forge-lint: disable-next-line(arbitrary-send-eth, unused-return)
+        curve.buy{ value: 1 gwei }(pairAddress, CREATOR, 0, block.timestamp);
+
+        vm.prank(CREATOR);
+        // forge-lint: disable-next-line(arbitrary-send-eth, unused-return)
+        curve.buy{ value: 5 ether }(CREATOR, CREATOR, 0, block.timestamp);
+        assertEq(uint256(curve.phase()), uint256(LaunchTypes.Phase.Graduated));
+        assertGt(LocalUniswapV2Pair(pairAddress).balanceOf(LP_BURN_ADDRESS), 0);
+    }
+
+    function testCurveImplementationUpgradeScriptSwitchesEngineAndProvesRecipientGuard() external {
+        (LocalWETH weth, LocalUniswapV2Factory uniswapFactory) = _validatedLocalStack();
+        address previous = address(new BondingCurveV1());
+        LaunchFactory factory = _factory(previous, address(weth), address(uniswapFactory));
+        vm.setEnv("DEPLOYMENT_TARGET", "anvil");
+        vm.setEnv("DEPLOYER", vm.toString(CREATOR));
+        vm.setEnv("LAUNCH_FACTORY", vm.toString(address(factory)));
+
+        DeployCurveImplementation script = new DeployCurveImplementation();
+        (address implementation, bytes memory configureCalldata) = script.run();
+
+        assertNotEq(implementation, previous);
+        assertGt(implementation.code.length, 0);
+        assertEq(factory.curveImplementation(ENGINE_VERSION), implementation);
+        assertEq(
+            configureCalldata,
+            abi.encodeCall(
+                LaunchFactory.configureEngine, (ENGINE_VERSION, implementation, ENGINE_ENABLED)
+            )
+        );
+
+        vm.setEnv("DEPLOYER", vm.toString(TIMELOCK));
+        vm.expectRevert(
+            abi.encodeWithSelector(DeployCurveImplementation.AuthorityOverlap.selector, TIMELOCK)
+        );
+        // The expected revert precedes any return value.
+        // forge-lint: disable-next-line(unused-return)
+        script.run();
     }
 
     function _validatedLocalStack()

@@ -3,6 +3,8 @@ package apiserver
 import (
 	"bytes"
 	"context"
+	"image"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -93,7 +95,7 @@ func TestMetadataAndImageHTTPContracts(t *testing.T) {
 		t.Fatalf("metadata read status=%d headers=%v body=%s", response.Code, response.Header(), response.Body.String())
 	}
 
-	png := append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{1}, 32)...)
+	png := testPNG(t, 2, 2)
 	request = httptest.NewRequest(http.MethodPut, "/v1/tokens/"+token+"/image", bytes.NewReader(png))
 	request.Header.Set("Content-Type", "image/png")
 	authorize(request)
@@ -108,7 +110,7 @@ func TestMetadataAndImageHTTPContracts(t *testing.T) {
 	request.Header.Set("Origin", "https://web.example")
 	response = httptest.NewRecorder()
 	server.Handler.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/png" || response.Header().Get("Content-Length") != strconv.Itoa(len(png)) || response.Header().Get("X-Content-Type-Options") != "nosniff" || response.Header().Get("X-Revision") != "0" || !bytes.Equal(response.Body.Bytes(), png) {
+	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/png" || response.Header().Get("Content-Length") != strconv.Itoa(len(png)) || response.Header().Get("X-Content-Type-Options") != "nosniff" || response.Header().Get("X-Revision") != "0" || response.Header().Get("Cache-Control") != imageCacheControl || !bytes.Equal(response.Body.Bytes(), png) {
 		t.Fatalf("image read status=%d headers=%v body=%x", response.Code, response.Header(), response.Body.Bytes())
 	}
 	if response.Header().Get("Access-Control-Expose-Headers") != "ETag, X-Revision" {
@@ -228,7 +230,10 @@ func TestImageRejectsActiveMismatchAndOversizeContent(t *testing.T) {
 		want              int
 	}{
 		{"svg", "image/svg+xml", []byte(`<svg></svg>`), http.StatusUnsupportedMediaType},
-		{"mismatch", "image/jpeg", []byte("\x89PNG\r\n\x1a\nbody"), http.StatusUnsupportedMediaType},
+		{"mismatch", "image/jpeg", testPNG(t, 2, 2), http.StatusUnsupportedMediaType},
+		{"huge canvas", "image/png", testPNG(t, maxImageDimension+1, 1), http.StatusUnprocessableEntity},
+		{"truncated png", "image/png", testPNG(t, 2, 2)[:12], http.StatusUnprocessableEntity},
+		{"huge webp canvas", "image/webp", webpVP8X(maxImageDimension+1, 1), http.StatusUnprocessableEntity},
 		{"oversize", "image/png", bytes.Repeat([]byte{0}, maxImageBytes+1), http.StatusRequestEntityTooLarge},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -252,3 +257,49 @@ func authorize(request *http.Request) {
 
 var _ metadata.Store = (*fakeMetadataStore)(nil)
 var _ privyauth.Verifier = fakeVerifier{}
+
+func testPNG(t *testing.T, width, height int) []byte {
+	t.Helper()
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, image.NewGray(image.Rect(0, 0, width, height))); err != nil {
+		t.Fatal(err)
+	}
+	return encoded.Bytes()
+}
+
+// riffWebP builds a WebP header: RIFF, a zero size, WEBP, the first chunk tag, a zero chunk
+// size, then the chunk payload.
+func riffWebP(chunk string, payload ...byte) []byte {
+	content := append([]byte("RIFF"), 0, 0, 0, 0)
+	content = append(content, "WEBP"+chunk...)
+	content = append(content, 0, 0, 0, 0)
+	return append(content, payload...)
+}
+
+func webpVP8X(width, height int) []byte {
+	payload := []byte{0, 0, 0, 0}
+	for _, value := range []int{width - 1, height - 1} {
+		payload = append(payload, byte(value), byte(value>>8), byte(value>>16))
+	}
+	return riffWebP("VP8X", payload...)
+}
+
+func TestWebPDimensions(t *testing.T) {
+	bits := uint32(99) | uint32(49)<<14
+	lossless := riffWebP("VP8L", 0x2f, byte(bits), byte(bits>>8), byte(bits>>16), byte(bits>>24), 0, 0, 0, 0, 0)
+	for name, test := range map[string]struct {
+		content       []byte
+		width, height int
+	}{
+		"extended": {webpVP8X(640, 480), 640, 480},
+		"lossless": {lossless, 100, 50},
+	} {
+		width, height, err := webpDimensions(test.content)
+		if err != nil || width != test.width || height != test.height {
+			t.Errorf("%s: %dx%d err=%v", name, width, height, err)
+		}
+	}
+	if _, _, err := webpDimensions(riffWebP("XXXX", make([]byte, 16)...)); err == nil {
+		t.Fatal("unknown WebP chunk accepted")
+	}
+}

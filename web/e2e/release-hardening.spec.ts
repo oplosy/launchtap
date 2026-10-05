@@ -4,7 +4,12 @@ import budgetMatrix from "../performance-budgets.json" with { type: "json" };
 
 import { expect, test, type Page } from "@playwright/test";
 
-const coreRoutes = budgetMatrix.routes;
+type RouteBudget = { transferredBytes: number; initialJavaScriptBytes: number };
+const routeBudgets: Array<{ route: string; routeClass: string; budget: RouteBudget }> =
+  Object.entries(budgetMatrix.routeClasses).flatMap(([routeClass, budget]) =>
+    budget.routes.map((route) => ({ route, routeClass, budget })),
+  );
+const coreRoutes = routeBudgets.map(({ route }) => route);
 const populatedTokenAddress = "0x0000000000000000000000000000000000000001";
 
 test.beforeEach(async ({ page }, testInfo) => {
@@ -122,15 +127,24 @@ test("core routes stay within versioned profile navigation and transfer budgets"
     test.skip(true, "The reduced-motion project has its own route-content suite.");
     return;
   }
-  for (const route of coreRoutes) {
+  for (const { route, routeClass, budget } of routeBudgets) {
     await page.evaluate(() => performance.clearResourceTimings());
     if (route.includes("fixture=populated")) await installPopulatedTokenFixture(page);
-    const response = await page.goto(route, { waitUntil: "domcontentloaded" });
+    // Wait for load so every script the document requested is in the resource timeline.
+    const response = await page.goto(route, { waitUntil: "load" });
     expect(response?.status(), route).toBe(200);
     const metrics = await page.evaluate(() => {
       const navigation = performance.getEntriesByType("navigation")[0] as
         PerformanceNavigationTiming | undefined;
-      const resources = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
+      // Chunks requested after DOMContentLoaded are lazy (for example the idle wallet-stack
+      // prefetch on read-only routes) and do not count toward the initial load.
+      const initialCutoff = navigation?.domContentLoadedEventEnd ?? Number.POSITIVE_INFINITY;
+      const resources = (
+        performance.getEntriesByType("resource") as PerformanceResourceTiming[]
+      ).filter(
+        (resource) =>
+          !resource.name.includes("/_next/static/chunks/") || resource.startTime <= initialCutoff,
+      );
       const transferredBytes = resources.reduce(
         (sum, resource) =>
           sum +
@@ -150,12 +164,16 @@ test("core routes stay within versioned profile navigation and transfer budgets"
         );
       return { navigationMs: navigation?.duration ?? 0, transferredBytes, initialJavaScriptBytes };
     });
+    testInfo.annotations.push({
+      type: "budget",
+      description: `${routeClass} ${route} ${JSON.stringify(metrics)}`,
+    });
     expect(metrics.navigationMs, `${route} navigation`).toBeLessThan(profile.navigationMs);
     expect(metrics.transferredBytes, `${route} transferred bytes`).toBeLessThan(
-      profile.transferredBytes,
+      budget.transferredBytes,
     );
     expect(metrics.initialJavaScriptBytes, `${route} initial JavaScript`).toBeLessThan(
-      profile.initialJavaScriptBytes,
+      budget.initialJavaScriptBytes,
     );
   }
 });

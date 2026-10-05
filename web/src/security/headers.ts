@@ -13,8 +13,16 @@ function originOf(value: string | undefined) {
   }
 }
 
-/** Build the production policy from reviewed public endpoints, never from an unrestricted scheme. */
-export function contentSecurityPolicy(env: Record<string, string | undefined> = {}) {
+/**
+ * Build the production policy from reviewed public endpoints, never from an unrestricted scheme.
+ * Scripts run only with the per-request nonce issued by `proxy.ts`; `'strict-dynamic'` extends
+ * that trust to scripts those nonce-bearing bundles load. Without a nonce, inline scripts are
+ * not allowed at all.
+ */
+export function contentSecurityPolicy(
+  env: Record<string, string | undefined> = {},
+  nonce?: string,
+) {
   const productionOrigins = [
     originOf(env.NEXT_PUBLIC_API_BASE_URL),
     originOf(env.NEXT_PUBLIC_RPC_URL),
@@ -38,13 +46,22 @@ export function contentSecurityPolicy(env: Record<string, string | undefined> = 
   // Token metadata accepts user-supplied HTTPS image URLs. SafeImage still
   // rejects non-HTTPS/non-local URLs and uses referrerPolicy=no-referrer.
   const images = ["'self'", "data:", "blob:", "https:", ...origins];
+  const scripts = nonce
+    ? [
+        "'self'",
+        `'nonce-${nonce}'`,
+        "'strict-dynamic'",
+        // React's development build reconstructs server error stacks with eval.
+        ...(env.NODE_ENV === "development" ? ["'unsafe-eval'"] : []),
+      ]
+    : ["'self'"];
   return [
     "default-src 'self'",
     "base-uri 'self'",
     "object-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self'",
-    "script-src 'self' 'unsafe-inline'",
+    `script-src ${scripts.join(" ")}`,
     "style-src 'self' 'unsafe-inline'",
     `img-src ${images.join(" ")}`,
     "font-src 'self' data:",
@@ -54,8 +71,12 @@ export function contentSecurityPolicy(env: Record<string, string | undefined> = 
   ].join("; ");
 }
 
-export const securityHeaders = (env: Record<string, string | undefined> = {}) => [
-  { key: "Content-Security-Policy", value: contentSecurityPolicy(env) },
+/**
+ * Static headers for every route. The Content-Security-Policy is set per request by `proxy.ts`
+ * because it carries a nonce; a second static policy would be intersected with it by browsers
+ * and block the nonce-bearing inline scripts.
+ */
+export const securityHeaders = () => [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },

@@ -11,10 +11,8 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - "contracts/**"
-      - ".gitmodules"
-      - ".github/workflows/contracts.yml"
+      - dev
+    # No path filter: these checks are required on dev and main, so they must always report.
   workflow_dispatch:
 
 permissions:

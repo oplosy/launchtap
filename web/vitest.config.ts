@@ -9,6 +9,7 @@ export default defineConfig({
       "src/**/*.test.ts",
       "scripts/check-budgets.test.mjs",
       "scripts/validate-release.test.mjs",
+      "scripts/container-preflight.test.mjs",
       "scripts/verify-release-command.test.mjs",
     ],
   },

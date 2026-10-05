@@ -73,30 +73,57 @@ export function filesUnder(directory, predicate) {
   return result;
 }
 
+const coreRoutes = ["/", "/graduated", "/create", "/analytics", "/docs", "/profile"];
+// Mirrors WALLET_ROUTES in app/providers.tsx.
+const walletRoutePattern = /^\/(?:(?:create|profile)(?:[/?]|$)|token\/)/;
+
+/**
+ * Version 2 budgets bytes per route class: read-only routes must stay well below wallet routes,
+ * which load the Privy/wagmi stack. Navigation time stays a per-viewport profile budget.
+ */
 export function validatePerformanceBudgetMatrix(matrix = budgetMatrix) {
   const errors = [];
-  const expectedRoutes = new Set(matrix.routes ?? []);
-  if (matrix.version !== 1) errors.push("performance budget matrix version must be 1");
-  if (expectedRoutes.size !== 7)
-    errors.push("performance budget matrix must list all seven core routes");
-  for (const route of ["/", "/graduated", "/create", "/analytics", "/docs", "/profile"])
-    if (!expectedRoutes.has(route)) errors.push(`performance budget is missing ${route}`);
+  if (matrix.version !== 2) errors.push("performance budget matrix version must be 2");
+  for (const profile of ["small-laptop", "mobile"]) {
+    const values = matrix.profiles?.[profile];
+    if (!values) {
+      errors.push(`performance budget is missing ${profile} profile`);
+      continue;
+    }
+    if (!Number.isSafeInteger(values.navigationMs) || values.navigationMs <= 0)
+      errors.push(`${profile} profile is missing a positive navigationMs budget`);
+    if (!values.viewport?.width || !values.viewport?.height)
+      errors.push(`${profile} profile is missing its viewport`);
+  }
+  const classes = matrix.routeClasses ?? {};
+  for (const name of ["read-only", "wallet"])
+    if (!classes[name]) errors.push(`performance budget is missing the ${name} route class`);
+  const seen = new Map();
+  for (const [name, routeClass] of Object.entries(classes)) {
+    for (const key of ["transferredBytes", "initialJavaScriptBytes"])
+      if (!Number.isSafeInteger(routeClass[key]) || routeClass[key] <= 0)
+        errors.push(`${name} route class is missing a positive ${key} budget`);
+    for (const route of routeClass.routes ?? []) {
+      if (seen.has(route))
+        errors.push(`${route} is budgeted by both ${seen.get(route)} and ${name}`);
+      seen.set(route, name);
+      if (name === "read-only" && walletRoutePattern.test(route))
+        errors.push(`wallet route ${route} cannot use the read-only budget`);
+    }
+  }
+  if (seen.size !== 7) errors.push("performance budget matrix must list all seven core routes");
+  for (const route of coreRoutes)
+    if (!seen.has(route)) errors.push(`performance budget is missing ${route}`);
   if (
-    ![...expectedRoutes].some(
+    ![...seen.keys()].some(
       (route) => route.startsWith("/token/") && route.includes("fixture=populated"),
     )
   )
     errors.push("performance budget is missing the populated token fixture route");
-  for (const [profile, values] of Object.entries(matrix.profiles ?? {})) {
-    for (const key of ["navigationMs", "transferredBytes", "initialJavaScriptBytes"])
-      if (!Number.isSafeInteger(values[key]) || values[key] <= 0)
-        errors.push(`${profile} profile is missing a positive ${key} budget`);
-    if (!values.viewport?.width || !values.viewport?.height)
-      errors.push(`${profile} profile is missing its viewport`);
-  }
-  for (const profile of ["small-laptop", "mobile"])
-    if (!matrix.profiles?.[profile])
-      errors.push(`performance budget is missing ${profile} profile`);
+  const readOnly = classes["read-only"];
+  const wallet = classes.wallet;
+  if (readOnly && wallet && !(readOnly.initialJavaScriptBytes < wallet.initialJavaScriptBytes))
+    errors.push("read-only initial JavaScript budget must be below the wallet budget");
   return [...new Set(errors)];
 }
 

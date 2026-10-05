@@ -196,6 +196,7 @@ contract BondingCurveV1TradingTest is Test {
     );
     bytes32 private constant FIELD_TOKEN_RECIPIENT = "tokenRecipient";
     bytes32 private constant FIELD_REFUND_RECIPIENT = "refundRecipient";
+    bytes32 private constant FIELD_CLAIM_RECIPIENT = "claimRecipient";
 
     BondingCurveV1Harness private implementation;
     BondingCurveV1Harness private curve;
@@ -649,13 +650,6 @@ contract BondingCurveV1TradingTest is Test {
         uint256 xBefore = curve.virtualEthReserve();
         uint256 yBefore = curve.virtualTokenReserve();
 
-        launchFactory.setTradingPaused(true);
-        vm.expectRevert(ILaunchErrors.TradingPaused.selector);
-        vm.prank(ALICE);
-        // forge-lint: disable-next-line(unused-return)
-        curve.sell(tokensOut, ALICE, 0, DEADLINE);
-        launchFactory.setTradingPaused(false);
-
         uint256 expired = block.timestamp - 1;
         vm.expectRevert(
             abi.encodeWithSelector(ILaunchErrors.DeadlineExpired.selector, expired, block.timestamp)
@@ -674,6 +668,107 @@ contract BondingCurveV1TradingTest is Test {
         assertEq(curve.virtualEthReserve(), xBefore);
         assertEq(curve.virtualTokenReserve(), yBefore);
         assertEq(launchToken.balanceOf(ALICE), tokensOut);
+    }
+
+    function testSellRemainsAvailableWhileTradingIsPaused() external {
+        vm.prank(ALICE);
+        // forge-lint: disable-next-line(arbitrary-send-eth, unused-return)
+        (uint256 tokensOut,) = curve.buy{ value: 1 ether }(ALICE, ALICE, 0, DEADLINE);
+        // Only net output is needed for the exit assertion.
+        // forge-lint: disable-next-line(unused-return)
+        (uint256 ethOut,,,) = curve.quoteSell(tokensOut);
+        vm.prank(ALICE);
+        // forge-lint: disable-next-line(unused-return)
+        launchToken.approve(address(curve), tokensOut);
+
+        launchFactory.setTradingPaused(true);
+        vm.expectRevert(ILaunchErrors.TradingPaused.selector);
+        vm.prank(BOB);
+        // forge-lint: disable-next-line(arbitrary-send-eth, unused-return)
+        curve.buy{ value: 1 ether }(BOB, BOB, 0, DEADLINE);
+
+        uint256 aliceBefore = ALICE.balance;
+        vm.prank(ALICE);
+        assertEq(curve.sell(tokensOut, ALICE, ethOut, DEADLINE), ethOut);
+        assertEq(ALICE.balance, aliceBefore + ethOut);
+        assertEq(launchToken.balanceOf(ALICE), 0);
+        _assertExactAccounting();
+    }
+
+    function testBuyRejectsPairAndCurveAsTokenRecipient() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILaunchErrors.InvalidRecipient.selector, FIELD_TOKEN_RECIPIENT, address(pair)
+            )
+        );
+        vm.prank(ALICE);
+        // forge-lint: disable-next-line(arbitrary-send-eth, unused-return)
+        curve.buy{ value: 1 gwei }(address(pair), ALICE, 0, DEADLINE);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILaunchErrors.InvalidRecipient.selector, FIELD_TOKEN_RECIPIENT, address(curve)
+            )
+        );
+        vm.prank(ALICE);
+        // forge-lint: disable-next-line(arbitrary-send-eth, unused-return)
+        curve.buy{ value: 1 gwei }(address(curve), ALICE, 0, DEADLINE);
+
+        assertEq(launchToken.balanceOf(address(pair)), 0);
+        assertEq(curve.virtualEthReserve(), INITIAL_VIRTUAL_ETH);
+    }
+
+    function testRefundCanBeClaimedToAnotherRecipient() external {
+        RejectEther rejecting = new RejectEther();
+        uint256 supplied = 10 ether;
+        // Only the refund leg is needed for this recipient test.
+        // forge-lint: disable-next-line(unused-return)
+        (,,,, uint256 refund,) = curve.quoteBuy(supplied);
+        vm.prank(ALICE);
+        // forge-lint: disable-next-line(arbitrary-send-eth, unused-return)
+        curve.buy{ value: supplied }(ALICE, address(rejecting), 0, DEADLINE);
+        assertEq(curve.pendingRefund(address(rejecting)), refund);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ILaunchErrors.ZeroAddress.selector, FIELD_CLAIM_RECIPIENT)
+        );
+        vm.prank(address(rejecting));
+        // forge-lint: disable-next-line(unused-return)
+        curve.claimRefundTo(address(0));
+
+        uint256 bobBefore = BOB.balance;
+        vm.expectEmit(true, true, false, true, address(curve));
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit ILaunchEvents.RefundClaimed(address(launchToken), address(rejecting), refund);
+        vm.prank(address(rejecting));
+        assertEq(curve.claimRefundTo(BOB), refund);
+        assertEq(BOB.balance, bobBefore + refund);
+        assertEq(curve.pendingRefund(address(rejecting)), 0);
+        _assertExactAccounting();
+    }
+
+    function testCreatorFeesCanBeClaimedToAnotherRecipient() external {
+        vm.prank(ALICE);
+        // forge-lint: disable-next-line(arbitrary-send-eth, unused-return)
+        curve.buy{ value: 1 ether }(ALICE, ALICE, 0, DEADLINE);
+        uint256 creatorFees = curve.unclaimedCreatorFees();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ILaunchErrors.UnauthorizedCreatorClaim.selector, ALICE, CREATOR)
+        );
+        vm.prank(ALICE);
+        // forge-lint: disable-next-line(unused-return)
+        curve.claimCreatorFeesTo(ALICE);
+
+        uint256 bobBefore = BOB.balance;
+        vm.expectEmit(true, true, false, true, address(curve));
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit ILaunchEvents.CreatorFeesClaimed(address(launchToken), CREATOR, creatorFees);
+        vm.prank(CREATOR);
+        assertEq(curve.claimCreatorFeesTo(BOB), creatorFees);
+        assertEq(BOB.balance, bobBefore + creatorFees);
+        assertEq(curve.unclaimedCreatorFees(), 0);
+        _assertExactAccounting();
     }
 
     function testForcedEthDoesNotChangeCurveOrFeeAccounting() external {

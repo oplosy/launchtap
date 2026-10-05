@@ -335,6 +335,8 @@ type Token struct {
 	GraduationTxHash      *Hash
 	GraduationLogIndex    pgtype.Int4
 	TokenIsToken0         bool
+	SortMarketCapEthWad   Uint256
+	SortVolume24hEthWad   Uint256
 }
 
 type TokenImage struct {

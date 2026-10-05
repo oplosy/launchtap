@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import localFont from "next/font/local";
 import "./globals.css";
 import { AppShell } from "@/components/app-shell";
 import { RouteTransition } from "@/components/route-transition";
-import { Providers } from "./providers";
+import { Providers, WalletRouteGate } from "./providers";
 
 const display = localFont({
   src: "../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2",
@@ -29,13 +30,17 @@ export const metadata: Metadata = {
   keywords: ["token launchpad", "bonding curve", "non-custodial"],
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  // Script nonces are issued per request by proxy.ts, so every document renders dynamically.
+  await connection();
   return (
     <html lang="en" data-theme="dark">
       <body className={`${display.variable} ${body.variable} ${mono.variable}`}>
         <Providers>
           <AppShell>
-            <RouteTransition>{children}</RouteTransition>
+            <RouteTransition>
+              <WalletRouteGate>{children}</WalletRouteGate>
+            </RouteTransition>
           </AppShell>
         </Providers>
       </body>

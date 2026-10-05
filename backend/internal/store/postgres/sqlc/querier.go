@@ -12,6 +12,10 @@ import (
 
 type Querier interface {
 	AffectedTokensAbove(ctx context.Context, arg AffectedTokensAboveParams) ([]Address, error)
+	// The pair's opening Sync is emitted by pair.mint before the curve emits Graduated, so the
+	// per-Sync projection above sees the token still in the curve phase. Graduation therefore
+	// re-applies the pair's latest Sync, matching rebuild_token_projections.
+	ApplyGraduationPoolSyncReserveProjection(ctx context.Context, arg ApplyGraduationPoolSyncReserveProjectionParams) error
 	ApplyGraduationProjection(ctx context.Context, arg ApplyGraduationProjectionParams) error
 	ApplyMarketTradeCandles(ctx context.Context, arg ApplyMarketTradeCandlesParams) error
 	ApplyPoolSyncReserveProjection(ctx context.Context, arg ApplyPoolSyncReserveProjectionParams) error
@@ -80,11 +84,15 @@ type Querier interface {
 	InsertTransfer(ctx context.Context, arg InsertTransferParams) (int64, error)
 	LaunchFeeClaimMatchesEvent(ctx context.Context, arg LaunchFeeClaimMatchesEventParams) (pgtype.Bool, error)
 	LaunchPauseEventMatchesEvent(ctx context.Context, arg LaunchPauseEventMatchesEventParams) (pgtype.Bool, error)
+	// Each row is keyed by its UTC-aligned group start (not the first stored source bucket), so
+	// sparse groups report a stable timestamp and the next-page cursor can skip a whole group.
 	ListCandlesAggregated(ctx context.Context, arg ListCandlesAggregatedParams) ([]ListCandlesAggregatedRow, error)
 	ListMarketTrades(ctx context.Context, arg ListMarketTradesParams) ([]ListMarketTradesRow, error)
 	ListProfileActions(ctx context.Context, arg ListProfileActionsParams) ([]ListProfileActionsRow, error)
 	ListProtocolDaily(ctx context.Context, arg ListProtocolDailyParams) ([]ListProtocolDailyRow, error)
 	ListStoredCandles(ctx context.Context, arg ListStoredCandlesParams) ([]ListStoredCandlesRow, error)
+	// Metric sorts walk tokens_phase_*_cursor_idx; the sort columns mirror token_stats (0 when
+	// no stats row exists) through triggers, see migration 00014.
 	ListTokenCardsMarketCap(ctx context.Context, arg ListTokenCardsMarketCapParams) ([]ListTokenCardsMarketCapRow, error)
 	ListTokenCardsNewest(ctx context.Context, arg ListTokenCardsNewestParams) ([]ListTokenCardsNewestRow, error)
 	ListTokenCardsOldest(ctx context.Context, arg ListTokenCardsOldestParams) ([]ListTokenCardsOldestRow, error)
@@ -103,8 +111,12 @@ type Querier interface {
 	ProtocolFeeClaimMatchesEvent(ctx context.Context, arg ProtocolFeeClaimMatchesEventParams) (pgtype.Bool, error)
 	ReadOperationalHealth(ctx context.Context, arg ReadOperationalHealthParams) (ReadOperationalHealthRow, error)
 	RebuildTokenProjections(ctx context.Context, arg RebuildTokenProjectionsParams) error
+	// Trades are market_trades (curve trades plus DEX swaps), the same source as volume. Days are
+	// UTC calendar days regardless of the session TimeZone.
 	RecomputeProtocolDaily(ctx context.Context, chainID int64) error
 	RecomputeProtocolStats(ctx context.Context, chainID int64) error
+	// Every trade is bucketed into all four candle intervals; ATH, baseline, latest, and volume
+	// read only the finest ('1m') series so each trade is counted once.
 	RecomputeTokenStats(ctx context.Context, arg RecomputeTokenStatsParams) error
 	RecordIndexerReorg(ctx context.Context, arg RecordIndexerReorgParams) (int64, error)
 	RefundClaimMatchesEvent(ctx context.Context, arg RefundClaimMatchesEventParams) (pgtype.Bool, error)

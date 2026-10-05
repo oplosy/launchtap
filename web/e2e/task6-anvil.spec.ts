@@ -1,5 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
-import { decodeFunctionData, encodeFunctionData } from "viem";
+import {
+  createPublicClient,
+  decodeFunctionData,
+  encodeFunctionData,
+  http,
+  parseAbi,
+  parseEventLogs,
+} from "viem";
 import fs from "node:fs";
 import path from "node:path";
 import { browserAbis } from "../src/contracts/generated";
@@ -490,6 +497,84 @@ test.describe("Task 6 Anvil transaction gate", () => {
       /indexing|indexed|safe|finalized/i,
       { timeout: 45_000 },
     );
+    const graduationHash = (await page.getByRole("status").last().textContent())?.match(
+      /0x[0-9a-f]{64}/i,
+    )?.[0];
+    expect(graduationHash).toBeTruthy();
+    const client = createPublicClient({ transport: http(process.env.TASK6_ANVIL_RPC_URL!) });
+    const receipt = await client.getTransactionReceipt({ hash: graduationHash as `0x${string}` });
+    expect(receipt.status).toBe("success");
+    const events = parseEventLogs({
+      abi: parseAbi([
+        "event Graduated(address indexed token, address indexed lpPair, uint256 ethToPool, uint256 tokensToPool, uint256 lpLiquidityBurned)",
+      ]),
+      logs: receipt.logs,
+    });
+    expect(events).toHaveLength(1);
+    const graduation = events[0];
+    if (!graduation) throw new Error("Graduation receipt is missing its Graduated event");
+    expect(graduation.args.token.toLowerCase()).toBe(tokenAddress.toLowerCase());
+    expect(graduation.args.ethToPool).toBe(4_200_000_000_000_000_000n);
+    expect(graduation.args.tokensToPool).toBe(200_000_000n * 10n ** 18n);
+    expect(graduation.args.lpLiquidityBurned).toBeGreaterThan(0n);
+    const erc20Abi = parseAbi([
+      "function balanceOf(address) view returns (uint256)",
+      "function totalSupply() view returns (uint256)",
+    ]);
+    const pair = graduation.args.lpPair;
+    const burnAddress = "0x000000000000000000000000000000000000dEaD" as const;
+    const balance = (address: `0x${string}`, owner: `0x${string}`) =>
+      client.readContract({
+        address,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [owner],
+        blockNumber: receipt.blockNumber,
+      });
+    const burned = await balance(pair, burnAddress);
+    expect(burned).toBe(graduation.args.lpLiquidityBurned);
+    expect(await balance(pair, sender)).toBe(0n);
+    expect(await balance(pair, graduation.address)).toBe(0n);
+    const minimumLiquidity = await balance(pair, "0x0000000000000000000000000000000000000000");
+    expect(minimumLiquidity).toBe(1000n);
+    expect(
+      await client.readContract({
+        address: pair,
+        abi: erc20Abi,
+        functionName: "totalSupply",
+        blockNumber: receipt.blockNumber,
+      }),
+    ).toBe(burned + minimumLiquidity);
+    expect(await balance(tokenAddress as `0x${string}`, pair)).toBe(graduation.args.tokensToPool);
+    expect(await balance(process.env.TASK6_ANVIL_WETH as `0x${string}`, pair)).toBe(
+      graduation.args.ethToPool,
+    );
+    const evidencePath = testInfo.outputPath("graduation-lp-burn.json");
+    fs.writeFileSync(
+      evidencePath,
+      JSON.stringify(
+        {
+          chainId: await client.getChainId(),
+          launchHash,
+          graduationHash,
+          blockNumber: receipt.blockNumber.toString(),
+          token: tokenAddress,
+          curve: graduation.address,
+          pair,
+          burnAddress,
+          ethToPool: graduation.args.ethToPool.toString(),
+          tokensToPool: graduation.args.tokensToPool.toString(),
+          lpAtBurnAddress: burned.toString(),
+          minimumLiquidity: minimumLiquidity.toString(),
+        },
+        null,
+        2,
+      ),
+    );
+    await testInfo.attach("graduation-lp-burn", {
+      path: evidencePath,
+      contentType: "application/json",
+    });
     await expect
       .poll(
         async () => {
@@ -503,6 +588,11 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.reload();
     await expect(page.getByRole("heading", { name: "Router handoff" })).toBeVisible({
       timeout: 30_000,
+    });
+    if (await page.getByRole("button", { name: "Connect wallet", exact: true }).isVisible())
+      await connectWallet(page);
+    await expect(page.getByRole("button", { name: "Connect wallet", exact: true })).toHaveCount(0, {
+      timeout: 15_000,
     });
     await page.evaluate(() => {
       (window as unknown as { __task6ChainId: string }).__task6ChainId = "0x1";

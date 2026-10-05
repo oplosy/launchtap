@@ -51,7 +51,7 @@ func run() error {
 	defer source.Close()
 	pool, owner, err := initializeIndexerResources(ctx, source, c.ChainID, deployment,
 		func() (*pgxpool.Pool, error) {
-			return storepostgres.OpenPool(ctx, c.DatabaseURL, storepostgres.PoolOptions{})
+			return storepostgres.OpenPool(ctx, c.DatabaseURL, storepostgres.PoolOptions{MaxConns: int32(c.DatabaseMaxConns)})
 		},
 		func() (*storepostgres.Ownership, error) {
 			return storepostgres.AcquireOwnership(ctx, c.DatabaseURL, int64(c.ChainID), c.DeploymentID)

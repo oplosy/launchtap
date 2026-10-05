@@ -1,6 +1,5 @@
 import type { TokenListQuery, TokenListResponse } from "@/api/client";
 import { ApiProblem } from "@/api/problems";
-import { snapshotIdentity, type Snapshot } from "@/api/types";
 import type { TokenListQueryState } from "./query-state";
 import { tokenListFilters } from "./query-state";
 
@@ -23,14 +22,14 @@ export type TokenDiscoveryPageOptions = {
 };
 
 /**
- * Append one cursor page without ever mixing snapshots. Cursor invalidation and a changed
- * snapshot both recover through exactly one page-one request; the caller owns UI state.
+ * Append one keyset page. The indexer tip advancing between pages keeps the accumulated pages;
+ * only a reorg-invalidated or malformed cursor recovers through one page-one request. Tokens
+ * that moved across the page boundary in the meantime are dropped as duplicates.
  */
 export async function appendTokenListPage(
   options: TokenDiscoveryPageOptions & { cursor: string },
 ): Promise<AppendRecoveryResult> {
   const { fetchPage, state, cursor, existingPages, signal } = options;
-  let reset = false;
   let response: TokenListResponse;
   try {
     response = await fetchPage({ ...tokenListFilters(state), cursor }, signal);
@@ -41,22 +40,16 @@ export async function appendTokenListPage(
     ) {
       throw cause;
     }
-    reset = true;
-    response = await fetchPage({ ...tokenListFilters(state), cursor: undefined }, signal);
-  }
-  const currentSnapshot: Snapshot | undefined = existingPages[0]?.snapshot;
-  if (
-    !reset &&
-    currentSnapshot &&
-    snapshotIdentity(currentSnapshot) !== snapshotIdentity(response.snapshot)
-  ) {
-    reset = true;
     return {
       pages: [await fetchPage({ ...tokenListFilters(state), cursor: undefined }, signal)],
       reset: true,
     };
   }
-  return { pages: reset ? [response] : [...existingPages, response], reset };
+  const seen = new Set(
+    existingPages.flatMap((page) => (page.items ?? []).map((item) => item.address.toLowerCase())),
+  );
+  const items = (response.items ?? []).filter((item) => !seen.has(item.address.toLowerCase()));
+  return { pages: [...existingPages, { ...response, items }], reset: false };
 }
 
 /** The production page coordinator used by TokenDiscovery for initial and cursor loads. */

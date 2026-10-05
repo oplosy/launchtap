@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -26,6 +27,14 @@ const (
 	defaultRPCTimeout              = 10 * time.Second
 	defaultRPCMaxRetries           = uint64(3)
 	defaultRPCRetryBackoff         = 250 * time.Millisecond
+	defaultAPIRateLimitPerMinute   = uint64(600)
+	maxAPIRateLimitPerMinute       = uint64(600000)
+	defaultAPIRateLimitBurst       = uint64(120)
+	maxAPIRateLimitBurst           = uint64(100000)
+	defaultAPISSEMaxPerClient      = uint64(4)
+	maxAPISSEMaxPerClient          = uint64(1000)
+	minDatabaseMaxConns            = uint64(4)
+	maxDatabaseMaxConns            = uint64(500)
 )
 
 var (
@@ -53,15 +62,23 @@ func (e *FieldError) Unwrap() error {
 // are trimmed before validation. IndexerConfirmations is nil when the local-only
 // override is absent; deployment validation decides whether it is permitted.
 type Config struct {
-	ChainID                    uint64        `env:"CHAIN_ID"`
-	DeploymentID               string        `env:"DEPLOYMENT_ID"`
-	RPCURL                     string        `env:"RPC_URL"`
-	DatabaseURL                string        `env:"DATABASE_URL"`
-	PrivyAppID                 string        `env:"PRIVY_APP_ID"`
-	PrivyVerificationKey       string        `env:"PRIVY_VERIFICATION_KEY"`
-	LogLevel                   string        `env:"LOG_LEVEL"`
-	APIAddr                    string        `env:"API_ADDR"`
-	APIAllowedOrigins          []string      `env:"API_ALLOWED_ORIGINS"`
+	ChainID              uint64   `env:"CHAIN_ID"`
+	DeploymentID         string   `env:"DEPLOYMENT_ID"`
+	RPCURL               string   `env:"RPC_URL"`
+	DatabaseURL          string   `env:"DATABASE_URL"`
+	PrivyAppID           string   `env:"PRIVY_APP_ID"`
+	PrivyVerificationKey string   `env:"PRIVY_VERIFICATION_KEY"`
+	LogLevel             string   `env:"LOG_LEVEL"`
+	APIAddr              string   `env:"API_ADDR"`
+	APIAllowedOrigins    []string `env:"API_ALLOWED_ORIGINS"`
+	// APITrustedProxyCIDRs lists reverse proxies whose X-Forwarded-For entries identify the
+	// client for rate limiting. Empty means the TCP peer address is the client.
+	APITrustedProxyCIDRs  []netip.Prefix `env:"API_TRUSTED_PROXY_CIDRS"`
+	APIRateLimitPerMinute uint64         `env:"API_RATE_LIMIT_PER_MINUTE"`
+	APIRateLimitBurst     uint64         `env:"API_RATE_LIMIT_BURST"`
+	APISSEMaxPerClient    uint64         `env:"API_SSE_MAX_PER_CLIENT"`
+	// DatabaseMaxConns is zero when unset; the store then applies its own default.
+	DatabaseMaxConns           uint64        `env:"DATABASE_MAX_CONNS"`
 	IndexerHealthAddr          string        `env:"INDEXER_HEALTH_ADDR"`
 	IndexerChunkSize           uint64        `env:"INDEXER_CHUNK_SIZE"`
 	IndexerReorgSearchDepth    uint64        `env:"INDEXER_REORG_SEARCH_DEPTH"`
@@ -140,6 +157,29 @@ func Load(getenv func(string) string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	trustedProxies, err := parseTrustedProxies(values.apiTrustedProxyCIDRs)
+	if err != nil {
+		return Config{}, err
+	}
+	rateLimitPerMinute, err := optionalBoundedUint64("API_RATE_LIMIT_PER_MINUTE", values.apiRateLimitPerMinute, defaultAPIRateLimitPerMinute, 1, maxAPIRateLimitPerMinute)
+	if err != nil {
+		return Config{}, err
+	}
+	rateLimitBurst, err := optionalBoundedUint64("API_RATE_LIMIT_BURST", values.apiRateLimitBurst, defaultAPIRateLimitBurst, 1, maxAPIRateLimitBurst)
+	if err != nil {
+		return Config{}, err
+	}
+	sseMaxPerClient, err := optionalBoundedUint64("API_SSE_MAX_PER_CLIENT", values.apiSSEMaxPerClient, defaultAPISSEMaxPerClient, 1, maxAPISSEMaxPerClient)
+	if err != nil {
+		return Config{}, err
+	}
+	databaseMaxConns := uint64(0)
+	if values.databaseMaxConns != "" {
+		databaseMaxConns, err = optionalBoundedUint64("DATABASE_MAX_CONNS", values.databaseMaxConns, 0, minDatabaseMaxConns, maxDatabaseMaxConns)
+		if err != nil {
+			return Config{}, err
+		}
+	}
 	indexerHealthAddr, err := parseListenerAddr("INDEXER_HEALTH_ADDR", values.indexerHealthAddr, defaultIndexerHealthAddr)
 	if err != nil {
 		return Config{}, err
@@ -186,6 +226,11 @@ func Load(getenv func(string) string) (Config, error) {
 		LogLevel:                   logLevel,
 		APIAddr:                    apiAddr,
 		APIAllowedOrigins:          apiOrigins,
+		APITrustedProxyCIDRs:       trustedProxies,
+		APIRateLimitPerMinute:      rateLimitPerMinute,
+		APIRateLimitBurst:          rateLimitBurst,
+		APISSEMaxPerClient:         sseMaxPerClient,
+		DatabaseMaxConns:           databaseMaxConns,
 		IndexerHealthAddr:          indexerHealthAddr,
 		IndexerChunkSize:           chunkSize,
 		IndexerReorgSearchDepth:    reorgSearchDepth,
@@ -245,6 +290,11 @@ type environmentValues struct {
 	logLevel                   string
 	apiAddr                    string
 	apiAllowedOrigins          string
+	apiTrustedProxyCIDRs       string
+	apiRateLimitPerMinute      string
+	apiRateLimitBurst          string
+	apiSSEMaxPerClient         string
+	databaseMaxConns           string
 	indexerHealthAddr          string
 	indexerChunkSize           string
 	indexerReorgSearchDepth    string
@@ -270,6 +320,11 @@ func readEnvironment(getenv func(string) string) environmentValues {
 		logLevel:                   strings.TrimSpace(getenv("LOG_LEVEL")),
 		apiAddr:                    strings.TrimSpace(getenv("API_ADDR")),
 		apiAllowedOrigins:          strings.TrimSpace(getenv("API_ALLOWED_ORIGINS")),
+		apiTrustedProxyCIDRs:       strings.TrimSpace(getenv("API_TRUSTED_PROXY_CIDRS")),
+		apiRateLimitPerMinute:      strings.TrimSpace(getenv("API_RATE_LIMIT_PER_MINUTE")),
+		apiRateLimitBurst:          strings.TrimSpace(getenv("API_RATE_LIMIT_BURST")),
+		apiSSEMaxPerClient:         strings.TrimSpace(getenv("API_SSE_MAX_PER_CLIENT")),
+		databaseMaxConns:           strings.TrimSpace(getenv("DATABASE_MAX_CONNS")),
 		indexerHealthAddr:          strings.TrimSpace(getenv("INDEXER_HEALTH_ADDR")),
 		indexerChunkSize:           strings.TrimSpace(getenv("INDEXER_CHUNK_SIZE")),
 		indexerReorgSearchDepth:    strings.TrimSpace(getenv("INDEXER_REORG_SEARCH_DEPTH")),
@@ -309,6 +364,21 @@ func parseOrigins(value string) ([]string, error) {
 		}
 		seen[origin] = struct{}{}
 		out = append(out, origin)
+	}
+	return out, nil
+}
+
+func parseTrustedProxies(value string) ([]netip.Prefix, error) {
+	if value == "" {
+		return nil, nil
+	}
+	var out []netip.Prefix
+	for _, part := range strings.Split(value, ",") {
+		prefix, err := netip.ParsePrefix(strings.TrimSpace(part))
+		if err != nil {
+			return nil, &FieldError{Field: "API_TRUSTED_PROXY_CIDRS", Err: ErrInvalid}
+		}
+		out = append(out, prefix.Masked())
 	}
 	return out, nil
 }

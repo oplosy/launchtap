@@ -317,15 +317,31 @@ export function TokenDetail({
 
   useEffect(() => {
     if (useFixture || configuration.status !== "ready" || !configuration.apiBaseUrl) return;
+    let refreshing = false;
+    let refreshAgain = false;
     const stream = new SseInvalidationStream({
-      url: `${configuration.apiBaseUrl}/v1/events`,
+      // The server forwards only this token's hints (plus reorgs) and coalesces bursts.
+      url: `${configuration.apiBaseUrl}/v1/events?token=${tokenAddress}`,
       queryClient: {
         invalidateQueries: async () => {
-          const loaders = loadersRef.current;
-          if (!loaders) return;
-          await loaders.loadToken();
-          await loaders.loadCandles();
-          await loaders.loadCollection(tabRef.current);
+          // Collapse hints that arrive during a refresh into one follow-up refresh.
+          if (refreshing) {
+            refreshAgain = true;
+            return;
+          }
+          refreshing = true;
+          try {
+            do {
+              refreshAgain = false;
+              const loaders = loadersRef.current;
+              if (!loaders) return;
+              await loaders.loadToken();
+              await loaders.loadCandles();
+              await loaders.loadCollection(tabRef.current);
+            } while (refreshAgain);
+          } finally {
+            refreshing = false;
+          }
         },
       },
       queryKeyForEvent: (event) => {

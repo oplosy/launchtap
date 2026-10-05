@@ -1,40 +1,23 @@
 "use client";
 
-import { useConnectOrCreateWallet } from "@privy-io/react-auth";
-import { createContext, useContext, useMemo, useState, type PropsWithChildren } from "react";
+import { useConnectOrCreateWallet, usePrivy } from "@privy-io/react-auth";
+import { useEffect, useMemo, useRef, useState, type PropsWithChildren } from "react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { Wallet } from "@/components/icons";
-import { Button, Dialog, type ButtonProps } from "@/components/primitives";
+import { Button, Dialog } from "@/components/primitives";
 import { shortAddress } from "@/token/address";
+import { WalletConnectionContext, type WalletConnection } from "./connection-context";
 
-type WalletConnection = {
-  open: () => void;
-  disconnect: () => void;
-  connected: boolean;
-  pending: boolean;
-  available: boolean;
-  address?: string;
-};
+export { useWalletConnection, WalletConnectButton } from "./connection-context";
 
-const fallbackConnection: WalletConnection = {
-  open: () => undefined,
-  disconnect: () => undefined,
-  connected: false,
-  pending: false,
-  available: false,
-};
+/** Props shared by both bridges; openOnMount opens the picker once the stack has loaded. */
+type BridgeProps = PropsWithChildren<{ openOnMount?: boolean }>;
 
-const WalletConnectionContext = createContext<WalletConnection>(fallbackConnection);
-
-export function useWalletConnection() {
-  return useContext(WalletConnectionContext);
-}
-
-export function WagmiWalletConnectionBridge({ children }: PropsWithChildren) {
+export function WagmiWalletConnectionBridge({ children, openOnMount = false }: BridgeProps) {
   const { connect, connectors, error, isPending } = useConnect();
   const { disconnect } = useDisconnect();
   const { address, isConnected } = useAccount();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(openOnMount);
   const value = useMemo<WalletConnection>(
     () => ({
       open: () => setOpen(true),
@@ -110,14 +93,21 @@ export function WagmiWalletConnectionBridge({ children }: PropsWithChildren) {
   );
 }
 
-export function PrivyWalletConnectionBridge({ children }: PropsWithChildren) {
+export function PrivyWalletConnectionBridge({ children, openOnMount = false }: BridgeProps) {
   // The launch flow requires a Privy-authenticated user with the selected wallet
   // in linkedAccounts. connectWallet() only connects an external wallet and can
   // leave the app in connected-unlinked state, which correctly blocks signing.
   // connectOrCreateWallet() completes the wallet auth/link flow as one operation.
   const { connectOrCreateWallet } = useConnectOrCreateWallet();
+  const { ready } = usePrivy();
   const { disconnect } = useDisconnect();
   const { address, isConnected } = useAccount();
+  const openedOnMount = useRef(false);
+  useEffect(() => {
+    if (!openOnMount || !ready || openedOnMount.current) return;
+    openedOnMount.current = true;
+    if (!isConnected) connectOrCreateWallet();
+  }, [connectOrCreateWallet, isConnected, openOnMount, ready]);
   const value = useMemo<WalletConnection>(
     () => ({
       open: () => connectOrCreateWallet(),
@@ -138,37 +128,4 @@ export function walletConnectorLabel(name: string) {
   const label = name.trim();
   if (!label || /^injected$/i.test(label)) return "Browser wallet";
   return label;
-}
-
-export function WalletConnectButton({
-  className,
-  variant = "quiet",
-  size = "sm",
-}: {
-  className?: string;
-  variant?: ButtonProps["variant"];
-  size?: ButtonProps["size"];
-} = {}) {
-  const wallet = useWalletConnection();
-  const label = wallet.pending
-    ? "Connecting wallet"
-    : wallet.connected && wallet.address
-      ? shortAddress(wallet.address)
-      : wallet.available
-        ? "Connect wallet"
-        : "Wallet unavailable";
-  return (
-    <Button
-      variant={variant}
-      size={size}
-      onClick={wallet.open}
-      disabled={!wallet.available}
-      loading={wallet.pending}
-      className={className ?? "navbar-wallet"}
-      aria-label={label}
-      title={label}
-    >
-      <Wallet size={17} aria-hidden="true" /> <span>{label}</span>
-    </Button>
-  );
 }

@@ -9,7 +9,7 @@ import { browserAbis, type ReviewedDeployment } from "@/contracts/generated";
 import { publicConfiguration } from "@/config/public";
 import { addressExplorerUrl } from "@/wallet/explorer";
 import { useWalletReadiness } from "@/wallet/readiness";
-import { WalletConnectButton } from "@/wallet/connection";
+import { WalletConnectButton } from "@/wallet/connection-context";
 import {
   calculateLaunchValue,
   classifyTransactionFailure,
@@ -1099,7 +1099,7 @@ function TradingPanelReady({
               setReviewIntent(null);
             }}
             inputMode="decimal"
-            hint="Minimum output is rounded down on-chain."
+            hint="Minimum output is rounded down on-chain. At most 50%."
           />
           {quoteError ? (
             <p className="transaction-error" role="alert">
@@ -1816,6 +1816,7 @@ function GraduatedSwapPanel({
               setReviewIntent(null);
             }}
             inputMode="decimal"
+            hint="At most 50%."
           />
           {output !== null ? (
             <div className="quote-summary">
