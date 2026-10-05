@@ -43,11 +43,8 @@
      objects (functional, but verbose) — trim them to the file's four-field shape if wanted.
   3. Validate `deploy/Caddyfile` and `deploy/compose.yaml` through the `deployment-package`
      workflow (`caddy validate` needs Docker, unavailable locally).
-  4. Web budgets: `performance-budgets.json` applies one 1.8 MB initial-JS limit to every route.
-     Split it per route so non-wallet routes get a tighter limit now that they skip Privy
-     (observed ~1.05 MB decoded JS on `/` in a local production build).
-  5. Images: strip metadata by re-encoding and serve from object storage/CDN (infrastructure).
-  6. Token and pair log discovery still use address batches (standard ERC-20/Uniswap topics
+  4. Images: strip metadata by re-encoding and serve from object storage/CDN (infrastructure).
+  5. Token and pair log discovery still use address batches (standard ERC-20/Uniswap topics
      cannot be queried by topic alone); revisit if token count makes this the bottleneck.
 - **Pitfalls / notes:** Pages are now dynamically rendered because the CSP nonce is per
   request; keep that in mind for CDN caching. On non-wallet routes a previously connected
