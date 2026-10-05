@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import localFont from "next/font/local";
 import "./globals.css";
 import { AppShell } from "@/components/app-shell";
@@ -29,7 +30,9 @@ export const metadata: Metadata = {
   keywords: ["token launchpad", "bonding curve", "non-custodial"],
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  // Script nonces are issued per request by proxy.ts, so every document renders dynamically.
+  await connection();
   return (
     <html lang="en" data-theme="dark">
       <body className={`${display.variable} ${body.variable} ${mono.variable}`}>

@@ -36,13 +36,19 @@ describe("security headers", () => {
     expect(productionPolicy).not.toContain("http://127.0.0.1:18545");
   });
 
-  it("includes browser hardening headers", () => {
-    expect(securityHeaders().map((header) => header.key)).toEqual(
-      expect.arrayContaining([
-        "Content-Security-Policy",
-        "Cross-Origin-Opener-Policy",
-        "X-Frame-Options",
-      ]),
+  it("includes browser hardening headers and leaves CSP to the per-request proxy", () => {
+    const keys = securityHeaders().map((header) => header.key);
+    expect(keys).toEqual(expect.arrayContaining(["Cross-Origin-Opener-Policy", "X-Frame-Options"]));
+    expect(keys).not.toContain("Content-Security-Policy");
+  });
+
+  it("allows scripts only through the request nonce, never unsafe-inline", () => {
+    const policy = contentSecurityPolicy({ NODE_ENV: "production" }, "abc123");
+    expect(policy).toContain("script-src 'self' 'nonce-abc123' 'strict-dynamic';");
+    expect(policy).not.toMatch(/script-src[^;]*unsafe-(inline|eval)/);
+    expect(contentSecurityPolicy({ NODE_ENV: "development" }, "abc123")).toContain(
+      "'strict-dynamic' 'unsafe-eval'",
     );
+    expect(contentSecurityPolicy()).toContain("script-src 'self';");
   });
 });
