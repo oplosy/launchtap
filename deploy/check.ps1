@@ -2,6 +2,9 @@
 param([switch]$Build)
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
+# The newest embedded migration, e.g. 14 for 00014_*.sql; checks must follow new migrations.
+$latestMigration = [int](Get-ChildItem (Join-Path $repoRoot 'backend/internal/store/postgres/migrations') -Filter '*.sql' |
+    ForEach-Object { [int]($_.Name.Substring(0, 5)) } | Measure-Object -Maximum).Maximum
 $suffix = [guid]::NewGuid().ToString('N').Substring(0, 8)
 $network = "launchpad-check-$suffix"
 $db = "$network-db"
@@ -38,13 +41,13 @@ try {
         $backendImage, '/app/migrate', 'up') | Out-Null
     $migrationStatus = Invoke-Docker @('run', '--rm', '--network', $network, '-e', $databaseUrl,
         $backendImage, '/app/migrate', 'status')
-    if (($migrationStatus -join "`n") -notmatch '00012\s+applied') { throw 'Latest migration is not applied' }
+    if (($migrationStatus -join "`n") -notmatch ('{0:D5}\s+applied' -f $latestMigration)) { throw 'Latest migration is not applied' }
     Invoke-Docker @('exec', $db, 'pg_dump', '-U', 'launchpad', '-d', 'launchpad', '-Fc', '-f', '/tmp/launchpad.dump') | Out-Null
     Invoke-Docker @('exec', $db, 'createdb', '-U', 'launchpad', 'launchpad_restore') | Out-Null
     Invoke-Docker @('exec', $db, 'pg_restore', '--exit-on-error', '-U', 'launchpad', '-d', 'launchpad_restore', '/tmp/launchpad.dump') | Out-Null
     $restoredVersion = Invoke-Docker @('exec', $db, 'psql', '-U', 'launchpad', '-d', 'launchpad_restore', '-Atc',
         'SELECT MAX(version_id) FROM goose_db_version WHERE is_applied;')
-    if (($restoredVersion -join '').Trim() -ne '12') { throw 'Backup restore did not preserve migration version' }
+    if (($restoredVersion -join '').Trim() -ne [string]$latestMigration) { throw 'Backup restore did not preserve migration version' }
 
     $verificationKey = [Security.Cryptography.ECDsa]::Create([Security.Cryptography.ECCurve+NamedCurves]::nistP256)
     try { $publicPem = $verificationKey.ExportSubjectPublicKeyInfoPem() } finally { $verificationKey.Dispose() }
