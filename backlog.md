@@ -25,11 +25,13 @@
   sells open during trading pause, `claim*To`, cursor validity across tip advances, per-client
   rate limit + SSE cap, LIKE escaping, image dimension limit + cache header, quote without
   per-trade sums, holder/pool-swap indexes, batched header RPC + in-process RPC backoff,
-  nonce-based script CSP, 50% slippage cap, Caddy compression.
+  nonce-based script CSP, 50% slippage cap, Caddy compression. Speed follow-ups also landed:
+  topic-only curve log discovery, per-token SSE filter + coalescing, indexable metric sorts
+  (`tokens.sort_*` mirrored by triggers), and an on-demand Privy/wagmi stack (non-wallet routes
+  no longer download the ~2 MB Privy chunk up front).
 - **Related files:** `contracts/src/BondingCurveV1.sol`, `contracts/slither.db.json`,
-  `contracts/deployments/robinhood-testnet-v1.json`, `backend/internal/chain/discovery.go`,
-  `backend/internal/realtime/hub.go`, `backend/internal/store/postgres/queries/read.sql`,
-  `web/app/providers.tsx`, `web/performance-budgets.json`, `deploy/Caddyfile`
+  `contracts/deployments/robinhood-testnet-v1.json`, `web/performance-budgets.json`,
+  `web/scripts/check-budgets.mjs`, `deploy/Caddyfile`
 - **Resume (next step):**
   1. Testnet: the deployed v1 curve implementation and every existing clone still accept a
      buy whose token recipient is the pair (permanent graduation freeze). Deploy the fixed
@@ -41,18 +43,16 @@
      objects (functional, but verbose) — trim them to the file's four-field shape if wanted.
   3. Validate `deploy/Caddyfile` and `deploy/compose.yaml` through the `deployment-package`
      workflow (`caddy validate` needs Docker, unavailable locally).
-  4. Indexer: discovery issues ~`3 × tokens/500` `eth_getLogs` per poll. Query curve events by
-     topic only and filter emitters locally; this needs a redesign of the fail-closed
-     `EmitterError` path in `discovery.go`.
-  5. SSE: broadcast hints reach every subscriber and trigger REST refetches. Add per-token
-     subscriptions and coalesce bursts per token.
-  6. Token list `market_cap`/`volume_24h` sorts cannot use an index (`COALESCE` over a LEFT
-     JOIN plus the phase filter on `tokens`); denormalize phase and metrics into one table.
-  7. Web: load Privy/wagmi only where a wallet is needed and tighten
-     `performance-budgets.json` (1.8 MB initial JS today).
-  8. Images: strip metadata by re-encoding and serve from object storage/CDN.
+  4. Web budgets: `performance-budgets.json` applies one 1.8 MB initial-JS limit to every route.
+     Split it per route so non-wallet routes get a tighter limit now that they skip Privy
+     (observed ~1.05 MB decoded JS on `/` in a local production build).
+  5. Images: strip metadata by re-encoding and serve from object storage/CDN (infrastructure).
+  6. Token and pair log discovery still use address batches (standard ERC-20/Uniswap topics
+     cannot be queried by topic alone); revisit if token count makes this the bottleneck.
 - **Pitfalls / notes:** Pages are now dynamically rendered because the CSP nonce is per
-  request; keep that in mind for CDN caching. The external audit is still required before
+  request; keep that in mind for CDN caching. On non-wallet routes a previously connected
+  wallet shows as disconnected until the reader clicks Connect or opens a wallet route (the
+  stack is idle-prefetched but not mounted). The external audit is still required before
   mainnet; this review does not replace it.
 
 ### Production release, governance, and audit inputs
