@@ -7,6 +7,7 @@ interface ILaunchErrors {
     error ImplementationInitializationDisabled();
     error AlreadyGraduated();
     error ZeroAddress(bytes32 field);
+    error InvalidRecipient(bytes32 field, address recipient);
     error InvalidSupplyAllocation(uint256 totalSupply, uint256 curveTokens, uint256 lpTokens);
     error InvalidCurveAllocation(uint256 curveTokens, uint256 lpTokens);
     error InvalidGraduationEth();
