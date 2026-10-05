@@ -56,6 +56,12 @@ func TestPublicReadsUseOneCanonicalSnapshot(t *testing.T) {
 			t.Fatalf("page sorted by %s = %+v", sort, page)
 		}
 	}
+	for search, want := range map[string]int{"tok": 1, "%": 0, "_oken": 0, `\`: 0} {
+		page, err := tokens.List(ctx, token.ListQuery{ChainID: chainID, Phase: "curve", Sort: "newest", Search: search, Limit: 20})
+		if err != nil || len(page.Items) != want {
+			t.Fatalf("search %q items=%d err=%v, want %d", search, len(page.Items), err, want)
+		}
+	}
 	one, err := tokens.List(ctx, token.ListQuery{ChainID: chainID, Phase: "curve", Sort: "newest", Limit: 1})
 	if err != nil || one.NextCursor == "" {
 		t.Fatalf("first cursor page=%+v err=%v", one, err)

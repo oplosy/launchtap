@@ -4,9 +4,15 @@
 }
 
 {$WEB_DOMAIN} {
+	encode zstd gzip
 	reverse_proxy web:3000
 }
 
 {$API_DOMAIN} {
+	# Event streams must not be buffered by a compressor.
+	@compressible {
+		not path /v1/events
+	}
+	encode @compressible zstd gzip
 	reverse_proxy api:8080
 }

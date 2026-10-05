@@ -1529,6 +1529,7 @@
             "in": "query",
             "name": "q",
             "schema": {
+              "maxLength": 64,
               "type": "string"
             }
           },

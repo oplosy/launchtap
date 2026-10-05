@@ -37,6 +37,7 @@ func ReadTokenCards(ctx context.Context, pool PoolReadBeginner, chainID int64, d
 	err := withReadSnapshotBeginner(ctx, pool, chainID, deploymentID, func(ctx context.Context, adapter *Adapter, snapshot ReadSnapshot) error {
 		search := strings.ToLower(strings.TrimSpace(query.Search))
 		filters := cursorFilter(query.Phase, search)
+		pattern := escapeLikePattern(search)
 		if query.Cursor != nil {
 			if err := query.Cursor.ValidateRequest("tokens", query.Sort, filters, "next", snapshot.Identity, adapter.canonicalCursorCheck(ctx)); err != nil {
 				return err
@@ -46,7 +47,7 @@ func ReadTokenCards(ctx context.Context, pool PoolReadBeginner, chainID int64, d
 		var err error
 		switch query.Sort {
 		case "newest":
-			arg := sqlc.ListTokenCardsNewestParams{ChainID: chainID, Phase: query.Phase, Search: search, PageSize: int32(query.Limit)}
+			arg := sqlc.ListTokenCardsNewestParams{ChainID: chainID, Phase: query.Phase, Search: pattern, PageSize: int32(query.Limit)}
 			if query.Cursor != nil {
 				arg.AfterBlock, arg.AfterAddress, err = tupleCursor(query.Cursor)
 				if err != nil {
@@ -59,7 +60,7 @@ func ReadTokenCards(ctx context.Context, pool PoolReadBeginner, chainID int64, d
 				cards = append(cards, reflectCard(row))
 			}
 		case "oldest":
-			arg := sqlc.ListTokenCardsOldestParams{ChainID: chainID, Phase: query.Phase, Search: search, PageSize: int32(query.Limit)}
+			arg := sqlc.ListTokenCardsOldestParams{ChainID: chainID, Phase: query.Phase, Search: pattern, PageSize: int32(query.Limit)}
 			if query.Cursor != nil {
 				arg.AfterBlock, arg.AfterAddress, err = tupleCursor(query.Cursor)
 				if err != nil {
@@ -77,13 +78,13 @@ func ReadTokenCards(ctx context.Context, pool PoolReadBeginner, chainID int64, d
 				return e
 			}
 			if query.Sort == "market_cap" {
-				rows, e := adapter.queries.ListTokenCardsMarketCap(ctx, sqlc.ListTokenCardsMarketCapParams{ChainID: chainID, Phase: query.Phase, Search: search, AfterMetric: argMetric, AfterAddress: argAddress, PageSize: int32(query.Limit)})
+				rows, e := adapter.queries.ListTokenCardsMarketCap(ctx, sqlc.ListTokenCardsMarketCapParams{ChainID: chainID, Phase: query.Phase, Search: pattern, AfterMetric: argMetric, AfterAddress: argAddress, PageSize: int32(query.Limit)})
 				err = e
 				for _, row := range rows {
 					cards = append(cards, reflectCard(row))
 				}
 			} else {
-				rows, e := adapter.queries.ListTokenCardsVolume(ctx, sqlc.ListTokenCardsVolumeParams{ChainID: chainID, Phase: query.Phase, Search: search, AfterMetric: argMetric, AfterAddress: argAddress, PageSize: int32(query.Limit)})
+				rows, e := adapter.queries.ListTokenCardsVolume(ctx, sqlc.ListTokenCardsVolumeParams{ChainID: chainID, Phase: query.Phase, Search: pattern, AfterMetric: argMetric, AfterAddress: argAddress, PageSize: int32(query.Limit)})
 				err = e
 				for _, row := range rows {
 					cards = append(cards, reflectCard(row))
@@ -332,6 +333,12 @@ func candleNumeric(v any) *big.Int {
 	default:
 		return new(big.Int)
 	}
+}
+
+// escapeLikePattern makes user search text literal inside the prefix LIKE predicates, whose
+// default escape character is a backslash. A hex address never contains these characters.
+func escapeLikePattern(value string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(value)
 }
 
 func withReadSnapshotBeginner(ctx context.Context, pool PoolReadBeginner, chainID int64, deploymentID string, fn func(context.Context, *Adapter, ReadSnapshot) error) error {
