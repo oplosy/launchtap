@@ -187,6 +187,81 @@ exact manifest digest, deployment block, transaction hashes, API/indexer health 
 reorg/finality observations. Those wallets and funding are operator actions and must not be
 committed.
 
+## Engine implementation upgrade (2026-10-05 graduation-DoS fix)
+
+The deployed v1 curve implementation `0x979b9b8172fba6daec305e388fb500b32f740497` accepts a
+buy whose token recipient is the canonical pair, which freezes graduation permanently. The
+fix is a new `BondingCurveV1` implementation registered for engine version 1. Clones that
+already exist keep the old code and stay vulnerable; only launches made after the switch are
+protected.
+
+`contracts/script/DeployCurveImplementation.s.sol` broadcasts only the implementation
+creation. On the forked chain it then switches the engine as the factory timelock and proves
+that a 1 gwei buy delivered to a fresh launch's pair reverts with `InvalidRecipient`; the
+engine switch itself stays a separate, timelock-signed transaction.
+
+Set process-only values (the timelock is currently an EOA, not a contract):
+
+```powershell
+$env:ROBINHOOD_TESTNET_RPC_URL = "https://rpc.testnet.chain.robinhood.com"
+$env:DEPLOYMENT_TARGET = "robinhood-testnet"
+$env:DEPLOYER = "0x12cB30400339831107589695E5C71455e223Bf02"
+$env:LAUNCH_FACTORY = "0xedddb61a53226ffdc6ecf7c042b803e769168d55"
+$timelock = "0x02baFf7cc315e615CE4E909ECd155ca27FA07460"
+$account = "<named Foundry keystore account for the deployer>"
+$timelockAccount = "<named Foundry keystore account for the timelock>"
+```
+
+1. Dry-run (no broadcast). It must print `Script ran successfully`, the previous and new
+   implementation, the runtime code hash, and the `configureEngine` calldata:
+
+   ```powershell
+   cd contracts
+   forge script script/DeployCurveImplementation.s.sol --rpc-url $env:ROBINHOOD_TESTNET_RPC_URL --sender $env:DEPLOYER
+   ```
+
+   The 2026-10-05 dry-run from deployer nonce state at that time predicted implementation
+   `0xB3b8c02516de5146e53Bcbcf3d5F2Bf229B380e2`, runtime code hash
+   `0x0b1adceec8dc3b6c51778e71435d5ae41c00942a5ce477c4169e2b21a63732f6`, and about
+   0.00008 ETH of gas. The address changes if the deployer sends any other transaction first.
+
+2. Broadcast the implementation with the deployer account:
+
+   ```powershell
+   forge script script/DeployCurveImplementation.s.sol --rpc-url $env:ROBINHOOD_TESTNET_RPC_URL --sender $env:DEPLOYER --account $account --broadcast
+   $impl = "<New curve implementation from the output>"
+   cast codehash $impl --rpc-url $env:ROBINHOOD_TESTNET_RPC_URL
+   cast call $impl "ENGINE_VERSION()(uint16)" --rpc-url $env:ROBINHOOD_TESTNET_RPC_URL
+   ```
+
+   The code hash must equal the dry-run hash and the engine version must be `1`.
+
+3. Give the timelock EOA gas for one call, then switch the engine from the timelock:
+
+   ```powershell
+   cast send $timelock --value 0.0002ether --rpc-url $env:ROBINHOOD_TESTNET_RPC_URL --account $account
+   cast send $env:LAUNCH_FACTORY "configureEngine(uint16,address,bool)" 1 $impl true --rpc-url $env:ROBINHOOD_TESTNET_RPC_URL --account $timelockAccount
+   cast call $env:LAUNCH_FACTORY "curveImplementation(uint16)(address)" 1 --rpc-url $env:ROBINHOOD_TESTNET_RPC_URL
+   cast call $env:LAUNCH_FACTORY "engineEnabled(uint16)(bool)" 1 --rpc-url $env:ROBINHOOD_TESTNET_RPC_URL
+   ```
+
+   The factory must return the new implementation and `true`.
+
+4. Update the reviewed manifest: in `contracts/deployments/robinhood-testnet-v1.json` set
+   `curveImplementation` to the new address and `bytecodeHashes.bondingCurveV1` to its code
+   hash. Copy the file byte-identically to `backend/deployments/testdata/`, regenerate the web
+   bindings, and run the gates; the indexer verifies the live implementation code hash against
+   the manifest at startup:
+
+   ```powershell
+   Copy-Item deployments/robinhood-testnet-v1.json ../backend/deployments/testdata/robinhood-testnet-v1.json
+   cd ../web; node scripts/generate-contracts.mjs
+   cd ../backend; go run ./cmd/check-deployments
+   ```
+
+   Record the implementation creation and `configureEngine` transaction hashes in the
+   change description. Restart any running indexer after the manifest change.
+
 ## Stop conditions
 
 Stop and keep the chain disabled when the RPC is not chain 46630, either dependency has no
