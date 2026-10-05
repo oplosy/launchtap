@@ -101,6 +101,15 @@ func (d *Discoverer) Discover(ctx context.Context, from, to uint64, known Emitte
 		newByBlock[log.BlockNumber] = blockSet
 	}
 
+	// Curve events have protocol-unique signatures, so one topic-only query covers every known
+	// and newly launched curve instead of one address-batched query per 500 curves. Logs from
+	// other contracts that reuse these signatures are not ours and are dropped.
+	curveLogs, err := d.fetchByTopics(ctx, from, to, d.decoder.Topics(EmitterCurve), emitters.Curves)
+	if err != nil {
+		return DiscoveryResult{}, fmt.Errorf("fetch curve logs by topic: %w", err)
+	}
+	allLogs = append(allLogs, curveLogs...)
+
 	launchBlocks := make([]uint64, 0, len(newByBlock))
 	for block := range newByBlock {
 		launchBlocks = append(launchBlocks, block)
@@ -108,7 +117,9 @@ func (d *Discoverer) Discover(ctx context.Context, from, to uint64, known Emitte
 	slices.Sort(launchBlocks)
 	for _, block := range launchBlocks {
 		fresh := newByBlock[block]
-		for _, kind := range []EmitterKind{EmitterCurve, EmitterToken, EmitterPair} {
+		// Token Transfer and pair events use standard ERC-20/Uniswap signatures, so they stay
+		// address-filtered.
+		for _, kind := range []EmitterKind{EmitterToken, EmitterPair} {
 			logs, fetchErr := d.fetch(ctx, block, to, addressesFor(fresh, kind), d.decoder.Topics(kind))
 			if fetchErr != nil {
 				return DiscoveryResult{}, fmt.Errorf("refetch discovered addresses from block %d: %w", block, fetchErr)
@@ -117,7 +128,7 @@ func (d *Discoverer) Discover(ctx context.Context, from, to uint64, known Emitte
 		}
 	}
 
-	for _, kind := range []EmitterKind{EmitterCurve, EmitterToken, EmitterPair} {
+	for _, kind := range []EmitterKind{EmitterToken, EmitterPair} {
 		logs, fetchErr := d.fetch(ctx, from, to, addressesFor(known, kind), d.decoder.Topics(kind))
 		if fetchErr != nil {
 			return DiscoveryResult{}, fmt.Errorf("fetch known emitter kind %d: %w", kind, fetchErr)
@@ -162,6 +173,35 @@ func (d *Discoverer) fetch(ctx context.Context, from, to uint64, addresses []com
 			}
 		}
 		result = append(result, logs...)
+	}
+	return result, nil
+}
+
+// fetchByTopics queries a range by event signature only and keeps logs from allowed emitters.
+// A log with a signature outside the requested set is still a provider fault and fails closed.
+func (d *Discoverer) fetchByTopics(ctx context.Context, from, to uint64, topics []common.Hash, allowed AddressSet) ([]types.Log, error) {
+	if len(allowed) == 0 || len(topics) == 0 {
+		return nil, nil
+	}
+	logs, err := d.fetchRange(ctx, from, to, nil, topics)
+	if err != nil {
+		return nil, err
+	}
+	allowedTopics := make(map[common.Hash]struct{}, len(topics))
+	for _, topic := range topics {
+		allowedTopics[topic] = struct{}{}
+	}
+	result := make([]types.Log, 0, len(logs))
+	for _, log := range logs {
+		if len(log.Topics) == 0 {
+			return nil, &LogError{Coordinates: coordinates(log), Err: fmt.Errorf("%w: missing topic0", ErrMalformedLog)}
+		}
+		if _, ok := allowedTopics[log.Topics[0]]; !ok {
+			return nil, &LogError{Coordinates: coordinates(log), Err: fmt.Errorf("%w: %s", ErrUnknownTopic, log.Topics[0])}
+		}
+		if _, ok := allowed[log.Address]; ok {
+			result = append(result, log)
+		}
 	}
 	return result, nil
 }

@@ -49,7 +49,7 @@ func (s *fixtureLogSource) FilterLogs(_ context.Context, query ethereum.FilterQu
 		if log.BlockNumber < from || log.BlockNumber > to {
 			continue
 		}
-		if _, ok := addresses[log.Address]; !ok {
+		if _, ok := addresses[log.Address]; !ok && len(query.Addresses) > 0 {
 			continue
 		}
 		if topics != nil {
@@ -136,6 +136,68 @@ func TestDiscovererCombinesRefetchPartitioningShrinkingAndOrdering(t *testing.T)
 	}
 	if source.calls < 6 {
 		t.Fatalf("RPC calls = %d, expected adaptive splitting and staged requests", source.calls)
+	}
+}
+
+type recordingLogSource struct {
+	fixtureLogSource
+	queries []ethereum.FilterQuery
+}
+
+func (s *recordingLogSource) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
+	s.queries = append(s.queries, query)
+	return s.fixtureLogSource.FilterLogs(ctx, query)
+}
+
+func TestDiscovererFetchesCurveEventsByTopicAndDropsImpostors(t *testing.T) {
+	t.Parallel()
+	_, fixtures, allEmitters := loadFixtureLogs(t)
+	decoder, _ := NewDecoder(1)
+	var trade types.Log
+	for _, log := range fixtures {
+		decoded, err := decoder.Decode(log, allEmitters)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := decoded.Value.(Trade); ok {
+			trade = log
+			break
+		}
+	}
+	if trade.Address == (common.Address{}) {
+		t.Fatal("Trade fixture missing")
+	}
+	trade.BlockNumber, trade.Index = 10, 1
+	impostor := trade
+	impostor.Address, impostor.Index = common.HexToAddress("0xbad"), 2
+	known := emptyEmitters(allEmitters.Factory)
+	known.Curves[trade.Address] = struct{}{}
+	for index := range 5 {
+		known.Curves[common.BigToAddress(big.NewInt(int64(0x1000+index)))] = struct{}{}
+	}
+	source := &recordingLogSource{fixtureLogSource: fixtureLogSource{logs: []types.Log{trade, impostor}}}
+	discoverer, err := NewDiscoverer(source, decoder, allEmitters.Factory, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := discoverer.Discover(context.Background(), 10, 10, known)
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(result.Logs) != 1 || result.Logs[0].Address != trade.Address {
+		t.Fatalf("logs = %+v, want only the known curve's trade", result.Logs)
+	}
+	curveQueries := 0
+	for _, query := range source.queries {
+		if len(query.Topics) > 0 && slices.Contains(query.Topics[0], trade.Topics[0]) {
+			curveQueries++
+			if len(query.Addresses) != 0 {
+				t.Fatalf("curve query was address-filtered: %v", query.Addresses)
+			}
+		}
+	}
+	if curveQueries != 1 {
+		t.Fatalf("curve queries = %d, want 1 for %d known curves", curveQueries, len(known.Curves))
 	}
 }
 
