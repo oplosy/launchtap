@@ -120,6 +120,52 @@ func TestClientReadsCodeLogsAndHeaderByHashFromFakeRPC(t *testing.T) {
 	}
 }
 
+func TestClientFetchesHeadersInOneBatch(t *testing.T) {
+	t.Parallel()
+	var batches atomic.Int32
+	missing := uint64(99)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var calls []rpcRequest
+		if err := json.NewDecoder(request.Body).Decode(&calls); err != nil {
+			t.Errorf("batch request was not a JSON array: %v", err)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		batches.Add(1)
+		responses := make([]map[string]any, 0, len(calls))
+		for _, call := range calls {
+			var number string
+			if call.Method != "eth_getBlockByNumber" || json.Unmarshal(call.Params[0], &number) != nil {
+				t.Errorf("unexpected batch element %+v", call)
+			}
+			parsed, _ := new(big.Int).SetString(number[2:], 16)
+			response := map[string]any{"jsonrpc": "2.0", "id": call.ID, "result": testHeader(parsed.Int64())}
+			if parsed.Uint64() == missing {
+				response["result"] = nil
+			}
+			responses = append(responses, response)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(responses)
+	}))
+	defer server.Close()
+	client, err := Dial(context.Background(), server.URL, RPCConfig{Timeout: time.Second, RetryBackoff: time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	headers, err := client.HeadersByNumbers(context.Background(), []uint64{5, 6, 7})
+	if err != nil || len(headers) != 3 || headers[0].Number.Uint64() != 5 || headers[2].Number.Uint64() != 7 {
+		t.Fatalf("HeadersByNumbers() = %v, %v", headers, err)
+	}
+	if batches.Load() != 1 {
+		t.Fatalf("batches = %d, want 1", batches.Load())
+	}
+	if _, err := client.HeadersByNumbers(context.Background(), []uint64{98, missing}); !errors.Is(err, ethereum.NotFound) {
+		t.Fatalf("missing header error = %v", err)
+	}
+}
+
 type rpcFailure struct {
 	Code    int
 	Message string
