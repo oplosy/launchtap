@@ -38,7 +38,7 @@ func ReadTokenCards(ctx context.Context, pool PoolReadBeginner, chainID int64, d
 		search := strings.ToLower(strings.TrimSpace(query.Search))
 		filters := cursorFilter(query.Phase, search)
 		if query.Cursor != nil {
-			if err := query.Cursor.ValidateRequest("tokens", query.Sort, filters, "next", snapshot.Identity); err != nil {
+			if err := query.Cursor.ValidateRequest("tokens", query.Sort, filters, "next", snapshot.Identity, adapter.canonicalCursorCheck(ctx)); err != nil {
 				return err
 			}
 		}
@@ -202,7 +202,7 @@ func (r CandleReader) List(ctx context.Context, q candle.Query) (candle.Page, er
 			}
 			args := sqlc.ListStoredCandlesParams{ChainID: q.ChainID, TokenAddress: sqlc.Address(q.Token), Interval: q.Interval, FromTime: pgtype.Timestamptz{Time: q.From, Valid: true}, ToTime: pgtype.Timestamptz{Time: q.To, Valid: true}, PageSize: int32(q.Limit)}
 			if q.Cursor != nil {
-				if err := q.Cursor.ValidateRequest("candles", q.Interval, filters, "next", s.Identity); err != nil {
+				if err := q.Cursor.ValidateRequest("candles", q.Interval, filters, "next", s.Identity, a.canonicalCursorCheck(ctx)); err != nil {
 					return err
 				}
 				if len(q.Cursor.Key) != 1 {
@@ -256,7 +256,7 @@ func ReadAggregatedCandles(ctx context.Context, pool PoolReadBeginner, chainID i
 		}
 		arg := sqlc.ListCandlesAggregatedParams{ChainID: chainID, TokenAddress: sqlc.Address(query.Token), SourceInterval: "1h", TargetInterval: query.Interval, FromTime: pgtype.Timestamptz{Time: query.From, Valid: true}, ToTime: pgtype.Timestamptz{Time: query.To, Valid: true}, PageSize: int32(query.Limit)}
 		if query.Cursor != nil {
-			if err := query.Cursor.ValidateRequest("candles", query.Interval, filters, "next", snapshot.Identity); err != nil {
+			if err := query.Cursor.ValidateRequest("candles", query.Interval, filters, "next", snapshot.Identity, adapter.canonicalCursorCheck(ctx)); err != nil {
 				return err
 			}
 			if len(query.Cursor.Key) != 1 {

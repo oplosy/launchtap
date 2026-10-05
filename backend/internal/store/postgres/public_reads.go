@@ -118,7 +118,7 @@ func (r MarketReader) ListTrades(ctx context.Context, q trading.Query) (trading.
 		}
 		args := sqlc.ListMarketTradesParams{ChainID: q.ChainID, TokenAddress: sqlc.Address(q.Token), PageSize: int32(q.Limit)}
 		if q.Cursor != nil {
-			if err := q.Cursor.ValidateRequest("trades", "newest", filters, "next", s.Identity); err != nil {
+			if err := q.Cursor.ValidateRequest("trades", "newest", filters, "next", s.Identity, a.canonicalCursorCheck(ctx)); err != nil {
 				return err
 			}
 			if len(q.Cursor.Key) != 3 {
@@ -179,7 +179,7 @@ func (r MarketReader) ListHolders(ctx context.Context, q holder.Query) (holder.P
 		}
 		args := sqlc.ListTokenHoldersParams{ChainID: q.ChainID, TokenAddress: sqlc.Address(q.Token), PageSize: int32(q.Limit)}
 		if q.Cursor != nil {
-			if err := q.Cursor.ValidateRequest("holders", "balance", filters, "next", s.Identity); err != nil {
+			if err := q.Cursor.ValidateRequest("holders", "balance", filters, "next", s.Identity, a.canonicalCursorCheck(ctx)); err != nil {
 				return err
 			}
 			if len(q.Cursor.Key) != 2 || !common.IsHexAddress(q.Cursor.Key[1]) {

@@ -1,5 +1,4 @@
 import { ApiProblem } from "@/api/problems";
-import { snapshotIdentity, type Snapshot } from "@/api/types";
 import type { CandleResponse, HoldersResponse, TradesResponse } from "@/api/client";
 
 export type TokenCollection = TradesResponse | HoldersResponse;
@@ -8,7 +7,17 @@ export type TokenCollectionFetcher = (
   signal?: AbortSignal,
 ) => Promise<TokenCollection>;
 
-/** Keep a tab's pages on one snapshot; a cursor error or snapshot drift starts page one again. */
+type CollectionItem = NonNullable<TokenCollection["items"]>[number];
+
+function collectionItemKey(item: CollectionItem) {
+  return "tx_hash" in item ? `${item.tx_hash}:${item.log_index}` : item.address.toLowerCase();
+}
+
+/**
+ * Append one keyset page. The indexer tip advancing between pages is expected and keeps the
+ * accumulated pages; only a reorg-invalidated or malformed cursor starts page one again. Rows
+ * that moved across the page boundary while the tip advanced are dropped as duplicates.
+ */
 export async function appendTokenCollectionPage(
   fetchPage: TokenCollectionFetcher,
   pages: TokenCollection[],
@@ -16,7 +25,6 @@ export async function appendTokenCollectionPage(
   signal?: AbortSignal,
 ) {
   let response: TokenCollection;
-  let reset = false;
   try {
     response = await fetchPage(cursor, signal);
   } catch (cause) {
@@ -25,18 +33,12 @@ export async function appendTokenCollectionPage(
       !["cursor_invalidated", "invalid_cursor"].includes(cause.code)
     )
       throw cause;
-    response = await fetchPage(undefined, signal);
-    reset = true;
-  }
-  const currentSnapshot: Snapshot | undefined = pages[0]?.snapshot;
-  if (
-    !reset &&
-    currentSnapshot &&
-    snapshotIdentity(currentSnapshot) !== snapshotIdentity(response.snapshot)
-  ) {
     return { pages: [await fetchPage(undefined, signal)], reset: true };
   }
-  return { pages: reset ? [response] : [...pages, response], reset };
+  const itemsOf = (page: TokenCollection): CollectionItem[] => page.items ?? [];
+  const seen = new Set(pages.flatMap((page) => itemsOf(page).map(collectionItemKey)));
+  const items = itemsOf(response).filter((item) => !seen.has(collectionItemKey(item)));
+  return { pages: [...pages, { ...response, items } as TokenCollection], reset: false };
 }
 
 export function collectionItems(response: TokenCollection | CandleResponse | undefined) {
