@@ -336,7 +336,8 @@ export function decodeTransactionError(cause: unknown): DecodedTransactionError 
     DeadlineExpired: "The deadline expired. Refresh the quote and try again.",
     LaunchValueMismatch: "The launch value changed. Refresh the factory fee and try again.",
     LaunchesPaused: "Launching is paused by the reviewed deployment.",
-    TradingPaused: "Trading is paused by the reviewed deployment.",
+    TradingPaused: "Buying is paused by the reviewed deployment. Selling remains available.",
+    InvalidRecipient: "Tokens cannot be sent to the curve or its liquidity pair.",
     WrongPhase: "This token changed phase. Refresh the token before trading.",
     SlippageExceeded:
       "Price moved beyond your slippage limit. Increase the limit only if you accept the risk.",

@@ -572,6 +572,22 @@ export const browserAbis = {
     },
     {
       "type": "error",
+      "name": "InvalidRecipient",
+      "inputs": [
+        {
+          "name": "field",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "recipient",
+          "type": "address",
+          "internalType": "address"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "InvalidSupplyAllocation",
       "inputs": [
         {
@@ -1030,8 +1046,46 @@ export const browserAbis = {
     },
     {
       "type": "function",
+      "name": "claimCreatorFeesTo",
+      "inputs": [
+        {
+          "name": "recipient",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "amount",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
       "name": "claimRefund",
       "inputs": [],
+      "outputs": [
+        {
+          "name": "amount",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "claimRefundTo",
+      "inputs": [
+        {
+          "name": "recipient",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
       "outputs": [
         {
           "name": "amount",
@@ -1349,6 +1403,22 @@ export const browserAbis = {
         },
         {
           "name": "authority",
+          "type": "address",
+          "internalType": "address"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "InvalidRecipient",
+      "inputs": [
+        {
+          "name": "field",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "recipient",
           "type": "address",
           "internalType": "address"
         }

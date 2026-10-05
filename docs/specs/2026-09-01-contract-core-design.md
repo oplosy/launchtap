@@ -37,7 +37,7 @@ Responsibilities:
 - Clones a curve, deploys a token, obtains the canonical Uniswap v2 pair, initializes the
   launch atomically, and optionally executes the developer buy.
 - Emits the complete launch snapshot.
-- Exposes separate emergency pause flags for new launches and curve trading.
+- Exposes separate emergency pause flags for new launches and curve buying.
 
 Launch event ordering is fixed: token construction and its initial `Transfer(0, curve, S)`
 may occur first; the factory then wires the canonical pair into the token
@@ -235,7 +235,9 @@ function.
 - Launch fees accrue in the factory and are withdrawn by the snapshotted protocol treasury.
 - Creator and protocol trade fees accrue separately in each curve clone.
 - `claimCreatorFees`, `claimProtocolFees`, and `claimRefund` use pull payment, checks-effects-
-  interactions, and reentrancy protection.
+  interactions, and reentrancy protection. `claimCreatorFeesTo` and `claimRefundTo` let the
+  same authorized caller pay out to another address, so an account that cannot receive ETH
+  does not lose its balance; the claim events still name the credited account.
 - Claims remain available while launches or trading are paused and after graduation.
 - Claim failure affects only that claim. It cannot make buy, sell, or graduation unavailable.
 - V1 takes no fee from the post-graduation Uniswap market.
@@ -255,6 +257,11 @@ Before graduation the curve verifies:
 - Pair `totalSupply == 0`.
 - The pair's launched-token reserve and balance are zero. The token's transfer restriction
   makes a nonzero value an invariant violation.
+
+Curve-operated transfers are exempt from the token restriction, so `buy`/`buyFor` reject the
+canonical pair and the curve itself as `tokenRecipient` (`InvalidRecipient`). Without this,
+a dust buy delivered to the pair could never be skimmed and would make every final buy revert
+with `PairTokenBalanceNotZero`, freezing graduation permanently (2026-10-05 review).
 
 A third party can donate WETH to an empty pair and call `sync`. Such a donation cannot be
 withdrawn through this launch and does not reduce launch-owned funds. V1 accepts the donation
@@ -356,7 +363,9 @@ auditability but are not part of V1 market aggregation.
 ## 8. Administration and emergency behavior
 
 - Immediate pause authority: a multisig. `pauseLaunches` blocks launch creation;
-  `pauseTrading` blocks buys and sells. Neither flag blocks fee/refund claims.
+  `pauseTrading` blocks buys (including the developer buy) but never sells, so holders can
+  always exit to the curve while an incident is handled (product decision 2026-10-05).
+  Neither flag blocks fee/refund claims.
 - Timelock authority: future defaults, enabling a new engine implementation, and future
   launch treasury configuration.
 - Existing clone parameters and implementation are immutable by interface. There is no

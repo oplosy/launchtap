@@ -28,6 +28,7 @@ contract BondingCurveV1 is BondingCurveV1Storage, ILaunchErrors, ILaunchEvents {
     bytes32 private constant FIELD_TOKEN_RECIPIENT = "tokenRecipient";
     bytes32 private constant FIELD_REFUND_RECIPIENT = "refundRecipient";
     bytes32 private constant FIELD_ETH_RECIPIENT = "ethRecipient";
+    bytes32 private constant FIELD_CLAIM_RECIPIENT = "claimRecipient";
 
     constructor() {
         _implementation = address(this);
@@ -112,7 +113,9 @@ contract BondingCurveV1 is BondingCurveV1Storage, ILaunchErrors, ILaunchEvents {
         nonReentrant
         returns (uint256 ethOut)
     {
-        _requireTradingAllowed(deadline);
+        // Sells stay open while trading is paused so holders can always exit to the curve.
+        _requireCurvePhase();
+        _requireDeadline(deadline);
         _validateAddress(ethRecipient, FIELD_ETH_RECIPIENT);
 
         CurveMath.SellQuote memory quote = _quoteSell(tokensIn);
@@ -146,12 +149,16 @@ contract BondingCurveV1 is BondingCurveV1Storage, ILaunchErrors, ILaunchEvents {
 
     function claimCreatorFees() external nonReentrant returns (uint256 amount) {
         if (msg.sender != _creator) revert UnauthorizedCreatorClaim(msg.sender, _creator);
-        amount = _unclaimedCreatorFees;
-        if (amount == 0) revert NothingToClaim();
-
-        _unclaimedCreatorFees = 0;
-        emit CreatorFeesClaimed(_token, _creator, amount);
+        amount = _takeCreatorFees();
         _sendClaim(_creator, amount);
+        _assertAccountingInvariant();
+    }
+
+    function claimCreatorFeesTo(address recipient) external nonReentrant returns (uint256 amount) {
+        if (msg.sender != _creator) revert UnauthorizedCreatorClaim(msg.sender, _creator);
+        _validateAddress(recipient, FIELD_CLAIM_RECIPIENT);
+        amount = _takeCreatorFees();
+        _sendClaim(recipient, amount);
         _assertAccountingInvariant();
     }
 
@@ -169,13 +176,16 @@ contract BondingCurveV1 is BondingCurveV1Storage, ILaunchErrors, ILaunchEvents {
     }
 
     function claimRefund() external nonReentrant returns (uint256 amount) {
-        amount = _pendingRefunds[msg.sender];
-        if (amount == 0) revert NothingToClaim();
-
-        _pendingRefunds[msg.sender] = 0;
-        _totalPendingRefunds -= amount;
-        emit RefundClaimed(_token, msg.sender, amount);
+        amount = _takeRefund(msg.sender);
         _sendClaim(msg.sender, amount);
+        _assertAccountingInvariant();
+    }
+
+    /// @notice Pays the caller's credited refund to another address; the event names the caller.
+    function claimRefundTo(address recipient) external nonReentrant returns (uint256 amount) {
+        _validateAddress(recipient, FIELD_CLAIM_RECIPIENT);
+        amount = _takeRefund(msg.sender);
+        _sendClaim(recipient, amount);
         _assertAccountingInvariant();
     }
 
@@ -273,6 +283,23 @@ contract BondingCurveV1 is BondingCurveV1Storage, ILaunchErrors, ILaunchEvents {
         return CurveMath.tokensSold(_initialVirtualToken, _virtualTokenReserve);
     }
 
+    function _takeCreatorFees() private returns (uint256 amount) {
+        amount = _unclaimedCreatorFees;
+        if (amount == 0) revert NothingToClaim();
+
+        _unclaimedCreatorFees = 0;
+        emit CreatorFeesClaimed(_token, _creator, amount);
+    }
+
+    function _takeRefund(address account) private returns (uint256 amount) {
+        amount = _pendingRefunds[account];
+        if (amount == 0) revert NothingToClaim();
+
+        _pendingRefunds[account] = 0;
+        _totalPendingRefunds -= amount;
+        emit RefundClaimed(_token, account, amount);
+    }
+
     function _buy(
         address trader,
         address tokenRecipient,
@@ -282,6 +309,11 @@ contract BondingCurveV1 is BondingCurveV1Storage, ILaunchErrors, ILaunchEvents {
     ) private returns (uint256 tokensOut, uint256 ethGrossUsed) {
         _requireTradingAllowed(deadline);
         _validateAddress(tokenRecipient, FIELD_TOKEN_RECIPIENT);
+        // Curve-operated transfers bypass the token's pair restriction, so tokens sent to the
+        // pair here could never be skimmed and would block graduation permanently.
+        if (tokenRecipient == _lpPair || tokenRecipient == address(this)) {
+            revert InvalidRecipient(FIELD_TOKEN_RECIPIENT, tokenRecipient);
+        }
         _validateAddress(refundRecipient, FIELD_REFUND_RECIPIENT);
 
         CurveMath.BuyQuote memory quote = _quoteBuy(msg.value);
@@ -470,6 +502,10 @@ contract BondingCurveV1 is BondingCurveV1Storage, ILaunchErrors, ILaunchEvents {
     function _requireTradingAllowed(uint256 deadline) private view {
         _requireCurvePhase();
         if (ILaunchPause(_factory).tradingPaused()) revert TradingPaused();
+        _requireDeadline(deadline);
+    }
+
+    function _requireDeadline(uint256 deadline) private view {
         // Deadlines intentionally use the canonical EVM transaction timestamp.
         // forge-lint: disable-next-line(block-timestamp)
         if (block.timestamp > deadline) revert DeadlineExpired(deadline, block.timestamp);
