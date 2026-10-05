@@ -177,6 +177,10 @@ sql:
             go_type: {type: "Uint256"}
           - column: "*.volume_24h_eth_wad"
             go_type: {type: "Uint256"}
+          - column: "tokens.sort_market_cap_eth_wad"
+            go_type: {type: "Uint256"}
+          - column: "tokens.sort_volume_24h_eth_wad"
+            go_type: {type: "Uint256"}
           - column: "*.volume_eth_wad"
             go_type: {type: "Uint256"}
           - column: "*.volume_all_time_eth_wad"
