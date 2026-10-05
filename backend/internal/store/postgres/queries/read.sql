@@ -35,9 +35,11 @@ WHERE t.chain_id = sqlc.arg(chain_id) AND t.phase = sqlc.arg(phase)
   AND (sqlc.narg(after_block)::bigint IS NULL OR (t.launch_block_number, t.token_address) > (sqlc.narg(after_block)::bigint, sqlc.narg(after_address)::bytea))
 ORDER BY t.launch_block_number ASC, t.token_address ASC LIMIT sqlc.arg(page_size)::integer;
 
+-- Metric sorts walk tokens_phase_*_cursor_idx; the sort columns mirror token_stats (0 when
+-- no stats row exists) through triggers, see migration 00014.
 -- name: ListTokenCardsMarketCap :many
 SELECT t.token_address, t.name, t.symbol, t.phase, t.launch_block_number, t.launch_block_time, t.total_supply,
-       COALESCE(s.market_cap_eth_wad, 0::numeric) AS market_cap_eth_wad, COALESCE(s.volume_24h_eth_wad, 0::numeric) AS volume_24h_eth_wad,
+       t.sort_market_cap_eth_wad AS market_cap_eth_wad, t.sort_volume_24h_eth_wad AS volume_24h_eth_wad,
        COALESCE(s.holder_count, 0)::BIGINT AS holder_count, m.description, m.image_url, m.x_url, m.telegram_url, t.launch_block_hash
 FROM tokens AS t
 LEFT JOIN token_metadata AS m ON m.chain_id = t.chain_id AND m.token_address = t.token_address
@@ -45,12 +47,12 @@ LEFT JOIN token_metadata AS m ON m.chain_id = t.chain_id AND m.token_address = t
 LEFT JOIN token_stats AS s ON s.chain_id = t.chain_id AND s.token_address = t.token_address
 WHERE t.chain_id = sqlc.arg(chain_id) AND t.phase = sqlc.arg(phase)
   AND (sqlc.arg(search)::text = '' OR lower(t.name) LIKE lower(sqlc.arg(search)::text) || '%' OR lower(t.symbol) LIKE lower(sqlc.arg(search)::text) || '%' OR encode(t.token_address, 'hex') = lower(CASE WHEN left(sqlc.arg(search)::text,2)='0x' THEN substr(sqlc.arg(search)::text,3) ELSE sqlc.arg(search)::text END))
-  AND (sqlc.narg(after_metric)::numeric IS NULL OR (COALESCE(s.market_cap_eth_wad,0::numeric), t.token_address) < (sqlc.narg(after_metric)::numeric, sqlc.narg(after_address)::bytea))
-ORDER BY COALESCE(s.market_cap_eth_wad,0::numeric) DESC, t.token_address DESC LIMIT sqlc.arg(page_size)::integer;
+  AND (sqlc.narg(after_metric)::numeric IS NULL OR (t.sort_market_cap_eth_wad, t.token_address) < (sqlc.narg(after_metric)::numeric, sqlc.narg(after_address)::bytea))
+ORDER BY t.sort_market_cap_eth_wad DESC, t.token_address DESC LIMIT sqlc.arg(page_size)::integer;
 
 -- name: ListTokenCardsVolume :many
 SELECT t.token_address, t.name, t.symbol, t.phase, t.launch_block_number, t.launch_block_time, t.total_supply,
-       COALESCE(s.market_cap_eth_wad, 0::numeric) AS market_cap_eth_wad, COALESCE(s.volume_24h_eth_wad, 0::numeric) AS volume_24h_eth_wad,
+       t.sort_market_cap_eth_wad AS market_cap_eth_wad, t.sort_volume_24h_eth_wad AS volume_24h_eth_wad,
        COALESCE(s.holder_count, 0)::BIGINT AS holder_count, m.description, m.image_url, m.x_url, m.telegram_url, t.launch_block_hash
 FROM tokens AS t
 LEFT JOIN token_metadata AS m ON m.chain_id = t.chain_id AND m.token_address = t.token_address
@@ -58,8 +60,8 @@ LEFT JOIN token_metadata AS m ON m.chain_id = t.chain_id AND m.token_address = t
 LEFT JOIN token_stats AS s ON s.chain_id = t.chain_id AND s.token_address = t.token_address
 WHERE t.chain_id = sqlc.arg(chain_id) AND t.phase = sqlc.arg(phase)
   AND (sqlc.arg(search)::text = '' OR lower(t.name) LIKE lower(sqlc.arg(search)::text) || '%' OR lower(t.symbol) LIKE lower(sqlc.arg(search)::text) || '%' OR encode(t.token_address, 'hex') = lower(CASE WHEN left(sqlc.arg(search)::text,2)='0x' THEN substr(sqlc.arg(search)::text,3) ELSE sqlc.arg(search)::text END))
-  AND (sqlc.narg(after_metric)::numeric IS NULL OR (COALESCE(s.volume_24h_eth_wad,0::numeric), t.token_address) < (sqlc.narg(after_metric)::numeric, sqlc.narg(after_address)::bytea))
-ORDER BY COALESCE(s.volume_24h_eth_wad,0::numeric) DESC, t.token_address DESC LIMIT sqlc.arg(page_size)::integer;
+  AND (sqlc.narg(after_metric)::numeric IS NULL OR (t.sort_volume_24h_eth_wad, t.token_address) < (sqlc.narg(after_metric)::numeric, sqlc.narg(after_address)::bytea))
+ORDER BY t.sort_volume_24h_eth_wad DESC, t.token_address DESC LIMIT sqlc.arg(page_size)::integer;
 
 -- name: ListCandlesAggregated :many
 -- Each row is keyed by its UTC-aligned group start (not the first stored source bucket), so
