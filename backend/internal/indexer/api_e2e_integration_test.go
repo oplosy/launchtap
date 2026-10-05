@@ -15,6 +15,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	stdimage "image"
+	"image/png"
 	"io"
 	"math/big"
 	"net/http"
@@ -142,8 +144,11 @@ func exercisePlan3API(t *testing.T, ctx context.Context, database *postgrestest.
 	assertStatus(t, http.MethodPut, httpServer.URL+"/v1/tokens/"+tokenAddress.Hex()+"/metadata", strings.NewReader(`{"description":"Anvil metadata","x_url":"https://x.com/anvil"}`), headers, http.StatusOK)
 	readStreamUntil(t, eventsReader, tokenAddress.Hex(), time.Second)
 	imageHeaders := map[string]string{"Authorization": "Bearer " + access, "privy-id-token": identity, "If-Match": "0", "Content-Type": "image/png"}
-	image := append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{1}, 32)...)
-	assertStatus(t, http.MethodPut, httpServer.URL+"/v1/tokens/"+tokenAddress.Hex()+"/image", bytes.NewReader(image), imageHeaders, http.StatusOK)
+	var image bytes.Buffer
+	if err := png.Encode(&image, stdimage.NewGray(stdimage.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	assertStatus(t, http.MethodPut, httpServer.URL+"/v1/tokens/"+tokenAddress.Hex()+"/image", bytes.NewReader(image.Bytes()), imageHeaders, http.StatusOK)
 	assertStatus(t, http.MethodGet, httpServer.URL+"/v1/tokens/"+tokenAddress.Hex()+"/image", nil, nil, http.StatusOK)
 
 	var reverted bool
