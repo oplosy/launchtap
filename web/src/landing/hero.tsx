@@ -2,10 +2,16 @@
 
 import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
+import { ArrowDown, ArrowRight } from "@phosphor-icons/react";
 import { CurveInstrument } from "./curve-instrument";
 
 const HEADLINE = ["One curve", "from launch", "to liquidity."];
-const FACTS = ["1B fixed supply", "1% curve fee", "Graduates at 4.2 ETH", "Initial LP burned"];
+const FACTS = [
+  { value: "1B", label: "Fixed supply, minted once" },
+  { value: "1%", label: "Fee on every curve trade" },
+  { value: "4.2 ETH", label: "Raised to graduate" },
+  { value: "100%", label: "Of the initial LP burned" },
+];
 const ease = [0.22, 1, 0.36, 1] as const;
 
 export function Hero() {
@@ -16,50 +22,53 @@ export function Hero() {
       : {
           initial: { opacity: 0, y: 18 },
           animate: { opacity: 1, y: 0 },
-          transition: { duration: 0.8, delay, ease },
+          transition: { duration: 0.9, delay, ease },
         };
   return (
     <section className="landing-hero" aria-labelledby="landing-title">
       <div className="landing-hero-copy">
-        <motion.p className="section-kicker" {...rise(0)}>
-          Fixed supply · Robinhood Chain
-        </motion.p>
         <h1 id="landing-title" className="landing-title">
           {HEADLINE.map((line, index) => (
             <span className="landing-title-line" key={line}>
               <motion.span
                 className="landing-title-inner"
-                initial={reduce ? false : { y: "105%" }}
+                initial={reduce ? false : { y: "110%" }}
                 animate={{ y: "0%" }}
-                transition={{ duration: 1, delay: 0.08 + index * 0.09, ease }}
+                transition={{ duration: 1.1, delay: 0.1 + index * 0.1, ease }}
               >
                 {line}
               </motion.span>
             </span>
           ))}
         </h1>
-        <motion.p className="landing-lede" {...rise(0.35)}>
-          Every token starts with a fixed 1B supply and an 800M bonding curve. At 4.2 ETH it
-          graduates to a Uniswap v2 pool and the initial LP position is burned. Your wallet signs
-          every step.
+        <motion.p className="landing-lede" {...rise(0.4)}>
+          Every token starts with a fixed 1B supply on a public bonding curve. At 4.2 ETH it
+          graduates to Uniswap v2 and its initial liquidity is burned. Your wallet signs every step.
         </motion.p>
-        <motion.div className="landing-actions" {...rise(0.45)}>
+        <motion.div className="landing-actions" {...rise(0.5)}>
           <Link className="ui-button ui-button-primary ui-button-lg" href="/create">
-            Create a launch
+            <span>
+              Create a launch <ArrowRight size={16} aria-hidden="true" />
+            </span>
           </Link>
-          <a className="ui-button ui-button-quiet ui-button-lg landing-jump" href="#launches">
-            Browse launches <span aria-hidden="true">↓</span>
+          <a className="ui-button ui-button-secondary ui-button-lg landing-jump" href="#launches">
+            <span>
+              Explore launches <ArrowDown size={16} aria-hidden="true" />
+            </span>
           </a>
         </motion.div>
       </div>
-      <motion.div className="landing-hero-visual" {...rise(0.25)}>
+      <motion.div className="landing-hero-visual" {...rise(0.3)}>
         <CurveInstrument />
       </motion.div>
-      <motion.ul className="landing-facts" aria-label="Protocol parameters" {...rise(0.6)}>
+      <motion.dl className="landing-facts" aria-label="Protocol parameters" {...rise(0.65)}>
         {FACTS.map((fact) => (
-          <li key={fact}>{fact}</li>
+          <div key={fact.label}>
+            <dt>{fact.label}</dt>
+            <dd>{fact.value}</dd>
+          </div>
         ))}
-      </motion.ul>
+      </motion.dl>
     </section>
   );
 }
