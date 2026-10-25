@@ -39,6 +39,7 @@ export function CurveInstrument() {
   const multiple = useTransform(point, (value) => `${priceMultiple(value).toFixed(2)}×`);
   const percent = useTransform(point, (value) => `${Math.round(value.progress * 100)}%`);
   const progress = useTransform(point, (value) => value.progress);
+  const graduated = useTransform(progress, [0.96, 1], [0, 1]);
   const frame = useRef<HTMLElement>(null);
   const inView = useInView(frame);
   const reduce = useReducedMotion();
@@ -161,6 +162,12 @@ export function CurveInstrument() {
           </g>
           <motion.line className="curve-cross" x1={x} x2={x} y1={y} y2={PLOT_H} />
           <motion.line className="curve-cross" x1={0} x2={x} y1={y} y2={y} />
+          <motion.g className="curve-graduated" style={{ opacity: graduated }}>
+            <rect x={PLOT_W - 92} y={-2} width={84} height={22} rx={11} />
+            <text x={PLOT_W - 50} y={13} textAnchor="middle">
+              graduated
+            </text>
+          </motion.g>
           <motion.circle className="curve-dot-halo" cx={x} cy={y} r={14} />
           <motion.circle className="curve-dot" cx={x} cy={y} r={5} />
         </g>

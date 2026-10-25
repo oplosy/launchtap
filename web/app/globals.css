@@ -2633,3 +2633,13 @@ h3 {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
+.curve-graduated rect {
+  fill: var(--accent);
+}
+.curve-graduated text {
+  fill: var(--accent-ink);
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
