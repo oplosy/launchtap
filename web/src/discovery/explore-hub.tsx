@@ -1,11 +1,13 @@
 import { Suspense } from "react";
+import { Hero } from "@/landing/hero";
 import { TokenDiscovery } from "./token-discovery";
 
 export function ExploreHub() {
   return (
     <div className="page-stack explore-hub">
-      <section className="explore-intro" aria-labelledby="explore-title">
-        <h1 id="explore-title">Explore launches.</h1>
+      <Hero />
+      <section className="explore-intro" id="launches" aria-labelledby="explore-title">
+        <h2 id="explore-title">Explore launches.</h2>
         <p>Search graduated tokens, then follow active launches moving toward liquidity.</p>
       </section>
       <Suspense fallback={<ExploreFallback label="Loading graduated tokens…" />}>
