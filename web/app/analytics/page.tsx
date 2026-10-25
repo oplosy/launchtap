@@ -219,7 +219,7 @@ function Metric({ label, value }: { label: string; value: string }) {
           {/* Characters roll in one by one; the string is never parsed back into a number. */}
           {[...value].map((char, index) => (
             <span key={index} aria-hidden="true" style={{ "--i": index } as React.CSSProperties}>
-              {char === " " ? "00a0" : char}
+              {char === " " ? " " : char}
             </span>
           ))}
         </dd>
