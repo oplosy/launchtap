@@ -136,6 +136,9 @@ export default function AnalyticsPage() {
               <span className="mono">{daily.items?.length ?? 0} days · ETH only</span>
             </div>
             {daily.items?.length ? (
+              <VolumeChart items={daily.items} />
+            ) : null}
+            {daily.items?.length ? (
               <div className="analytics-table" role="table">
                 <div className="analytics-row analytics-heading" role="row">
                   <span>Day</span>
@@ -172,6 +175,38 @@ export default function AnalyticsPage() {
           description="No reviewed API deployment is connected. No sample market values are shown."
         />
       ) : null}
+    </div>
+  );
+}
+
+type DailyItem = NonNullable<ProtocolDailyResponse["items"]>[number];
+
+/** Bar heights are BigInt ratios against the busiest day; the table below stays the data source. */
+function VolumeChart({ items }: { items: DailyItem[] }) {
+  const ordered = [...items].sort((a, b) => a.day.localeCompare(b.day));
+  const volumes = ordered.map((item) => {
+    try {
+      return BigInt(item.volume_eth);
+    } catch {
+      return 0n;
+    }
+  });
+  const max = volumes.reduce((top, value) => (value > top ? value : top), 0n);
+  return (
+    <div className="volume-chart" aria-hidden="true">
+      {ordered.map((item, index) => {
+        const height = max === 0n ? 0 : Number(((volumes[index] ?? 0n) * 1000n) / max) / 10;
+        return (
+          <div
+            className="volume-bar"
+            key={item.day}
+            data-tip={`${item.day} · ${eth(item.volume_eth)}`}
+            style={{ "--h": `${height}%`, "--i": index } as React.CSSProperties}
+          >
+            <span />
+          </div>
+        );
+      })}
     </div>
   );
 }
