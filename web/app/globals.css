@@ -604,13 +604,20 @@ h3 {
   text-transform: uppercase;
   white-space: nowrap;
 }
-.ui-badge-success,
 .ui-badge-warning,
-.ui-badge-danger,
 .ui-badge-accent {
   border-color: var(--line-bright);
   color: var(--text);
-  background: rgba(255, 255, 255, 0.11);
+  background: var(--surface-strong);
+}
+.ui-badge-success {
+  border-color: color-mix(in srgb, var(--accent-text) 45%, transparent);
+  color: var(--accent-text);
+  background: var(--accent-wash);
+}
+.ui-badge-danger {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  color: var(--danger);
 }
 .ui-field {
   display: grid;
@@ -628,15 +635,12 @@ h3 {
   border-radius: var(--radius-sm);
   outline: 0;
   color: var(--text);
-  background: rgba(0, 0, 0, 0.14);
+  background: var(--canvas-soft);
   padding: 0 14px;
   transition:
-    border 0.2s ease,
-    background 0.2s ease,
-    box-shadow 0.2s ease;
-}
-html[data-theme="light"] .ui-input {
-  background: rgba(255, 255, 255, 0.18);
+    border-color 0.25s var(--ease-out),
+    background 0.25s var(--ease-out),
+    box-shadow 0.25s var(--ease-out);
 }
 .ui-input::placeholder {
   color: var(--text-faint);
@@ -645,9 +649,12 @@ html[data-theme="light"] .ui-input {
   border-color: var(--line-bright);
 }
 .ui-input:focus {
-  border-color: var(--text-soft);
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.06);
+  border-color: var(--accent-text);
+  background: var(--canvas);
+  box-shadow: 0 0 0 4px var(--accent-wash);
+}
+.ui-input-error {
+  border-color: var(--danger);
 }
 .ui-textarea {
   min-height: 130px;
