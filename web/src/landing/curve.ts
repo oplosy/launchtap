@@ -31,6 +31,12 @@ export function curveAt(ethRaised: number): CurvePoint {
   };
 }
 
+/** Inverse of curveAt for a share (0..1) of the curve allocation sold. */
+export function ethForSoldShare(share: number) {
+  const sold = Math.min(Math.max(share, 0), 1) * CURVE_TOKENS;
+  return K / (Y0 - sold) - X0;
+}
+
 /** Price relative to the launch price, so the chart's y axis runs 1× → graduation multiple. */
 export function priceMultiple(point: CurvePoint) {
   return point.priceEth / curveAt(0).priceEth;

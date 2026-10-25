@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { CURVE_TOKENS, GRADUATION_ETH, chartCoordinates, curveAt, priceMultiple } from "./curve";
+import {
+  CURVE_TOKENS,
+  GRADUATION_ETH,
+  chartCoordinates,
+  curveAt,
+  ethForSoldShare,
+  priceMultiple,
+} from "./curve";
 
 describe("landing curve", () => {
   it("sells exactly the curve allocation at graduation", () => {
@@ -9,6 +16,13 @@ describe("landing curve", () => {
 
   it("ends at the 16x price multiple implied by x0 = 1.4 ETH", () => {
     expect(priceMultiple(curveAt(GRADUATION_ETH))).toBeCloseTo(16, 6);
+  });
+
+  it("inverts tokens sold back to ETH raised", () => {
+    expect(ethForSoldShare(0)).toBeCloseTo(0, 9);
+    expect(ethForSoldShare(1)).toBeCloseTo(GRADUATION_ETH, 9);
+    const eth = ethForSoldShare(0.5);
+    expect(curveAt(eth).tokensSold / CURVE_TOKENS).toBeCloseTo(0.5, 9);
   });
 
   it("clamps outside the curve range and maps endpoints to the chart corners", () => {
