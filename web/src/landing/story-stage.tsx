@@ -25,10 +25,10 @@ export function StoryStage({ progress }: { progress: MotionValue<number> }) {
   const pool = useTransform(progress, [0.76, 0.82], [0, 1]);
   const ethCoinX = useTransform(progress, [0.78, 0.88], [60, 228]);
   const tokenCoinX = useTransform(progress, [0.78, 0.88], [500, 332]);
-  const lpOpacity = useTransform(progress, [0.86, 0.9, 0.95, 0.99], [0, 1, 1, 0]);
-  const lpY = useTransform(progress, [0.88, 0.96], [300, 396]);
+  const lpOpacity = useTransform(progress, [0.86, 0.89, 0.93, 0.95], [0, 1, 1, 0]);
+  const lpY = useTransform(progress, [0.87, 0.93], [300, 396]);
   const burnBox = useTransform(progress, [0.84, 0.9], [0, 1]);
-  const burned = useTransform(progress, [0.95, 0.99], [0, 1]);
+  const burned = useTransform(progress, [0.94, 0.98], [0, 1]);
   const unburned = useTransform(burned, (value) => 1 - value);
   const ethLabel = useTransform(eth, (value) => `${value.toFixed(2)} ETH`);
   return (

@@ -24,6 +24,7 @@
   --accent-ink: #0a0a09;
   --accent-text: #d4ff3a;
   --accent-wash: rgba(212, 255, 58, 0.08);
+  --accent-line: #d4ff3a;
   --danger: #ff7a66;
   --radius-xl: 24px;
   --radius-lg: 16px;
@@ -55,6 +56,7 @@ html[data-theme="light"] {
   --accent-ink: #121210;
   --accent-text: #4a6400;
   --accent-wash: rgba(110, 150, 0, 0.1);
+  --accent-line: #7a9e00;
   --danger: #c2391f;
 }
 
@@ -199,7 +201,7 @@ html[data-theme="light"] :focus-visible {
   stroke-dasharray: 1;
 }
 .brand-mark-dot {
-  fill: var(--accent);
+  fill: var(--accent-line);
   transition: transform 0.5s var(--ease-out);
   transform-origin: 26px 7px;
 }
@@ -2662,7 +2664,7 @@ h3 {
   stroke-width: 1.5;
 }
 .curve-line {
-  stroke: var(--accent);
+  stroke: var(--accent-line);
   stroke-width: 2.5;
 }
 .curve-cross {
@@ -2671,7 +2673,7 @@ h3 {
   opacity: 0.6;
 }
 .curve-dot {
-  fill: var(--accent);
+  fill: var(--accent-line);
   stroke: var(--canvas);
   stroke-width: 2;
 }
@@ -2863,11 +2865,11 @@ h3 {
   stroke-dasharray: 2 5;
 }
 .story-curve {
-  stroke: var(--accent);
+  stroke: var(--accent-line);
   stroke-width: 3;
 }
 .story-dot {
-  fill: var(--accent);
+  fill: var(--accent-line);
   stroke: var(--canvas);
   stroke-width: 3;
 }
