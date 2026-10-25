@@ -11,7 +11,8 @@ export function RouteTransition({ children }: { children: React.ReactNode }) {
       <motion.div
         key={pathname}
         initial={reduce ? false : { opacity: 0, y: 14, filter: "blur(6px)" }}
-        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+        // A lingering filter would become the containing block for fixed/sticky descendants.
+        animate={{ opacity: 1, y: 0, filter: "blur(0px)", transitionEnd: { filter: "none" } }}
         exit={reduce ? undefined : { opacity: 0, y: -6, transition: { duration: 0.14 } }}
         transition={{ duration: reduce ? 0 : 0.5, ease: [0.22, 1, 0.36, 1] }}
       >
