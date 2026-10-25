@@ -1,0 +1,212 @@
+/* Wallet actions: trade panel, quote, review, progress and claims (shared by trade and launch). */
+.transaction-panel {
+  display: grid;
+  min-width: 0;
+}
+.transaction-panel > .panel-head {
+  padding-bottom: 14px;
+}
+.transaction-panel > .ui-state {
+  margin: 0 20px 20px;
+}
+.transaction-panel > .transaction-warning,
+.graduated-swap > .transaction-warning {
+  margin: 0 20px 14px;
+}
+
+/* Buy / sell segmented switch */
+.trade-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  margin: 0 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--canvas-soft);
+  padding: 3px;
+}
+.trade-tabs button {
+  height: 36px;
+  border-radius: 9px;
+  color: var(--text-faint);
+  font-size: 14px;
+  font-weight: 560;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.trade-tabs button:hover:not(:disabled) {
+  color: var(--text);
+}
+.trade-tabs button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.trade-tabs button.is-active {
+  color: var(--text);
+  background: var(--surface-strong);
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+.trade-tabs button.is-active:first-child {
+  color: var(--accent-ink);
+  background: var(--accent);
+  box-shadow: none;
+}
+.trade-side-panel {
+  display: grid;
+  gap: 16px;
+  padding: 18px 20px 20px;
+}
+.trade-side-panel:focus-visible {
+  outline-offset: -2px;
+}
+
+.transaction-form {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.quote-summary {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--canvas-soft);
+  padding: 14px 16px;
+  font-size: 13.5px;
+}
+.quote-summary > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-soft);
+}
+.quote-summary strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quote-summary small {
+  border-top: 1px solid var(--line);
+  color: var(--text-faint);
+  padding-top: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.transaction-risk {
+  color: var(--text-faint);
+  font-size: 12.5px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.transaction-risk a {
+  color: var(--text-soft);
+  text-decoration: underline;
+  text-decoration-color: var(--line-bright);
+  text-underline-offset: 3px;
+}
+.transaction-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+  border-radius: var(--radius-md);
+  color: var(--warning);
+  background: var(--warning-wash);
+  padding: 10px 14px;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+.transaction-error {
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+/* Review before signing */
+.transaction-confirmation {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--canvas-soft);
+  padding: 16px;
+  animation: confirm-in 0.35s var(--ease-out);
+}
+.transaction-confirmation dl {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  gap: 8px 16px;
+  font-size: 12.5px;
+}
+.transaction-confirmation dt {
+  color: var(--text-faint);
+}
+.transaction-confirmation dd {
+  min-width: 0;
+  color: var(--text);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+@keyframes confirm-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.transaction-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.transaction-actions > .ui-button {
+  flex: 1 1 auto;
+}
+.trade-side-panel > .ui-button,
+.graduated-swap .trade-side-panel > .ui-button {
+  width: 100%;
+}
+
+/* Submitted transactions */
+.transaction-progress {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding: 14px 20px;
+  font-size: 12.5px;
+}
+.transaction-progress > .mono {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.claim-row {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--text-soft);
+  padding: 16px 20px 20px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.claim-row .transaction-actions > .ui-button {
+  flex: 1 1 0;
+}
+
+.graduated-swap {
+  display: grid;
+}
+.graduated-swap > .transaction-risk {
+  padding: 0 20px 14px;
+}
