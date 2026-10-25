@@ -157,6 +157,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <p className="footer-meta">© 2026 Launchpad</p>
+          <div className="footer-wordmark" aria-hidden="true">
+            launchpad
+          </div>
         </footer>
       </main>
       <Sheet open={menuOpen} title="Navigate" onClose={() => setMenuOpen(false)}>

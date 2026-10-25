@@ -1803,6 +1803,21 @@ h3 {
   border-top: 1px solid var(--line-soft);
   padding-top: 18px;
 }
+.footer-wordmark {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  margin: 8px 0 -0.22em;
+  color: transparent;
+  background: linear-gradient(180deg, var(--line-bright), transparent 82%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  font-family: var(--font-display), sans-serif;
+  font-size: min(16.5vw, 15.5rem);
+  font-weight: 600;
+  letter-spacing: -0.07em;
+  line-height: 0.8;
+  user-select: none;
+}
 .mobile-topbar,
 .mobile-bottom-nav,
 .app-rail,
