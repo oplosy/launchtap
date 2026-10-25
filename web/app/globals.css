@@ -2801,3 +2801,22 @@ h3 {
   stroke: var(--canvas);
   stroke-width: 3;
 }
+.story-threshold {
+  stroke: var(--accent-text);
+  stroke-dasharray: 4 4;
+}
+.story-pulse {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+.story-stamp {
+  fill: var(--accent);
+}
+.story-stamp-text {
+  fill: var(--accent-ink);
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}

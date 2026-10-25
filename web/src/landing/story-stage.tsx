@@ -17,6 +17,11 @@ export function StoryStage({ progress }: { progress: MotionValue<number> }) {
   const dotY = useTransform(point, (value) => chartCoordinates(value, CHART.w, CHART.h)[1]);
   const drawnWidth = useTransform(dotX, (x) => x + 10);
   const dotOpacity = useTransform(progress, [0.23, 0.27], [0, 1]);
+  const threshold = useTransform(progress, [0.5, 0.58], [0, 1]);
+  const pulseR = useTransform(progress, [0.56, 0.7], [6, 72]);
+  const pulseOpacity = useTransform(progress, [0.56, 0.58, 0.7], [0, 0.9, 0]);
+  const stamp = useTransform(progress, [0.58, 0.64], [0, 1]);
+  const stampScale = useTransform(progress, [0.58, 0.64], [1.18, 1]);
   const ethLabel = useTransform(eth, (value) => `${value.toFixed(2)} ETH`);
   return (
     <svg className="story-svg" viewBox={`0 0 ${W} 470`}>
@@ -78,6 +83,14 @@ export function StoryStage({ progress }: { progress: MotionValue<number> }) {
           <motion.text x={CHART.w} y={-14} textAnchor="end" className="story-counter">
             {ethLabel}
           </motion.text>
+          <motion.line
+            className="story-threshold"
+            x1={CHART.w}
+            x2={CHART.w}
+            y1={0}
+            y2={CHART.h}
+            style={{ opacity: threshold }}
+          />
           <path className="story-curve-ghost" d={PATH} />
           <path className="story-curve" d={PATH} clipPath="url(#story-drawn)" />
           <motion.circle
@@ -87,6 +100,21 @@ export function StoryStage({ progress }: { progress: MotionValue<number> }) {
             r={6}
             style={{ opacity: dotOpacity }}
           />
+          <motion.circle
+            className="story-pulse"
+            cx={CHART.w}
+            cy={0}
+            r={pulseR}
+            style={{ opacity: pulseOpacity }}
+          />
+          <g transform={`translate(${CHART.w - 204} 30)`}>
+            <motion.g style={{ opacity: stamp, scale: stampScale, originX: 1, originY: 0.5 }}>
+              <rect className="story-stamp" width={180} height={30} rx={15} />
+              <text className="story-stamp-text" x={90} y={19} textAnchor="middle">
+                Graduated · 4.2 ETH
+              </text>
+            </motion.g>
+          </g>
         </g>
       </motion.g>
     </svg>
