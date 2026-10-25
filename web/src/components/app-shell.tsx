@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { motion } from "motion/react";
 import {
   ArrowSquareOut,
   BookOpenText,
@@ -78,6 +79,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 className={`navbar-link ${active(href) ? "is-active" : ""} ${primary ? "is-primary" : ""}`}
                 aria-current={active(href) ? "page" : undefined}
               >
+                {active(href) ? (
+                  <motion.span
+                    className="navbar-link-indicator"
+                    layoutId="navbar-indicator"
+                    transition={{ type: "spring", stiffness: 420, damping: 36 }}
+                    aria-hidden="true"
+                  />
+                ) : null}
                 <Icon size={18} weight={active(href) ? "fill" : "regular"} aria-hidden="true" />
                 <span>{label}</span>
               </Link>

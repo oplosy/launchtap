@@ -212,12 +212,11 @@ html[data-theme="light"] :focus-visible {
   align-items: center;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: linear-gradient(115deg, var(--glass-highlight), var(--glass));
-  box-shadow:
-    inset 0 1px rgba(255, 255, 255, 0.1),
-    0 16px 40px var(--shadow);
-  backdrop-filter: blur(30px) saturate(1.25);
-  -webkit-backdrop-filter: blur(30px) saturate(1.25);
+  background: var(--glass);
+  box-shadow: 0 12px 32px var(--shadow);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  transition: box-shadow 0.45s var(--ease-out);
 }
 .navbar-links {
   justify-self: center;
@@ -244,17 +243,40 @@ html[data-theme="light"] :focus-visible {
 .navbar-link svg {
   display: none;
 }
+.navbar-link {
+  position: relative;
+  isolation: isolate;
+}
 .navbar-link:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.08);
 }
 .navbar-link:active {
   transform: scale(0.98);
 }
 .navbar-link.is-active {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.12);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.16);
+}
+.navbar-link-indicator {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--surface-strong);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.navbar-link-indicator::after {
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  content: "";
+  transform: translateX(-50%);
+}
+.navbar-link.is-primary:not(.is-active) {
+  color: var(--accent-text);
 }
 .navbar-actions {
   justify-self: end;
