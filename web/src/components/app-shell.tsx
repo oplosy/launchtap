@@ -32,6 +32,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const configuration = publicConfiguration();
   const [menuOpen, setMenuOpen] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const sync = () => setScrolled(window.scrollY > 8);
+    sync();
+    window.addEventListener("scroll", sync, { passive: true });
+    return () => window.removeEventListener("scroll", sync);
+  }, []);
   useEffect(() => {
     const saved = window.localStorage.getItem("launchpad-theme");
     const next = saved === "light" ? "light" : "dark";
@@ -49,7 +56,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const active = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
   return (
     <div className="app-frame">
-      <header className="app-navbar" aria-label="Primary navigation">
+      <header
+        className={`app-navbar ${scrolled ? "is-scrolled" : ""}`}
+        aria-label="Primary navigation"
+      >
         <Link className="navbar-brand" href="/" aria-label="Open home">
           <svg className="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
             <path className="brand-mark-axis" d="M4 4v24h24" />
