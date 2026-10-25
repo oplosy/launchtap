@@ -1390,12 +1390,11 @@ h3 {
 .holder-row {
   grid-template-columns: 1.2fr 1fr 1fr;
 }
-.trade-buy,
-.trade-sell {
-  color: var(--text);
+.trade-buy {
+  color: var(--accent-text);
 }
 .trade-sell {
-  opacity: 0.66;
+  color: var(--danger);
 }
 .history-state {
   display: grid;
@@ -3239,4 +3238,61 @@ h3 {
   .metadata-editor-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Token route: identity settles in, progress gets a lit head. */
+.token-hero-identity > *,
+.token-hero-actions {
+  animation: rise-in 0.8s var(--ease-out) backwards;
+}
+.token-hero-identity > :nth-child(2) {
+  animation-delay: 0.08s;
+}
+.token-hero-actions {
+  animation-delay: 0.16s;
+}
+.token-detail-image {
+  animation-name: scale-in;
+}
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+.progress-track {
+  overflow: visible;
+}
+.progress-track span {
+  position: relative;
+}
+.progress-track span::after {
+  position: absolute;
+  top: 50%;
+  right: -4px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-wash);
+  content: "";
+  transform: translateY(-50%);
+}
+.token-summary-grid dd,
+.history-row .mono {
+  font-variant-numeric: tabular-nums;
+}
+.history-row:not(.history-heading),
+.analytics-row:not(.analytics-heading) {
+  transition: background 0.2s ease;
+}
+.history-row:not(.history-heading):hover,
+.analytics-row:not(.analytics-heading):hover {
+  background: var(--surface-strong);
 }
