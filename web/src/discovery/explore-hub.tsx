@@ -1,11 +1,13 @@
 import { Suspense } from "react";
 import { Hero } from "@/landing/hero";
+import { LaunchStory } from "@/landing/launch-story";
 import { TokenDiscovery } from "./token-discovery";
 
 export function ExploreHub() {
   return (
     <div className="page-stack explore-hub">
       <Hero />
+      <LaunchStory />
       <section className="explore-intro" id="launches" aria-labelledby="explore-title">
         <h2 id="explore-title">Explore launches.</h2>
         <p>Search graduated tokens, then follow active launches moving toward liquidity.</p>
