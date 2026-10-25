@@ -2979,8 +2979,7 @@ h3 {
     .discovery-section,
     .analytics-grid > *,
     .analytics-history,
-    .docs-article section,
-    .landing-facts {
+    .docs-article section {
       animation: section-reveal linear backwards;
       animation-timeline: view();
       animation-range: entry 0% entry 45%;
