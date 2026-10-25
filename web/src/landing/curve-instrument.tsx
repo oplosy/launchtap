@@ -1,7 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { motion, useMotionValue, useSpring, useTransform } from "motion/react";
+import { useEffect, useRef, useState } from "react";
+import {
+  animate,
+  motion,
+  useInView,
+  useMotionValue,
+  useReducedMotion,
+  useSpring,
+  useTransform,
+} from "motion/react";
 import {
   GRADUATION_ETH,
   chartCoordinates,
@@ -31,6 +39,26 @@ export function CurveInstrument() {
   const multiple = useTransform(point, (value) => `${priceMultiple(value).toFixed(2)}×`);
   const percent = useTransform(point, (value) => `${Math.round(value.progress * 100)}%`);
   const progress = useTransform(point, (value) => value.progress);
+  const frame = useRef<HTMLElement>(null);
+  const inView = useInView(frame);
+  const reduce = useReducedMotion();
+  const [engaged, setEngaged] = useState(false);
+  // Idle demo: ride the curve back and forth until someone takes over.
+  useEffect(() => {
+    if (reduce || engaged || !inView) return;
+    let controls: ReturnType<typeof animate> | undefined;
+    const start = window.setTimeout(() => {
+      controls = animate(target, [target.get(), GRADUATION_ETH, 0.2, target.get()], {
+        duration: 9,
+        ease: "easeInOut",
+        repeat: Infinity,
+      });
+    }, 1200);
+    return () => {
+      window.clearTimeout(start);
+      controls?.stop();
+    };
+  }, [reduce, engaged, inView, target]);
   const scrub = (next: number) => {
     setValue(next);
     target.set(next);
@@ -41,7 +69,14 @@ export function CurveInstrument() {
     scrub(ethForSoldShare(local / PLOT_W));
   };
   return (
-    <figure className="workspace-panel curve-instrument">
+    <figure
+      ref={frame}
+      className="workspace-panel curve-instrument"
+      onPointerEnter={() => setEngaged(true)}
+      onPointerLeave={() => setEngaged(false)}
+      onFocus={() => setEngaged(true)}
+      onBlur={() => setEngaged(false)}
+    >
       <figcaption className="curve-head">
         <span className="panel-kicker">V1 bonding curve</span>
         <span className="curve-head-note mono">illustrative · not a quote</span>
