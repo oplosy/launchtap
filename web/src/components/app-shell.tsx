@@ -51,7 +51,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="app-frame">
       <header className="app-navbar" aria-label="Primary navigation">
         <Link className="navbar-brand" href="/" aria-label="Open home">
-          <span className="brand-orbit" aria-hidden="true" />
+          <svg className="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <path className="brand-mark-axis" d="M4 4v24h24" />
+            <path className="brand-mark-curve" d="M6 26C14 25 21 20 26 7" pathLength={1} />
+            <circle className="brand-mark-dot" cx="26" cy="7" r="2.6" />
+          </svg>
+          <span className="brand-word">launchpad</span>
         </Link>
         <nav className="navbar-links" aria-label="Desktop primary navigation">
           {navItems
