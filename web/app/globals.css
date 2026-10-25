@@ -2932,3 +2932,20 @@ h3 {
     font-size: 0.9rem;
   }
 }
+.discovery-section .token-card::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    260px circle at var(--mx, 50%) var(--my, 0%),
+    var(--accent-wash),
+    transparent 70%
+  );
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s var(--ease-out);
+}
+.discovery-section .token-card:hover::after {
+  opacity: 1;
+}

@@ -448,7 +448,7 @@ function TokenCard({ token, apiBaseUrl }: { token: TokenCardData; apiBaseUrl: st
     `/v1/tokens/${encodeURIComponent(token.address)}/image`,
   );
   return (
-    <article className="token-card">
+    <article className="token-card" onPointerMove={trackSpotlight}>
       <div className="token-card-main">
         <SafeImage
           src={imageUrl}
@@ -485,6 +485,13 @@ function TokenCard({ token, apiBaseUrl }: { token: TokenCardData; apiBaseUrl: st
       </dl>
     </article>
   );
+}
+
+// Feeds the card's cursor-following highlight; CSS reads --mx/--my.
+function trackSpotlight(event: React.PointerEvent<HTMLElement>) {
+  const box = event.currentTarget.getBoundingClientRect();
+  event.currentTarget.style.setProperty("--mx", `${event.clientX - box.left}px`);
+  event.currentTarget.style.setProperty("--my", `${event.clientY - box.top}px`);
 }
 
 function TokenListSkeleton() {
