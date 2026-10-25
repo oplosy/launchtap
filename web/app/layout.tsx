@@ -6,36 +6,15 @@ import { AppShell } from "@/components/app-shell";
 import { RouteTransition } from "@/components/route-transition";
 import { Providers, WalletRouteGate } from "./providers";
 
-const display = localFont({
-  src: [
-    {
-      path: "../node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-500-normal.woff2",
-      weight: "500",
-    },
-    {
-      path: "../node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-600-normal.woff2",
-      weight: "600",
-    },
-  ],
-  variable: "--font-display",
-  display: "swap",
-});
-const body = localFont({
-  src: [
-    {
-      path: "../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2",
-      weight: "400",
-    },
-    {
-      path: "../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-500-normal.woff2",
-      weight: "500",
-    },
-  ],
-  variable: "--font-body",
+const sans = localFont({
+  src: "../node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2",
+  weight: "100 900",
+  variable: "--font-sans",
   display: "swap",
 });
 const mono = localFont({
-  src: "../node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2",
+  src: "../node_modules/@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2",
+  weight: "100 900",
   variable: "--font-mono",
   display: "swap",
 });
@@ -53,7 +32,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   await connection();
   return (
     <html lang="en" data-theme="dark">
-      <body className={`${display.variable} ${body.variable} ${mono.variable}`}>
+      <body className={`${sans.variable} ${mono.variable}`}>
         <Providers>
           <AppShell>
             <RouteTransition>
