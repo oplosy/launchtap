@@ -1,5 +1,8 @@
 import { reviewedDeployments } from "@/contracts/generated";
 
+// E2E fixture origin; matches the `npm run dev` and Playwright port, kept off 3000 to avoid local collisions.
+export const DEFAULT_E2E_WEB_URL = "http://127.0.0.1:3417";
+
 export type PublicConfiguration = {
   status: "ready" | "fail-closed";
   privyAppId: string | null;
@@ -51,7 +54,7 @@ export function publicConfiguration(
     const fixtureRpc = publicEndpoint(nonEmpty(env.NEXT_PUBLIC_TASK6_ANVIL_RPC_URL));
     const fixtureApi = publicEndpoint(nonEmpty(env.NEXT_PUBLIC_TASK6_ANVIL_API_URL));
     const webBase =
-      publicEndpoint(nonEmpty(env.NEXT_PUBLIC_TASK6_ANVIL_WEB_URL)) ?? "http://127.0.0.1:3000";
+      publicEndpoint(nonEmpty(env.NEXT_PUBLIC_TASK6_ANVIL_WEB_URL)) ?? DEFAULT_E2E_WEB_URL;
     const rpcUrl = publicEndpoint(`${webBase}/e2e/rpc`);
     if (
       factory &&

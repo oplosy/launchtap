@@ -10,7 +10,7 @@ import { ApiProblem } from "@/api/problems";
 import { queryKeys } from "@/api/types";
 import { SseInvalidationStream } from "@/api/sse";
 import { formatCanonicalBaseUnits } from "@/amounts";
-import { publicConfiguration } from "@/config/public";
+import { DEFAULT_E2E_WEB_URL, publicConfiguration } from "@/config/public";
 import { reviewedDeployments } from "@/contracts/generated";
 import { addressExplorerUrl } from "@/wallet/explorer";
 import {
@@ -67,7 +67,7 @@ export function TokenDetail({
     ? {
         ...baseConfiguration,
         status: "ready" as const,
-        apiBaseUrl: "http://127.0.0.1:3000",
+        apiBaseUrl: process.env.NEXT_PUBLIC_TASK6_ANVIL_WEB_URL || DEFAULT_E2E_WEB_URL,
         chainId: 4663,
         deploymentId: "robinhood-mainnet",
         deployment: reviewedDeployments[0] ?? null,
