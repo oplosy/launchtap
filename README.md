@@ -396,7 +396,7 @@ cd web
 npm run dev
 ```
 
-Open `http://localhost:3000`. This command does not start Anvil, PostgreSQL, the API, or the
+Open `http://localhost:3417`. This command does not start Anvil, PostgreSQL, the API, or the
 indexer. It does not seed token data. The shell can render without them, but indexed screens
 need an API reachable at `NEXT_PUBLIC_API_BASE_URL`; wallet/auth/write flows also need all
 other required public configuration and a matching enabled reviewed deployment.
@@ -461,7 +461,7 @@ requires `DATABASE_URL`.
 | `PRIVY_VERIFICATION_KEY`         | Blank in example                   | Required by API; backend-only verification key from approved secret storage                         |
 | `LOG_LEVEL`                      | `info`                             | Structured log level; defaults to `info`                                                            |
 | `API_ADDR`                       | `:8080`                            | API bind address; defaults to `:8080`                                                               |
-| `API_ALLOWED_ORIGINS`            | `http://localhost:3000`            | Comma-separated exact origins; no wildcard, path, query, or fragment                                |
+| `API_ALLOWED_ORIGINS`            | `http://localhost:3417`            | Comma-separated exact origins; no wildcard, path, query, or fragment                                |
 | `INDEXER_HEALTH_ADDR`            | `:8081`                            | Indexer health bind address; defaults to `:8081`                                                    |
 | `INDEXER_CHUNK_SIZE`             | `100`                              | Blocks per processing chunk; default 100, accepted range 1–10,000                                   |
 | `INDEXER_REORG_SEARCH_DEPTH`     | `128`                              | Default header search window; accepted range 1–100,000                                              |
@@ -758,7 +758,7 @@ There are exactly **2 active items** in [`backlog.md`](backlog.md):
 that it points at a running API, and check the API's `/healthz` and `/readyz` responses. Confirm
 the API has completed migrations, reached an observed indexed watermark, and is listening on
 its configured `API_ADDR`. `API_ALLOWED_ORIGINS` must contain the exact local web origin such as
-`http://localhost:3000`; it cannot be `*`. An API URL by itself does not create indexed token
+`http://localhost:3417`; it cannot be `*`. An API URL by itself does not create indexed token
 records or start the indexer.
 
 If the public configuration itself is incomplete or malformed, the client intentionally stays

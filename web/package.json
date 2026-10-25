@@ -9,7 +9,7 @@
   },
   "scripts": {
     "setup": "npm ci",
-    "dev": "next dev",
+    "dev": "next dev --port 3417",
     "build": "next build",
     "start": "next start",
     "format": "prettier --write .",
