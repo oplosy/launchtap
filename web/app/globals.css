@@ -675,41 +675,46 @@ html[data-theme="light"] .ui-input {
   padding: 0 17px;
   text-decoration: none;
   font-size: 0.83rem;
+  font-weight: 500;
   cursor: pointer;
   transition:
-    background 0.2s ease,
-    border 0.2s ease,
-    transform 0.2s ease;
+    background 0.25s var(--ease-out),
+    border-color 0.25s var(--ease-out),
+    color 0.25s var(--ease-out),
+    transform 0.25s var(--ease-out);
 }
 .ui-button:hover {
   border-color: var(--line-bright);
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--surface-strong);
 }
 .ui-button:active {
-  transform: translateY(1px);
+  transform: scale(0.97);
 }
 .ui-button:disabled {
   cursor: not-allowed;
   opacity: 0.48;
 }
 .ui-button-primary {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+.ui-button-primary:hover {
   border-color: var(--text);
   color: var(--canvas);
   background: var(--text);
 }
-.ui-button-primary:hover {
-  color: var(--canvas);
-  background: var(--white);
-}
 .ui-button-secondary {
-  background: rgba(255, 255, 255, 0.055);
+  background: var(--surface);
 }
 .ui-button-quiet {
   border-color: transparent;
   background: transparent;
 }
 .ui-button-danger {
-  background: rgba(255, 255, 255, 0.13);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  color: var(--danger);
+  background: transparent;
 }
 .ui-button-sm {
   min-height: 36px;
