@@ -1127,16 +1127,43 @@ h3 {
   gap: 3px;
   padding: 12px;
 }
+.docs-nav {
+  top: 96px;
+}
 .docs-nav a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  isolation: isolate;
   border-radius: var(--radius-sm);
   color: var(--text-soft);
   padding: 10px 12px;
   text-decoration: none;
   font-size: 0.82rem;
+  transition: color 0.25s var(--ease-out);
 }
-.docs-nav a:hover {
+.docs-nav a .mono {
+  color: var(--text-faint);
+  font-size: 0.64rem;
+}
+.docs-nav a:hover,
+.docs-nav a.is-active {
   color: var(--text);
+}
+.docs-nav a.is-active .mono {
+  color: var(--accent-text);
+}
+.docs-nav-indicator {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
   background: var(--surface-strong);
+  box-shadow: inset 2px 0 var(--accent);
+}
+.docs-article section {
+  scroll-margin-top: 100px;
 }
 .docs-article {
   border: 1px solid var(--line);

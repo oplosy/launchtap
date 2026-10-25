@@ -1,6 +1,15 @@
 import { ArrowSquareOut } from "@/components/icons";
 import { SafeExternalLink } from "@/components/primitives";
 import { publicConfiguration } from "@/config/public";
+import { DocsNav } from "@/docs/docs-nav";
+
+const SECTIONS = [
+  { id: "flow", label: "Launch flow" },
+  { id: "curve", label: "Curve and graduation" },
+  { id: "economics", label: "Fees and economics" },
+  { id: "risk", label: "Risks and custody" },
+  { id: "contracts", label: "Contracts and finality" },
+] as const;
 
 export default function DocsPage() {
   const configuration = publicConfiguration();
@@ -18,13 +27,7 @@ export default function DocsPage() {
         </div>
       </section>
       <div className="docs-layout">
-        <aside className="workspace-panel docs-nav" aria-label="Documentation sections">
-          <a href="#flow">Launch flow</a>
-          <a href="#curve">Curve and graduation</a>
-          <a href="#economics">Fees and economics</a>
-          <a href="#risk">Risks and custody</a>
-          <a href="#contracts">Contracts and finality</a>
-        </aside>
+        <DocsNav sections={SECTIONS} />
         <article className="docs-article">
           <section id="flow">
             <h2>Launch flow</h2>
