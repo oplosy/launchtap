@@ -7,12 +7,30 @@ import { RouteTransition } from "@/components/route-transition";
 import { Providers, WalletRouteGate } from "./providers";
 
 const display = localFont({
-  src: "../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2",
+  src: [
+    {
+      path: "../node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-500-normal.woff2",
+      weight: "500",
+    },
+    {
+      path: "../node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-600-normal.woff2",
+      weight: "600",
+    },
+  ],
   variable: "--font-display",
   display: "swap",
 });
 const body = localFont({
-  src: "../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2",
+  src: [
+    {
+      path: "../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2",
+      weight: "400",
+    },
+    {
+      path: "../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-500-normal.woff2",
+      weight: "500",
+    },
+  ],
   variable: "--font-body",
   display: "swap",
 });
