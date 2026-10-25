@@ -1048,9 +1048,29 @@ h3 {
   font-size: 0.75rem;
 }
 .metric-panel dd {
-  margin: 12px 0 0;
+  margin: 18px 0 0;
   color: var(--text);
-  font-size: 1.8rem;
+  font-family: var(--font-display), sans-serif;
+  font-size: clamp(1.8rem, 2.6vw, 2.4rem);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.metric-value {
+  display: flex;
+  overflow: hidden;
+  padding-bottom: 0.08em;
+}
+.metric-value span[aria-hidden] {
+  display: inline-block;
+  animation: digit-roll 0.7s var(--ease-out) backwards;
+  animation-delay: calc(var(--i) * 28ms);
+}
+@keyframes digit-roll {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
 }
 .analytics-snapshot {
   display: flex;

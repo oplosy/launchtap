@@ -181,7 +181,19 @@ function Metric({ label, value }: { label: string; value: string }) {
     <section className="workspace-panel metric-panel">
       <dl>
         <dt>{label}</dt>
-        <dd className="mono">{value}</dd>
+        <dd className="metric-value">
+          <span className="sr-only">{value}</span>
+          {/* Characters roll in one by one; the string is never parsed back into a number. */}
+          {[...value].map((char, index) => (
+            <span
+              key={index}
+              aria-hidden="true"
+              style={{ "--i": index } as React.CSSProperties}
+            >
+              {char === " " ? " " : char}
+            </span>
+          ))}
+        </dd>
       </dl>
     </section>
   );
