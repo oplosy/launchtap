@@ -3034,10 +3034,10 @@ h3 {
     }
   }
 }
+/* Transform only: a half-faded frame would read as low-contrast text to audits and users. */
 @keyframes section-reveal {
   from {
-    opacity: 0;
-    transform: translateY(36px);
+    transform: translateY(48px) scale(0.985);
   }
 }
 .volume-chart {
