@@ -3105,3 +3105,47 @@ h3 {
     padding: 32px 18px 0;
   }
 }
+
+/* Token route states. */
+.token-unavailable {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  padding: clamp(28px, 5vw, 56px);
+}
+.token-unavailable h1 {
+  margin-bottom: 8px;
+  font-size: clamp(2.4rem, 5vw, 4.2rem);
+}
+.token-unavailable > p:not(.panel-kicker) {
+  margin-bottom: 22px;
+  color: var(--text-soft);
+}
+.token-skeleton {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 28px;
+}
+.token-skeleton > div {
+  display: grid;
+  flex: 1;
+  gap: 12px;
+  max-width: 420px;
+}
+.token-skeleton .token-detail-image {
+  border-radius: 50%;
+}
+.token-skeleton-title {
+  height: 42px;
+}
+.token-skeleton + .workspace-panel,
+.token-skeleton ~ .workspace-panel {
+  margin-top: 18px;
+}
+.chart-skeleton {
+  height: 300px;
+  margin: 24px 30px;
+  width: calc(100% - 60px);
+  border-radius: var(--radius-md);
+}
