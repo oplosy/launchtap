@@ -2971,3 +2971,25 @@ h3 {
     transform: translateY(16px);
   }
 }
+
+/* Sections settle into place as they enter the viewport (progressive enhancement, no JS). */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .explore-intro,
+    .discovery-section,
+    .analytics-grid > *,
+    .analytics-history,
+    .docs-article section,
+    .landing-facts {
+      animation: section-reveal linear backwards;
+      animation-timeline: view();
+      animation-range: entry 0% entry 45%;
+    }
+  }
+}
+@keyframes section-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(36px);
+  }
+}
