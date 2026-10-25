@@ -44,6 +44,15 @@ export function formatCanonicalBaseUnits(value: string, maxFractionDigits = 6): 
   }
 }
 
+/** Token prices sit far below 1 ETH, so keep four significant digits instead of a fixed scale. */
+export function formatSignificantPrice(value: string): string | null {
+  const full = formatCanonicalBaseUnits(value, 18);
+  if (full === null) return null;
+  const leadingZeros = (full.split(".")[1] ?? "").search(/[1-9]/);
+  const digits = leadingZeros < 0 ? 6 : Math.min(18, Math.max(6, leadingZeros + 4));
+  return formatCanonicalBaseUnits(value, digits);
+}
+
 export function parseDecimal(value: string, decimals = 18): bigint {
   if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255 || !DECIMAL.test(value.trim()))
     throw new Error("Invalid decimal amount");

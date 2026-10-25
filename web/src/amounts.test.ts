@@ -3,6 +3,7 @@ import {
   formatBaseUnits,
   formatCanonicalBaseUnits,
   formatDisplayAmount,
+  formatSignificantPrice,
   parseBaseUnits,
   parseCanonicalBaseUnits,
   parseDecimal,
@@ -35,5 +36,16 @@ describe("decimal and bigint amounts", () => {
       expect(wadToBoundedNumber(value)).toBeNull();
     expect(wadToBoundedNumber("1", Number.NaN)).toBeNull();
     expect(wadToBoundedNumber("1", -1)).toBeNull();
+  });
+});
+
+describe("formatSignificantPrice", () => {
+  it("keeps four significant digits for sub-unit prices and rejects non-canonical input", () => {
+    expect(formatSignificantPrice("12345678901")).toBe("0.00000001234");
+    expect(formatSignificantPrice("1")).toBe("0.000000000000000001");
+    expect(formatSignificantPrice("1500000000000000000")).toBe("1.5");
+    expect(formatSignificantPrice("0")).toBe("0");
+    expect(formatSignificantPrice("01")).toBeNull();
+    expect(formatSignificantPrice("-1")).toBeNull();
   });
 });
