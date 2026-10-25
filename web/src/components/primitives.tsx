@@ -236,7 +236,11 @@ export function Badge({
   tone?: "neutral" | "success" | "warning" | "danger" | "accent";
   children: React.ReactNode;
 }) {
-  return <span className={`ui-badge ui-badge-${tone}`}>{children}</span>;
+  return (
+    <span className={`ui-badge ui-badge-${tone}`}>
+      <span>{children}</span>
+    </span>
+  );
 }
 
 export function Skeleton({ className = "" }: { className?: string }) {
