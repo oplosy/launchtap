@@ -3,7 +3,9 @@
 import { useRef, useState } from "react";
 import {
   motion,
+  useMotionValue,
   useMotionValueEvent,
+  useReducedMotion,
   useScroll,
   useSpring,
   useTransform,
@@ -38,12 +40,19 @@ export function LaunchStory() {
   const ref = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end end"] });
   const progress = useSpring(scrollYProgress, { stiffness: 120, damping: 30, mass: 0.4 });
+  // Reduced motion: no pinning, every chapter visible, stage frozen on the graduation frame.
+  const reduce = useReducedMotion();
+  const still = useMotionValue(0.7);
   const [active, setActive] = useState(0);
   useMotionValueEvent(scrollYProgress, "change", (value) =>
     setActive(Math.min(CHAPTERS.length - 1, Math.floor(value * CHAPTERS.length))),
   );
   return (
-    <section ref={ref} className="story" aria-labelledby="story-title">
+    <section
+      ref={ref}
+      className={`story ${reduce ? "is-static" : ""}`}
+      aria-labelledby="story-title"
+    >
       <div className="story-sticky">
         <div className="story-copy">
           <p className="section-kicker">How a launch works</p>
@@ -75,7 +84,7 @@ export function LaunchStory() {
           </div>
         </div>
         <div className="story-stage" aria-hidden="true">
-          <StoryStage progress={progress} />
+          <StoryStage progress={reduce ? still : progress} />
         </div>
       </div>
     </section>
