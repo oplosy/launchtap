@@ -36,7 +36,7 @@ test("discovery filters restore through browser history", async ({ page }) => {
   await page.getByRole("button", { name: "Volume", exact: true }).click();
   await expect(page).toHaveURL(/\/\?sort=volume_24h$/);
   await page.goBack();
-  await expect(page).toHaveURL(/127\.0\.0\.1:3000\/$/);
+  await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
   await expect(page.getByRole("button", { name: "Newest", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true",

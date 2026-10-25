@@ -42,7 +42,7 @@ async function installFixture(page: Page) {
     },
   ];
   let candleItems = initialCandles;
-  await page.route("http://127.0.0.1:3000/v1/**", async (route) => {
+  await page.route("**/v1/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith("/events")) {
       await route.fulfill({ status: 200, contentType: "text/event-stream", body: "" });

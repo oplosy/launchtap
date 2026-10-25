@@ -11,7 +11,7 @@ const desktopBrowserOptions = browserExecutablePath
   ? { launchOptions: { executablePath: browserExecutablePath } }
   : {};
 
-const webPort = Number(process.env.TASK6_WEB_PORT ?? "3000");
+const webPort = Number(process.env.TASK6_WEB_PORT ?? "3417");
 const fixtureFactory = process.env.TASK6_ANVIL_FACTORY ?? "";
 const fixtureWeth = process.env.TASK6_ANVIL_WETH ?? "";
 const fixtureRouter = process.env.TASK6_ANVIL_ROUTER ?? "";
