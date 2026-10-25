@@ -2746,3 +2746,58 @@ h3 {
 .story-stage {
   min-width: 0;
 }
+.story-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: calc(100dvh - 140px);
+  overflow: visible;
+}
+.story-label {
+  fill: var(--text-faint);
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.story-track {
+  fill: var(--line-soft);
+}
+.story-curve-share {
+  fill: var(--text);
+}
+.story-lp-share {
+  stroke: var(--accent-text);
+  stroke-width: 1;
+}
+.story-hatch-line {
+  stroke: var(--accent-text);
+  stroke-width: 1.2;
+}
+.story-axis {
+  stroke: var(--line-bright);
+}
+.story-counter {
+  fill: var(--text);
+  font-family: var(--font-mono), monospace;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+.story-curve-ghost,
+.story-curve {
+  fill: none;
+  stroke-linecap: round;
+}
+.story-curve-ghost {
+  stroke: var(--line);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 5;
+}
+.story-curve {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+.story-dot {
+  fill: var(--accent);
+  stroke: var(--canvas);
+  stroke-width: 3;
+}

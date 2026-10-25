@@ -9,6 +9,7 @@ import {
   useTransform,
   type MotionValue,
 } from "motion/react";
+import { StoryStage } from "./story-stage";
 
 const CHAPTERS = [
   {
@@ -73,7 +74,9 @@ export function LaunchStory() {
             ))}
           </div>
         </div>
-        <div className="story-stage" aria-hidden="true" />
+        <div className="story-stage" aria-hidden="true">
+          <StoryStage progress={progress} />
+        </div>
       </div>
     </section>
   );
