@@ -1665,8 +1665,6 @@ h3 {
   width: 100%;
 }
 .launch-preview-card {
-  position: sticky;
-  top: 100px;
   align-self: start;
   margin-top: 44px;
   border: 1px solid var(--line);
