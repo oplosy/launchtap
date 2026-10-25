@@ -87,7 +87,9 @@ vi.mock("lightweight-charts", () => ({
   },
 }));
 
-import { MarketChart } from "./market-chart";
+vi.mock("@/components/theme", () => ({ useResolvedTheme: () => "dark" }));
+
+import { MarketChart, priceFormatFor, withAlpha } from "./market-chart";
 
 const sameDependencies = (
   left: readonly unknown[] | undefined,
@@ -141,12 +143,14 @@ describe("MarketChart component snapshot updates", () => {
       observe() {}
       disconnect() {}
     } as unknown as typeof ResizeObserver;
+    vi.stubGlobal("getComputedStyle", () => ({ getPropertyValue: () => "", fontFamily: "" }));
   });
 
   afterEach(() => {
     for (const effect of harness.effects) effect.cleanup?.();
     if (originalResizeObserver) globalThis.ResizeObserver = originalResizeObserver;
     else Reflect.deleteProperty(globalThis, "ResizeObserver");
+    vi.unstubAllGlobals();
   });
 
   it("replaces corrected same-length snapshots and shortened history on one mounted component", () => {
@@ -190,5 +194,24 @@ describe("MarketChart component snapshot updates", () => {
     expect(harness.charts[1]!.volume.setData).toHaveBeenLastCalledWith(
       shortened.map(({ time, volume }) => ({ time, value: volume })),
     );
+  });
+});
+
+describe("withAlpha", () => {
+  it("converts six-digit hex tokens and passes other colour forms through", () => {
+    expect(withAlpha("#c8f54a", 0.22)).toBe("rgba(200, 245, 74, 0.22)");
+    expect(withAlpha("#C8F54A", 0)).toBe("rgba(200, 245, 74, 0)");
+    expect(withAlpha("rgba(1, 2, 3, 0.5)", 0.1)).toBe("rgba(1, 2, 3, 0.5)");
+    expect(withAlpha("#fff", 0.1)).toBe("#fff");
+  });
+});
+
+describe("priceFormatFor", () => {
+  it("keeps about four significant digits of the highest price", () => {
+    const at = (high: number) => [{ time: 1, open: high, high, low: high, close: high, volume: 0 }];
+    expect(priceFormatFor([]).formatter(1.5)).toBe("1.50");
+    expect(priceFormatFor(at(1.5)).formatter(1.5)).toBe("1.500");
+    expect(priceFormatFor(at(0.00000001234)).formatter(0.00000001234)).toBe("0.00000001234");
+    expect(priceFormatFor(at(1e-30)).minMove).toBe(1e-15);
   });
 });
