@@ -2512,3 +2512,105 @@ h3 {
     row-gap: 4px;
   }
 }
+
+/* Landing: curve instrument. */
+.curve-instrument {
+  margin: 0;
+}
+.curve-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px 0;
+}
+.curve-head .panel-kicker {
+  margin: 0;
+}
+.curve-head-note {
+  color: var(--text-faint);
+  font-size: 0.66rem;
+}
+.curve-readout {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 18px 22px 16px;
+}
+.curve-readout dt {
+  margin-bottom: 6px;
+  color: var(--text-faint);
+  font-size: 0.68rem;
+}
+.curve-readout dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.02rem;
+  font-variant-numeric: tabular-nums;
+}
+.curve-meter {
+  height: 2px;
+  margin: 0 22px;
+  background: var(--line);
+}
+.curve-meter span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left;
+}
+.curve-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: pan-y;
+  user-select: none;
+}
+.curve-grid line {
+  stroke: var(--line-soft);
+  stroke-dasharray: 2 4;
+}
+.curve-grid text,
+.curve-axis-label {
+  fill: var(--text-faint);
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+}
+.curve-graduation {
+  stroke: var(--accent-text);
+  stroke-dasharray: 3 3;
+  opacity: 0.5;
+}
+.curve-line-base,
+.curve-line {
+  fill: none;
+  stroke-linecap: round;
+}
+.curve-line-base {
+  stroke: var(--line-bright);
+  stroke-width: 1.5;
+}
+.curve-line {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+.curve-cross {
+  stroke: var(--text-faint);
+  stroke-dasharray: 2 3;
+  opacity: 0.6;
+}
+.curve-dot {
+  fill: var(--accent);
+  stroke: var(--canvas);
+  stroke-width: 2;
+}
+.curve-dot-halo {
+  fill: var(--accent);
+  opacity: 0.14;
+}
+@media (max-width: 720px) {
+  .curve-readout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

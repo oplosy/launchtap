@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
+import { CurveInstrument } from "./curve-instrument";
 
 const HEADLINE = ["One curve", "from launch", "to liquidity."];
 const FACTS = ["1B fixed supply", "1% curve fee", "Graduates at 4.2 ETH", "Initial LP burned"];
 const ease = [0.22, 1, 0.36, 1] as const;
 
-export function Hero({ children }: { children?: React.ReactNode }) {
+export function Hero() {
   const reduce = useReducedMotion();
   const rise = (delay: number) =>
     reduce
@@ -52,7 +53,7 @@ export function Hero({ children }: { children?: React.ReactNode }) {
         </motion.div>
       </div>
       <motion.div className="landing-hero-visual" {...rise(0.25)}>
-        {children}
+        <CurveInstrument />
       </motion.div>
       <motion.ul className="landing-facts" aria-label="Protocol parameters" {...rise(0.6)}>
         {FACTS.map((fact) => (
