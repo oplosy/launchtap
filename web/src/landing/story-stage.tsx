@@ -10,7 +10,6 @@ const CURVE_SHARE = 0.8;
 export function StoryStage({ progress }: { progress: MotionValue<number> }) {
   const curveFill = useTransform(progress, [0.02, 0.14], [0, 1]);
   const lpReveal = useTransform(progress, [0.08, 0.18], [0, 1]);
-  const axes = useTransform(progress, [0.16, 0.26], [0, 1]);
   const eth = useTransform(progress, [0.25, 0.55], [0, GRADUATION_ETH]);
   const point = useTransform(eth, curveAt);
   const dotX = useTransform(point, (value) => chartCoordinates(value, CHART.w, CHART.h)[0]);
@@ -22,6 +21,15 @@ export function StoryStage({ progress }: { progress: MotionValue<number> }) {
   const pulseOpacity = useTransform(progress, [0.56, 0.58, 0.7], [0, 0.9, 0]);
   const stamp = useTransform(progress, [0.58, 0.64], [0, 1]);
   const stampScale = useTransform(progress, [0.58, 0.64], [1.18, 1]);
+  const chartFade = useTransform(progress, [0.16, 0.26, 0.74, 0.8], [0, 1, 1, 0.06]);
+  const pool = useTransform(progress, [0.76, 0.82], [0, 1]);
+  const ethCoinX = useTransform(progress, [0.78, 0.88], [60, 228]);
+  const tokenCoinX = useTransform(progress, [0.78, 0.88], [500, 332]);
+  const lpOpacity = useTransform(progress, [0.86, 0.9, 0.95, 0.99], [0, 1, 1, 0]);
+  const lpY = useTransform(progress, [0.88, 0.96], [300, 396]);
+  const burnBox = useTransform(progress, [0.84, 0.9], [0, 1]);
+  const burned = useTransform(progress, [0.95, 0.99], [0, 1]);
+  const unburned = useTransform(burned, (value) => 1 - value);
   const ethLabel = useTransform(eth, (value) => `${value.toFixed(2)} ETH`);
   return (
     <svg className="story-svg" viewBox={`0 0 ${W} 470`}>
@@ -67,7 +75,7 @@ export function StoryStage({ progress }: { progress: MotionValue<number> }) {
         </motion.text>
       </g>
 
-      <motion.g className="story-chart" style={{ opacity: axes }}>
+      <motion.g className="story-chart" style={{ opacity: chartFade }}>
         <g transform={`translate(${CHART.x} ${CHART.y})`}>
           <line className="story-axis" x1={0} x2={0} y1={0} y2={CHART.h} />
           <line className="story-axis" x1={0} x2={CHART.w} y1={CHART.h} y2={CHART.h} />
@@ -116,6 +124,56 @@ export function StoryStage({ progress }: { progress: MotionValue<number> }) {
             </motion.g>
           </g>
         </g>
+      </motion.g>
+
+      <motion.g style={{ opacity: pool }}>
+        <rect className="story-pool" x={160} y={186} width={240} height={128} rx={20} />
+        <text x={280} y={214} textAnchor="middle" className="story-pool-title">
+          Uniswap v2 pool
+        </text>
+        <text x={280} y={232} textAnchor="middle" className="story-label">
+          WETH / TOKEN
+        </text>
+      </motion.g>
+      <motion.g style={{ opacity: pool, x: ethCoinX }}>
+        <circle className="story-coin" cx={0} cy={270} r={28} />
+        <text x={0} y={274} textAnchor="middle" className="story-coin-text">
+          4.2 ETH
+        </text>
+      </motion.g>
+      <motion.g style={{ opacity: pool, x: tokenCoinX }}>
+        <circle className="story-coin is-token" cx={0} cy={270} r={28} />
+        <text x={0} y={274} textAnchor="middle" className="story-coin-text">
+          200M
+        </text>
+      </motion.g>
+
+      <motion.g style={{ opacity: burnBox }}>
+        <rect className="story-burn" x={190} y={380} width={180} height={44} rx={22} />
+        <motion.text
+          x={280}
+          y={406}
+          textAnchor="middle"
+          className="story-burn-text"
+          style={{ opacity: unburned }}
+        >
+          0x…dEaD
+        </motion.text>
+        <motion.text
+          x={280}
+          y={406}
+          textAnchor="middle"
+          className="story-burn-text is-burned"
+          style={{ opacity: burned }}
+        >
+          LP burned · locked forever
+        </motion.text>
+      </motion.g>
+      <motion.g style={{ opacity: lpOpacity, y: lpY }}>
+        <rect className="story-lp-chip" x={244} y={-13} width={72} height={26} rx={13} />
+        <text x={280} y={4} textAnchor="middle" className="story-lp-chip-text">
+          LP
+        </text>
       </motion.g>
     </svg>
   );
