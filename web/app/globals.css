@@ -155,6 +155,20 @@ html[data-theme="light"] :focus-visible {
 .app-navbar.is-scrolled::before {
   opacity: 1;
 }
+.scroll-progress {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 1px;
+  background: var(--accent);
+  opacity: 0;
+  transform-origin: left;
+  transition: opacity 0.45s var(--ease-out);
+}
+.app-navbar.is-scrolled .scroll-progress {
+  opacity: 1;
+}
 .app-navbar.is-scrolled .navbar-links,
 .app-navbar.is-scrolled .navbar-actions {
   box-shadow: none;

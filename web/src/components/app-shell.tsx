@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { motion } from "motion/react";
+import { motion, useScroll } from "motion/react";
 import {
   ArrowSquareOut,
   BookOpenText,
@@ -34,6 +34,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [scrolled, setScrolled] = useState(false);
+  const { scrollYProgress } = useScroll();
   useEffect(() => {
     const sync = () => setScrolled(window.scrollY > 8);
     sync();
@@ -61,6 +62,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         className={`app-navbar ${scrolled ? "is-scrolled" : ""}`}
         aria-label="Primary navigation"
       >
+        <motion.span
+          className="scroll-progress"
+          style={{ scaleX: scrollYProgress }}
+          aria-hidden="true"
+        />
         <Link className="navbar-brand" href="/" aria-label="Open home">
           <svg className="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
             <path className="brand-mark-axis" d="M4 4v24h24" />
