@@ -79,25 +79,28 @@ export function CurveInstrument() {
       onBlur={() => setEngaged(false)}
     >
       <figcaption className="curve-head">
-        <span className="panel-kicker">V1 bonding curve</span>
-        <span className="curve-head-note mono">illustrative · not a quote</span>
+        <span className="curve-title">
+          <span className="curve-live" aria-hidden="true" />
+          Bonding curve
+        </span>
+        <span className={`curve-hint ${engaged ? "is-engaged" : ""}`}>Drag across the chart</span>
       </figcaption>
       <dl className="curve-readout">
         <div>
           <dt>ETH raised</dt>
-          <motion.dd className="mono">{raised}</motion.dd>
+          <motion.dd>{raised}</motion.dd>
         </div>
         <div>
           <dt>Tokens sold</dt>
-          <motion.dd className="mono">{sold}</motion.dd>
+          <motion.dd>{sold}</motion.dd>
         </div>
         <div>
           <dt>Price vs launch</dt>
-          <motion.dd className="mono">{multiple}</motion.dd>
+          <motion.dd>{multiple}</motion.dd>
         </div>
         <div>
           <dt>To graduation</dt>
-          <motion.dd className="mono">{percent}</motion.dd>
+          <motion.dd>{percent}</motion.dd>
         </div>
       </dl>
       <div className="curve-meter" aria-hidden="true">
@@ -163,15 +166,16 @@ export function CurveInstrument() {
           <motion.line className="curve-cross" x1={x} x2={x} y1={y} y2={PLOT_H} />
           <motion.line className="curve-cross" x1={0} x2={x} y1={y} y2={y} />
           <motion.g className="curve-graduated" style={{ opacity: graduated }}>
-            <rect x={PLOT_W - 92} y={-2} width={84} height={22} rx={11} />
-            <text x={PLOT_W - 50} y={13} textAnchor="middle">
-              graduated
+            <rect x={PLOT_W - 88} y={-2} width={80} height={22} rx={11} />
+            <text x={PLOT_W - 48} y={13} textAnchor="middle">
+              Graduated
             </text>
           </motion.g>
           <motion.circle className="curve-dot-halo" cx={x} cy={y} r={14} />
           <motion.circle className="curve-dot" cx={x} cy={y} r={5} />
         </g>
       </svg>
+      <p className="curve-note">Illustrative curve maths, not a quote.</p>
     </figure>
   );
 }
