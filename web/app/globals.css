@@ -1060,6 +1060,7 @@ h3 {
 }
 .metric-value span[aria-hidden] {
   display: inline-block;
+  white-space: pre;
   animation: digit-roll 0.7s var(--ease-out) backwards;
   animation-delay: calc(var(--i) * 28ms);
 }
