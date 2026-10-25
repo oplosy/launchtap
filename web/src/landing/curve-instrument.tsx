@@ -1,11 +1,13 @@
 "use client";
 
-import { motion, useMotionValue, useTransform } from "motion/react";
+import { useState } from "react";
+import { motion, useMotionValue, useSpring, useTransform } from "motion/react";
 import {
   GRADUATION_ETH,
   chartCoordinates,
   curveAt,
   curvePath,
+  ethForSoldShare,
   formatCompact,
   priceMultiple,
 } from "./curve";
@@ -18,7 +20,9 @@ const Y_TICKS = [1, 4, 8, 12, 16];
 const X_TICKS = [0, 200, 400, 600, 800];
 
 export function CurveInstrument() {
-  const eth = useMotionValue(GRADUATION_ETH * 0.62);
+  const [value, setValue] = useState(GRADUATION_ETH * 0.62);
+  const target = useMotionValue(value);
+  const eth = useSpring(target, { stiffness: 260, damping: 34, mass: 0.6 });
   const point = useTransform(eth, curveAt);
   const x = useTransform(point, (value) => chartCoordinates(value, PLOT_W, PLOT_H)[0]);
   const y = useTransform(point, (value) => chartCoordinates(value, PLOT_W, PLOT_H)[1]);
@@ -27,6 +31,15 @@ export function CurveInstrument() {
   const multiple = useTransform(point, (value) => `${priceMultiple(value).toFixed(2)}×`);
   const percent = useTransform(point, (value) => `${Math.round(value.progress * 100)}%`);
   const progress = useTransform(point, (value) => value.progress);
+  const scrub = (next: number) => {
+    setValue(next);
+    target.set(next);
+  };
+  const scrubToPointer = (event: React.PointerEvent<SVGSVGElement>) => {
+    const box = event.currentTarget.getBoundingClientRect();
+    const local = ((event.clientX - box.left) / box.width) * VIEW.width - VIEW.left;
+    scrub(ethForSoldShare(local / PLOT_W));
+  };
   return (
     <figure className="workspace-panel curve-instrument">
       <figcaption className="curve-head">
@@ -54,8 +67,21 @@ export function CurveInstrument() {
       <div className="curve-meter" aria-hidden="true">
         <motion.span style={{ scaleX: progress }} />
       </div>
+      <input
+        className="curve-range"
+        type="range"
+        min={0}
+        max={GRADUATION_ETH}
+        step={0.01}
+        value={value}
+        onChange={(event) => scrub(Number(event.target.value))}
+        aria-label="ETH raised on the curve"
+        aria-valuetext={`${value.toFixed(2)} ETH raised, ${Math.round(curveAt(value).progress * 100)}% to graduation`}
+      />
       <svg
         className="curve-chart"
+        onPointerMove={scrubToPointer}
+        onPointerDown={scrubToPointer}
         viewBox={`0 0 ${VIEW.width} ${VIEW.height}`}
         role="img"
         aria-label="Price rises sixteen-fold along the curve as 800 million tokens sell for 4.2 ETH."

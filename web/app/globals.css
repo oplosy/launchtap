@@ -2614,3 +2614,22 @@ h3 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+.curve-chart {
+  cursor: crosshair;
+}
+/* The range input carries keyboard and screen-reader control; the chart is its pointer surface. */
+.curve-range {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  opacity: 0;
+}
+.curve-instrument {
+  position: relative;
+}
+.curve-instrument:has(.curve-range:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
