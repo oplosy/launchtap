@@ -1665,17 +1665,23 @@ h3 {
   width: 100%;
 }
 .launch-preview-card {
+  position: sticky;
+  top: 100px;
   align-self: start;
   margin-top: 44px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: linear-gradient(145deg, var(--glass-highlight), var(--glass));
-  box-shadow:
-    inset 0 1px var(--glass-highlight),
-    0 20px 50px var(--shadow);
+  background:
+    radial-gradient(circle, var(--line) 1px, transparent 1.4px) 0 0 / 14px 14px,
+    var(--canvas-soft);
   padding: 18px;
-  backdrop-filter: blur(24px) saturate(1.12);
-  -webkit-backdrop-filter: blur(24px) saturate(1.12);
+  transition:
+    border-color 0.35s var(--ease-out),
+    transform 0.5s var(--ease-out);
+}
+.launch-preview-card:hover {
+  border-color: var(--line-bright);
+  transform: translateY(-3px);
 }
 .launch-preview-image {
   display: grid;
