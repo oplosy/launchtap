@@ -135,9 +135,7 @@ export default function AnalyticsPage() {
               </div>
               <span className="mono">{daily.items?.length ?? 0} days · ETH only</span>
             </div>
-            {daily.items?.length ? (
-              <VolumeChart items={daily.items} />
-            ) : null}
+            {daily.items?.length ? <VolumeChart items={daily.items} /> : null}
             {daily.items?.length ? (
               <div className="analytics-table" role="table">
                 <div className="analytics-row analytics-heading" role="row">
@@ -220,12 +218,8 @@ function Metric({ label, value }: { label: string; value: string }) {
           <span className="sr-only">{value}</span>
           {/* Characters roll in one by one; the string is never parsed back into a number. */}
           {[...value].map((char, index) => (
-            <span
-              key={index}
-              aria-hidden="true"
-              style={{ "--i": index } as React.CSSProperties}
-            >
-              {char === " " ? " " : char}
+            <span key={index} aria-hidden="true" style={{ "--i": index } as React.CSSProperties}>
+              {char === " " ? "00a0" : char}
             </span>
           ))}
         </dd>
