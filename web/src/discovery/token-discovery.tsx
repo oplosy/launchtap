@@ -16,6 +16,7 @@ import { queryKeys, snapshotIdentity, type Snapshot } from "@/api/types";
 import { SseInvalidationStream } from "@/api/sse";
 import { formatDisplayAmount } from "@/amounts";
 import { publicConfiguration } from "@/config/public";
+import { addressHue, shortAddress } from "@/token/address";
 import {
   decodeTokenListQuery,
   commitTokenListFilters,
@@ -338,7 +339,7 @@ export function TokenDiscovery({
         </div>
       ) : null}
 
-      <section className="workspace-panel discovery-panel" aria-labelledby={listTitleId}>
+      <section className="discovery-panel" aria-labelledby={listTitleId}>
         <div className="panel-head discovery-controls-head">
           <div>
             {sectionLabel ? <p className="panel-kicker">{sectionLabel}</p> : null}
@@ -448,7 +449,11 @@ function TokenCard({ token, apiBaseUrl }: { token: TokenCardData; apiBaseUrl: st
     `/v1/tokens/${encodeURIComponent(token.address)}/image`,
   );
   return (
-    <article className="token-card" onPointerMove={trackSpotlight}>
+    <article
+      className="token-card"
+      onPointerMove={trackSpotlight}
+      style={{ "--hue": addressHue(token.address) } as React.CSSProperties}
+    >
       <div className="token-card-main">
         <SafeImage
           src={imageUrl}
@@ -460,8 +465,10 @@ function TokenCard({ token, apiBaseUrl }: { token: TokenCardData; apiBaseUrl: st
           <h3>
             <Link href={`/token/${token.address}` as never}>{label}</Link>
           </h3>
-          <p className="mono token-symbol">{token.symbol || "—"}</p>
-          <p className="mono token-address">{token.address}</p>
+          <p className="token-symbol">
+            <span>{token.symbol || "—"}</span>
+            <span className="mono token-address">{shortAddress(token.address, 4)}</span>
+          </p>
         </div>
         <Badge tone={token.phase === "graduated" ? "success" : "accent"}>{token.phase}</Badge>
       </div>
@@ -477,10 +484,6 @@ function TokenCard({ token, apiBaseUrl }: { token: TokenCardData; apiBaseUrl: st
         <div>
           <dt>Holders</dt>
           <dd>{token.holder_count.toLocaleString("en-US")}</dd>
-        </div>
-        <div>
-          <dt>Launch block</dt>
-          <dd>{token.launch_block.toLocaleString("en-US")}</dd>
         </div>
       </dl>
     </article>
