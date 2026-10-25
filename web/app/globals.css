@@ -797,9 +797,9 @@ h3 {
   border-radius: 999px;
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.07),
-    rgba(255, 255, 255, 0.18),
-    rgba(255, 255, 255, 0.07)
+    var(--line-soft),
+    var(--line-bright),
+    var(--line-soft)
   );
   background-size: 200% 100%;
   animation: shimmer 1.4s ease infinite;
@@ -1172,13 +1172,21 @@ h3 {
   margin: 12px 0;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--line);
 }
 .progress-track span {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--text);
+  background: var(--accent);
+  box-shadow: 0 0 16px var(--accent-wash);
+  transform-origin: left;
+  animation: progress-grow 1.1s var(--ease-out) both;
+}
+@keyframes progress-grow {
+  from {
+    transform: scaleX(0);
+  }
 }
 .graduation-progress p {
   margin: 0;
