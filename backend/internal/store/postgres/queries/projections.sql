@@ -164,8 +164,11 @@ WITH clock AS (
         t.token_address,
         t.initial_virtual_eth * 1000000000000000000 / NULLIF(t.initial_virtual_token, 0) AS launch_price,
         t.launch_block_time,
-        COALESCE(reserve.eth_reserve * 1000000000000000000 / NULLIF(reserve.token_reserve, 0), 0) AS spot_price,
-        COALESCE(reserve.eth_reserve, 0) AS liquidity,
+        -- Before the first trade there is no reserve row; the curve still quotes from its
+        -- initial virtual reserves, matching GetTokenDetail and GetTokenQuoteState.
+        COALESCE(COALESCE(reserve.eth_reserve, t.initial_virtual_eth) * 1000000000000000000
+            / NULLIF(COALESCE(reserve.token_reserve, t.initial_virtual_token), 0), 0) AS spot_price,
+        COALESCE(reserve.eth_reserve, t.initial_virtual_eth, 0) AS liquidity,
         t.total_supply,
         t.curve_address,
         t.lp_pair

@@ -33,6 +33,19 @@ func TestRecomputeTokenStatsUsesCanonicalSupplyAndCandleHistory(t *testing.T) {
 	insertProjectionLaunch(t, ctx, database.DB, chainID, 1, blockHash, now.Add(-26*time.Hour), hashBytes(0x56), projectionLaunchFixture{token: token, curve: curve, pair: pair, weth: weth})
 	callRebuild(t, ctx, database.DB, chainID, token)
 
+	adapter := storepostgres.NewAdapter(pool)
+	// Before any trade there is no reserve row; price falls back to the initial virtual reserves.
+	if err := adapter.RecomputeTokenStats(ctx, chainID, common.Address(token)); err != nil {
+		t.Fatalf("recompute pre-trade token stats: %v", err)
+	}
+	var preTradeSpot string
+	if err := database.DB.QueryRowContext(ctx, `SELECT spot_price_eth_wad::TEXT FROM token_stats WHERE chain_id=$1 AND token_address=$2`, chainID, token).Scan(&preTradeSpot); err != nil {
+		t.Fatalf("read pre-trade spot: %v", err)
+	}
+	if preTradeSpot != "10000000000000" {
+		t.Fatalf("pre-trade spot = %s, want launch price 10000000000000", preTradeSpot)
+	}
+
 	if _, err := database.DB.ExecContext(ctx, `
 		INSERT INTO token_reserves (
 			chain_id, token_address, reserve_source, eth_reserve, token_reserve,
@@ -76,7 +89,6 @@ func TestRecomputeTokenStatsUsesCanonicalSupplyAndCandleHistory(t *testing.T) {
 		}
 	}
 
-	adapter := storepostgres.NewAdapter(pool)
 	if err := adapter.RecomputeTokenStats(ctx, chainID, common.Address(token)); err != nil {
 		t.Fatalf("recompute token stats: %v", err)
 	}
