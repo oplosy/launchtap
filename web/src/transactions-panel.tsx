@@ -1054,7 +1054,7 @@ function TradingPanelReady({
         </div>
         <Badge tone={token.phase === "graduated" ? "success" : "accent"}>{token.phase}</Badge>
       </div>
-      {chainId !== configuration.chainId ? (
+      {readiness.address && chainId !== configuration.chainId ? (
         <div className="transaction-warning" role="alert">
           Wrong network. Switch to {configuration.deployment?.name ?? "the reviewed network"} before
           signing.
@@ -1762,7 +1762,7 @@ function GraduatedSwapPanel({
   );
   return (
     <div className="graduated-swap">
-      {chainId !== configuration.chainId ? (
+      {readiness.address && chainId !== configuration.chainId ? (
         <div className="transaction-warning" role="alert">
           Wrong network. Switch to {configuration.deployment?.name} before signing.
           <Button size="sm" onClick={() => void readiness.switchNetwork()}>

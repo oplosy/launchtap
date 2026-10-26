@@ -410,8 +410,13 @@ export function TokenDetail({
   for (const page of pages) {
     for (const item of page.items ?? []) pagesItems.push(item);
   }
-  const tradeItems = pagesItems as unknown as components["schemas"]["TradeDTO"][];
-  const holderItems = pagesItems as unknown as components["schemas"]["HolderDTO"][];
+  // Both tab panels stay mounted, but `pages` holds only the active tab's rows.
+  const tradeItems = (tab === "trades"
+    ? pagesItems
+    : []) as unknown as components["schemas"]["TradeDTO"][];
+  const holderItems = (tab === "holders"
+    ? pagesItems
+    : []) as unknown as components["schemas"]["HolderDTO"][];
   const nextCursor = pages.at(-1)?.next_cursor;
   const snapshot = token.snapshot;
   const title = token.name.trim() || token.symbol.trim() || "Unnamed token";
