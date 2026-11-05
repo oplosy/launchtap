@@ -16,6 +16,7 @@ import { queryKeys, snapshotIdentity, type Snapshot } from "@/api/types";
 import { SseInvalidationStream } from "@/api/sse";
 import { formatDisplayAmount } from "@/amounts";
 import { publicConfiguration } from "@/config/public";
+import { UsdLine } from "@/market/usd-line";
 import { addressHue, shortAddress } from "@/token/address";
 import {
   decodeTokenListQuery,
@@ -475,11 +476,17 @@ function TokenCard({ token, apiBaseUrl }: { token: TokenCardData; apiBaseUrl: st
       <dl className="token-metrics">
         <div>
           <dt>Market cap</dt>
-          <dd>{displayAmount(token.market_cap_eth)} ETH</dd>
+          <dd>
+            {displayAmount(token.market_cap_eth)} ETH
+            <UsdLine wei={token.market_cap_eth} />
+          </dd>
         </div>
         <div>
           <dt>24h volume</dt>
-          <dd>{displayAmount(token.volume_24h_eth)} ETH</dd>
+          <dd>
+            {displayAmount(token.volume_24h_eth)} ETH
+            <UsdLine wei={token.volume_24h_eth} />
+          </dd>
         </div>
         <div>
           <dt>Holders</dt>

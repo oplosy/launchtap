@@ -11,6 +11,7 @@ import { ApiProblem } from "@/api/problems";
 import { queryKeys } from "@/api/types";
 import { SseInvalidationStream } from "@/api/sse";
 import { formatCanonicalBaseUnits, formatSignificantPrice } from "@/amounts";
+import { UsdLine } from "@/market/usd-line";
 import { DEFAULT_E2E_WEB_URL, publicConfiguration } from "@/config/public";
 import { reviewedDeployments } from "@/contracts/generated";
 import { addressExplorerUrl } from "@/wallet/explorer";
@@ -584,11 +585,23 @@ export function TokenDetail({
             <span className="token-block">Live values</span>
           </div>
           <dl className="token-summary-grid">
-            <Metric label="Market cap" value={amount(token.market_cap_eth)} />
-            <Metric label="24h volume" value={amount(token.volume_24h_eth)} />
-            <Metric label="Liquidity" value={amount(token.liquidity_eth)} />
+            <Metric
+              label="Market cap"
+              value={amount(token.market_cap_eth)}
+              eth={token.market_cap_eth}
+            />
+            <Metric
+              label="24h volume"
+              value={amount(token.volume_24h_eth)}
+              eth={token.volume_24h_eth}
+            />
+            <Metric
+              label="Liquidity"
+              value={amount(token.liquidity_eth)}
+              eth={token.liquidity_eth}
+            />
             <Metric label="Holders" value={token.holder_count.toLocaleString("en-US")} />
-            <Metric label="ETH reserve" value={amount(token.eth_reserve)} />
+            <Metric label="ETH reserve" value={amount(token.eth_reserve)} eth={token.eth_reserve} />
             <Metric label="Token reserve" value={safeTokenAmount(token.token_reserve)} />
           </dl>
         </section>
@@ -720,11 +733,14 @@ function safeTokenAmount(raw: string) {
 function safeMarketValue(raw: string) {
   return formatSignificantPrice(raw) ?? "Unavailable";
 }
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, eth }: { label: string; value: string; eth?: string }) {
   return (
     <div>
       <dt>{label}</dt>
-      <dd>{value}</dd>
+      <dd>
+        {value}
+        {eth ? <UsdLine wei={eth} /> : null}
+      </dd>
     </div>
   );
 }
@@ -770,7 +786,10 @@ function Trades({
             {item.side || "—"}
           </span>
           <span className="mono">{safeTokenAmount(item.token_volume)}</span>
-          <span className="mono">{amount(item.eth_volume)}</span>
+          <span className="mono">
+            {amount(item.eth_volume)}
+            <UsdLine wei={item.eth_volume} />
+          </span>
           <span className="mono trade-prices">
             {safeMarketValue(item.execution_price)} / {safeMarketValue(item.spot_price)}
           </span>

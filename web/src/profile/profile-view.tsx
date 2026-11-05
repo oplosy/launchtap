@@ -6,6 +6,7 @@ import { useIdentityToken, usePrivy } from "@privy-io/react-auth";
 import { useEffect, useState } from "react";
 import { ApiClient, type ProfileResponse } from "@/api/client";
 import { formatBaseUnits } from "@/amounts";
+import { UsdLine } from "@/market/usd-line";
 import { publicConfiguration } from "@/config/public";
 import { Button, Badge } from "@/components/primitives";
 import { useWalletReadiness } from "@/wallet/readiness";
@@ -183,8 +184,13 @@ export function ProfileView() {
                   <span className="ui-field-hint">{action.phase} · snapshot-bound</span>
                 </div>
                 <div className="mono profile-action-values">
-                  <span>Creator fees: {formatEth(action.creator_fees)}</span>
-                  <span>Refund: {formatEth(action.refund)}</span>
+                  <span>
+                    Creator fees: {formatEth(action.creator_fees)}{" "}
+                    <UsdLine wei={action.creator_fees} />
+                  </span>
+                  <span>
+                    Refund: {formatEth(action.refund)} <UsdLine wei={action.refund} />
+                  </span>
                 </div>
               </li>
             ))}

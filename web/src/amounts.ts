@@ -91,6 +91,33 @@ export function formatBaseUnits(
   return fraction ? `${whole}.${fraction}` : whole.toString();
 }
 
+/**
+ * Exact USD value of a base-unit amount at a decimal USD price (e.g. ETH/USD).
+ * >= $1 shows 2 decimals with thousands separators; < $1 shows 4 significant
+ * digits. Half-up rounding on bigint math, never exponent notation.
+ */
+export function formatUsd(baseUnits: bigint, decimals: number, priceUsd: string): string {
+  if (baseUnits < 0n || !Number.isInteger(decimals) || decimals < 0 || decimals > 255)
+    throw new Error("Invalid USD amount");
+  const price = priceUsd.trim();
+  const priceDecimals = (price.split(".")[1] ?? "").length;
+  const numerator = baseUnits * parseDecimal(price, priceDecimals);
+  const denominator = 10n ** BigInt(decimals + priceDecimals);
+  if (numerator === 0n) return "$0.00";
+  const roundDiv = (n: bigint, d: bigint) => (2n * n + d) / (2n * d);
+  const twoDecimals = (cents: bigint) => {
+    const whole = (cents / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return `$${whole}.${(cents % 100n).toString().padStart(2, "0")}`;
+  };
+  if (numerator >= denominator) return twoDecimals(roundDiv(numerator * 100n, denominator));
+  let zeros = 0;
+  while (numerator * 10n ** BigInt(zeros + 1) < denominator) zeros++;
+  const fractionDigits = zeros + 4;
+  const scaled = roundDiv(numerator * 10n ** BigInt(fractionDigits), denominator);
+  if (scaled >= 10n ** BigInt(fractionDigits)) return "$1.00";
+  return `$0.${scaled.toString().padStart(fractionDigits, "0")}`;
+}
+
 export function formatDisplayAmount(value: bigint, decimals = 18, maxFractionDigits = 4): string {
   const raw = formatBaseUnits(value, decimals, maxFractionDigits);
   const [whole = "", fraction] = raw.split(".");

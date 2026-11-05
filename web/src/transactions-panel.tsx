@@ -40,6 +40,7 @@ import {
   transactionStateForScope,
   type ScopedTransactionSnapshot,
 } from "@/transaction-scope";
+import { TradeUsdHint, UsdLine } from "@/market/usd-line";
 import {
   Badge,
   Button,
@@ -1089,6 +1090,7 @@ function TradingPanelReady({
             placeholder="0.00"
             hint="Integer base units are used for signing; decimals are presentation only."
           />
+          {side === "buy" ? <TradeUsdHint ethInput={input} /> : <TradeUsdHint />}
           <Input
             label="Slippage tolerance (%)"
             value={slippage}
@@ -1111,9 +1113,11 @@ function TradingPanelReady({
               <span>
                 Estimated output{" "}
                 <strong className="mono">{formatBaseUnits(quote.output, 18, 6)}</strong>
+                {side === "sell" ? <UsdLine wei={quote.output} /> : null}
               </span>
               <span>
                 Fees <strong className="mono">{eth(quote.fee)}</strong>
+                <UsdLine wei={quote.fee} />
               </span>
               <span>
                 Minimum output{" "}
@@ -1806,6 +1810,7 @@ function GraduatedSwapPanel({
             }}
             inputMode="decimal"
           />
+          {side === "buy" ? <TradeUsdHint ethInput={input} /> : <TradeUsdHint />}
           <Input
             label="Slippage tolerance (%)"
             value={slippage}
@@ -1822,6 +1827,7 @@ function GraduatedSwapPanel({
             <div className="quote-summary">
               <span>
                 Router output <strong className="mono">{formatBaseUnits(output, 18, 6)}</strong>
+                {side === "sell" ? <UsdLine wei={output} /> : null}
               </span>
               <span>
                 Minimum output{" "}

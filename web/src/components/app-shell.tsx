@@ -27,6 +27,7 @@ import {
 } from "./theme";
 import { WalletConnectButton } from "@/wallet/connection-context";
 import { publicConfiguration } from "@/config/public";
+import { CoinGeckoAttribution } from "@/market/usd-line";
 
 // The palette is only downloaded the first time someone opens it.
 const CommandPalette = lazy(() => import("./command-palette"));
@@ -190,7 +191,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <div className="footer-bottom">
-            <p className="footer-meta">© 2026 Launchpad</p>
+            <p className="footer-meta">
+              © 2026 Launchpad <CoinGeckoAttribution />
+            </p>
             <p className="footer-risk">
               On-chain transactions may be irreversible. Tokens can be volatile or lose all value.
             </p>

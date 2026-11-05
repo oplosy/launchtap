@@ -4,6 +4,7 @@ import {
   formatCanonicalBaseUnits,
   formatDisplayAmount,
   formatSignificantPrice,
+  formatUsd,
   parseBaseUnits,
   parseCanonicalBaseUnits,
   parseDecimal,
@@ -47,5 +48,30 @@ describe("formatSignificantPrice", () => {
     expect(formatSignificantPrice("0")).toBe("0");
     expect(formatSignificantPrice("01")).toBeNull();
     expect(formatSignificantPrice("-1")).toBeNull();
+  });
+});
+
+describe("formatUsd", () => {
+  it("formats values of at least one dollar with two decimals and separators", () => {
+    expect(formatUsd(10n ** 18n, 18, "3456.12")).toBe("$3,456.12");
+    expect(formatUsd(10n ** 18n, 18, "3000")).toBe("$3,000.00");
+  });
+  it("keeps four significant digits below one dollar", () => {
+    expect(formatUsd(1n, 18, "3456.12")).toBe("$0.000000000000003456");
+    expect(formatUsd(10n ** 17n, 18, "5")).toBe("$0.5000");
+  });
+  it("is exact for very large amounts", () => {
+    expect(formatUsd(10n ** 27n, 18, "3456.123456789012345678")).toBe("$3,456,123,456,789.01");
+  });
+  it("rounds half up", () => {
+    expect(formatUsd(10n ** 18n, 18, "1.005")).toBe("$1.01");
+    expect(formatUsd(10n ** 18n, 18, "1.004")).toBe("$1.00");
+    expect(formatUsd(10n ** 18n, 18, "0.99996")).toBe("$1.00");
+    expect(formatUsd(10n ** 18n, 18, "0.12345")).toBe("$0.1235");
+  });
+  it("renders zero and rejects bad input", () => {
+    expect(formatUsd(0n, 18, "3456.12")).toBe("$0.00");
+    expect(() => formatUsd(1n, 18, "abc")).toThrow();
+    expect(() => formatUsd(-1n, 18, "1")).toThrow();
   });
 });
