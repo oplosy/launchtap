@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/big"
 	"net/http"
+	"time"
 
 	"github.com/Contictus/launchtap/backend/internal/pagination"
 	"github.com/Contictus/launchtap/backend/internal/token"
@@ -15,11 +16,14 @@ const maxSearchBytes = 64
 type TokenRoutes struct {
 	Reader  token.Reader
 	ChainID int64
+	// Now supplies the request clock for the age filter; nil means time.Now.
+	Now func() time.Time
 }
 type tokenListInput struct {
 	Phase  string `query:"phase"`
 	Query  string `query:"q" maxLength:"64"`
 	Sort   string `query:"sort"`
+	Age    string `query:"age"`
 	Cursor string `query:"cursor"`
 	Limit  int    `query:"limit" minimum:"1" maximum:"100"`
 }
@@ -71,6 +75,16 @@ func (r TokenRoutes) list(ctx context.Context, in *tokenListInput) (*tokenListOu
 	if in.Sort != "newest" && in.Sort != "oldest" && in.Sort != "market_cap" && in.Sort != "volume_24h" {
 		return nil, apiProblem(http.StatusBadRequest, "invalid_sort", "Unsupported token sort")
 	}
+	if in.Age == "" {
+		in.Age = "all"
+	}
+	if in.Age != "all" && in.Age != "24h" && in.Age != "7d" {
+		return nil, apiProblem(http.StatusBadRequest, "invalid_age", "Unsupported age filter")
+	}
+	now := time.Now
+	if r.Now != nil {
+		now = r.Now
+	}
 	var cur *pagination.Cursor
 	var err error
 	if in.Cursor != "" {
@@ -80,7 +94,7 @@ func (r TokenRoutes) list(ctx context.Context, in *tokenListInput) (*tokenListOu
 		}
 		cur = &c
 	}
-	p, err := r.Reader.List(ctx, token.ListQuery{ChainID: r.ChainID, Phase: in.Phase, Search: in.Query, Sort: in.Sort, Cursor: cur, Limit: limit})
+	p, err := r.Reader.List(ctx, token.ListQuery{ChainID: r.ChainID, Phase: in.Phase, Search: in.Query, Sort: in.Sort, Cursor: cur, Limit: limit, Age: in.Age, Now: now().UTC()})
 	if err != nil {
 		return nil, mapReadError(ctx, err)
 	}

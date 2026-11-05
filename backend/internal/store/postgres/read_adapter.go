@@ -36,7 +36,21 @@ func ReadTokenCards(ctx context.Context, pool PoolReadBeginner, chainID int64, d
 	var page token.Page
 	err := withReadSnapshotBeginner(ctx, pool, chainID, deploymentID, func(ctx context.Context, adapter *Adapter, snapshot ReadSnapshot) error {
 		search := strings.ToLower(strings.TrimSpace(query.Search))
-		filters := cursorFilter(query.Phase, search)
+		age := query.Age
+		if age == "" {
+			age = "all"
+		}
+		// The age value joins the hash only when a filter applies, so "all" cursors minted
+		// before the age filter existed stay valid.
+		filterParts := []string{query.Phase, search}
+		if age != "all" {
+			filterParts = append(filterParts, age)
+		}
+		filters := cursorFilter(filterParts...)
+		since, launchedAfter, err := ageCutoff(age, query.Now, query.Cursor)
+		if err != nil {
+			return err
+		}
 		pattern := escapeLikePattern(search)
 		if query.Cursor != nil {
 			if err := query.Cursor.ValidateRequest("tokens", query.Sort, filters, "next", snapshot.Identity, adapter.canonicalCursorCheck(ctx)); err != nil {
@@ -44,10 +58,9 @@ func ReadTokenCards(ctx context.Context, pool PoolReadBeginner, chainID int64, d
 			}
 		}
 		var cards []cardView
-		var err error
 		switch query.Sort {
 		case "newest":
-			arg := sqlc.ListTokenCardsNewestParams{ChainID: chainID, Phase: query.Phase, Search: pattern, PageSize: int32(query.Limit)}
+			arg := sqlc.ListTokenCardsNewestParams{ChainID: chainID, Phase: query.Phase, Search: pattern, LaunchedAfter: launchedAfter, PageSize: int32(query.Limit)}
 			if query.Cursor != nil {
 				arg.AfterBlock, arg.AfterAddress, err = tupleCursor(query.Cursor)
 				if err != nil {
@@ -60,7 +73,7 @@ func ReadTokenCards(ctx context.Context, pool PoolReadBeginner, chainID int64, d
 				cards = append(cards, reflectCard(row))
 			}
 		case "oldest":
-			arg := sqlc.ListTokenCardsOldestParams{ChainID: chainID, Phase: query.Phase, Search: pattern, PageSize: int32(query.Limit)}
+			arg := sqlc.ListTokenCardsOldestParams{ChainID: chainID, Phase: query.Phase, Search: pattern, LaunchedAfter: launchedAfter, PageSize: int32(query.Limit)}
 			if query.Cursor != nil {
 				arg.AfterBlock, arg.AfterAddress, err = tupleCursor(query.Cursor)
 				if err != nil {
@@ -78,13 +91,13 @@ func ReadTokenCards(ctx context.Context, pool PoolReadBeginner, chainID int64, d
 				return e
 			}
 			if query.Sort == "market_cap" {
-				rows, e := adapter.queries.ListTokenCardsMarketCap(ctx, sqlc.ListTokenCardsMarketCapParams{ChainID: chainID, Phase: query.Phase, Search: pattern, AfterMetric: argMetric, AfterAddress: argAddress, PageSize: int32(query.Limit)})
+				rows, e := adapter.queries.ListTokenCardsMarketCap(ctx, sqlc.ListTokenCardsMarketCapParams{ChainID: chainID, Phase: query.Phase, Search: pattern, LaunchedAfter: launchedAfter, AfterMetric: argMetric, AfterAddress: argAddress, PageSize: int32(query.Limit)})
 				err = e
 				for _, row := range rows {
 					cards = append(cards, reflectCard(row))
 				}
 			} else {
-				rows, e := adapter.queries.ListTokenCardsVolume(ctx, sqlc.ListTokenCardsVolumeParams{ChainID: chainID, Phase: query.Phase, Search: pattern, AfterMetric: argMetric, AfterAddress: argAddress, PageSize: int32(query.Limit)})
+				rows, e := adapter.queries.ListTokenCardsVolume(ctx, sqlc.ListTokenCardsVolumeParams{ChainID: chainID, Phase: query.Phase, Search: pattern, LaunchedAfter: launchedAfter, AfterMetric: argMetric, AfterAddress: argAddress, PageSize: int32(query.Limit)})
 				err = e
 				for _, row := range rows {
 					cards = append(cards, reflectCard(row))
@@ -109,7 +122,7 @@ func ReadTokenCards(ctx context.Context, pool PoolReadBeginner, chainID int64, d
 			if query.Sort == "volume_24h" {
 				key = []string{last.Volume.String(), last.Address.Hex()}
 			}
-			page.NextCursor, err = pagination.Encode(pagination.Cursor{Version: pagination.CurrentVersion, Snapshot: snapshot.Identity, Endpoint: "tokens", Sort: query.Sort, Filters: filters, Direction: "next", Key: key})
+			page.NextCursor, err = pagination.Encode(pagination.Cursor{Version: pagination.CurrentVersion, Snapshot: snapshot.Identity, Endpoint: "tokens", Sort: query.Sort, Filters: filters, Direction: "next", Key: key, Since: since})
 			if err != nil {
 				return err
 			}
@@ -299,6 +312,40 @@ func ReadAggregatedCandles(ctx context.Context, pool PoolReadBeginner, chainID i
 		return nil
 	})
 	return page, err
+}
+
+// ageCutoff returns the cursor "since" value and the launched_after query argument. The first
+// page derives the cutoff from now; later pages reuse the cursor's pinned value so the window
+// never slides between pages. The cutoff is inclusive (launch_block_time >= cutoff).
+func ageCutoff(age string, now time.Time, cursor *pagination.Cursor) (string, pgtype.Timestamptz, error) {
+	var window time.Duration
+	switch age {
+	case "all":
+		if cursor != nil && cursor.Since != "" {
+			return "", pgtype.Timestamptz{}, fmt.Errorf("%w: unexpected since", pagination.ErrInvalidCursor)
+		}
+		return "", pgtype.Timestamptz{}, nil
+	case "24h":
+		window = 24 * time.Hour
+	case "7d":
+		window = 7 * 24 * time.Hour
+	default:
+		return "", pgtype.Timestamptz{}, fmt.Errorf("unsupported token age %q", age)
+	}
+	var cutoff time.Time
+	if cursor != nil {
+		parsed, err := time.Parse(time.RFC3339, cursor.Since)
+		if err != nil {
+			return "", pgtype.Timestamptz{}, fmt.Errorf("%w: since: %v", pagination.ErrInvalidCursor, err)
+		}
+		cutoff = parsed.UTC().Truncate(time.Second)
+	} else {
+		if now.IsZero() {
+			now = time.Now()
+		}
+		cutoff = now.UTC().Add(-window).Truncate(time.Second)
+	}
+	return cutoff.Format(time.RFC3339), pgtype.Timestamptz{Time: cutoff, Valid: true}, nil
 }
 
 func cursorFilter(parts ...string) string {
