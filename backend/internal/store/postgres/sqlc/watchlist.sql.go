@@ -88,13 +88,14 @@ func (q *Queries) InsertWatchlistEntry(ctx context.Context, arg InsertWatchlistE
 
 const listWatchlist = `-- name: ListWatchlist :many
 SELECT w.token_address AS watched_token_address, w.created_at,
-       t.token_address, t.name, t.symbol, t.phase,
-       t.launch_block_number, t.launch_block_time, t.total_supply,
+       (t.token_address IS NOT NULL)::boolean AS token_available,
+       t.name, t.symbol, t.phase,
+       t.launch_block_number, t.launch_block_time, t.total_supply::numeric AS token_total_supply,
        COALESCE(s.market_cap_eth_wad, 0::numeric) AS market_cap_eth_wad,
        COALESCE(s.volume_24h_eth_wad, 0::numeric) AS volume_24h_eth_wad,
        COALESCE(s.holder_count, 0)::BIGINT AS holder_count,
        m.description, m.image_url, m.x_url, m.telegram_url,
-       t.launch_block_hash
+       t.launch_block_hash::bytea AS token_launch_block_hash
 FROM watchlist_entries AS w
 LEFT JOIN tokens AS t
   ON t.chain_id = w.chain_id AND t.token_address = w.token_address
@@ -118,25 +119,27 @@ type ListWatchlistParams struct {
 }
 
 type ListWatchlistRow struct {
-	WatchedTokenAddress Address
-	CreatedAt           pgtype.Timestamptz
-	TokenAddress        Address
-	Name                pgtype.Text
-	Symbol              pgtype.Text
-	Phase               pgtype.Text
-	LaunchBlockNumber   pgtype.Int8
-	LaunchBlockTime     pgtype.Timestamptz
-	TotalSupply         Uint256
-	MarketCapEthWad     Uint256
-	Volume24hEthWad     Uint256
-	HolderCount         int64
-	Description         pgtype.Text
-	ImageUrl            pgtype.Text
-	XUrl                pgtype.Text
-	TelegramUrl         pgtype.Text
-	LaunchBlockHash     Hash
+	WatchedTokenAddress  Address
+	CreatedAt            pgtype.Timestamptz
+	TokenAvailable       bool
+	Name                 pgtype.Text
+	Symbol               pgtype.Text
+	Phase                pgtype.Text
+	LaunchBlockNumber    pgtype.Int8
+	LaunchBlockTime      pgtype.Timestamptz
+	TokenTotalSupply     pgtype.Numeric
+	MarketCapEthWad      Uint256
+	Volume24hEthWad      Uint256
+	HolderCount          int64
+	Description          pgtype.Text
+	ImageUrl             pgtype.Text
+	XUrl                 pgtype.Text
+	TelegramUrl          pgtype.Text
+	TokenLaunchBlockHash []byte
 }
 
+// Token columns are NULL when the token row is gone (no FK); the casts keep sqlc from
+// applying the non-nullable Address/Uint256/Hash overrides to them.
 func (q *Queries) ListWatchlist(ctx context.Context, arg ListWatchlistParams) ([]ListWatchlistRow, error) {
 	rows, err := q.db.Query(ctx, listWatchlist,
 		arg.ChainID,
@@ -154,13 +157,13 @@ func (q *Queries) ListWatchlist(ctx context.Context, arg ListWatchlistParams) ([
 		if err := rows.Scan(
 			&i.WatchedTokenAddress,
 			&i.CreatedAt,
-			&i.TokenAddress,
+			&i.TokenAvailable,
 			&i.Name,
 			&i.Symbol,
 			&i.Phase,
 			&i.LaunchBlockNumber,
 			&i.LaunchBlockTime,
-			&i.TotalSupply,
+			&i.TokenTotalSupply,
 			&i.MarketCapEthWad,
 			&i.Volume24hEthWad,
 			&i.HolderCount,
@@ -168,7 +171,7 @@ func (q *Queries) ListWatchlist(ctx context.Context, arg ListWatchlistParams) ([
 			&i.ImageUrl,
 			&i.XUrl,
 			&i.TelegramUrl,
-			&i.LaunchBlockHash,
+			&i.TokenLaunchBlockHash,
 		); err != nil {
 			return nil, err
 		}

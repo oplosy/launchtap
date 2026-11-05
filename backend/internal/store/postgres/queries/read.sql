@@ -268,7 +268,7 @@ ORDER BY ranked.window_volume_eth_wad * ranked.distinct_buyers DESC,
 LIMIT sqlc.arg(row_limit)::integer;
 
 -- name: GetKingOfTheHill :one
-SELECT * FROM (
+WITH curve_tokens AS (
     SELECT t.token_address, t.name, t.symbol, t.phase,
            t.launch_block_number, t.launch_block_time, t.total_supply,
            COALESCE(s.market_cap_eth_wad, 0::numeric) AS market_cap_eth_wad,
@@ -292,6 +292,7 @@ SELECT * FROM (
                END::integer AS graduation_progress_bps
     ) AS p
     WHERE t.chain_id = sqlc.arg(chain_id) AND t.phase = 'curve'
-) AS curve_tokens
+)
+SELECT * FROM curve_tokens
 ORDER BY graduation_progress_bps DESC, launch_block_time DESC, token_address
 LIMIT 1;

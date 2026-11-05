@@ -185,3 +185,7 @@ sql:
             go_type: {type: "Uint256"}
           - column: "*.volume_all_time_eth_wad"
             go_type: {type: "Uint256"}
+          - column: "*.window_volume_eth_wad"
+            go_type: {type: "Uint256"}
+          - column: "*.remaining_eth_wad"
+            go_type: {type: "Uint256"}

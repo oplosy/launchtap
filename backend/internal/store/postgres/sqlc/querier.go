@@ -105,6 +105,8 @@ type Querier interface {
 	ListTokenIdentities(ctx context.Context, chainID int64) ([]ListTokenIdentitiesRow, error)
 	ListTokenPhaseCounts(ctx context.Context, chainID int64) ([]ListTokenPhaseCountsRow, error)
 	ListTrendingTokens(ctx context.Context, arg ListTrendingTokensParams) ([]ListTrendingTokensRow, error)
+	// Token columns are NULL when the token row is gone (no FK); the casts keep sqlc from
+	// applying the non-nullable Address/Uint256/Hash overrides to them.
 	ListWatchlist(ctx context.Context, arg ListWatchlistParams) ([]ListWatchlistRow, error)
 	// Serializes cap check + insert per owner. The key is hashed in SQL.
 	LockWatchlistOwner(ctx context.Context, ownerKey string) error

@@ -12,7 +12,7 @@ import (
 )
 
 const getKingOfTheHill = `-- name: GetKingOfTheHill :one
-SELECT token_address, name, symbol, phase, launch_block_number, launch_block_time, total_supply, market_cap_eth_wad, volume_24h_eth_wad, holder_count, description, image_url, x_url, telegram_url, launch_block_hash, graduation_progress_bps, remaining_eth_wad FROM (
+WITH curve_tokens AS (
     SELECT t.token_address, t.name, t.symbol, t.phase,
            t.launch_block_number, t.launch_block_time, t.total_supply,
            COALESCE(s.market_cap_eth_wad, 0::numeric) AS market_cap_eth_wad,
@@ -36,7 +36,8 @@ SELECT token_address, name, symbol, phase, launch_block_number, launch_block_tim
                END::integer AS graduation_progress_bps
     ) AS p
     WHERE t.chain_id = $1 AND t.phase = 'curve'
-) AS curve_tokens
+)
+SELECT token_address, name, symbol, phase, launch_block_number, launch_block_time, total_supply, market_cap_eth_wad, volume_24h_eth_wad, holder_count, description, image_url, x_url, telegram_url, launch_block_hash, graduation_progress_bps, remaining_eth_wad FROM curve_tokens
 ORDER BY graduation_progress_bps DESC, launch_block_time DESC, token_address
 LIMIT 1
 `
@@ -56,9 +57,9 @@ type GetKingOfTheHillRow struct {
 	ImageUrl              pgtype.Text
 	XUrl                  pgtype.Text
 	TelegramUrl           pgtype.Text
-	LaunchBlockHash       Hash
+	LaunchBlockHash       []byte
 	GraduationProgressBps int32
-	RemainingEthWad       pgtype.Numeric
+	RemainingEthWad       Uint256
 }
 
 func (q *Queries) GetKingOfTheHill(ctx context.Context, chainID int64) (GetKingOfTheHillRow, error) {
@@ -1107,7 +1108,7 @@ type ListTrendingTokensRow struct {
 	XUrl               pgtype.Text
 	TelegramUrl        pgtype.Text
 	LaunchBlockHash    Hash
-	WindowVolumeEthWad pgtype.Numeric
+	WindowVolumeEthWad Uint256
 	DistinctBuyers     int64
 	LastTradeTime      pgtype.Timestamptz
 }

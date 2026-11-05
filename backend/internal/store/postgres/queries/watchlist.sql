@@ -21,15 +21,18 @@ WHERE chain_id = sqlc.arg(chain_id)
   AND privy_did = sqlc.arg(privy_did)
   AND token_address = sqlc.arg(token_address);
 
+-- Token columns are NULL when the token row is gone (no FK); the casts keep sqlc from
+-- applying the non-nullable Address/Uint256/Hash overrides to them.
 -- name: ListWatchlist :many
 SELECT w.token_address AS watched_token_address, w.created_at,
-       t.token_address, t.name, t.symbol, t.phase,
-       t.launch_block_number, t.launch_block_time, t.total_supply,
+       (t.token_address IS NOT NULL)::boolean AS token_available,
+       t.name, t.symbol, t.phase,
+       t.launch_block_number, t.launch_block_time, t.total_supply::numeric AS token_total_supply,
        COALESCE(s.market_cap_eth_wad, 0::numeric) AS market_cap_eth_wad,
        COALESCE(s.volume_24h_eth_wad, 0::numeric) AS volume_24h_eth_wad,
        COALESCE(s.holder_count, 0)::BIGINT AS holder_count,
        m.description, m.image_url, m.x_url, m.telegram_url,
-       t.launch_block_hash
+       t.launch_block_hash::bytea AS token_launch_block_hash
 FROM watchlist_entries AS w
 LEFT JOIN tokens AS t
   ON t.chain_id = w.chain_id AND t.token_address = w.token_address
