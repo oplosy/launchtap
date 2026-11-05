@@ -138,7 +138,7 @@ func run() error {
 			slog.Warn("market dirty listener stopped", "error", err)
 		}
 	}()
-	sweeper := stats.WindowSweeper{Source: storepostgres.AggregationSource{Adapter: storepostgres.NewAdapter(pool), ChainID: int64(c.ChainID)}, ChainID: int64(c.ChainID), Interval: stats.DefaultSweepInterval, Window: stats.DefaultSweepWindow, Overlap: stats.DefaultSweepOverlap, Now: time.Now,
+	sweeper := stats.WindowSweeper{Source: storepostgres.AggregationSource{Adapter: storepostgres.NewAdapter(pool), ChainID: int64(c.ChainID)}, ChainID: int64(c.ChainID), Interval: stats.DefaultSweepInterval, Window: stats.DefaultSweepWindow, Overlap: stats.DefaultSweepOverlap,
 		Wake: func() {
 			select {
 			case wake <- struct{}{}:

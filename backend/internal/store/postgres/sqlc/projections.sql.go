@@ -319,6 +319,18 @@ func (q *Queries) CompleteAggregationDirty(ctx context.Context, arg CompleteAggr
 	return result.RowsAffected(), nil
 }
 
+const databaseNow = `-- name: DatabaseNow :one
+SELECT now()::timestamptz AS now
+`
+
+// The database clock is the one the stats recompute uses for its 24h window.
+func (q *Queries) DatabaseNow(ctx context.Context) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, databaseNow)
+	var now pgtype.Timestamptz
+	err := row.Scan(&now)
+	return now, err
+}
+
 const deleteTokenStats = `-- name: DeleteTokenStats :execrows
 DELETE FROM token_stats WHERE chain_id=$1 AND token_address=$2
 `
@@ -417,6 +429,25 @@ type MarkTokensDirtyInWindowParams struct {
 // Marks every token with a canonical trade or DEX swap in [window_from, window_to) dirty.
 func (q *Queries) MarkTokensDirtyInWindow(ctx context.Context, arg MarkTokensDirtyInWindowParams) (int64, error) {
 	result, err := q.db.Exec(ctx, markTokensDirtyInWindow, arg.ChainID, arg.WindowFrom, arg.WindowTo)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const markTokensWithVolumeDirty = `-- name: MarkTokensWithVolumeDirty :execrows
+INSERT INTO aggregation_dirty (chain_id, token_address, generation)
+SELECT token.chain_id, token.token_address, nextval('aggregation_dirty_generation_seq')
+FROM tokens AS token
+WHERE token.chain_id = $1
+  AND token.sort_volume_24h_eth_wad > 0
+ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregation_dirty_generation_seq')
+`
+
+// Startup catch-up: marks every token still carrying a non-zero 24h volume dirty so expiries
+// missed while the sweeper was down are recomputed.
+func (q *Queries) MarkTokensWithVolumeDirty(ctx context.Context, chainID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, markTokensWithVolumeDirty, chainID)
 	if err != nil {
 		return 0, err
 	}

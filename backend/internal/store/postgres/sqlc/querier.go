@@ -29,6 +29,8 @@ type Querier interface {
 	CompleteIndexerReorg(ctx context.Context, reorgID int64) (CompleteIndexerReorgRow, error)
 	CountWatchlist(ctx context.Context, arg CountWatchlistParams) (int64, error)
 	CreatorFeeClaimMatchesEvent(ctx context.Context, arg CreatorFeeClaimMatchesEventParams) (pgtype.Bool, error)
+	// The database clock is the one the stats recompute uses for its 24h window.
+	DatabaseNow(ctx context.Context) (pgtype.Timestamptz, error)
 	DeleteCreatorFeeClaimsAbove(ctx context.Context, arg DeleteCreatorFeeClaimsAboveParams) (int64, error)
 	DeleteEngineConfigurationsAbove(ctx context.Context, arg DeleteEngineConfigurationsAboveParams) (int64, error)
 	DeleteFutureDefaultsConfigurationsAbove(ctx context.Context, arg DeleteFutureDefaultsConfigurationsAboveParams) (int64, error)
@@ -114,6 +116,9 @@ type Querier interface {
 	MarkTokenDirty(ctx context.Context, arg MarkTokenDirtyParams) error
 	// Marks every token with a canonical trade or DEX swap in [window_from, window_to) dirty.
 	MarkTokensDirtyInWindow(ctx context.Context, arg MarkTokensDirtyInWindowParams) (int64, error)
+	// Startup catch-up: marks every token still carrying a non-zero 24h volume dirty so expiries
+	// missed while the sweeper was down are recomputed.
+	MarkTokensWithVolumeDirty(ctx context.Context, chainID int64) (int64, error)
 	NotifyAPIRefresh(ctx context.Context, payload string) error
 	PoolBurnMatchesEvent(ctx context.Context, arg PoolBurnMatchesEventParams) (pgtype.Bool, error)
 	PoolMintMatchesEvent(ctx context.Context, arg PoolMintMatchesEventParams) (pgtype.Bool, error)

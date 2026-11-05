@@ -342,3 +342,17 @@ FROM (
       AND swap.block_time < sqlc.arg(window_to)::timestamptz
 ) AS touched
 ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregation_dirty_generation_seq');
+
+-- Startup catch-up: marks every token still carrying a non-zero 24h volume dirty so expiries
+-- missed while the sweeper was down are recomputed.
+-- name: MarkTokensWithVolumeDirty :execrows
+INSERT INTO aggregation_dirty (chain_id, token_address, generation)
+SELECT token.chain_id, token.token_address, nextval('aggregation_dirty_generation_seq')
+FROM tokens AS token
+WHERE token.chain_id = sqlc.arg(chain_id)
+  AND token.sort_volume_24h_eth_wad > 0
+ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregation_dirty_generation_seq');
+
+-- The database clock is the one the stats recompute uses for its 24h window.
+-- name: DatabaseNow :one
+SELECT now()::timestamptz AS now;

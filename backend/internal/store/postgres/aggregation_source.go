@@ -82,3 +82,21 @@ func (s AggregationSource) MarkExpiringWindow(ctx context.Context, chainID int64
 	}
 	return marked, nil
 }
+
+// MarkAllWithVolume marks every token with a non-zero 24h volume dirty.
+func (s AggregationSource) MarkAllWithVolume(ctx context.Context, chainID int64) (int64, error) {
+	marked, err := s.Adapter.queries.MarkTokensWithVolumeDirty(ctx, chainID)
+	if err != nil {
+		return 0, fmt.Errorf("mark tokens with volume dirty: %w", err)
+	}
+	return marked, nil
+}
+
+// DatabaseNow returns the database clock, which the stats recompute uses for its 24h window.
+func (s AggregationSource) DatabaseNow(ctx context.Context) (time.Time, error) {
+	now, err := s.Adapter.queries.DatabaseNow(ctx)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("read database clock: %w", err)
+	}
+	return now.Time, nil
+}
