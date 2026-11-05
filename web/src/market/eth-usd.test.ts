@@ -63,6 +63,20 @@ describe("eth usd store", () => {
     stop();
   });
 
+  it("drops a stale price when requests hang", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(reference("1"))
+      .mockImplementation(() => new Promise(() => undefined));
+    const store = createEthUsdStore(fetcher, fakeDocument());
+    const stop = store.subscribe(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getSnapshot().price).toBe("1");
+    await vi.advanceTimersByTimeAsync(120_000 + 60_000);
+    expect(store.getSnapshot()).toEqual({ price: null, attributionUrl: null });
+    stop();
+  });
+
   it("shares one fetch between subscribers and polls every 60 seconds", async () => {
     const fetcher = vi.fn().mockResolvedValue(reference("1"));
     const store = createEthUsdStore(fetcher, fakeDocument());
@@ -100,6 +114,10 @@ describe("UsdLine", () => {
     expect(renderToStaticMarkup(createElement(UsdLineView, { wei: "10", price: null }))).toBe("");
     expect(renderToStaticMarkup(createElement(UsdLineView, { wei: "x", price: "1" }))).toBe("");
     expect(renderToStaticMarkup(createElement(UsdLine, { wei: "10" }))).toBe("");
+  });
+  it("renders nothing for non-canonical wei strings", () => {
+    for (const wei of ["", " 1", "0x10", "01", "1.5", "-1"])
+      expect(renderToStaticMarkup(createElement(UsdLineView, { wei, price: "1" }))).toBe("");
   });
   it("renders the formatted USD value", () => {
     const html = renderToStaticMarkup(

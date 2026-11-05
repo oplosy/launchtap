@@ -7,6 +7,8 @@ import { publicConfiguration } from "@/config/public";
 export type EthUsdState = { price: string | null; attributionUrl: string | null };
 
 export const ETH_USD_POLL_INTERVAL_MS = 60_000;
+/** A price older than this is dropped rather than shown stale. */
+export const ETH_USD_MAX_AGE_MS = 120_000;
 
 const EMPTY: EthUsdState = { price: null, attributionUrl: null };
 
@@ -24,6 +26,8 @@ export function createEthUsdStore(
   let snapshot = EMPTY;
   let timer: ReturnType<typeof setInterval> | null = null;
   let controller: AbortController | null = null;
+  let inFlight = false;
+  let lastSuccess = 0;
 
   const publish = (next: EthUsdState) => {
     if (next.price === snapshot.price && next.attributionUrl === snapshot.attributionUrl) return;
@@ -32,17 +36,23 @@ export function createEthUsdStore(
   };
 
   const refresh = async () => {
+    // A request still pending at the next tick, or an old price, must not keep a stale value on screen.
+    if (inFlight || Date.now() - lastSuccess > ETH_USD_MAX_AGE_MS) publish(EMPTY);
     if (doc?.visibilityState === "hidden") return;
     controller?.abort();
     const current = (controller = new AbortController());
+    inFlight = true;
     try {
       const result = await fetcher(current.signal);
       if (current.signal.aborted) return;
+      lastSuccess = Date.now();
       publish(
         result.price ? { price: result.price, attributionUrl: result.attribution_url } : EMPTY,
       );
     } catch {
       if (!current.signal.aborted) publish(EMPTY);
+    } finally {
+      if (controller === current) inFlight = false;
     }
   };
 
@@ -60,6 +70,7 @@ export function createEthUsdStore(
     timer = null;
     controller?.abort();
     controller = null;
+    inFlight = false;
     doc?.removeEventListener("visibilitychange", onVisibility);
   };
 

@@ -221,3 +221,13 @@
 .usd-hint .usd-line {
   display: inline;
 }
+
+.usd-attribution {
+  display: block;
+  color: var(--text-faint);
+  font-size: 0.75rem;
+}
+.usd-hint .usd-attribution,
+.footer-meta .usd-attribution {
+  display: inline;
+}

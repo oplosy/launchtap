@@ -6,7 +6,7 @@ import { useIdentityToken, usePrivy } from "@privy-io/react-auth";
 import { useEffect, useState } from "react";
 import { ApiClient, type ProfileResponse } from "@/api/client";
 import { formatBaseUnits } from "@/amounts";
-import { UsdLine } from "@/market/usd-line";
+import { CoinGeckoAttribution, UsdLine } from "@/market/usd-line";
 import { publicConfiguration } from "@/config/public";
 import { Button, Badge } from "@/components/primitives";
 import { useWalletReadiness } from "@/wallet/readiness";
@@ -168,6 +168,7 @@ export function ProfileView() {
           </div>
         </div>
         <p>See creator fees and refunds available to your linked wallets.</p>
+        <CoinGeckoAttribution />
         {actionsLoading ? <p role="status">Loading authoritative availability…</p> : null}
         {actionsError ? <p className="discovery-notice">{actionsError}</p> : null}
         {!actionsLoading && !actionsError && actions.length === 0 ? (

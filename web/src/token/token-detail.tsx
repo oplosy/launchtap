@@ -11,7 +11,7 @@ import { ApiProblem } from "@/api/problems";
 import { queryKeys } from "@/api/types";
 import { SseInvalidationStream } from "@/api/sse";
 import { formatCanonicalBaseUnits, formatSignificantPrice } from "@/amounts";
-import { UsdLine } from "@/market/usd-line";
+import { CoinGeckoAttribution, UsdLine } from "@/market/usd-line";
 import { DEFAULT_E2E_WEB_URL, publicConfiguration } from "@/config/public";
 import { reviewedDeployments } from "@/contracts/generated";
 import { addressExplorerUrl } from "@/wallet/explorer";
@@ -486,6 +486,7 @@ export function TokenDetail({
                 {safeMarketValue(token.spot_price_eth)}
                 <small> ETH</small>
               </strong>
+              <UsdLine wei={token.spot_price_eth} />
               <span className={`market-change ${change < 0 ? "is-down" : "is-up"}`}>
                 {change >= 0 ? "+" : ""}
                 {change.toFixed(2)}% <span>24h</span>
@@ -584,6 +585,7 @@ export function TokenDetail({
             <h2 id="token-summary-title">Market and reserves</h2>
             <span className="token-block">Live values</span>
           </div>
+          <CoinGeckoAttribution />
           <dl className="token-summary-grid">
             <Metric
               label="Market cap"
@@ -609,6 +611,7 @@ export function TokenDetail({
         <section className="workspace-panel token-history-panel" aria-labelledby="history-title">
           <div className="panel-head">
             <h2 id="history-title">Recent activity</h2>
+            <CoinGeckoAttribution />
             {collectionSnapshot ? (
               <Badge tone={finalityTone(collectionSnapshot.finality)}>
                 {finalityLabel(collectionSnapshot.finality)}
@@ -792,6 +795,7 @@ function Trades({
           </span>
           <span className="mono trade-prices">
             {safeMarketValue(item.execution_price)} / {safeMarketValue(item.spot_price)}
+            <UsdLine wei={item.execution_price} />
           </span>
           <span>
             <Badge tone={finalityTone(item.finality)}>{finalityLabel(item.finality)}</Badge>

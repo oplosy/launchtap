@@ -16,7 +16,7 @@ import { queryKeys, snapshotIdentity, type Snapshot } from "@/api/types";
 import { SseInvalidationStream } from "@/api/sse";
 import { formatDisplayAmount } from "@/amounts";
 import { publicConfiguration } from "@/config/public";
-import { UsdLine } from "@/market/usd-line";
+import { CoinGeckoAttribution, UsdLine } from "@/market/usd-line";
 import { addressHue, shortAddress } from "@/token/address";
 import {
   decodeTokenListQuery,
@@ -346,6 +346,7 @@ export function TokenDiscovery({
             {sectionLabel ? <p className="panel-kicker">{sectionLabel}</p> : null}
             <h2 id={listTitleId}>{title}</h2>
             <p className="section-description">{summary}</p>
+            <CoinGeckoAttribution />
           </div>
           {showSortControls ? (
             <div className="discovery-filter-groups" aria-label="Token list filters">

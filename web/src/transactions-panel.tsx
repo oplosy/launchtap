@@ -1124,6 +1124,7 @@ function TradingPanelReady({
                 <strong className="mono">
                   {minimum === null ? "—" : formatBaseUnits(minimum, 18, 6)}
                 </strong>
+                {side === "sell" && minimum !== null ? <UsdLine wei={minimum} /> : null}
               </span>
               <small>
                 {quote.source === "backend"
@@ -1834,6 +1835,7 @@ function GraduatedSwapPanel({
                 <strong className="mono">
                   {minimum === null ? "—" : formatBaseUnits(minimum, 18, 6)}
                 </strong>
+                {side === "sell" && minimum !== null ? <UsdLine wei={minimum} /> : null}
               </span>
             </div>
           ) : null}

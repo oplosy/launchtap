@@ -1,6 +1,6 @@
 "use client";
 
-import { formatUsd, parseDecimal } from "@/amounts";
+import { formatUsd, parseCanonicalBaseUnits, parseDecimal } from "@/amounts";
 import { SafeExternalLink } from "@/components/primitives";
 import { useEthUsd } from "./eth-usd";
 
@@ -17,7 +17,11 @@ export function UsdLineView({
   if (!price) return null;
   let text: string;
   try {
-    text = formatUsd(typeof wei === "bigint" ? wei : BigInt(wei), decimals, price);
+    text = formatUsd(
+      typeof wei === "bigint" ? wei : parseCanonicalBaseUnits(wei, decimals),
+      decimals,
+      price,
+    );
   } catch {
     return null;
   }
@@ -34,9 +38,11 @@ export function CoinGeckoAttribution() {
   const { price, attributionUrl } = useEthUsd();
   if (!price) return null;
   return attributionUrl ? (
-    <SafeExternalLink href={attributionUrl}>Data provided by CoinGecko</SafeExternalLink>
+    <small className="usd-attribution">
+      <SafeExternalLink href={attributionUrl}>Data provided by CoinGecko</SafeExternalLink>
+    </small>
   ) : (
-    <span>Data provided by CoinGecko</span>
+    <small className="usd-attribution">Data provided by CoinGecko</small>
   );
 }
 
