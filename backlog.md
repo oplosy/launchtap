@@ -15,6 +15,24 @@
 
 ## Active
 
+### P0-A external inputs: CoinGecko key and market-link identifiers
+
+- **Date:** 2026-11-05
+- **Reason:** scope decision (needs a commercial account and verified third-party identifiers)
+- **Where it stopped:** P0-A market data and discovery is implemented and verified. The USD line
+  and the Dexscreener/GeckoTerminal links stay hidden until two external inputs exist; nothing
+  is invented in the meantime.
+- **Related files:** `backend/internal/config/config.go`, `deploy/backend.env.example`,
+  `contracts/deployments/`, `backend/deployments/testdata/`, `web/src/contracts/`
+- **Resume (next step):**
+  1. Provision a CoinGecko commercial API key as the backend secret `COINGECKO_API_KEY` and set
+     `ETH_USD_SOURCE=coingecko` in the deployment environment.
+  2. Verify the Dexscreener and GeckoTerminal identifiers for Robinhood Chain, add them as
+     `marketLinks` in the `contracts/deployments` manifests and the backend testdata copy, then
+     run `cd web && npm run web-contracts-sync`.
+- **Pitfalls / notes:** Never commit the key. The manifest copies must stay byte-identical
+  (`task verify` checks drift).
+
 ### Operator actions: testnet engine switch and fork RPC secret
 
 - **Date:** 2026-10-05
