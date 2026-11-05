@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { Hero } from "@/landing/hero";
 import { LaunchStory } from "@/landing/launch-story";
+import { WatchlistToaster } from "@/watchlist/star-button";
 import { TokenDiscovery } from "./token-discovery";
 
 export function ExploreHub() {
@@ -18,7 +19,6 @@ export function ExploreHub() {
           fixedPhase="graduated"
           showHero={false}
           showSearch
-          showSortControls={false}
           title="Graduated"
           summary="Tokens that cleared the graduation threshold."
         />
@@ -29,11 +29,12 @@ export function ExploreHub() {
           fixedPhase="curve"
           showHero={false}
           showSearch={false}
-          showSortControls
+          showViews
           title="Explore"
           summary="New launches and tokens still moving toward graduation."
         />
       </Suspense>
+      <WatchlistToaster />
     </div>
   );
 }

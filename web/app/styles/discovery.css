@@ -347,3 +347,100 @@ html[data-theme="light"] .ui-image-fallback {
     transform: translateY(40px);
   }
 }
+
+/* Watchlist star: sits above the card's stretched link. */
+.star-button {
+  position: relative;
+  z-index: 2;
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--text-faint);
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease;
+}
+.star-button:hover {
+  color: var(--text);
+  background: var(--surface-strong);
+}
+.star-button.is-starred {
+  color: var(--accent, var(--text));
+}
+.star-button:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.token-card-main:has(.star-button) {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+.token-card-unavailable .token-card-main:has(.star-button) {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.watchlist-toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  width: min(360px, calc(100vw - 32px));
+}
+
+/* King of the hill. */
+.king-card {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  isolation: isolate;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  padding: 18px;
+}
+.king-card-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+}
+.king-card .token-identity h3 a::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  content: "";
+}
+.king-card a:focus-visible {
+  outline: none;
+}
+.king-card:has(a:focus-visible) {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.king-progress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-strong);
+}
+.king-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--text);
+}
+.king-remaining {
+  color: var(--text-soft);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 480px) {
+  .king-card-main {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .king-card-main .ui-badge {
+    grid-column: 1 / -1;
+    justify-self: start;
+    grid-row: 2;
+  }
+}

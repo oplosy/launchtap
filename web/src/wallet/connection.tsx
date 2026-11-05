@@ -6,6 +6,7 @@ import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { Wallet } from "@/components/icons";
 import { Button, Dialog } from "@/components/primitives";
 import { shortAddress } from "@/token/address";
+import { PrivyWatchlistAuth } from "@/watchlist/privy-auth";
 import { WalletConnectionContext, type WalletConnection } from "./connection-context";
 
 export { useWalletConnection, WalletConnectButton } from "./connection-context";
@@ -120,7 +121,9 @@ export function PrivyWalletConnectionBridge({ children, openOnMount = false }: B
     [address, connectOrCreateWallet, disconnect, isConnected],
   );
   return (
-    <WalletConnectionContext.Provider value={value}>{children}</WalletConnectionContext.Provider>
+    <WalletConnectionContext.Provider value={value}>
+      <PrivyWatchlistAuth>{children}</PrivyWatchlistAuth>
+    </WalletConnectionContext.Provider>
   );
 }
 

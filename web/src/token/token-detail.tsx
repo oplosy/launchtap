@@ -15,6 +15,7 @@ import { CoinGeckoAttribution, UsdLine } from "@/market/usd-line";
 import { DEFAULT_E2E_WEB_URL, publicConfiguration } from "@/config/public";
 import { reviewedDeployments } from "@/contracts/generated";
 import { addressExplorerUrl } from "@/wallet/explorer";
+import { StarButton, WatchlistToaster } from "@/watchlist/star-button";
 import {
   Badge,
   Button,
@@ -455,6 +456,7 @@ export function TokenDetail({
             </Badge>
             <Badge tone={finalityTone(snapshot.finality)}>{finalityLabel(snapshot.finality)}</Badge>
           </div>
+          <StarButton address={token.address} label={title} />
           {explorer ? (
             <SafeExternalLink
               href={explorer}
@@ -467,6 +469,7 @@ export function TokenDetail({
           )}
         </div>
       </section>
+      <WatchlistToaster />
 
       {snapshot.finality === "stale" || snapshot.finality === "provisional" ? (
         <p className="token-trust-notice" role="status">
