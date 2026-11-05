@@ -74,6 +74,7 @@ func run() error {
 	apiConfig.RateLimitPerMinute, apiConfig.RateLimitBurst = c.APIRateLimitPerMinute, c.APIRateLimitBurst
 	server := apiserver.New(apiConfig, ready, slog.Default())
 	server.RegisterTokenRoutes(apiserver.TokenRoutes{Reader: storepostgres.TokenReader{Pool: pool, DeploymentID: c.DeploymentID}, ChainID: int64(c.ChainID)})
+	server.RegisterHighlightsRoutes(apiserver.HighlightsRoutes{Reader: storepostgres.HighlightsReader{Pool: pool, DeploymentID: c.DeploymentID}, ChainID: int64(c.ChainID)})
 	server.RegisterCandleRoutes(apiserver.CandleRoutes{Reader: storepostgres.CandleReader{Pool: pool, DeploymentID: c.DeploymentID}, ChainID: int64(c.ChainID)})
 	tokens := storepostgres.TokenReader{Pool: pool, DeploymentID: c.DeploymentID}
 	market := storepostgres.MarketReader{Pool: pool, DeploymentID: c.DeploymentID}

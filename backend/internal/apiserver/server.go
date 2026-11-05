@@ -124,11 +124,12 @@ func New(cfg Config, ready Readiness, logger *slog.Logger) *Server {
 	}
 }
 
-func (s *Server) RegisterTokenRoutes(r TokenRoutes)       { r.Register(s.API) }
-func (s *Server) RegisterQuoteRoutes(r QuoteRoutes)       { r.Register(s.API) }
-func (s *Server) RegisterCandleRoutes(r CandleRoutes)     { r.Register(s.API) }
-func (s *Server) RegisterPublicRoutes(r PublicRoutes)     { r.Register(s.API) }
-func (s *Server) RegisterMetadataRoutes(r MetadataRoutes) { r.Register(s.API) }
+func (s *Server) RegisterTokenRoutes(r TokenRoutes)           { r.Register(s.API) }
+func (s *Server) RegisterQuoteRoutes(r QuoteRoutes)           { r.Register(s.API) }
+func (s *Server) RegisterHighlightsRoutes(r HighlightsRoutes) { r.Register(s.API) }
+func (s *Server) RegisterCandleRoutes(r CandleRoutes)         { r.Register(s.API) }
+func (s *Server) RegisterPublicRoutes(r PublicRoutes)         { r.Register(s.API) }
+func (s *Server) RegisterMetadataRoutes(r MetadataRoutes)     { r.Register(s.API) }
 func (s *Server) RegisterEventRoutes(r EventRoutes) {
 	r.shutdown = s.streamShutdown
 	r.Register(s.API)
