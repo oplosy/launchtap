@@ -84,6 +84,7 @@ func run() error {
 	hub := realtime.NewHub(1000, 16)
 	server.RegisterMetadataRoutes(apiserver.MetadataRoutes{Store: storepostgres.MetadataStore{Pool: pool, DeploymentID: c.DeploymentID}, Verifier: verifier, ChainID: int64(c.ChainID)})
 	server.RegisterProfileRoutes(apiserver.ProfileRoutes{Reader: storepostgres.ProfileReader{Pool: pool, DeploymentID: c.DeploymentID}, Verifier: verifier, ChainID: int64(c.ChainID)})
+	server.RegisterWatchlistRoutes(apiserver.WatchlistRoutes{Verifier: verifier, Store: storepostgres.WatchlistStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterEventRoutes(apiserver.EventRoutes{Hub: hub, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, Streams: apiserver.NewStreamLimiter(int(c.APISSEMaxPerClient))})
 	server.RegisterObservationRoutes(apiserver.ObservationRoutes{Reader: storepostgres.ObservationReader{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	references := apiserver.ReferenceRoutes{}

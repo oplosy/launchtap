@@ -44,7 +44,7 @@ func TestServerBoundaries(t *testing.T) {
 	if w.Code != http.StatusNoContent || w.Header().Get("Access-Control-Allow-Origin") != "https://app.example" {
 		t.Fatalf("preflight status=%d headers=%v", w.Code, w.Header())
 	}
-	if got := w.Header().Get("Access-Control-Allow-Methods"); got != "GET,POST,PUT,OPTIONS" {
+	if got := w.Header().Get("Access-Control-Allow-Methods"); got != "GET,POST,PUT,DELETE,OPTIONS" {
 		t.Fatalf("preflight methods=%q", got)
 	}
 	if got := w.Header().Get("Access-Control-Allow-Headers"); got != "Authorization,Content-Type,privy-id-token,If-Match,If-None-Match" {

@@ -137,6 +137,7 @@ func (s *Server) RegisterEventRoutes(r EventRoutes) {
 func (s *Server) RegisterObservationRoutes(r ObservationRoutes) { r.Register(s.API) }
 func (s *Server) RegisterProfileRoutes(r ProfileRoutes)         { r.Register(s.API) }
 func (s *Server) RegisterReferenceRoutes(r ReferenceRoutes)     { r.Register(s.API) }
+func (s *Server) RegisterWatchlistRoutes(r WatchlistRoutes)     { r.Register(s.API) }
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.shutdownOnce.Do(func() { close(s.streamShutdown) })
@@ -249,7 +250,7 @@ func cors(w http.ResponseWriter, origins []string, r *http.Request) bool {
 		if allowed == origin && allowed != "*" {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
-			w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization,Content-Type,privy-id-token,If-Match,If-None-Match")
 			w.Header().Set("Access-Control-Expose-Headers", "ETag, X-Revision")
 			return true
