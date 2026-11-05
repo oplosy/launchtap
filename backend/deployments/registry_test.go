@@ -139,6 +139,12 @@ func TestLoadRejectsInvalidDeploymentArtifacts(t *testing.T) {
 		"zero pair hash": func(value map[string]any) {
 			value["pairInitCodeHash"] = "0x0000000000000000000000000000000000000000000000000000000000000000"
 		},
+		"unknown marketLinks key": func(value map[string]any) {
+			value["marketLinks"] = map[string]any{"dexscreenerChain": "robinhood", "unexpected": "x"}
+		},
+		"malformed marketLinks identifier": func(value map[string]any) {
+			value["marketLinks"] = map[string]any{"geckoterminalNetwork": "Bad Value!"}
+		},
 		"zero bytecode hash": func(value map[string]any) {
 			value["bytecodeHashes"].(map[string]any)["weth"] = "0x0000000000000000000000000000000000000000000000000000000000000000"
 		},
@@ -151,6 +157,24 @@ func TestLoadRejectsInvalidDeploymentArtifacts(t *testing.T) {
 			var validation *ValidationError
 			if !errors.As(err, &validation) {
 				t.Fatalf("Load() error = %v, want ValidationError", err)
+			}
+		})
+	}
+}
+
+func TestLoadAcceptsOptionalMarketLinks(t *testing.T) {
+	for name, manifest := range map[string]string{
+		"absent": validManifest,
+		"both": mutateManifest(t, validManifest, func(value map[string]any) {
+			value["marketLinks"] = map[string]any{"dexscreenerChain": "robinhood", "geckoterminalNetwork": "robinhood-chain"}
+		}),
+		"empty": mutateManifest(t, validManifest, func(value map[string]any) {
+			value["marketLinks"] = map[string]any{}
+		}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := Load(manifestFS(t, map[string]string{"deployment.json": manifest})); err != nil {
+				t.Fatalf("Load() error = %v", err)
 			}
 		})
 	}

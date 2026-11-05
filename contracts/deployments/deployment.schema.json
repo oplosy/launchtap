@@ -49,6 +49,14 @@
     "pairInitCodeHash": { "$ref": "#/$defs/hash" },
     "lpBurnAddress": { "const": "0x000000000000000000000000000000000000dEaD" },
     "explorerBase": { "type": "string" },
+    "marketLinks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dexscreenerChain": { "type": "string", "pattern": "^[a-z0-9-]{1,32}$" },
+        "geckoterminalNetwork": { "type": "string", "pattern": "^[a-z0-9-]{1,32}$" }
+      }
+    },
     "graduationEnabled": { "const": true },
     "deployTransaction": { "$ref": "#/$defs/hash" },
     "bytecodeHashes": {

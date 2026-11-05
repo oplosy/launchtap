@@ -31,6 +31,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/watchlist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listWatchlist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/watchlist/{address}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["addWatchlistEntry"];
+        post?: never;
+        delete: operations["removeWatchlistEntry"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/profile": {
         parameters: {
             query?: never;
@@ -55,6 +87,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["readyz"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reference/eth-usd": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getEthUsdReference"];
         put?: never;
         post?: never;
         delete?: never;
@@ -103,6 +151,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["listTokens"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tokens/highlights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getTokenHighlights"];
         put?: never;
         post?: never;
         delete?: never;
@@ -342,6 +406,22 @@ export interface components {
              */
             type: string;
         };
+        EthUsdBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/EthUsdBody.json
+             */
+            readonly $schema?: string;
+            attribution_url: string | null;
+            /** Format: date-time */
+            fetched_at: string | null;
+            /** @description ETH/USD decimal string; null when disabled, missing or stale. */
+            price: string | null;
+            /** Format: date-time */
+            provider_updated_at: string | null;
+            source: string | null;
+        };
         HealthResponse: {
             /**
              * Format: uri
@@ -350,6 +430,20 @@ export interface components {
              */
             readonly $schema?: string;
             status: string;
+        };
+        HighlightsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/HighlightsBody.json
+             */
+            readonly $schema?: string;
+            as_of: string;
+            finality: string;
+            king_of_the_hill: components["schemas"]["KingDTO"];
+            snapshot: components["schemas"]["SnapshotDTO"];
+            trending: components["schemas"]["TrendingDTO"][] | null;
+            window_start: string;
         };
         HolderDTO: {
             address: string;
@@ -367,6 +461,11 @@ export interface components {
             items: components["schemas"]["HolderDTO"][] | null;
             next_cursor?: string;
             snapshot: components["schemas"]["SnapshotDTO"];
+        };
+        KingDTO: {
+            /** Format: int32 */
+            graduation_progress_bps: number;
+            remaining_eth: string;
         };
         LaunchEvent: {
             /** Format: int64 */
@@ -645,6 +744,25 @@ export interface components {
             next_cursor?: string;
             snapshot: components["schemas"]["SnapshotDTO"];
         };
+        TrendingDTO: {
+            /** Format: int64 */
+            distinct_buyers: number;
+            window_volume_eth: string;
+        };
+        WatchlistBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/WatchlistBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["WatchlistEntryDTO"][] | null;
+        };
+        WatchlistEntryDTO: {
+            added_at: string;
+            address: string;
+            token: components["schemas"]["TokenDTO"];
+        };
     };
     responses: never;
     parameters: never;
@@ -750,6 +868,102 @@ export interface operations {
             };
         };
     };
+    listWatchlist: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    addWatchlistEntry: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    removeWatchlistEntry: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     getProfile: {
         parameters: {
             query?: never;
@@ -798,6 +1012,36 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getEthUsdReference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EthUsdBody"];
                 };
             };
             /** @description Error */
@@ -879,6 +1123,7 @@ export interface operations {
                 phase?: string;
                 q?: string;
                 sort?: string;
+                age?: string;
                 cursor?: string;
                 limit?: number;
             };
@@ -895,6 +1140,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenListBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getTokenHighlights: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HighlightsBody"];
                 };
             };
             /** @description Error */

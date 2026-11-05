@@ -70,6 +70,72 @@ describe("generated API wrapper", () => {
     );
   });
 
+  it("sends the age filter and loads the discovery endpoints", async () => {
+    const requested: string[] = [];
+    const client = new ApiClient({
+      baseUrl: "https://api.example",
+      fetch: async (input) => {
+        requested.push(String(input));
+        return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      },
+    });
+    await client.getTokens({ age: "24h" });
+    await client.getHighlights();
+    await client.getEthUsd();
+    expect(requested).toEqual([
+      "https://api.example/v1/tokens?age=24h",
+      "https://api.example/v1/tokens/highlights",
+      "https://api.example/v1/reference/eth-usd",
+    ]);
+  });
+
+  it("sends watchlist writes with both auth headers and surfaces watchlist_full", async () => {
+    const seen: Array<{ url: string; method: string; auth: string | null; id: string | null }> = [];
+    const client = new ApiClient({
+      baseUrl: "https://api.example",
+      fetch: async (input, init) => {
+        const headers = new Headers(init?.headers);
+        seen.push({
+          url: String(input),
+          method: init?.method ?? "GET",
+          auth: headers.get("Authorization"),
+          id: headers.get("privy-id-token"),
+        });
+        if (init?.method === "PUT" && String(input).endsWith("0xfull"))
+          return new Response(
+            JSON.stringify({ type: "urn:launchpad:problem:watchlist_full", detail: "full" }),
+            { status: 409, headers: { "content-type": "application/problem+json" } },
+          );
+        if (init?.method === "PUT" || init?.method === "DELETE")
+          return new Response(null, { status: 204 });
+        return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      },
+    });
+    const auth = { accessToken: "a", identityToken: "i" };
+    await client.addWatchlist("0xabc", auth);
+    await client.removeWatchlist("0xabc", auth);
+    await client.getWatchlist(auth);
+    expect(seen).toEqual([
+      {
+        url: "https://api.example/v1/me/watchlist/0xabc",
+        method: "PUT",
+        auth: "Bearer a",
+        id: "i",
+      },
+      {
+        url: "https://api.example/v1/me/watchlist/0xabc",
+        method: "DELETE",
+        auth: "Bearer a",
+        id: "i",
+      },
+      { url: "https://api.example/v1/me/watchlist", method: "GET", auth: "Bearer a", id: "i" },
+    ]);
+    await expect(client.addWatchlist("0xfull", auth)).rejects.toMatchObject({
+      code: "watchlist_full",
+      status: 409,
+    });
+  });
+
   it("keeps metadata and image revision validators independent", async () => {
     const requests: Array<{ path: string; ifMatch: string | null }> = [];
     const client = new ApiClient({

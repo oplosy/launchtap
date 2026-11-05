@@ -85,6 +85,7 @@ export function publicConfiguration(
           enabled: true,
           factory,
           explorerBase: null,
+          marketLinks: null,
           weth: fixtureWeth,
           uniswapV2Factory: fixtureUniswapFactory,
           uniswapV2Router02: fixtureRouter,

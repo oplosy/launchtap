@@ -254,6 +254,61 @@
         },
         "type": "object"
       },
+      "EthUsdBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/EthUsdBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "attribution_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fetched_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "price": {
+            "description": "ETH/USD decimal string; null when disabled, missing or stale.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider_updated_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "price",
+          "provider_updated_at",
+          "fetched_at",
+          "source",
+          "attribution_url"
+        ],
+        "type": "object"
+      },
       "HealthResponse": {
         "additionalProperties": false,
         "properties": {
@@ -272,6 +327,53 @@
         },
         "required": [
           "status"
+        ],
+        "type": "object"
+      },
+      "HighlightsBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/HighlightsBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "as_of": {
+            "type": "string"
+          },
+          "finality": {
+            "type": "string"
+          },
+          "king_of_the_hill": {
+            "$ref": "#/components/schemas/KingDTO"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          },
+          "trending": {
+            "items": {
+              "$ref": "#/components/schemas/TrendingDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "window_start": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "trending",
+          "king_of_the_hill",
+          "window_start",
+          "as_of",
+          "finality",
+          "snapshot"
         ],
         "type": "object"
       },
@@ -327,6 +429,23 @@
         "required": [
           "snapshot",
           "items"
+        ],
+        "type": "object"
+      },
+      "KingDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "graduation_progress_bps": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "remaining_eth": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "graduation_progress_bps",
+          "remaining_eth"
         ],
         "type": "object"
       },
@@ -1183,6 +1302,70 @@
           "items"
         ],
         "type": "object"
+      },
+      "TrendingDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "distinct_buyers": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "window_volume_eth": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "window_volume_eth",
+          "distinct_buyers"
+        ],
+        "type": "object"
+      },
+      "WatchlistBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/WatchlistBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WatchlistEntryDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "WatchlistEntryDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "added_at": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "token": {
+            "$ref": "#/components/schemas/TokenDTO"
+          }
+        },
+        "required": [
+          "address",
+          "added_at",
+          "token"
+        ],
+        "type": "object"
       }
     }
   },
@@ -1356,6 +1539,144 @@
         ]
       }
     },
+    "/me/watchlist": {
+      "get": {
+        "operationId": "listWatchlist",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchlistBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "watchlist"
+        ]
+      }
+    },
+    "/me/watchlist/{address}": {
+      "delete": {
+        "operationId": "removeWatchlistEntry",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "watchlist"
+        ]
+      },
+      "put": {
+        "operationId": "addWatchlistEntry",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "watchlist"
+        ]
+      }
+    },
     "/profile": {
       "get": {
         "operationId": "getProfile",
@@ -1431,6 +1752,43 @@
         },
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/reference/eth-usd": {
+      "get": {
+        "operationId": "getEthUsdReference",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EthUsdBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "reference"
         ]
       }
     },
@@ -1555,6 +1913,14 @@
           {
             "explode": false,
             "in": "query",
+            "name": "age",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
             "name": "cursor",
             "schema": {
               "type": "string"
@@ -1578,6 +1944,36 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TokenListBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "tokens"
+        ]
+      }
+    },
+    "/tokens/highlights": {
+      "get": {
+        "operationId": "getTokenHighlights",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HighlightsBody"
                 }
               }
             },
