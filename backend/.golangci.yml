@@ -37,6 +37,13 @@ linters:
             - strings
             - testing
             - time
+        pricefeed-stdlib-only:
+          list-mode: strict
+          files:
+            - "**/internal/pricefeed/*.go"
+            - "**/internal/pricefeed/**/*.go"
+          allow:
+            - $gostd
         chain-boundary:
           list-mode: strict
           files:

@@ -135,6 +135,7 @@ func (s *Server) RegisterEventRoutes(r EventRoutes) {
 }
 func (s *Server) RegisterObservationRoutes(r ObservationRoutes) { r.Register(s.API) }
 func (s *Server) RegisterProfileRoutes(r ProfileRoutes)         { r.Register(s.API) }
+func (s *Server) RegisterReferenceRoutes(r ReferenceRoutes)     { r.Register(s.API) }
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.shutdownOnce.Do(func() { close(s.streamShutdown) })

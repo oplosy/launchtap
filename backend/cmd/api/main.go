@@ -13,6 +13,7 @@ import (
 	"github.com/Contictus/launchtap/backend/deployments"
 	"github.com/Contictus/launchtap/backend/internal/apiserver"
 	"github.com/Contictus/launchtap/backend/internal/config"
+	"github.com/Contictus/launchtap/backend/internal/pricefeed"
 	"github.com/Contictus/launchtap/backend/internal/privyauth"
 	"github.com/Contictus/launchtap/backend/internal/quote"
 	"github.com/Contictus/launchtap/backend/internal/realtime"
@@ -84,6 +85,13 @@ func run() error {
 	server.RegisterProfileRoutes(apiserver.ProfileRoutes{Reader: storepostgres.ProfileReader{Pool: pool, DeploymentID: c.DeploymentID}, Verifier: verifier, ChainID: int64(c.ChainID)})
 	server.RegisterEventRoutes(apiserver.EventRoutes{Hub: hub, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, Streams: apiserver.NewStreamLimiter(int(c.APISSEMaxPerClient))})
 	server.RegisterObservationRoutes(apiserver.ObservationRoutes{Reader: storepostgres.ObservationReader{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
+	references := apiserver.ReferenceRoutes{}
+	if c.ETHUSDSource == config.ETHUSDSourceCoinGecko {
+		feed := pricefeed.New(pricefeed.Options{APIKey: c.CoinGeckoAPIKey})
+		go func() { _ = feed.Run(ctx) }() // stops with the signal context on shutdown
+		references.Prices = feed
+	}
+	server.RegisterReferenceRoutes(references)
 	go listenRefreshHints(ctx, pool, hub, int64(c.ChainID), c.DeploymentID)
 	server.HTTP.Addr = c.APIAddr
 	errCh := make(chan error, 1)
