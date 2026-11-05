@@ -28,7 +28,8 @@ func TestLoadParsesCompleteConfiguration(t *testing.T) {
 	env["RPC_RETRY_BACKOFF"] = "400ms"
 	env["INDEXER_WORKER_ID"] = " worker-a "
 	env["INDEXER_CONFIRMATIONS"] = "12"
-	env["ETH_USD_SOURCE"] = " unconfigured-source "
+	env["ETH_USD_SOURCE"] = " coingecko "
+	env["COINGECKO_API_KEY"] = " cg-key "
 	env["API_TRUSTED_PROXY_CIDRS"] = "172.16.0.0/12, 10.1.2.3/8"
 	env["API_RATE_LIMIT_PER_MINUTE"] = "1200"
 	env["API_RATE_LIMIT_BURST"] = "200"
@@ -61,7 +62,8 @@ func TestLoadParsesCompleteConfiguration(t *testing.T) {
 		RPCRetryBackoff:            400 * time.Millisecond,
 		IndexerWorkerID:            "worker-a",
 		IndexerConfirmations:       &wantConfirmations,
-		ETHUSDSource:               "unconfigured-source",
+		ETHUSDSource:               "coingecko",
+		CoinGeckoAPIKey:            "cg-key",
 		APITrustedProxyCIDRs:       []netip.Prefix{netip.MustParsePrefix("172.16.0.0/12"), netip.MustParsePrefix("10.0.0.0/8")},
 		APIRateLimitPerMinute:      1200,
 		APIRateLimitBurst:          200,
@@ -103,6 +105,7 @@ func TestConfigEnvironmentMapping(t *testing.T) {
 		"IndexerWorkerID":            "INDEXER_WORKER_ID",
 		"IndexerConfirmations":       "INDEXER_CONFIRMATIONS",
 		"ETHUSDSource":               "ETH_USD_SOURCE",
+		"CoinGeckoAPIKey":            "COINGECKO_API_KEY",
 	}
 
 	typeOfConfig := reflect.TypeFor[Config]()
@@ -363,15 +366,73 @@ func TestLoadAcceptsChunkAndConfirmationBoundaries(t *testing.T) {
 func TestLoadDoesNotRequireOptionalProcessSettings(t *testing.T) {
 	t.Parallel()
 
+	got, err := Load(mapGetenv(validEnvironment()))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got.ETHUSDSource != "" || got.CoinGeckoAPIKey != "" {
+		t.Fatalf("ETHUSDSource = %q, CoinGeckoAPIKey set = %t, want both empty", got.ETHUSDSource, got.CoinGeckoAPIKey != "")
+	}
+}
+
+func TestETHUSDSourceRejectsUnknownValue(t *testing.T) {
+	t.Parallel()
+
 	env := validEnvironment()
-	env["ETH_USD_SOURCE"] = "future-adapter"
+	env["ETH_USD_SOURCE"] = "coinbase"
+	assertFieldError(t, Load, env, "ETH_USD_SOURCE", ErrInvalid)
+}
+
+func TestCoinGeckoKeyRequiredWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	env := validEnvironment()
+	env["ETH_USD_SOURCE"] = ETHUSDSourceCoinGecko
+	assertFieldError(t, Load, env, "COINGECKO_API_KEY", ErrMissing)
+}
+
+func TestCoinGeckoKeyRejectedWhenDisabled(t *testing.T) {
+	t.Parallel()
+
+	env := validEnvironment()
+	env["COINGECKO_API_KEY"] = "cg-secret-value"
+	assertFieldError(t, Load, env, "COINGECKO_API_KEY", ErrInvalid)
+}
+
+func TestCoinGeckoEnabled(t *testing.T) {
+	t.Parallel()
+
+	env := validEnvironment()
+	env["ETH_USD_SOURCE"] = ETHUSDSourceCoinGecko
+	env["COINGECKO_API_KEY"] = "cg-key"
 
 	got, err := Load(mapGetenv(env))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if got.ETHUSDSource != "future-adapter" {
-		t.Fatalf("ETHUSDSource = %q, want future-adapter", got.ETHUSDSource)
+	if got.ETHUSDSource != ETHUSDSourceCoinGecko || got.CoinGeckoAPIKey != "cg-key" {
+		t.Fatalf("ETHUSDSource = %q, CoinGeckoAPIKey = %q", got.ETHUSDSource, got.CoinGeckoAPIKey)
+	}
+}
+
+func TestCoinGeckoKeyNotInErrorText(t *testing.T) {
+	t.Parallel()
+
+	const secret = "cg-secret-value"
+	env := validEnvironment()
+	env["COINGECKO_API_KEY"] = secret
+	_, err := Load(mapGetenv(env))
+	if err == nil {
+		t.Fatal("Load() error = nil, want error")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("error text %q contains the API key", err.Error())
+	}
+
+	env["ETH_USD_SOURCE"] = "coinbase"
+	_, err = Load(mapGetenv(env))
+	if err == nil || strings.Contains(err.Error(), secret) {
+		t.Fatalf("error = %v, want an error without the API key", err)
 	}
 }
 

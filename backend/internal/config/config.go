@@ -37,6 +37,9 @@ const (
 	maxDatabaseMaxConns            = uint64(500)
 )
 
+// ETHUSDSourceCoinGecko selects the CoinGecko ETH/USD reference price source.
+const ETHUSDSourceCoinGecko = "coingecko"
+
 var (
 	ErrInvalid = errors.New("invalid configuration value")
 	ErrMissing = errors.New("missing configuration value")
@@ -90,7 +93,11 @@ type Config struct {
 	RPCRetryBackoff            time.Duration `env:"RPC_RETRY_BACKOFF"`
 	IndexerWorkerID            string        `env:"INDEXER_WORKER_ID"`
 	IndexerConfirmations       *uint64       `env:"INDEXER_CONFIRMATIONS"`
-	ETHUSDSource               string        `env:"ETH_USD_SOURCE"`
+	// ETHUSDSource is empty (USD reference pricing disabled) or ETHUSDSourceCoinGecko.
+	ETHUSDSource string `env:"ETH_USD_SOURCE"`
+	// CoinGeckoAPIKey is a secret; it is required when ETHUSDSource is coingecko and
+	// rejected otherwise. It never appears in error text.
+	CoinGeckoAPIKey string `env:"COINGECKO_API_KEY"`
 }
 
 // DatabaseConfig is the reduced configuration surface used by migration-only
@@ -216,6 +223,11 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 
+	ethUSDSource, coinGeckoAPIKey, err := parseETHUSDSource(values.ethUSDSource, values.coinGeckoAPIKey)
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		ChainID:                    chainID,
 		DeploymentID:               values.deploymentID,
@@ -242,7 +254,8 @@ func Load(getenv func(string) string) (Config, error) {
 		RPCRetryBackoff:            rpcRetryBackoff,
 		IndexerWorkerID:            values.indexerWorkerID,
 		IndexerConfirmations:       confirmations,
-		ETHUSDSource:               values.ethUSDSource,
+		ETHUSDSource:               ethUSDSource,
+		CoinGeckoAPIKey:            coinGeckoAPIKey,
 	}, nil
 }
 
@@ -307,6 +320,7 @@ type environmentValues struct {
 	indexerWorkerID            string
 	indexerConfirmations       string
 	ethUSDSource               string
+	coinGeckoAPIKey            string
 }
 
 func readEnvironment(getenv func(string) string) environmentValues {
@@ -337,6 +351,24 @@ func readEnvironment(getenv func(string) string) environmentValues {
 		indexerWorkerID:            strings.TrimSpace(getenv("INDEXER_WORKER_ID")),
 		indexerConfirmations:       strings.TrimSpace(getenv("INDEXER_CONFIRMATIONS")),
 		ethUSDSource:               strings.TrimSpace(getenv("ETH_USD_SOURCE")),
+		coinGeckoAPIKey:            strings.TrimSpace(getenv("COINGECKO_API_KEY")),
+	}
+}
+
+func parseETHUSDSource(source, apiKey string) (string, string, error) {
+	switch source {
+	case "":
+		if apiKey != "" {
+			return "", "", &FieldError{Field: "COINGECKO_API_KEY", Err: ErrInvalid}
+		}
+		return "", "", nil
+	case ETHUSDSourceCoinGecko:
+		if apiKey == "" {
+			return "", "", &FieldError{Field: "COINGECKO_API_KEY", Err: ErrMissing}
+		}
+		return source, apiKey, nil
+	default:
+		return "", "", &FieldError{Field: "ETH_USD_SOURCE", Err: ErrInvalid}
 	}
 }
 
