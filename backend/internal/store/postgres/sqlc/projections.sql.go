@@ -383,6 +383,46 @@ func (q *Queries) MarkTokenDirty(ctx context.Context, arg MarkTokenDirtyParams) 
 	return err
 }
 
+const markTokensDirtyInWindow = `-- name: MarkTokensDirtyInWindow :execrows
+INSERT INTO aggregation_dirty (chain_id, token_address, generation)
+SELECT touched.chain_id, touched.token_address, nextval('aggregation_dirty_generation_seq')
+FROM (
+    SELECT DISTINCT trade.chain_id, trade.token_address
+    FROM trades AS trade
+    JOIN indexed_blocks AS block
+      ON block.chain_id = trade.chain_id AND block.block_number = trade.block_number
+    WHERE trade.chain_id = $1
+      AND trade.block_time >= $2::timestamptz
+      AND trade.block_time < $3::timestamptz
+    UNION
+    SELECT DISTINCT token.chain_id, token.token_address
+    FROM pool_swaps AS swap
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    JOIN tokens AS token
+      ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
+    WHERE swap.chain_id = $1
+      AND swap.block_time >= $2::timestamptz
+      AND swap.block_time < $3::timestamptz
+) AS touched
+ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregation_dirty_generation_seq')
+`
+
+type MarkTokensDirtyInWindowParams struct {
+	ChainID    int64
+	WindowFrom pgtype.Timestamptz
+	WindowTo   pgtype.Timestamptz
+}
+
+// Marks every token with a canonical trade or DEX swap in [window_from, window_to) dirty.
+func (q *Queries) MarkTokensDirtyInWindow(ctx context.Context, arg MarkTokensDirtyInWindowParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markTokensDirtyInWindow, arg.ChainID, arg.WindowFrom, arg.WindowTo)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const rebuildTokenProjections = `-- name: RebuildTokenProjections :exec
 SELECT rebuild_token_projections($1, $2)
 `

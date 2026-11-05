@@ -27,6 +27,7 @@ type Querier interface {
 	ClearProtocolDaily(ctx context.Context, chainID int64) error
 	CompleteAggregationDirty(ctx context.Context, arg CompleteAggregationDirtyParams) (int64, error)
 	CompleteIndexerReorg(ctx context.Context, reorgID int64) (CompleteIndexerReorgRow, error)
+	CountWatchlist(ctx context.Context, arg CountWatchlistParams) (int64, error)
 	CreatorFeeClaimMatchesEvent(ctx context.Context, arg CreatorFeeClaimMatchesEventParams) (pgtype.Bool, error)
 	DeleteCreatorFeeClaimsAbove(ctx context.Context, arg DeleteCreatorFeeClaimsAboveParams) (int64, error)
 	DeleteEngineConfigurationsAbove(ctx context.Context, arg DeleteEngineConfigurationsAboveParams) (int64, error)
@@ -48,6 +49,7 @@ type Querier interface {
 	DeleteTradesAbove(ctx context.Context, arg DeleteTradesAboveParams) (int64, error)
 	DeleteTradingPauseEventsAbove(ctx context.Context, arg DeleteTradingPauseEventsAboveParams) (int64, error)
 	DeleteTransfersAbove(ctx context.Context, arg DeleteTransfersAboveParams) (int64, error)
+	DeleteWatchlistEntry(ctx context.Context, arg DeleteWatchlistEntryParams) (int64, error)
 	EngineConfigurationMatchesEvent(ctx context.Context, arg EngineConfigurationMatchesEventParams) (pgtype.Bool, error)
 	FindCommonAncestor(ctx context.Context, arg FindCommonAncestorParams) (FindCommonAncestorRow, error)
 	FutureDefaultsConfigurationMatchesEvent(ctx context.Context, arg FutureDefaultsConfigurationMatchesEventParams) (pgtype.Bool, error)
@@ -55,6 +57,7 @@ type Querier interface {
 	GetCanonicalTransaction(ctx context.Context, arg GetCanonicalTransactionParams) ([]GetCanonicalTransactionRow, error)
 	GetIndexedBlockByHash(ctx context.Context, arg GetIndexedBlockByHashParams) (IndexedBlock, error)
 	GetIndexedBlockByNumber(ctx context.Context, arg GetIndexedBlockByNumberParams) (IndexedBlock, error)
+	GetKingOfTheHill(ctx context.Context, chainID int64) (GetKingOfTheHillRow, error)
 	GetProtocolStats(ctx context.Context, chainID int64) (GetProtocolStatsRow, error)
 	GetSyncState(ctx context.Context, arg GetSyncStateParams) (SyncState, error)
 	GetTokenCreatorForUpdate(ctx context.Context, arg GetTokenCreatorForUpdateParams) (Address, error)
@@ -82,6 +85,7 @@ type Querier interface {
 	InsertTrade(ctx context.Context, arg InsertTradeParams) (int64, error)
 	InsertTradingPauseEvent(ctx context.Context, arg InsertTradingPauseEventParams) (int64, error)
 	InsertTransfer(ctx context.Context, arg InsertTransferParams) (int64, error)
+	InsertWatchlistEntry(ctx context.Context, arg InsertWatchlistEntryParams) (int64, error)
 	LaunchFeeClaimMatchesEvent(ctx context.Context, arg LaunchFeeClaimMatchesEventParams) (pgtype.Bool, error)
 	LaunchPauseEventMatchesEvent(ctx context.Context, arg LaunchPauseEventMatchesEventParams) (pgtype.Bool, error)
 	// Each row is keyed by its UTC-aligned group start (not the first stored source bucket), so
@@ -100,8 +104,14 @@ type Querier interface {
 	ListTokenHolders(ctx context.Context, arg ListTokenHoldersParams) ([]ListTokenHoldersRow, error)
 	ListTokenIdentities(ctx context.Context, chainID int64) ([]ListTokenIdentitiesRow, error)
 	ListTokenPhaseCounts(ctx context.Context, chainID int64) ([]ListTokenPhaseCountsRow, error)
+	ListTrendingTokens(ctx context.Context, arg ListTrendingTokensParams) ([]ListTrendingTokensRow, error)
+	ListWatchlist(ctx context.Context, arg ListWatchlistParams) ([]ListWatchlistRow, error)
+	// Serializes cap check + insert per owner. The key is hashed in SQL.
+	LockWatchlistOwner(ctx context.Context, ownerKey string) error
 	MarkPairTokenDirty(ctx context.Context, arg MarkPairTokenDirtyParams) error
 	MarkTokenDirty(ctx context.Context, arg MarkTokenDirtyParams) error
+	// Marks every token with a canonical trade or DEX swap in [window_from, window_to) dirty.
+	MarkTokensDirtyInWindow(ctx context.Context, arg MarkTokensDirtyInWindowParams) (int64, error)
 	NotifyAPIRefresh(ctx context.Context, payload string) error
 	PoolBurnMatchesEvent(ctx context.Context, arg PoolBurnMatchesEventParams) (pgtype.Bool, error)
 	PoolMintMatchesEvent(ctx context.Context, arg PoolMintMatchesEventParams) (pgtype.Bool, error)

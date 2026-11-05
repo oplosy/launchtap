@@ -317,3 +317,28 @@ ON CONFLICT (chain_id) DO UPDATE SET
  launches_24h=EXCLUDED.launches_24h,launches_all_time=EXCLUDED.launches_all_time,
  trades_24h=EXCLUDED.trades_24h,trades_all_time=EXCLUDED.trades_all_time,
  graduations_24h=EXCLUDED.graduations_24h,graduations_all_time=EXCLUDED.graduations_all_time,updated_at=EXCLUDED.updated_at;
+
+-- Marks every token with a canonical trade or DEX swap in [window_from, window_to) dirty.
+-- name: MarkTokensDirtyInWindow :execrows
+INSERT INTO aggregation_dirty (chain_id, token_address, generation)
+SELECT touched.chain_id, touched.token_address, nextval('aggregation_dirty_generation_seq')
+FROM (
+    SELECT DISTINCT trade.chain_id, trade.token_address
+    FROM trades AS trade
+    JOIN indexed_blocks AS block
+      ON block.chain_id = trade.chain_id AND block.block_number = trade.block_number
+    WHERE trade.chain_id = sqlc.arg(chain_id)
+      AND trade.block_time >= sqlc.arg(window_from)::timestamptz
+      AND trade.block_time < sqlc.arg(window_to)::timestamptz
+    UNION
+    SELECT DISTINCT token.chain_id, token.token_address
+    FROM pool_swaps AS swap
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    JOIN tokens AS token
+      ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
+    WHERE swap.chain_id = sqlc.arg(chain_id)
+      AND swap.block_time >= sqlc.arg(window_from)::timestamptz
+      AND swap.block_time < sqlc.arg(window_to)::timestamptz
+) AS touched
+ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregation_dirty_generation_seq');

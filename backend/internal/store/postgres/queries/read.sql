@@ -19,6 +19,7 @@ WHERE t.chain_id = sqlc.arg(chain_id)
        OR encode(t.token_address, 'hex') = lower(CASE WHEN left(sqlc.arg(search)::text,2)='0x' THEN substr(sqlc.arg(search)::text,3) ELSE sqlc.arg(search)::text END))
   AND (sqlc.narg(after_block)::bigint IS NULL
        OR (t.launch_block_number, t.token_address) < (sqlc.narg(after_block)::bigint, sqlc.narg(after_address)::bytea))
+  AND (sqlc.narg(launched_after)::timestamptz IS NULL OR t.launch_block_time >= sqlc.narg(launched_after)::timestamptz)
 ORDER BY t.launch_block_number DESC, t.token_address DESC
 LIMIT sqlc.arg(page_size)::integer;
 
@@ -33,6 +34,7 @@ LEFT JOIN token_stats AS s ON s.chain_id = t.chain_id AND s.token_address = t.to
 WHERE t.chain_id = sqlc.arg(chain_id) AND t.phase = sqlc.arg(phase)
   AND (sqlc.arg(search)::text = '' OR lower(t.name) LIKE lower(sqlc.arg(search)::text) || '%' OR lower(t.symbol) LIKE lower(sqlc.arg(search)::text) || '%' OR encode(t.token_address, 'hex') = lower(CASE WHEN left(sqlc.arg(search)::text,2)='0x' THEN substr(sqlc.arg(search)::text,3) ELSE sqlc.arg(search)::text END))
   AND (sqlc.narg(after_block)::bigint IS NULL OR (t.launch_block_number, t.token_address) > (sqlc.narg(after_block)::bigint, sqlc.narg(after_address)::bytea))
+  AND (sqlc.narg(launched_after)::timestamptz IS NULL OR t.launch_block_time >= sqlc.narg(launched_after)::timestamptz)
 ORDER BY t.launch_block_number ASC, t.token_address ASC LIMIT sqlc.arg(page_size)::integer;
 
 -- Metric sorts walk tokens_phase_*_cursor_idx; the sort columns mirror token_stats (0 when
@@ -48,6 +50,7 @@ LEFT JOIN token_stats AS s ON s.chain_id = t.chain_id AND s.token_address = t.to
 WHERE t.chain_id = sqlc.arg(chain_id) AND t.phase = sqlc.arg(phase)
   AND (sqlc.arg(search)::text = '' OR lower(t.name) LIKE lower(sqlc.arg(search)::text) || '%' OR lower(t.symbol) LIKE lower(sqlc.arg(search)::text) || '%' OR encode(t.token_address, 'hex') = lower(CASE WHEN left(sqlc.arg(search)::text,2)='0x' THEN substr(sqlc.arg(search)::text,3) ELSE sqlc.arg(search)::text END))
   AND (sqlc.narg(after_metric)::numeric IS NULL OR (t.sort_market_cap_eth_wad, t.token_address) < (sqlc.narg(after_metric)::numeric, sqlc.narg(after_address)::bytea))
+  AND (sqlc.narg(launched_after)::timestamptz IS NULL OR t.launch_block_time >= sqlc.narg(launched_after)::timestamptz)
 ORDER BY t.sort_market_cap_eth_wad DESC, t.token_address DESC LIMIT sqlc.arg(page_size)::integer;
 
 -- name: ListTokenCardsVolume :many
@@ -61,6 +64,7 @@ LEFT JOIN token_stats AS s ON s.chain_id = t.chain_id AND s.token_address = t.to
 WHERE t.chain_id = sqlc.arg(chain_id) AND t.phase = sqlc.arg(phase)
   AND (sqlc.arg(search)::text = '' OR lower(t.name) LIKE lower(sqlc.arg(search)::text) || '%' OR lower(t.symbol) LIKE lower(sqlc.arg(search)::text) || '%' OR encode(t.token_address, 'hex') = lower(CASE WHEN left(sqlc.arg(search)::text,2)='0x' THEN substr(sqlc.arg(search)::text,3) ELSE sqlc.arg(search)::text END))
   AND (sqlc.narg(after_metric)::numeric IS NULL OR (t.sort_volume_24h_eth_wad, t.token_address) < (sqlc.narg(after_metric)::numeric, sqlc.narg(after_address)::bytea))
+  AND (sqlc.narg(launched_after)::timestamptz IS NULL OR t.launch_block_time >= sqlc.narg(launched_after)::timestamptz)
 ORDER BY t.sort_volume_24h_eth_wad DESC, t.token_address DESC LIMIT sqlc.arg(page_size)::integer;
 
 -- name: ListCandlesAggregated :many
@@ -210,3 +214,84 @@ WHERE chain_id = sqlc.arg(chain_id)
   AND day <= sqlc.arg(to_day)
 ORDER BY day ASC
 LIMIT sqlc.arg(page_size)::integer;
+
+-- name: ListTrendingTokens :many
+WITH legs AS (
+    SELECT trade.token_address, trade.eth_gross AS volume, trade.block_time,
+           CASE WHEN trade.is_buy THEN trade.trader END AS buyer
+    FROM trades AS trade
+    JOIN indexed_blocks AS block
+      ON block.chain_id = trade.chain_id AND block.block_number = trade.block_number
+    WHERE trade.chain_id = sqlc.arg(chain_id)
+      AND trade.block_time >= sqlc.arg(window_start)::timestamptz
+    UNION ALL
+    SELECT token.token_address,
+           CASE WHEN token.token_is_token0 THEN swap.amount1_in + swap.amount1_out
+                ELSE swap.amount0_in + swap.amount0_out END AS volume,
+           swap.block_time,
+           CASE WHEN (CASE WHEN token.token_is_token0 THEN swap.amount0_out > 0 ELSE swap.amount1_out > 0 END)
+                THEN swap.to_address END AS buyer
+    FROM pool_swaps AS swap
+    JOIN tokens AS token
+      ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    WHERE swap.chain_id = sqlc.arg(chain_id)
+      AND swap.block_time >= sqlc.arg(window_start)::timestamptz
+), ranked AS (
+    SELECT token_address,
+           sum(volume)::numeric(78, 0) AS window_volume_eth_wad,
+           count(DISTINCT buyer)::BIGINT AS distinct_buyers,
+           max(block_time)::timestamptz AS last_trade_time
+    FROM legs
+    GROUP BY token_address
+    HAVING sum(volume) > 0
+)
+SELECT t.token_address, t.name, t.symbol, t.phase,
+       t.launch_block_number, t.launch_block_time, t.total_supply,
+       COALESCE(s.market_cap_eth_wad, 0::numeric) AS market_cap_eth_wad,
+       COALESCE(s.volume_24h_eth_wad, 0::numeric) AS volume_24h_eth_wad,
+       COALESCE(s.holder_count, 0)::BIGINT AS holder_count,
+       m.description, m.image_url, m.x_url, m.telegram_url,
+       t.launch_block_hash,
+       ranked.window_volume_eth_wad, ranked.distinct_buyers, ranked.last_trade_time
+FROM ranked
+JOIN tokens AS t
+  ON t.chain_id = sqlc.arg(chain_id) AND t.token_address = ranked.token_address
+LEFT JOIN token_metadata AS m
+  ON m.chain_id = t.chain_id AND m.token_address = t.token_address
+ AND m.launch_tx_hash = t.launch_tx_hash AND m.launch_log_index = t.launch_log_index
+LEFT JOIN token_stats AS s
+  ON s.chain_id = t.chain_id AND s.token_address = t.token_address
+ORDER BY ranked.window_volume_eth_wad * ranked.distinct_buyers DESC,
+         ranked.last_trade_time DESC, t.token_address
+LIMIT sqlc.arg(row_limit)::integer;
+
+-- name: GetKingOfTheHill :one
+SELECT * FROM (
+    SELECT t.token_address, t.name, t.symbol, t.phase,
+           t.launch_block_number, t.launch_block_time, t.total_supply,
+           COALESCE(s.market_cap_eth_wad, 0::numeric) AS market_cap_eth_wad,
+           COALESCE(s.volume_24h_eth_wad, 0::numeric) AS volume_24h_eth_wad,
+           COALESCE(s.holder_count, 0)::BIGINT AS holder_count,
+           m.description, m.image_url, m.x_url, m.telegram_url,
+           t.launch_block_hash,
+           p.graduation_progress_bps,
+           GREATEST(t.graduation_eth - p.real_curve_eth, 0::numeric)::numeric(78, 0) AS remaining_eth_wad
+    FROM tokens AS t
+    LEFT JOIN token_reserves AS r USING (chain_id, token_address)
+    LEFT JOIN token_metadata AS m
+      ON m.chain_id = t.chain_id AND m.token_address = t.token_address
+     AND m.launch_tx_hash = t.launch_tx_hash AND m.launch_log_index = t.launch_log_index
+    LEFT JOIN token_stats AS s
+      ON s.chain_id = t.chain_id AND s.token_address = t.token_address
+    CROSS JOIN LATERAL (
+        SELECT GREATEST(COALESCE(r.eth_reserve, t.initial_virtual_eth) - t.initial_virtual_eth, 0::numeric)::numeric(78, 0) AS real_curve_eth,
+               CASE WHEN t.graduation_eth = 0 THEN 0
+                    ELSE LEAST(10000, floor(GREATEST(COALESCE(r.eth_reserve, t.initial_virtual_eth) - t.initial_virtual_eth, 0::numeric) * 10000 / t.graduation_eth))
+               END::integer AS graduation_progress_bps
+    ) AS p
+    WHERE t.chain_id = sqlc.arg(chain_id) AND t.phase = 'curve'
+) AS curve_tokens
+ORDER BY graduation_progress_bps DESC, launch_block_time DESC, token_address
+LIMIT 1;

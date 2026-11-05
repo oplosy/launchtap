@@ -473,3 +473,11 @@ type Transfer struct {
 	ToAddress        Address
 	Value            Uint256
 }
+
+type WatchlistEntry struct {
+	ChainID      int64
+	DeploymentID string
+	PrivyDid     string
+	TokenAddress Address
+	CreatedAt    pgtype.Timestamptz
+}
