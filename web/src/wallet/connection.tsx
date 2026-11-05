@@ -23,6 +23,7 @@ export function WagmiWalletConnectionBridge({ children, openOnMount = false }: B
     () => ({
       open: () => setOpen(true),
       prepare: () => undefined,
+      stack: "mounted",
       disconnect: () => disconnect(),
       connected: isConnected,
       pending: isPending,
@@ -114,6 +115,7 @@ export function PrivyWalletConnectionBridge({ children, openOnMount = false }: B
     () => ({
       open: () => connectOrCreateWallet(),
       prepare: () => undefined,
+      stack: "mounted",
       disconnect: () => disconnect(),
       connected: isConnected,
       pending: false,

@@ -17,7 +17,7 @@ import {
 } from "@/api/client";
 import { ApiProblem } from "@/api/problems";
 import { publicConfiguration } from "@/config/public";
-import { useWalletConnection } from "@/wallet/connection-context";
+import { useWalletConnection, type WalletStackState } from "@/wallet/connection-context";
 
 /** Server-side cap on one user's watchlist (spec: 200 entries). */
 export const WATCHLIST_LIMIT = 200;
@@ -148,6 +148,11 @@ export function createWatchlistStore() {
       loading = run;
       return run;
     },
+    /** Sets presence to `want`; does nothing (and sends nothing) if it already holds. */
+    async apply(rawAddress: string, want: boolean, deps: WatchlistDeps) {
+      if (snapshot.addresses.has(key(rawAddress)) === want) return;
+      await this.toggle(rawAddress, deps);
+    },
     async toggle(rawAddress: string, deps: WatchlistDeps) {
       const { auth, api } = deps;
       if (!auth.ready) return;
@@ -215,8 +220,42 @@ function apiFor(baseUrl: string): WatchlistApi {
   };
 }
 
-/** A star pressed before the wallet stack mounted; applied once the session is available. */
-let pendingIntent: string | null = null;
+/** A star pressed before the wallet stack mounted, recorded with the state it asked for. */
+export type WatchlistIntent = { address: string; want: boolean; at: number };
+/** An intent older than this is dropped rather than applied on a later, unrelated page. */
+export const INTENT_TTL_MS = 30_000;
+let pendingIntent: WatchlistIntent | null = null;
+
+export function rememberIntent(address: string, want: boolean, now = Date.now()) {
+  pendingIntent = { address, want, at: now };
+}
+export function clearIntent() {
+  pendingIntent = null;
+}
+/** Returns and clears the pending intent, or null if there is none or it has gone stale. */
+export function takeIntent(now = Date.now()): WatchlistIntent | null {
+  const intent = pendingIntent;
+  pendingIntent = null;
+  return intent && now - intent.at <= INTENT_TTL_MS ? intent : null;
+}
+
+export type WatchlistAvailability = "unavailable" | "loading" | "failed" | "ready";
+
+/**
+ * Whether the watchlist can work here. Without Privy there is never a watchlist session, so a
+ * mounted wallet stack that provides none means unavailable, not "still loading".
+ */
+export function watchlistAvailability(input: {
+  apiReady: boolean;
+  sessionAvailable: boolean;
+  walletAvailable: boolean;
+  stack: WalletStackState;
+}): WatchlistAvailability {
+  if (!input.apiReady) return "unavailable";
+  if (input.sessionAvailable) return "ready";
+  if (input.stack === "mounted" || !input.walletAvailable) return "unavailable";
+  return input.stack === "failed" ? "failed" : "loading";
+}
 
 export function useWatchlist() {
   const session = useContext(WatchlistAuthContext);
@@ -231,38 +270,49 @@ export function useWatchlist() {
   );
   const { ready, authenticated } = session;
   const { prepare } = wallet;
+  const availability = watchlistAvailability({
+    apiReady: baseUrl !== null,
+    sessionAvailable,
+    walletAvailable: wallet.available,
+    stack: wallet.stack,
+  });
+  const stackState = wallet.stack;
+
+  useEffect(() => {
+    // A failed stack load will not deliver the press; do not apply it on some later page.
+    if (stackState === "failed") clearIntent();
+  }, [stackState]);
 
   useEffect(() => {
     if (!deps || !ready) return;
     if (!authenticated) {
       if (store.getSnapshot().status !== "idle") store.reset();
-      const intent = pendingIntent;
-      pendingIntent = null;
+      const intent = takeIntent();
       // Only now do we know the reader is signed out, so only now open sign-in.
       if (intent) deps.auth.login();
       return;
     }
-    const intent = pendingIntent;
-    pendingIntent = null;
+    const intent = takeIntent();
     void (async () => {
       if (store.getSnapshot().status === "idle" || intent) await store.load(deps);
-      if (intent) await store.toggle(intent, deps);
+      // Set to the state the star asked for; a press on an already-listed token is a no-op.
+      if (intent) await store.apply(intent.address, intent.want, deps);
     })();
   }, [authenticated, deps, ready]);
 
   const toggle = useCallback(
     async (address: string) => {
-      if (!baseUrl) return;
+      if (availability === "unavailable") return;
       if (!deps) {
         // Privy is not mounted here (read-only route): mount it without opening the picker,
         // then apply this press once the session is known.
-        pendingIntent = address;
+        rememberIntent(address, !snapshot.addresses.has(key(address)));
         prepare();
         return;
       }
       await store.toggle(address, deps);
     },
-    [baseUrl, deps, prepare],
+    [availability, deps, prepare, snapshot.addresses],
   );
   const reload = useCallback(async () => {
     if (deps) await store.load(deps);
@@ -276,7 +326,8 @@ export function useWatchlist() {
   return useMemo(
     () => ({
       /** The star can act: an API exists and the reader can sign in somehow. */
-      available: baseUrl !== null && (sessionAvailable || wallet.available),
+      available: availability !== "unavailable",
+      availability,
       /** Privy is mounted, so the session is known. */
       sessionAvailable,
       ready,
@@ -294,7 +345,7 @@ export function useWatchlist() {
     }),
     [
       authenticated,
-      baseUrl,
+      availability,
       has,
       login,
       prepare,
@@ -306,7 +357,6 @@ export function useWatchlist() {
       snapshot.status,
       snapshot.toast,
       toggle,
-      wallet.available,
     ],
   );
 }

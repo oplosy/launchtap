@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Button, EmptyState, ErrorState, Skeleton } from "@/components/primitives";
 import { TokenCard } from "@/discovery/token-card";
 import { shortAddress } from "@/token/address";
@@ -11,12 +11,17 @@ import { useWatchlist } from "./use-watchlist";
 /** The Explore "Watchlist" view: the signed-in reader's saved tokens. */
 export function WatchlistTab({ apiBaseUrl }: { apiBaseUrl: string | null }) {
   const watchlist = useWatchlist();
-  const { reload, prepare, ready, authenticated, sessionAvailable, available } = watchlist;
+  const { reload, prepare, ready, authenticated, sessionAvailable, availability } = watchlist;
+  const preparedRef = useRef(false);
 
   useEffect(() => {
     // Read-only routes mount no session; load the wallet stack (without opening the picker).
-    if (available && !sessionAvailable) prepare();
-  }, [available, prepare, sessionAvailable]);
+    // Once per mount: a failed load is retried only by the Retry button, never in a loop.
+    if (availability === "loading" && !preparedRef.current) {
+      preparedRef.current = true;
+      prepare();
+    }
+  }, [availability, prepare]);
 
   useEffect(() => {
     // Refresh on entering the tab so tokens starred elsewhere appear. A load already in
@@ -24,6 +29,16 @@ export function WatchlistTab({ apiBaseUrl }: { apiBaseUrl: string | null }) {
     if (ready && authenticated) void reload();
   }, [authenticated, ready, reload]);
 
+  if (availability === "failed")
+    return (
+      <div className="discovery-state">
+        <ErrorState
+          title="Watchlist unavailable"
+          description="Sign-in could not be loaded. Check your connection and try again."
+          action={<Button onClick={prepare}>Retry</Button>}
+        />
+      </div>
+    );
   if (!watchlist.available)
     return (
       <div className="discovery-state">

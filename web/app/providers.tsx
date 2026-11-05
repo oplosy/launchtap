@@ -7,6 +7,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ComponentType,
   type PropsWithChildren,
@@ -48,19 +49,32 @@ export function Providers({ children }: PropsWithChildren) {
   const [Stack, setStack] = useState<WalletStackComponent | null>(null);
   const [openOnMount, setOpenOnMount] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const startedRef = useRef(false);
 
   const requestStack = useCallback((open: boolean) => {
     if (open) setOpenOnMount(true);
+    startedRef.current = true;
     setLoading(true);
+    setFailed(false);
     void loadWalletStack()
       .then((module) => setStack(() => module.WalletStack))
-      .catch(() => setLoading(false));
+      .catch(() => {
+        startedRef.current = false;
+        setLoading(false);
+        setFailed(true);
+      });
   }, []);
+  // Stable identity: callers may depend on it without re-firing when loading state changes.
+  const prepareStack = useCallback(() => {
+    if (!startedRef.current) requestStack(false);
+  }, [requestStack]);
 
   useEffect(() => {
+    // A failed load is retried by an explicit user action, not by this effect.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (required && !Stack && !loading) requestStack(false);
-  }, [Stack, loading, required, requestStack]);
+    if (required && !Stack && !loading && !failed) requestStack(false);
+  }, [Stack, failed, loading, required, requestStack]);
 
   useEffect(() => {
     if (!available) return;
@@ -80,11 +94,10 @@ export function Providers({ children }: PropsWithChildren) {
       available,
       pending: loading,
       open: () => requestStack(true),
-      prepare: () => {
-        if (!loading) requestStack(false);
-      },
+      prepare: prepareStack,
+      stack: failed ? "failed" : loading ? "loading" : "idle",
     }),
-    [available, loading, requestStack],
+    [available, failed, loading, prepareStack, requestStack],
   );
   const status = useMemo(() => ({ required, ready: Stack !== null }), [Stack, required]);
 

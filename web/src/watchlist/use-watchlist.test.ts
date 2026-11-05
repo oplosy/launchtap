@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { ApiProblem } from "@/api/problems";
 import {
+  INTENT_TTL_MS,
   WATCHLIST_LIMIT,
+  clearIntent,
   createWatchlistStore,
+  rememberIntent,
+  takeIntent,
+  watchlistAvailability,
   type WatchlistApi,
   type WatchlistAuth,
 } from "./use-watchlist";
@@ -169,5 +174,74 @@ describe("watchlist store", () => {
     release();
     await toggling;
     expect(store.getSnapshot().addresses.has(TOKEN)).toBe(false);
+  });
+
+  it("applies an add intent to an already-listed token without a request", async () => {
+    const item = { address: TOKEN, added_at: "2026-11-05T00:00:00Z", token: null };
+    const { store, api, deps } = setup({ list: vi.fn(async () => ({ items: [item] })) });
+    await store.load(deps);
+    await store.apply(TOKEN, true, deps);
+    expect(api.add).not.toHaveBeenCalled();
+    expect(api.remove).not.toHaveBeenCalled();
+    expect(store.getSnapshot().addresses.has(TOKEN)).toBe(true);
+  });
+
+  it("applies an add intent to an absent token with an add request", async () => {
+    const { store, api, deps } = setup();
+    await store.load(deps);
+    await store.apply(TOKEN, true, deps);
+    expect(api.add).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot().addresses.has(TOKEN)).toBe(true);
+  });
+
+  it("applies a remove intent only when the token is listed", async () => {
+    const { store, api, deps } = setup();
+    await store.load(deps);
+    await store.apply(TOKEN, false, deps);
+    expect(api.remove).not.toHaveBeenCalled();
+  });
+});
+
+describe("deferred star intent", () => {
+  it("is returned once and then cleared", () => {
+    rememberIntent(TOKEN, true, 1_000);
+    expect(takeIntent(1_500)).toEqual({ address: TOKEN, want: true, at: 1_000 });
+    expect(takeIntent(1_600)).toBeNull();
+  });
+
+  it("is discarded once it is older than the validity window", () => {
+    rememberIntent(TOKEN, true, 1_000);
+    expect(takeIntent(1_000 + INTENT_TTL_MS + 1)).toBeNull();
+  });
+
+  it("can be cleared explicitly", () => {
+    rememberIntent(TOKEN, false, 1_000);
+    clearIntent();
+    expect(takeIntent(1_001)).toBeNull();
+  });
+});
+
+describe("watchlist availability", () => {
+  const base = { apiReady: true, sessionAvailable: false, walletAvailable: true };
+
+  it("is ready whenever a Privy session exists", () => {
+    expect(watchlistAvailability({ ...base, sessionAvailable: true, stack: "mounted" })).toBe("ready");
+  });
+
+  it("is unavailable when the mounted stack has no watchlist session (no Privy)", () => {
+    expect(watchlistAvailability({ ...base, stack: "mounted" })).toBe("unavailable");
+  });
+
+  it("is unavailable without an API or without any wallet support", () => {
+    expect(watchlistAvailability({ ...base, apiReady: false, stack: "idle" })).toBe("unavailable");
+    expect(watchlistAvailability({ ...base, walletAvailable: false, stack: "idle" })).toBe(
+      "unavailable",
+    );
+  });
+
+  it("is loading while the stack has not mounted and failed when its load failed", () => {
+    expect(watchlistAvailability({ ...base, stack: "idle" })).toBe("loading");
+    expect(watchlistAvailability({ ...base, stack: "loading" })).toBe("loading");
+    expect(watchlistAvailability({ ...base, stack: "failed" })).toBe("failed");
   });
 });
