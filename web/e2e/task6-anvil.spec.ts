@@ -655,6 +655,123 @@ test.describe("Task 6 Anvil transaction gate", () => {
     });
   });
 
+  test("lists a traded token in Trending and keeps wallet-less watchlist and USD hidden", async ({
+    page,
+  }, testInfo) => {
+    const tokenName = "Discovery Task 12";
+    test.setTimeout(120_000);
+    await installWallet(page);
+    await page.goto("/create");
+    await connectWallet(page);
+    await page.getByLabel("Name").fill(tokenName);
+    await page.getByLabel("Ticker").fill("DS12");
+    await page.getByRole("button", { name: "Review launch" }).click();
+    await page.getByRole("button", { name: "Sign launch" }).click();
+    const launchStatus = page.getByRole("status").last();
+    await expect(launchStatus).toContainText(/indexing|indexed|safe|finalized/i, {
+      timeout: 30_000,
+    });
+    const launchHash = (await launchStatus.textContent())?.match(/0x[0-9a-f]{64}/i)?.[0];
+    expect(launchHash).toBeTruthy();
+    const api = process.env.TASK6_ANVIL_API_URL!;
+    let tokenAddress = "";
+    await expect
+      .poll(
+        async () => {
+          tokenAddress = await canonicalTokenForLaunch(page, api, launchHash!, tokenName);
+          return tokenAddress;
+        },
+        { timeout: 30_000 },
+      )
+      .toMatch(/^0x[0-9a-f]{40}$/i);
+    await page.goto(`/token/${tokenAddress}`);
+    await expect(page.getByRole("heading", { name: tokenName })).toBeVisible({ timeout: 30_000 });
+    await page.getByLabel("ETH input").fill("0.001");
+    await page.getByRole("button", { name: "Review buy" }).click();
+    await page.getByRole("button", { name: "Sign buy" }).click();
+    await expect(page.getByRole("status").last()).toContainText(
+      /indexing|indexed|safe|finalized/i,
+      { timeout: 30_000 },
+    );
+
+    // The token detail page shows no USD line or CoinGecko attribution without a price source.
+    await expect(page.getByText("Data provided by CoinGecko")).toHaveCount(0);
+    await expect(page.getByText(/≈ \$/)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /to watchlist$/ })).toHaveCount(0);
+    const detailUrl = page.url();
+
+    const screenshot = async (name: string) => {
+      const dir = path.resolve(
+        process.cwd(),
+        "..",
+        ".superpowers",
+        "sdd",
+        "2026-11-05-p0-market-data-discovery",
+        "screens",
+      );
+      try {
+        fs.mkdirSync(dir, { recursive: true });
+        await page.screenshot({ path: path.join(dir, name), fullPage: true });
+      } catch {
+        // Evidence screenshots are best effort and never fail the gate.
+      }
+    };
+
+    // Explore -> Trending lists the traded token after indexing.
+    await page.goto("/");
+    const tokenCard = page.getByRole("link", { name: tokenName });
+    await expect(tokenCard.first()).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByRole("button", { name: "Trending", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(page.getByRole("article", { name: "King of the hill" })).toBeVisible();
+    await expect(page.getByText("Data provided by CoinGecko")).toHaveCount(0);
+    await expect(page.getByText(/≈ \$/)).toHaveCount(0);
+
+    // The age filter lives on the ranked views and is reflected in the URL.
+    await page.getByRole("button", { name: "New", exact: true }).click();
+    await page
+      .getByRole("group", { name: "Launch age" })
+      .getByRole("button", { name: "24h", exact: true })
+      .click();
+    await expect(page).toHaveURL(/age=24h/);
+    await expect(page.getByRole("link", { name: tokenName }).first()).toBeVisible({
+      timeout: 30_000,
+    });
+
+    // Without Privy sign-in the watchlist reports itself unavailable and shows no stars.
+    await page.getByRole("button", { name: "Watchlist", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Watchlist unavailable" })).toBeVisible({
+      timeout: 15_000,
+    });
+    // Opening the tab mounts the wallet stack, which provides no sign-in here, so stars go away.
+    await page.getByRole("button", { name: "Trending", exact: true }).click();
+    await expect(page.getByRole("link", { name: tokenName }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /to watchlist$/ })).toHaveCount(0);
+
+    // Evidence screenshots at the two reference viewports.
+    for (const [label, size] of [
+      ["375x812", { width: 375, height: 812 }],
+      ["1440x900", { width: 1440, height: 900 }],
+    ] as const) {
+      await page.setViewportSize(size);
+      await page.goto("/?view=trending");
+      await expect(page.getByRole("link", { name: tokenName }).first()).toBeVisible({
+        timeout: 30_000,
+      });
+      await screenshot(`explore-trending-${label}-${testInfo.project.name}.png`);
+      await page.goto("/?view=watchlist");
+      await expect(page.getByRole("heading", { name: "Watchlist unavailable" })).toBeVisible({
+        timeout: 15_000,
+      });
+      await screenshot(`explore-watchlist-${label}-${testInfo.project.name}.png`);
+      await page.goto(detailUrl);
+      await expect(page.getByRole("heading", { name: tokenName })).toBeVisible({ timeout: 30_000 });
+      await screenshot(`token-detail-${label}-${testInfo.project.name}.png`);
+    }
+  });
+
   test("regresses to unavailable after the canonical launch disappears in an Anvil reorg", async ({
     page,
   }) => {
