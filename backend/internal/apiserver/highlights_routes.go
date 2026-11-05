@@ -27,22 +27,22 @@ type HighlightsRoutes struct {
 }
 
 type trendingDTO struct {
-	tokenDTO
+	TokenDTO
 	WindowVolumeETH string `json:"window_volume_eth"`
 	DistinctBuyers  int64  `json:"distinct_buyers"`
 }
 type kingDTO struct {
-	tokenDTO
+	TokenDTO
 	GraduationProgressBPS int32  `json:"graduation_progress_bps"`
 	RemainingETH          string `json:"remaining_eth"`
 }
 type highlightsBody struct {
-	Trending    []trendingDTO `json:"trending"`
-	King        *kingDTO      `json:"king_of_the_hill"`
-	WindowStart string        `json:"window_start"`
-	AsOf        string        `json:"as_of"`
-	Finality    string        `json:"finality"`
-	Snapshot    snapshotDTO   `json:"snapshot"`
+	Trending    []trendingDTO           `json:"trending"`
+	King        nullableObject[kingDTO] `json:"king_of_the_hill"`
+	WindowStart string                  `json:"window_start"`
+	AsOf        string                  `json:"as_of"`
+	Finality    string                  `json:"finality"`
+	Snapshot    snapshotDTO             `json:"snapshot"`
 }
 type highlightsOutput struct{ Body highlightsBody }
 
@@ -92,10 +92,10 @@ func (r HighlightsRoutes) handle(ctx context.Context, cache *highlightsCache) (*
 		Snapshot:    snapDTO(h.Snapshot, h.Finality),
 	}
 	for _, v := range h.Trending {
-		body.Trending = append(body.Trending, trendingDTO{tokenDTO: toTokenDTO(v.Summary), WindowVolumeETH: decimal(v.WindowVolumeETH), DistinctBuyers: v.DistinctBuyers})
+		body.Trending = append(body.Trending, trendingDTO{TokenDTO: toTokenDTO(v.Summary), WindowVolumeETH: decimal(v.WindowVolumeETH), DistinctBuyers: v.DistinctBuyers})
 	}
 	if h.King != nil {
-		body.King = &kingDTO{tokenDTO: toTokenDTO(h.King.Summary), GraduationProgressBPS: h.King.GraduationProgressBPS, RemainingETH: decimal(h.King.RemainingETH)}
+		body.King = nullableObject[kingDTO]{V: &kingDTO{TokenDTO: toTokenDTO(h.King.Summary), GraduationProgressBPS: h.King.GraduationProgressBPS, RemainingETH: decimal(h.King.RemainingETH)}}
 	}
 	cache.body, cache.fetchedAt = &body, now
 	return &highlightsOutput{Body: body}, nil

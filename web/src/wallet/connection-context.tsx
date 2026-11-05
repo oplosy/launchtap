@@ -11,6 +11,8 @@ import { shortAddress } from "@/token/address";
  */
 export type WalletConnection = {
   open: () => void;
+  /** Mounts the wallet stack without opening the picker. A no-op once mounted. */
+  prepare: () => void;
   disconnect: () => void;
   connected: boolean;
   pending: boolean;
@@ -20,6 +22,7 @@ export type WalletConnection = {
 
 export const fallbackConnection: WalletConnection = {
   open: () => undefined,
+  prepare: () => undefined,
   disconnect: () => undefined,
   connected: false,
   pending: false,

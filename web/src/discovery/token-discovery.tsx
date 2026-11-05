@@ -35,7 +35,7 @@ import {
   type TokenListQueryState,
   type TokenPhase,
 } from "./query-state";
-import { KingOfTheHill, TrendingList, useHighlights, type KingItem, type TrendingItem } from "./highlights";
+import { KingOfTheHill, TrendingList, useHighlights } from "./highlights";
 import { TokenCard } from "./token-card";
 import { loadTokenDiscoveryPage } from "./controller";
 import {
@@ -350,7 +350,7 @@ export function TokenDiscovery({
           <>
             {highlights.data?.king_of_the_hill ? (
               <KingOfTheHill
-                king={highlights.data.king_of_the_hill as KingItem}
+                king={highlights.data.king_of_the_hill}
                 apiBaseUrl={configuration.apiBaseUrl}
               />
             ) : null}
@@ -417,7 +417,7 @@ export function TokenDiscovery({
             <TokenListSkeleton />
           ) : (
             <TrendingList
-              items={(highlights.data.trending ?? []) as TrendingItem[]}
+              items={highlights.data.trending ?? []}
               apiBaseUrl={configuration.apiBaseUrl}
             />
           )

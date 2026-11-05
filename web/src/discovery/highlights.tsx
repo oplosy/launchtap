@@ -8,14 +8,10 @@ import { Badge, EmptyState, SafeImage } from "@/components/primitives";
 import { UsdLine } from "@/market/usd-line";
 import { addressHue } from "@/token/address";
 import { StarButton } from "@/watchlist/star-button";
-import { TokenCard, displayAmount, tokenLabel, type TokenCardData } from "./token-card";
+import { TokenCard, displayAmount, tokenLabel } from "./token-card";
 
-/**
- * The API flattens the token fields into each highlight item, but the generated schema only
- * lists the highlight-specific fields, so the token part is declared here.
- */
-export type TrendingItem = TokenCardData & components["schemas"]["TrendingDTO"];
-export type KingItem = TokenCardData & components["schemas"]["KingDTO"];
+export type TrendingItem = components["schemas"]["TrendingDTO"];
+export type KingItem = components["schemas"]["KingDTO"];
 
 export const HIGHLIGHTS_REFRESH_MS = 30_000;
 

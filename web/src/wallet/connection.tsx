@@ -22,6 +22,7 @@ export function WagmiWalletConnectionBridge({ children, openOnMount = false }: B
   const value = useMemo<WalletConnection>(
     () => ({
       open: () => setOpen(true),
+      prepare: () => undefined,
       disconnect: () => disconnect(),
       connected: isConnected,
       pending: isPending,
@@ -112,6 +113,7 @@ export function PrivyWalletConnectionBridge({ children, openOnMount = false }: B
   const value = useMemo<WalletConnection>(
     () => ({
       open: () => connectOrCreateWallet(),
+      prepare: () => undefined,
       disconnect: () => disconnect(),
       connected: isConnected,
       pending: false,

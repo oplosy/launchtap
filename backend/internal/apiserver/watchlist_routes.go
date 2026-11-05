@@ -32,9 +32,9 @@ type watchlistEntryInput struct {
 	Address string `path:"address"`
 }
 type watchlistEntryDTO struct {
-	Address string    `json:"address"`
-	AddedAt string    `json:"added_at"`
-	Token   *tokenDTO `json:"token"`
+	Address string                   `json:"address"`
+	AddedAt string                   `json:"added_at"`
+	Token   nullableObject[TokenDTO] `json:"token"`
 }
 type watchlistBody struct {
 	Items []watchlistEntryDTO `json:"items"`
@@ -96,7 +96,7 @@ func (r WatchlistRoutes) list(ctx context.Context, in *WatchlistAuthInput) (*wat
 		item := watchlistEntryDTO{Address: e.Token.Hex(), AddedAt: e.AddedAt.UTC().Format("2006-01-02T15:04:05.000000Z")}
 		if e.Summary != nil {
 			dto := toTokenDTO(*e.Summary)
-			item.Token = &dto
+			item.Token = nullableObject[TokenDTO]{V: &dto}
 		}
 		out.Body.Items = append(out.Body.Items, item)
 	}

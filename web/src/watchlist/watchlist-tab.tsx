@@ -11,10 +11,16 @@ import { useWatchlist } from "./use-watchlist";
 /** The Explore "Watchlist" view: the signed-in reader's saved tokens. */
 export function WatchlistTab({ apiBaseUrl }: { apiBaseUrl: string | null }) {
   const watchlist = useWatchlist();
-  const { reload, ready, authenticated } = watchlist;
+  const { reload, prepare, ready, authenticated, sessionAvailable, available } = watchlist;
 
   useEffect(() => {
-    // Refresh on entering the tab so tokens starred elsewhere appear.
+    // Read-only routes mount no session; load the wallet stack (without opening the picker).
+    if (available && !sessionAvailable) prepare();
+  }, [available, prepare, sessionAvailable]);
+
+  useEffect(() => {
+    // Refresh on entering the tab so tokens starred elsewhere appear. A load already in
+    // flight is shared by the store, so repeated runs never restart the request.
     if (ready && authenticated) void reload();
   }, [authenticated, ready, reload]);
 
@@ -26,6 +32,12 @@ export function WatchlistTab({ apiBaseUrl }: { apiBaseUrl: string | null }) {
           description="Sign-in is not available right now, so your watchlist cannot be shown."
         />
       </div>
+    );
+  if (!sessionAvailable || !ready)
+    return (
+      <p className="route-state" role="status" aria-live="polite">
+        Loading your account…
+      </p>
     );
   if (!authenticated)
     return (

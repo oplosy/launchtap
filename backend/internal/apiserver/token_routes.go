@@ -29,11 +29,11 @@ type tokenListInput struct {
 }
 type tokenListOutput struct{ Body tokenListBody }
 type tokenListBody struct {
-	Items      []tokenDTO  `json:"items"`
+	Items      []TokenDTO  `json:"items"`
 	NextCursor string      `json:"next_cursor,omitempty"`
 	Snapshot   snapshotDTO `json:"snapshot"`
 }
-type tokenDTO struct {
+type TokenDTO struct {
 	Address      string `json:"address"`
 	Name         string `json:"name"`
 	Symbol       string `json:"symbol"`
@@ -98,14 +98,14 @@ func (r TokenRoutes) list(ctx context.Context, in *tokenListInput) (*tokenListOu
 	if err != nil {
 		return nil, mapReadError(ctx, err)
 	}
-	out := tokenListOutput{Body: tokenListBody{Items: make([]tokenDTO, 0, len(p.Items)), NextCursor: p.NextCursor, Snapshot: snapDTO(p.Snapshot, p.Finality)}}
+	out := tokenListOutput{Body: tokenListBody{Items: make([]TokenDTO, 0, len(p.Items)), NextCursor: p.NextCursor, Snapshot: snapDTO(p.Snapshot, p.Finality)}}
 	for _, v := range p.Items {
 		out.Body.Items = append(out.Body.Items, toTokenDTO(v))
 	}
 	return &out, nil
 }
-func toTokenDTO(v token.Summary) tokenDTO {
-	return tokenDTO{Address: v.Address.Hex(), Name: v.Name, Symbol: v.Symbol, Phase: v.Phase, LaunchTime: v.LaunchTime.UTC().Format("2006-01-02T15:04:05.000000Z"), LaunchBlock: v.LaunchBlock, TotalSupply: decimal(v.TotalSupply), MarketCapETH: decimal(v.MarketCapETH), Volume24hETH: decimal(v.Volume24hETH), HolderCount: v.HolderCount}
+func toTokenDTO(v token.Summary) TokenDTO {
+	return TokenDTO{Address: v.Address.Hex(), Name: v.Name, Symbol: v.Symbol, Phase: v.Phase, LaunchTime: v.LaunchTime.UTC().Format("2006-01-02T15:04:05.000000Z"), LaunchBlock: v.LaunchBlock, TotalSupply: decimal(v.TotalSupply), MarketCapETH: decimal(v.MarketCapETH), Volume24hETH: decimal(v.Volume24hETH), HolderCount: v.HolderCount}
 }
 func decimal(v *big.Int) string {
 	if v == nil {

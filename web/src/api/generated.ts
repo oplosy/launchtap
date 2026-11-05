@@ -440,7 +440,7 @@ export interface components {
             readonly $schema?: string;
             as_of: string;
             finality: string;
-            king_of_the_hill: components["schemas"]["KingDTO"];
+            king_of_the_hill: components["schemas"]["KingDTO"] | null;
             snapshot: components["schemas"]["SnapshotDTO"];
             trending: components["schemas"]["TrendingDTO"][] | null;
             window_start: string;
@@ -463,9 +463,21 @@ export interface components {
             snapshot: components["schemas"]["SnapshotDTO"];
         };
         KingDTO: {
+            address: string;
             /** Format: int32 */
             graduation_progress_bps: number;
+            /** Format: int64 */
+            holder_count: number;
+            /** Format: int64 */
+            launch_block: number;
+            launch_time: string;
+            market_cap_eth: string;
+            name: string;
+            phase: string;
             remaining_eth: string;
+            symbol: string;
+            total_supply: string;
+            volume_24h_eth: string;
         };
         LaunchEvent: {
             /** Format: int64 */
@@ -745,8 +757,20 @@ export interface components {
             snapshot: components["schemas"]["SnapshotDTO"];
         };
         TrendingDTO: {
+            address: string;
             /** Format: int64 */
             distinct_buyers: number;
+            /** Format: int64 */
+            holder_count: number;
+            /** Format: int64 */
+            launch_block: number;
+            launch_time: string;
+            market_cap_eth: string;
+            name: string;
+            phase: string;
+            symbol: string;
+            total_supply: string;
+            volume_24h_eth: string;
             window_volume_eth: string;
         };
         WatchlistBody: {
@@ -761,7 +785,7 @@ export interface components {
         WatchlistEntryDTO: {
             added_at: string;
             address: string;
-            token: components["schemas"]["TokenDTO"];
+            token: components["schemas"]["TokenDTO"] | null;
         };
     };
     responses: never;

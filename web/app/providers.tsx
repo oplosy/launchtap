@@ -75,7 +75,15 @@ export function Providers({ children }: PropsWithChildren) {
   }, [available]);
 
   const lazyConnection = useMemo<WalletConnection>(
-    () => ({ ...fallbackConnection, available, pending: loading, open: () => requestStack(true) }),
+    () => ({
+      ...fallbackConnection,
+      available,
+      pending: loading,
+      open: () => requestStack(true),
+      prepare: () => {
+        if (!loading) requestStack(false);
+      },
+    }),
     [available, loading, requestStack],
   );
   const status = useMemo(() => ({ required, ready: Stack !== null }), [Stack, required]);

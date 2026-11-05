@@ -349,7 +349,14 @@
             "type": "string"
           },
           "king_of_the_hill": {
-            "$ref": "#/components/schemas/KingDTO"
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/KingDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "snapshot": {
             "$ref": "#/components/schemas/SnapshotDTO"
@@ -435,17 +442,59 @@
       "KingDTO": {
         "additionalProperties": false,
         "properties": {
+          "address": {
+            "type": "string"
+          },
           "graduation_progress_bps": {
             "format": "int32",
             "type": "integer"
           },
+          "holder_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "launch_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "launch_time": {
+            "type": "string"
+          },
+          "market_cap_eth": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
           "remaining_eth": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "total_supply": {
+            "type": "string"
+          },
+          "volume_24h_eth": {
             "type": "string"
           }
         },
         "required": [
           "graduation_progress_bps",
-          "remaining_eth"
+          "remaining_eth",
+          "address",
+          "name",
+          "symbol",
+          "phase",
+          "launch_time",
+          "launch_block",
+          "total_supply",
+          "market_cap_eth",
+          "volume_24h_eth",
+          "holder_count"
         ],
         "type": "object"
       },
@@ -1306,9 +1355,41 @@
       "TrendingDTO": {
         "additionalProperties": false,
         "properties": {
+          "address": {
+            "type": "string"
+          },
           "distinct_buyers": {
             "format": "int64",
             "type": "integer"
+          },
+          "holder_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "launch_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "launch_time": {
+            "type": "string"
+          },
+          "market_cap_eth": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "total_supply": {
+            "type": "string"
+          },
+          "volume_24h_eth": {
+            "type": "string"
           },
           "window_volume_eth": {
             "type": "string"
@@ -1316,7 +1397,17 @@
         },
         "required": [
           "window_volume_eth",
-          "distinct_buyers"
+          "distinct_buyers",
+          "address",
+          "name",
+          "symbol",
+          "phase",
+          "launch_time",
+          "launch_block",
+          "total_supply",
+          "market_cap_eth",
+          "volume_24h_eth",
+          "holder_count"
         ],
         "type": "object"
       },
@@ -1357,7 +1448,14 @@
             "type": "string"
           },
           "token": {
-            "$ref": "#/components/schemas/TokenDTO"
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TokenDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [

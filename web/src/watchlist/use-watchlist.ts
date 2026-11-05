@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useSyncExternalStore,
+} from "react";
 import {
   addWatchlist,
   getWatchlist,
@@ -15,10 +22,9 @@ import { useWalletConnection } from "@/wallet/connection-context";
 /** Server-side cap on one user's watchlist (spec: 200 entries). */
 export const WATCHLIST_LIMIT = 200;
 
-type GeneratedEntry = NonNullable<WatchlistResponse["items"]>[number];
-/** The API sends `token: null` for entries it can no longer resolve; the generated type omits it. */
-export type WatchlistEntry = Omit<GeneratedEntry, "token"> & { token: GeneratedEntry["token"] | null };
-export type WatchlistList = { items: WatchlistEntry[] | null };
+/** `token` is null for entries the API can no longer resolve. */
+export type WatchlistEntry = NonNullable<WatchlistResponse["items"]>[number];
+export type WatchlistList = WatchlistResponse;
 
 /** Session facts the store needs. Supplied by Privy where it is mounted, inert elsewhere. */
 export type WatchlistAuth = {
@@ -74,7 +80,9 @@ export function createWatchlistStore() {
   let fullByServer = false;
   let loadGeneration = 0;
   let toastId = 0;
-  const pending = new Set<string>();
+  // Addresses with a toggle in flight, mapped to the optimistic presence they are heading to.
+  const pending = new Map<string, boolean>();
+  let loading: Promise<void> | null = null;
   const listeners = new Set<() => void>();
 
   const set = (patch: Partial<WatchlistSnapshot>) => {
@@ -103,31 +111,42 @@ export function createWatchlistStore() {
     dismissToast: () => set({ toast: null }),
     reset() {
       loadGeneration++;
+      loading = null;
       fullByServer = false;
       pending.clear();
       snapshot = { ...EMPTY_SNAPSHOT };
       listeners.forEach((listener) => listener());
     },
-    async load(deps: WatchlistDeps) {
-      if (!deps.auth.authenticated) return;
+    /** Loads the list. A load already in flight is shared, never restarted. */
+    load(deps: WatchlistDeps): Promise<void> {
+      if (!deps.auth.authenticated) return Promise.resolve();
+      if (loading) return loading;
       const generation = ++loadGeneration;
       set({ status: "loading" });
-      try {
-        const auth = await deps.auth.getAuth();
-        if (!auth) throw new Error("session unavailable");
-        const response = await deps.api.list(auth);
-        if (generation !== loadGeneration) return;
-        const entries = response.items ?? [];
-        fullByServer = false;
-        set({
-          entries,
-          addresses: new Set(entries.map((entry) => key(entry.address))),
-          status: "ready",
-        });
-      } catch {
-        if (generation !== loadGeneration) return;
-        set({ status: "error" });
-      }
+      const run: Promise<void> = (async () => {
+        try {
+          const auth = await deps.auth.getAuth();
+          if (!auth) throw new Error("session unavailable");
+          const response = await deps.api.list(auth);
+          if (generation !== loadGeneration) return;
+          const entries = response.items ?? [];
+          fullByServer = false;
+          const addresses = new Set(entries.map((entry) => key(entry.address)));
+          // A toggle still in flight owns its address: keep its optimistic state.
+          for (const [address, present] of pending) {
+            if (present) addresses.add(address);
+            else addresses.delete(address);
+          }
+          set({ entries, addresses, status: "ready" });
+        } catch {
+          if (generation !== loadGeneration) return;
+          set({ status: "error" });
+        }
+      })().finally(() => {
+        if (loading === run) loading = null;
+      });
+      loading = run;
+      return run;
     },
     async toggle(rawAddress: string, deps: WatchlistDeps) {
       const { auth, api } = deps;
@@ -143,7 +162,7 @@ export function createWatchlistStore() {
         toastFull();
         return;
       }
-      pending.add(address);
+      pending.set(address, adding);
       set({ addresses: withAddress(address, adding) });
       try {
         const headers = await auth.getAuth();
@@ -190,11 +209,14 @@ export const WatchlistAuthContext = createContext<WatchlistAuth>(INERT_AUTH);
 
 function apiFor(baseUrl: string): WatchlistApi {
   return {
-    list: (auth) => getWatchlist(baseUrl, auth) as Promise<WatchlistList>,
+    list: (auth) => getWatchlist(baseUrl, auth),
     add: (address, auth) => addWatchlist(baseUrl, address, auth),
     remove: (address, auth) => removeWatchlist(baseUrl, address, auth),
   };
 }
+
+/** A star pressed before the wallet stack mounted; applied once the session is available. */
+let pendingIntent: string | null = null;
 
 export function useWatchlist() {
   const session = useContext(WatchlistAuthContext);
@@ -202,43 +224,89 @@ export function useWatchlist() {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, () => EMPTY_SNAPSHOT);
   const configuration = publicConfiguration();
   const baseUrl = configuration.status === "ready" ? configuration.apiBaseUrl : null;
-  // Where Privy is not mounted yet (read-only routes), signing in loads the wallet stack.
-  const auth = useMemo<WatchlistAuth>(
-    () => (session.available ? session : { ...INERT_AUTH, ready: true, login: wallet.open }),
-    [session, wallet.open],
-  );
+  const sessionAvailable = session.available;
   const deps = useMemo<WatchlistDeps | null>(
-    () => (baseUrl ? { api: apiFor(baseUrl), auth } : null),
-    [auth, baseUrl],
+    () => (baseUrl && sessionAvailable ? { api: apiFor(baseUrl), auth: session } : null),
+    [baseUrl, session, sessionAvailable],
   );
-  const { ready, authenticated } = auth;
+  const { ready, authenticated } = session;
+  const { prepare } = wallet;
 
   useEffect(() => {
     if (!deps || !ready) return;
     if (!authenticated) {
       if (store.getSnapshot().status !== "idle") store.reset();
+      const intent = pendingIntent;
+      pendingIntent = null;
+      // Only now do we know the reader is signed out, so only now open sign-in.
+      if (intent) deps.auth.login();
       return;
     }
-    if (store.getSnapshot().status === "idle") void store.load(deps);
+    const intent = pendingIntent;
+    pendingIntent = null;
+    void (async () => {
+      if (store.getSnapshot().status === "idle" || intent) await store.load(deps);
+      if (intent) await store.toggle(intent, deps);
+    })();
   }, [authenticated, deps, ready]);
 
-  return {
-    /** The star can act: an API exists and the reader can sign in somehow. */
-    available: deps !== null && (session.available || wallet.available),
-    ready,
-    authenticated,
-    login: auth.login,
-    status: snapshot.status,
-    full: snapshot.full,
-    entries: snapshot.entries,
-    toast: snapshot.toast,
-    has: (address: string) => snapshot.addresses.has(key(address)),
-    toggle: async (address: string) => {
-      if (deps) await store.toggle(address, deps);
+  const toggle = useCallback(
+    async (address: string) => {
+      if (!baseUrl) return;
+      if (!deps) {
+        // Privy is not mounted here (read-only route): mount it without opening the picker,
+        // then apply this press once the session is known.
+        pendingIntent = address;
+        prepare();
+        return;
+      }
+      await store.toggle(address, deps);
     },
-    reload: async () => {
-      if (deps) await store.load(deps);
-    },
-    dismissToast: store.dismissToast,
-  };
+    [baseUrl, deps, prepare],
+  );
+  const reload = useCallback(async () => {
+    if (deps) await store.load(deps);
+  }, [deps]);
+  const login = useCallback(() => session.login(), [session]);
+  const has = useCallback(
+    (address: string) => snapshot.addresses.has(key(address)),
+    [snapshot.addresses],
+  );
+
+  return useMemo(
+    () => ({
+      /** The star can act: an API exists and the reader can sign in somehow. */
+      available: baseUrl !== null && (sessionAvailable || wallet.available),
+      /** Privy is mounted, so the session is known. */
+      sessionAvailable,
+      ready,
+      authenticated,
+      login,
+      prepare,
+      status: snapshot.status,
+      full: snapshot.full,
+      entries: snapshot.entries,
+      toast: snapshot.toast,
+      has,
+      toggle,
+      reload,
+      dismissToast: store.dismissToast,
+    }),
+    [
+      authenticated,
+      baseUrl,
+      has,
+      login,
+      prepare,
+      ready,
+      reload,
+      sessionAvailable,
+      snapshot.entries,
+      snapshot.full,
+      snapshot.status,
+      snapshot.toast,
+      toggle,
+      wallet.available,
+    ],
+  );
 }

@@ -126,4 +126,48 @@ describe("watchlist store", () => {
     await store.toggle(TOKEN.toUpperCase().replace("0X", "0x"), deps);
     expect(store.getSnapshot().addresses.has(TOKEN)).toBe(true);
   });
+
+  it("shares a load already in flight instead of restarting it", async () => {
+    const { store, api, deps } = setup();
+    // The tab and the hook both ask to load on mount; a re-render must not trigger more requests.
+    await Promise.all([store.load(deps), store.load(deps), store.load(deps)]);
+    expect(api.list).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot().status).toBe("ready");
+    await store.load(deps);
+    expect(api.list).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps an in-flight optimistic add when a load lands meanwhile", async () => {
+    let release: () => void = () => undefined;
+    const { store, deps } = setup({
+      add: vi.fn(() => new Promise<void>((resolve) => (release = resolve))),
+      list: vi.fn(async () => ({ items: [] })),
+    });
+    const toggling = store.toggle(TOKEN, deps);
+    await Promise.resolve();
+    await Promise.resolve();
+    await store.load(deps);
+    expect(store.getSnapshot().addresses.has(TOKEN)).toBe(true);
+    release();
+    await toggling;
+    expect(store.getSnapshot().addresses.has(TOKEN)).toBe(true);
+  });
+
+  it("keeps an in-flight optimistic removal when a load lands meanwhile", async () => {
+    let release: () => void = () => undefined;
+    const item = { address: TOKEN, added_at: "2026-11-05T00:00:00Z", token: null };
+    const { store, deps } = setup({
+      list: vi.fn(async () => ({ items: [item] })),
+      remove: vi.fn(() => new Promise<void>((resolve) => (release = resolve))),
+    });
+    await store.load(deps);
+    const toggling = store.toggle(TOKEN, deps);
+    await Promise.resolve();
+    await Promise.resolve();
+    await store.load(deps);
+    expect(store.getSnapshot().addresses.has(TOKEN)).toBe(false);
+    release();
+    await toggling;
+    expect(store.getSnapshot().addresses.has(TOKEN)).toBe(false);
+  });
 });
