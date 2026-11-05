@@ -70,6 +70,50 @@
   a reserve rescue path. Do not commit credentials, private RPC URLs, wallet keys, or guessed
   deployment addresses.
 
+### Observability: metrics, alerting, and error tracking
+
+- **Date:** 2026-11-05
+- **Reason:** scope decision (gap found in the 2026-11-05 production-readiness scoring)
+- **Where it stopped:** Not started. The API and indexer expose only `/healthz` and structured
+  logs; the backend has no metrics endpoint, tracing, or error tracking (no Prometheus or
+  OpenTelemetry code in `backend/`). `docs/runbooks/production-readiness.md` already lists the
+  signals an operator must watch (indexer head/finality lag, database connectivity, RPC error
+  rate, HTTP 5xx, write rejection rate, notification/reconciliation activity), but nothing in
+  the repository emits them, and Docker health checks do not deliver alerts.
+- **Related files:** `backend/cmd/api/main.go`, `backend/cmd/indexer/main.go`,
+  `backend/internal/apiserver/server.go`, `backend/internal/indexer/`, `deploy/compose.yaml`,
+  `deploy/README.md`, `docs/runbooks/production-readiness.md`
+- **Resume (next step):** Claude pre-flight first (architecture decision): choose the metrics
+  and alerting stack and where it runs relative to the Compose package, then record it with the
+  `system-design` MCP. Codex then implements the metric set above for API and indexer (plus
+  browser error reporting for web if chosen), wires it into `deploy/`, and adds tests that the
+  metrics endpoint is not publicly reachable through Caddy.
+- **Pitfalls / notes:** Metrics and error reports must not carry credentials, access tokens,
+  signatures, cookies, or credentialed RPC URLs (same rule as logs). The API rate limiter is
+  per-process in memory (`backend/internal/apiserver/ratelimit.go`); if the chosen topology
+  runs more than one API instance, decide on shared limiting in the same pre-flight. Naming
+  the monitoring owner and alert destination stays under the production-inputs item above.
+
+### Automated dependency vulnerability scanning in CI
+
+- **Date:** 2026-11-05
+- **Reason:** scope decision (gap found in the 2026-11-05 production-readiness scoring)
+- **Where it stopped:** Not started. No workflow in `.github/workflows/` runs `govulncheck`,
+  `npm audit`, or an equivalent, and there is no Dependabot/Renovate configuration. The web
+  runtime audit last showed 0 critical/high and 39 low/moderate advisories whose impact review
+  is still open (see the production-inputs item above). Slither already runs in the contracts
+  release gate and is out of scope here.
+- **Related files:** `.github/workflows/backend.yml`, `.github/workflows/web.yml`,
+  `backend/Taskfile.yml`, `web/package.json`, `web/package-lock.json`, `backend/go.mod`
+- **Resume (next step):** Codex adds a pinned `go run golang.org/x/vuln/cmd/govulncheck@<version>`
+  task to the backend gate and an `npm audit --omit=dev --audit-level=high` step to the web
+  workflow, both failing CI on reachable high/critical findings, then decides with the owner
+  whether to enable Dependabot or Renovate for version-update PRs.
+- **Pitfalls / notes:** Follow the repository rule that backend tools are pinned and run via
+  `go run`, never installed globally. Fail only on high/critical so the 39 open low/moderate
+  advisories do not block CI before their impact review is done; record accepted advisories
+  explicitly instead of silencing the whole audit.
+
 <!-- Template:
 ### <short title>
 - **Date:** YYYY-MM-DD
