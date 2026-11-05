@@ -138,6 +138,19 @@ func run() error {
 			slog.Warn("market dirty listener stopped", "error", err)
 		}
 	}()
+	sweeper := stats.WindowSweeper{Source: storepostgres.AggregationSource{Adapter: storepostgres.NewAdapter(pool), ChainID: int64(c.ChainID)}, ChainID: int64(c.ChainID), Interval: stats.DefaultSweepInterval, Window: stats.DefaultSweepWindow, Overlap: stats.DefaultSweepOverlap, Now: time.Now,
+		Wake: func() {
+			select {
+			case wake <- struct{}{}:
+			default:
+			}
+		},
+		OnError: func(err error) { slog.Error("volume window sweep failed", "chain_id", c.ChainID, "error", err) }}
+	go func() {
+		if err := sweeper.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn("volume window sweeper stopped", "error", err)
+		}
+	}()
 	aggregationErrors := make(chan error, 1)
 	go func() {
 		if err := aggregation.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
