@@ -1,8 +1,10 @@
 package pricefeed
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -218,11 +220,11 @@ func Test429BacksOff(t *testing.T) {
 	}
 }
 
-func TestDefaultJitterWithinTwentyPercent(t *testing.T) {
+func TestDefaultJitterNeverBelowInterval(t *testing.T) {
 	f := New(Options{})
 	for i := 0; i < 200; i++ {
 		d := f.nextDelay()
-		if d < 48*time.Second || d > 72*time.Second {
+		if d < 60*time.Second || d > 72*time.Second {
 			t.Fatalf("delay %v out of range", d)
 		}
 	}
@@ -246,7 +248,19 @@ func TestRefreshCoalesces(t *testing.T) {
 		go func() { defer wg.Done(); errs <- f.Refresh(context.Background()) }()
 	}
 	<-started
-	time.Sleep(100 * time.Millisecond)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		f.mu.Lock()
+		n := f.waiters
+		f.mu.Unlock()
+		if n == 9 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("waiters=%d, want 9", n)
+		}
+		time.Sleep(time.Millisecond)
+	}
 	close(release)
 	wg.Wait()
 	close(errs)
@@ -304,5 +318,60 @@ func TestRunStopsOnCancel(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("run did not stop")
+	}
+}
+
+type syncBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) { s.mu.Lock(); defer s.mu.Unlock(); return s.b.Write(p) }
+func (s *syncBuf) String() string              { s.mu.Lock(); defer s.mu.Unlock(); return s.b.String() }
+
+func TestRunLogsProviderErrorsWithoutKey(t *testing.T) {
+	srv := httptest.NewServer(serve(401, "bad key "+testKey))
+	t.Cleanup(srv.Close)
+	buf := &syncBuf{}
+	f := New(Options{BaseURL: srv.URL, APIKey: testKey, Logger: slog.New(slog.NewTextHandler(buf, nil))})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- f.Run(ctx) }()
+	deadline := time.Now().Add(5 * time.Second)
+	for buf.String() == "" && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	cancel()
+	<-done
+	out := buf.String()
+	if !strings.Contains(out, "rejected credentials") {
+		t.Fatalf("log=%q", out)
+	}
+	if strings.Contains(out, testKey) {
+		t.Fatalf("key leaked in log: %q", out)
+	}
+}
+
+func TestDoesNotForwardKeyOnRedirect(t *testing.T) {
+	var leaked atomic.Bool
+	var hit atomic.Bool
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit.Store(true)
+		if r.Header.Get("x-cg-pro-api-key") != "" {
+			leaked.Store(true)
+		}
+		_, _ = w.Write([]byte(body("1", epoch)))
+	}))
+	t.Cleanup(other.Close)
+	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/simple/price", http.StatusFound)
+	}))
+	t.Cleanup(first.Close)
+	f := New(Options{BaseURL: first.URL, APIKey: testKey})
+	if err := f.Refresh(context.Background()); err == nil {
+		t.Fatal("expected error on redirect")
+	}
+	if hit.Load() || leaked.Load() {
+		t.Fatalf("redirect followed: hit=%v leaked=%v", hit.Load(), leaked.Load())
 	}
 }

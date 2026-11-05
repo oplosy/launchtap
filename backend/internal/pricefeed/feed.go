@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/rand/v2"
 	"net/http"
 	"strings"
@@ -38,8 +39,11 @@ type Options struct {
 	Now      func() time.Time
 	Interval time.Duration // default 60s
 	MaxAge   time.Duration // default 120s
-	// Jitter maps a delay to the delay actually used. The default applies +/-20%.
+	// Jitter maps a delay to the delay actually used. The default applies +/-20%;
+	// Feed never polls sooner than the base delay (jitter below it is clamped).
 	Jitter func(time.Duration) time.Duration
+	// Logger receives key-free provider errors from Run. Optional.
+	Logger *slog.Logger
 }
 
 // Snapshot is the read-time view of the latest accepted sample.
@@ -69,11 +73,13 @@ type Feed struct {
 	interval time.Duration
 	maxAge   time.Duration
 	jitter   func(time.Duration) time.Duration
+	logger   *slog.Logger
 
 	mu       sync.Mutex
 	last     *sample
 	failures int // consecutive 429 responses
 	inflight *call
+	waiters  int // callers currently waiting on the in-flight call
 }
 
 // New builds a Feed from o.
@@ -86,12 +92,14 @@ func New(o Options) *Feed {
 		interval: o.Interval,
 		maxAge:   o.MaxAge,
 		jitter:   o.Jitter,
+		logger:   o.Logger,
 	}
 	if f.baseURL == "" {
 		f.baseURL = defaultBaseURL
 	}
 	if f.client == nil {
-		f.client = &http.Client{Timeout: defaultTimeout}
+		// Never follow redirects: the API key header must not reach another host.
+		f.client = &http.Client{Timeout: defaultTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	}
 	if f.now == nil {
 		f.now = time.Now
@@ -135,7 +143,9 @@ func (f *Feed) Snapshot() Snapshot {
 func (f *Feed) Refresh(ctx context.Context) error {
 	f.mu.Lock()
 	if c := f.inflight; c != nil {
+		f.waiters++
 		f.mu.Unlock()
+		defer func() { f.mu.Lock(); f.waiters--; f.mu.Unlock() }()
 		select {
 		case <-c.done:
 			return c.err
@@ -166,7 +176,10 @@ func (f *Feed) Run(ctx context.Context) error {
 			return nil
 		case <-timer.C:
 		}
-		_ = f.Refresh(ctx) // failures keep the previous sample; Snapshot reports staleness
+		// Failures keep the previous sample; Snapshot reports staleness.
+		if err := f.Refresh(ctx); err != nil && ctx.Err() == nil && f.logger != nil {
+			f.logger.Warn("eth/usd provider refresh failed", "error", err)
+		}
 		timer.Reset(f.nextDelay())
 	}
 }
@@ -184,7 +197,11 @@ func (f *Feed) nextDelay() time.Duration {
 	if d > maxBackoff {
 		d = maxBackoff
 	}
-	return f.jitter(d)
+	// Jitter may only lengthen the wait: never poll sooner than the base delay.
+	if j := f.jitter(d); j > d {
+		return j
+	}
+	return d
 }
 
 type providerResponse struct {
@@ -215,6 +232,9 @@ func (f *Feed) fetch(ctx context.Context) error {
 		f.failures++
 		f.mu.Unlock()
 		return errors.New("pricefeed: provider rate limited (429)")
+	}
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("pricefeed: provider rejected credentials (%d)", resp.StatusCode)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("pricefeed: provider status %d", resp.StatusCode)

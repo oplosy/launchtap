@@ -87,7 +87,7 @@ func run() error {
 	server.RegisterObservationRoutes(apiserver.ObservationRoutes{Reader: storepostgres.ObservationReader{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	references := apiserver.ReferenceRoutes{}
 	if c.ETHUSDSource == config.ETHUSDSourceCoinGecko {
-		feed := pricefeed.New(pricefeed.Options{APIKey: c.CoinGeckoAPIKey})
+		feed := pricefeed.New(pricefeed.Options{APIKey: c.CoinGeckoAPIKey, Logger: slog.Default()})
 		go func() { _ = feed.Run(ctx) }() // stops with the signal context on shutdown
 		references.Prices = feed
 	}
