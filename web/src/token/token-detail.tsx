@@ -15,6 +15,7 @@ import { CoinGeckoAttribution, UsdLine } from "@/market/usd-line";
 import { DEFAULT_E2E_WEB_URL, publicConfiguration } from "@/config/public";
 import { reviewedDeployments } from "@/contracts/generated";
 import { addressExplorerUrl } from "@/wallet/explorer";
+import { marketLinks } from "./market-links";
 import { StarButton, WatchlistToaster } from "@/watchlist/star-button";
 import {
   Badge,
@@ -107,6 +108,7 @@ export function TokenDetail({
   const tokenAddress = address.toLowerCase() as `0x${string}`;
   const collectionSnapshot = pages[0]?.snapshot;
   const explorer = addressExplorerUrl(configuration, tokenAddress);
+  const market = marketLinks(configuration.deployment, token?.pair ?? null, token?.phase ?? "");
   const currentImageUrl = resolveApiAssetUrl(configuration.apiBaseUrl, token?.image_url);
 
   const loadToken = useCallback(
@@ -685,6 +687,12 @@ export function TokenDetail({
               <SafeExternalLink href={explorer}>
                 Contract {shortAddress(token.address)}
               </SafeExternalLink>
+            ) : null}
+            {market.dexscreener ? (
+              <SafeExternalLink href={market.dexscreener}>Dexscreener</SafeExternalLink>
+            ) : null}
+            {market.geckoterminal ? (
+              <SafeExternalLink href={market.geckoterminal}>GeckoTerminal</SafeExternalLink>
             ) : null}
           </div>
         </section>
