@@ -75,7 +75,8 @@ func run() error {
 	apiConfig.TrustedProxies = c.APITrustedProxyCIDRs
 	apiConfig.RateLimitPerMinute, apiConfig.RateLimitBurst = c.APIRateLimitPerMinute, c.APIRateLimitBurst
 	metricsRegistry := metrics.NewRegistry(metrics.ComponentAPI)
-	apiConfig.Metrics = metrics.NewAPI(metricsRegistry)
+	apiMetrics := metrics.NewAPI(metricsRegistry)
+	apiConfig.Metrics = apiMetrics
 	metrics.RegisterPool(metricsRegistry, "launchpad_api", pool.Stat)
 	server := apiserver.New(apiConfig, ready, slog.Default())
 	server.RegisterTokenRoutes(apiserver.TokenRoutes{Reader: storepostgres.TokenReader{Pool: pool, DeploymentID: c.DeploymentID}, ChainID: int64(c.ChainID)})
@@ -94,7 +95,8 @@ func run() error {
 	server.RegisterObservationRoutes(apiserver.ObservationRoutes{Reader: storepostgres.ObservationReader{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	references := apiserver.ReferenceRoutes{}
 	if c.ETHUSDSource == config.ETHUSDSourceCoinGecko {
-		feed := pricefeed.New(pricefeed.Options{APIKey: c.CoinGeckoAPIKey, Logger: slog.Default()})
+		apiMetrics.RegisterPriceFeed(metricsRegistry)
+		feed := pricefeed.New(pricefeed.Options{APIKey: c.CoinGeckoAPIKey, Logger: slog.Default(), Observe: apiMetrics.ObservePriceFeed})
 		go func() { _ = feed.Run(ctx) }() // stops with the signal context on shutdown
 		references.Prices = feed
 	}

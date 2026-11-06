@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"math/rand/v2"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -44,6 +45,11 @@ type Options struct {
 	Jitter func(time.Duration) time.Duration
 	// Logger receives key-free provider errors from Run. Optional.
 	Logger *slog.Logger
+	// Observe, if set, is called once per completed fetch attempt with one of
+	// ok, rate_limited, rejected, http_error, timeout or malformed. Callers
+	// that join an in-flight refresh do not trigger it, and a fetch cancelled
+	// by its own context is not reported. It must not block.
+	Observe func(outcome string)
 }
 
 // Snapshot is the read-time view of the latest accepted sample.
@@ -74,6 +80,7 @@ type Feed struct {
 	maxAge   time.Duration
 	jitter   func(time.Duration) time.Duration
 	logger   *slog.Logger
+	observe  func(outcome string)
 
 	mu       sync.Mutex
 	last     *sample
@@ -93,6 +100,7 @@ func New(o Options) *Feed {
 		maxAge:   o.MaxAge,
 		jitter:   o.Jitter,
 		logger:   o.Logger,
+		observe:  o.Observe,
 	}
 	if f.baseURL == "" {
 		f.baseURL = defaultBaseURL
@@ -157,7 +165,11 @@ func (f *Feed) Refresh(ctx context.Context) error {
 	f.inflight = c
 	f.mu.Unlock()
 
-	c.err = f.fetch(ctx)
+	var outcome string
+	outcome, c.err = f.fetch(ctx)
+	if outcome != "" && f.observe != nil {
+		f.observe(outcome)
+	}
 
 	f.mu.Lock()
 	f.inflight = nil
@@ -211,19 +223,21 @@ type providerResponse struct {
 	} `json:"ethereum"`
 }
 
-func (f *Feed) fetch(ctx context.Context) error {
+// fetch performs one provider call and returns its outcome label ("" when the
+// caller's own context ended the attempt) and error.
+func (f *Feed) fetch(ctx context.Context) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.baseURL+"/simple/price?"+query, nil)
 	if err != nil {
-		return errors.New("pricefeed: build request failed")
+		return "http_error", errors.New("pricefeed: build request failed")
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("x-cg-pro-api-key", f.apiKey)
 	resp, err := f.client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return ctxOutcome(ctx), ctx.Err()
 		}
-		return errors.New("pricefeed: provider request failed")
+		return transportOutcome(err), errors.New("pricefeed: provider request failed")
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -231,36 +245,57 @@ func (f *Feed) fetch(ctx context.Context) error {
 		f.mu.Lock()
 		f.failures++
 		f.mu.Unlock()
-		return errors.New("pricefeed: provider rate limited (429)")
+		return "rate_limited", errors.New("pricefeed: provider rate limited (429)")
 	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return fmt.Errorf("pricefeed: provider rejected credentials (%d)", resp.StatusCode)
+		return "rejected", fmt.Errorf("pricefeed: provider rejected credentials (%d)", resp.StatusCode)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("pricefeed: provider status %d", resp.StatusCode)
+		return "http_error", fmt.Errorf("pricefeed: provider status %d", resp.StatusCode)
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
-		return errors.New("pricefeed: read response failed")
+		if ctx.Err() != nil {
+			return ctxOutcome(ctx), ctx.Err()
+		}
+		return transportOutcome(err), errors.New("pricefeed: read response failed")
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	var parsed providerResponse
 	if err := dec.Decode(&parsed); err != nil || parsed.Ethereum == nil || parsed.Ethereum.USD == nil || parsed.Ethereum.LastUpdatedAt == nil {
-		return errors.New("pricefeed: malformed provider response")
+		return "malformed", errors.New("pricefeed: malformed provider response")
 	}
 	price, err := ParsePrice(*parsed.Ethereum.USD)
 	if err != nil {
-		return err
+		return "malformed", err
 	}
 	now := f.now()
 	providerAt := time.Unix(*parsed.Ethereum.LastUpdatedAt, 0).UTC()
 	if *parsed.Ethereum.LastUpdatedAt <= 0 || providerAt.After(now) {
-		return errors.New("pricefeed: provider timestamp missing or in the future")
+		return "malformed", errors.New("pricefeed: provider timestamp missing or in the future")
 	}
 	f.mu.Lock()
 	f.last = &sample{price: price, providerAt: providerAt, fetchedAt: now.UTC()}
 	f.failures = 0
 	f.mu.Unlock()
-	return nil
+	return "ok", nil
+}
+
+// ctxOutcome maps an ended caller context: a deadline is a timeout, a plain
+// cancel (shutdown) is not a provider outcome.
+func ctxOutcome(ctx context.Context) string {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return "timeout"
+	}
+	return ""
+}
+
+// transportOutcome classifies a failure that produced no HTTP status.
+func transportOutcome(err error) string {
+	var ne net.Error
+	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout()) {
+		return "timeout"
+	}
+	return "http_error"
 }

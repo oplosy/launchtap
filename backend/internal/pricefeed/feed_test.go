@@ -375,3 +375,69 @@ func TestDoesNotForwardKeyOnRedirect(t *testing.T) {
 		t.Fatalf("redirect followed: hit=%v leaked=%v", hit.Load(), leaked.Load())
 	}
 }
+
+func TestFeedObserveOutcomes(t *testing.T) {
+	cases := []struct {
+		name    string
+		handler http.HandlerFunc
+		client  *http.Client
+		want    string
+	}{
+		{"ok", serve(200, body("3000.5", epoch.Add(-time.Second))), nil, "ok"},
+		{"rate_limited", serve(429, ""), nil, "rate_limited"},
+		{"rejected", serve(403, ""), nil, "rejected"},
+		{"http_error", serve(500, ""), nil, "http_error"},
+		{"malformed", serve(200, body("3000.0000000000000000001", epoch.Add(-time.Second))), nil, "malformed"},
+		{"timeout", func(w http.ResponseWriter, _ *http.Request) {
+			time.Sleep(300 * time.Millisecond)
+			w.WriteHeader(200)
+		}, &http.Client{Timeout: 30 * time.Millisecond}, "timeout"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(tc.handler)
+			t.Cleanup(srv.Close)
+			c := &clock{t: epoch}
+			var mu sync.Mutex
+			var got []string
+			f := New(Options{
+				BaseURL: srv.URL, APIKey: testKey, Now: c.Now, Client: tc.client,
+				Observe: func(o string) { mu.Lock(); got = append(got, o); mu.Unlock() },
+			})
+			_ = f.Refresh(context.Background())
+			mu.Lock()
+			defer mu.Unlock()
+			if len(got) != 1 || got[0] != tc.want {
+				t.Fatalf("outcomes = %v, want exactly [%s]", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFeedObserveOncePerCoalescedFetch(t *testing.T) {
+	release := make(chan struct{})
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		<-release
+		_, _ = w.Write([]byte(body("3000.5", epoch.Add(-time.Second))))
+	}))
+	t.Cleanup(srv.Close)
+	var observed atomic.Int32
+	c := &clock{t: epoch}
+	f := New(Options{BaseURL: srv.URL, Now: c.Now, Observe: func(string) { observed.Add(1) }})
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() { defer wg.Done(); _ = f.Refresh(context.Background()) }()
+	}
+	for hits.Load() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond) // let the other callers join the in-flight call
+	close(release)
+	wg.Wait()
+	if hits.Load() != 1 || observed.Load() != 1 {
+		t.Fatalf("hits=%d observed=%d, want 1 and 1", hits.Load(), observed.Load())
+	}
+}

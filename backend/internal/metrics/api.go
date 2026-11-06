@@ -15,6 +15,10 @@ type API struct {
 	duration *prometheus.HistogramVec
 	rejected *prometheus.CounterVec
 	sse      prometheus.Gauge
+
+	// Registered only by RegisterPriceFeed, when the ETH/USD source is enabled.
+	priceSuccess prometheus.Gauge
+	priceFailure *prometheus.CounterVec
 }
 
 // NewAPI registers the API instruments on reg.
@@ -72,4 +76,33 @@ func codeClass(status int) string {
 		return "other"
 	}
 	return strconv.Itoa(status/100) + "xx"
+}
+
+// RegisterPriceFeed registers the ETH/USD feed series on reg. Call it only when
+// the price source is enabled so a disabled source exports nothing.
+func (a *API) RegisterPriceFeed(reg prometheus.Registerer) {
+	a.priceSuccess = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "launchpad_api_eth_usd_last_success_timestamp_seconds",
+		Help: "Unix time of the last successful ETH/USD provider fetch.",
+	})
+	a.priceFailure = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "launchpad_api_eth_usd_fetch_failures_total",
+		Help: "Failed ETH/USD provider fetches by kind.",
+	}, []string{"kind"})
+	reg.MustRegister(a.priceSuccess, a.priceFailure)
+}
+
+// ObservePriceFeed records one fetch outcome: ok, rate_limited, rejected,
+// http_error, timeout or malformed. Unknown outcomes and calls before
+// RegisterPriceFeed are ignored.
+func (a *API) ObservePriceFeed(outcome string) {
+	if a.priceSuccess == nil {
+		return
+	}
+	switch outcome {
+	case "ok":
+		a.priceSuccess.SetToCurrentTime()
+	case "rate_limited", "rejected", "http_error", "timeout", "malformed":
+		a.priceFailure.WithLabelValues(outcome).Inc()
+	}
 }

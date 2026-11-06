@@ -104,3 +104,29 @@ func seriesValue(t *testing.T, g prometheus.Gatherer, name string, want map[stri
 	}
 	return -1
 }
+
+func TestPriceFeedMetrics(t *testing.T) {
+	t.Parallel()
+
+	reg := NewRegistry(ComponentAPI)
+	api := NewAPI(reg)
+	if got := seriesValue(t, reg, "launchpad_api_eth_usd_last_success_timestamp_seconds", nil); got != -1 {
+		t.Fatalf("price feed series must not exist before RegisterPriceFeed, got %v", got)
+	}
+	api.RegisterPriceFeed(reg)
+
+	api.ObservePriceFeed("ok")
+	api.ObservePriceFeed("timeout")
+	api.ObservePriceFeed("timeout")
+
+	if got := seriesValue(t, reg, "launchpad_api_eth_usd_last_success_timestamp_seconds", nil); got <= 0 {
+		t.Fatalf("last success timestamp = %v, want > 0", got)
+	}
+	if got := seriesValue(t, reg, "launchpad_api_eth_usd_fetch_failures_total", map[string]string{"kind": "timeout"}); got != 2 {
+		t.Fatalf(`fetch_failures_total{kind="timeout"} = %v, want 2`, got)
+	}
+	unsafe, err := UnsafeLabels(reg)
+	if err != nil || len(unsafe) != 0 {
+		t.Fatalf("unsafe labels: %v %v", unsafe, err)
+	}
+}
