@@ -88,6 +88,53 @@ func (q *Queries) GetKingOfTheHill(ctx context.Context, chainID int64) (GetKingO
 }
 
 const getNewestFeedCursors = `-- name: GetNewestFeedCursors :one
+WITH curve AS (
+    SELECT trade.token_address, trade.block_number, trade.block_time, trade.transaction_index,
+           trade.tx_hash, trade.log_index, 'curve'::TEXT AS source, trade.is_buy AS side_buy,
+           trade.trader, trade.eth_gross AS gross_eth_volume, trade.token_amount AS token_volume,
+           block.finality_status AS finality
+    FROM trades AS trade
+    JOIN indexed_blocks AS block
+      ON block.chain_id = trade.chain_id AND block.block_number = trade.block_number
+    WHERE trade.chain_id = $1
+    ORDER BY trade.block_number DESC, trade.transaction_index DESC, trade.log_index DESC
+    LIMIT 1
+), dex AS (
+    -- Mirrors the pool branch of the market_trades view; ordered and limited per base table.
+    SELECT token.token_address, swap.block_number, swap.block_time, swap.transaction_index,
+           swap.tx_hash, swap.log_index, 'dex'::TEXT AS source,
+           CASE WHEN token.token_is_token0 THEN swap.amount0_out > 0 ELSE swap.amount1_out > 0 END AS side_buy,
+           NULL::BYTEA AS trader, legs.eth_volume AS gross_eth_volume, legs.token_volume,
+           block.finality_status AS finality
+    FROM pool_swaps AS swap
+    JOIN tokens AS token
+      ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    JOIN LATERAL (
+        SELECT
+            CASE WHEN token.token_is_token0 THEN swap.amount1_in + swap.amount1_out
+                 ELSE swap.amount0_in + swap.amount0_out END AS eth_volume,
+            CASE WHEN token.token_is_token0 THEN swap.amount0_in + swap.amount0_out
+                 ELSE swap.amount1_in + swap.amount1_out END AS token_volume
+        FROM pool_syncs AS sync
+        WHERE sync.chain_id = swap.chain_id
+          AND sync.pair_address = swap.pair_address
+          AND sync.tx_hash = swap.tx_hash
+          AND sync.log_index < swap.log_index
+        ORDER BY sync.log_index DESC
+        LIMIT 1
+    ) AS legs ON TRUE
+    WHERE swap.chain_id = $1
+    ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+    LIMIT 1
+), page AS (
+    SELECT token_address, block_number, block_time, transaction_index, tx_hash, log_index, source, side_buy, trader, gross_eth_volume, token_volume, finality FROM curve
+    UNION ALL
+    SELECT token_address, block_number, block_time, transaction_index, tx_hash, log_index, source, side_buy, trader, gross_eth_volume, token_volume, finality FROM dex
+    ORDER BY block_number DESC, transaction_index DESC, log_index DESC
+    LIMIT 1
+)
 SELECT COALESCE(t.block_number, 0)::bigint AS trade_block,
        COALESCE(t.transaction_index, 0)::integer AS trade_transaction_index,
        COALESCE(t.log_index, 0)::integer AS trade_log_index,
@@ -98,11 +145,7 @@ SELECT COALESCE(t.block_number, 0)::bigint AS trade_block,
        COALESCE(l.transaction_index, 0)::integer AS launch_transaction_index,
        COALESCE(l.log_index, 0)::integer AS launch_log_index
 FROM (SELECT 1) AS base
-LEFT JOIN LATERAL (
-    SELECT m.block_number, m.transaction_index, m.log_index FROM market_trades AS m
-    WHERE m.chain_id = $1
-    ORDER BY m.block_number DESC, m.transaction_index DESC, m.log_index DESC LIMIT 1
-) AS t ON true
+LEFT JOIN page AS t ON true
 LEFT JOIN LATERAL (
     SELECT g.block_number, g.transaction_index, g.log_index FROM graduations AS g
     WHERE g.chain_id = $1
@@ -697,18 +740,64 @@ func (q *Queries) ListMarketTrades(ctx context.Context, arg ListMarketTradesPara
 }
 
 const listMarketTradesAfter = `-- name: ListMarketTradesAfter :many
-SELECT m.token_address, l.name, l.symbol,
-       CASE m.source WHEN 'dex' THEN 'pool' ELSE m.source END::text AS source,
-       COALESCE(encode(m.trader, 'hex'), '')::text AS trader_hex,
-       m.side_buy, m.gross_eth_volume, m.token_volume, m.block_number, m.transaction_index,
-       m.tx_hash, m.log_index, m.block_time, m.finality
-FROM market_trades AS m
-JOIN token_launches AS l ON l.chain_id = m.chain_id AND l.token_address = m.token_address
-WHERE m.chain_id = $1
-  AND (m.block_number, m.transaction_index, m.log_index) >
-      ($2::bigint, $3::integer, $4::integer)
-ORDER BY m.block_number ASC, m.transaction_index ASC, m.log_index ASC
-LIMIT $5::integer
+WITH curve AS (
+    SELECT trade.token_address, trade.block_number, trade.block_time, trade.transaction_index,
+           trade.tx_hash, trade.log_index, 'curve'::TEXT AS source, trade.is_buy AS side_buy,
+           trade.trader, trade.eth_gross AS gross_eth_volume, trade.token_amount AS token_volume,
+           block.finality_status AS finality
+    FROM trades AS trade
+    JOIN indexed_blocks AS block
+      ON block.chain_id = trade.chain_id AND block.block_number = trade.block_number
+    WHERE trade.chain_id = $1
+      AND (trade.block_number, trade.transaction_index, trade.log_index) >
+          ($2::bigint, $3::integer, $4::integer)
+    ORDER BY trade.block_number ASC, trade.transaction_index ASC, trade.log_index ASC
+    LIMIT $5::integer
+), dex AS (
+    -- Mirrors the pool branch of the market_trades view; ordered and limited per base table.
+    SELECT token.token_address, swap.block_number, swap.block_time, swap.transaction_index,
+           swap.tx_hash, swap.log_index, 'dex'::TEXT AS source,
+           CASE WHEN token.token_is_token0 THEN swap.amount0_out > 0 ELSE swap.amount1_out > 0 END AS side_buy,
+           NULL::BYTEA AS trader, legs.eth_volume AS gross_eth_volume, legs.token_volume,
+           block.finality_status AS finality
+    FROM pool_swaps AS swap
+    JOIN tokens AS token
+      ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    JOIN LATERAL (
+        SELECT
+            CASE WHEN token.token_is_token0 THEN swap.amount1_in + swap.amount1_out
+                 ELSE swap.amount0_in + swap.amount0_out END AS eth_volume,
+            CASE WHEN token.token_is_token0 THEN swap.amount0_in + swap.amount0_out
+                 ELSE swap.amount1_in + swap.amount1_out END AS token_volume
+        FROM pool_syncs AS sync
+        WHERE sync.chain_id = swap.chain_id
+          AND sync.pair_address = swap.pair_address
+          AND sync.tx_hash = swap.tx_hash
+          AND sync.log_index < swap.log_index
+        ORDER BY sync.log_index DESC
+        LIMIT 1
+    ) AS legs ON TRUE
+    WHERE swap.chain_id = $1
+      AND (swap.block_number, swap.transaction_index, swap.log_index) >
+          ($2::bigint, $3::integer, $4::integer)
+    ORDER BY swap.block_number ASC, swap.transaction_index ASC, swap.log_index ASC
+    LIMIT $5::integer
+), page AS (
+    SELECT token_address, block_number, block_time, transaction_index, tx_hash, log_index, source, side_buy, trader, gross_eth_volume, token_volume, finality FROM curve
+    UNION ALL
+    SELECT token_address, block_number, block_time, transaction_index, tx_hash, log_index, source, side_buy, trader, gross_eth_volume, token_volume, finality FROM dex
+    ORDER BY block_number ASC, transaction_index ASC, log_index ASC
+    LIMIT $5::integer
+)
+SELECT p.token_address, l.name, l.symbol, p.source,
+       COALESCE(encode(p.trader, 'hex'), '')::text AS trader_hex,
+       p.side_buy, p.gross_eth_volume, p.token_volume, p.block_number, p.transaction_index,
+       p.tx_hash, p.log_index, p.block_time, p.finality
+FROM page AS p
+JOIN token_launches AS l ON l.chain_id = $1 AND l.token_address = p.token_address
+ORDER BY p.block_number ASC, p.transaction_index ASC, p.log_index ASC
 `
 
 type ListMarketTradesAfterParams struct {
@@ -834,16 +923,60 @@ func (q *Queries) ListProtocolDaily(ctx context.Context, arg ListProtocolDailyPa
 }
 
 const listRecentMarketTrades = `-- name: ListRecentMarketTrades :many
-SELECT m.token_address, l.name, l.symbol,
-       CASE m.source WHEN 'dex' THEN 'pool' ELSE m.source END::text AS source,
-       COALESCE(encode(m.trader, 'hex'), '')::text AS trader_hex,
-       m.side_buy, m.gross_eth_volume, m.token_volume, m.block_number, m.transaction_index,
-       m.tx_hash, m.log_index, m.block_time, m.finality
-FROM market_trades AS m
-JOIN token_launches AS l ON l.chain_id = m.chain_id AND l.token_address = m.token_address
-WHERE m.chain_id = $1
-ORDER BY m.block_number DESC, m.transaction_index DESC, m.log_index DESC
-LIMIT $2::integer
+WITH curve AS (
+    SELECT trade.token_address, trade.block_number, trade.block_time, trade.transaction_index,
+           trade.tx_hash, trade.log_index, 'curve'::TEXT AS source, trade.is_buy AS side_buy,
+           trade.trader, trade.eth_gross AS gross_eth_volume, trade.token_amount AS token_volume,
+           block.finality_status AS finality
+    FROM trades AS trade
+    JOIN indexed_blocks AS block
+      ON block.chain_id = trade.chain_id AND block.block_number = trade.block_number
+    WHERE trade.chain_id = $1
+    ORDER BY trade.block_number DESC, trade.transaction_index DESC, trade.log_index DESC
+    LIMIT $2::integer
+), dex AS (
+    -- Mirrors the pool branch of the market_trades view; ordered and limited per base table.
+    SELECT token.token_address, swap.block_number, swap.block_time, swap.transaction_index,
+           swap.tx_hash, swap.log_index, 'dex'::TEXT AS source,
+           CASE WHEN token.token_is_token0 THEN swap.amount0_out > 0 ELSE swap.amount1_out > 0 END AS side_buy,
+           NULL::BYTEA AS trader, legs.eth_volume AS gross_eth_volume, legs.token_volume,
+           block.finality_status AS finality
+    FROM pool_swaps AS swap
+    JOIN tokens AS token
+      ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    JOIN LATERAL (
+        SELECT
+            CASE WHEN token.token_is_token0 THEN swap.amount1_in + swap.amount1_out
+                 ELSE swap.amount0_in + swap.amount0_out END AS eth_volume,
+            CASE WHEN token.token_is_token0 THEN swap.amount0_in + swap.amount0_out
+                 ELSE swap.amount1_in + swap.amount1_out END AS token_volume
+        FROM pool_syncs AS sync
+        WHERE sync.chain_id = swap.chain_id
+          AND sync.pair_address = swap.pair_address
+          AND sync.tx_hash = swap.tx_hash
+          AND sync.log_index < swap.log_index
+        ORDER BY sync.log_index DESC
+        LIMIT 1
+    ) AS legs ON TRUE
+    WHERE swap.chain_id = $1
+    ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+    LIMIT $2::integer
+), page AS (
+    SELECT token_address, block_number, block_time, transaction_index, tx_hash, log_index, source, side_buy, trader, gross_eth_volume, token_volume, finality FROM curve
+    UNION ALL
+    SELECT token_address, block_number, block_time, transaction_index, tx_hash, log_index, source, side_buy, trader, gross_eth_volume, token_volume, finality FROM dex
+    ORDER BY block_number DESC, transaction_index DESC, log_index DESC
+    LIMIT $2::integer
+)
+SELECT p.token_address, l.name, l.symbol, p.source,
+       COALESCE(encode(p.trader, 'hex'), '')::text AS trader_hex,
+       p.side_buy, p.gross_eth_volume, p.token_volume, p.block_number, p.transaction_index,
+       p.tx_hash, p.log_index, p.block_time, p.finality
+FROM page AS p
+JOIN token_launches AS l ON l.chain_id = $1 AND l.token_address = p.token_address
+ORDER BY p.block_number DESC, p.transaction_index DESC, p.log_index DESC
 `
 
 type ListRecentMarketTradesParams struct {

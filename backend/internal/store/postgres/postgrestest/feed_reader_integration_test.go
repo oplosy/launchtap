@@ -54,6 +54,16 @@ func newFeedFixture(t *testing.T, ctx context.Context, seed bool) feedFixture {
 	fixture.second = common.BytesToAddress(second)
 	insertProjectionLaunch(t, ctx, database.DB, feedChainID, 11, hash11, at.Add(time.Second), hashBytes(0x34), projectionLaunchFixture{token: second, curve: addressBytes(0x42), pair: addressBytes(0x32), weth: weth})
 	insertProjectionTrade(t, ctx, database.DB, feedChainID, 11, hash11, at.Add(time.Second), hashBytes(0x33), 1, second, 300, 410, 700000)
+	// Nonzero transaction indexes so a cursor comparison that ignored them would fail.
+	for _, update := range []struct {
+		table   string
+		txHash  []byte
+		txIndex int
+	}{{"trades", hashBytes(0x32), 5}, {"pool_swaps", swapTx, 3}, {"graduations", hashBytes(0x31), 7}} {
+		if _, err := database.DB.ExecContext(ctx, `UPDATE `+update.table+` SET transaction_index = $1 WHERE chain_id = $2 AND tx_hash = $3`, update.txIndex, feedChainID, update.txHash); err != nil {
+			t.Fatal(err)
+		}
+	}
 	callRebuild(t, ctx, database.DB, feedChainID, token)
 	callRebuild(t, ctx, database.DB, feedChainID, second)
 	if _, err := database.DB.ExecContext(ctx, `
@@ -78,7 +88,7 @@ func TestFeedReaderTradesAfterOrdersAscending(t *testing.T) {
 	if len(all) != 3 {
 		t.Fatalf("trades = %d, want 3: %+v", len(all), all)
 	}
-	wantPositions := []feed.Cursor{{Block: 10, LogIndex: 1}, {Block: 10, LogIndex: 4}, {Block: 11, LogIndex: 1}}
+	wantPositions := []feed.Cursor{{Block: 10, TxIndex: 3, LogIndex: 4}, {Block: 10, TxIndex: 5, LogIndex: 1}, {Block: 11, LogIndex: 1}}
 	for i, trade := range all {
 		got := feed.Cursor{Block: trade.Block, TxIndex: trade.TxIndex, LogIndex: trade.LogIndex}
 		if got != wantPositions[i] {
@@ -92,19 +102,19 @@ func TestFeedReaderTradesAfterOrdersAscending(t *testing.T) {
 			t.Fatalf("trade %d = %+v", i, trade)
 		}
 	}
-	if all[0].Source != "curve" || all[0].Trader == nil || !all[0].Buy || all[0].ETHVolume.String() != "100" {
-		t.Fatalf("curve trade = %+v", all[0])
+	if all[1].Source != "curve" || all[1].Trader == nil || !all[1].Buy || all[1].ETHVolume.String() != "100" {
+		t.Fatalf("curve trade = %+v", all[1])
 	}
-	if all[1].Source != "pool" || all[1].Trader != nil || !all[1].Buy {
-		t.Fatalf("pool swap = %+v", all[1])
+	if all[0].Source != "dex" || all[0].Trader != nil || !all[0].Buy {
+		t.Fatalf("pool swap = %+v", all[0])
 	}
 
-	after, err := f.reader.TradesAfter(ctx, feedChainID, feed.Cursor{Block: 10, LogIndex: 1}, 10)
-	if err != nil || len(after) != 2 || after[0].LogIndex != 4 || after[1].Block != 11 {
+	after, err := f.reader.TradesAfter(ctx, feedChainID, feed.Cursor{Block: 10, TxIndex: 3, LogIndex: 4}, 10)
+	if err != nil || len(after) != 2 || after[0].TxIndex != 5 || after[1].Block != 11 {
 		t.Fatalf("after cursor = %+v err=%v", after, err)
 	}
 	limited, err := f.reader.TradesAfter(ctx, feedChainID, feed.Cursor{}, 1)
-	if err != nil || len(limited) != 1 || limited[0].LogIndex != 1 {
+	if err != nil || len(limited) != 1 || limited[0].Source != "dex" {
 		t.Fatalf("limited = %+v err=%v", limited, err)
 	}
 	if _, err := f.reader.TradesAfter(ctx, feedChainID, feed.Cursor{}, 0); err == nil {
@@ -121,7 +131,7 @@ func TestFeedReaderRecentTradesDescending(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(recent) != 2 || recent[0].Block != 11 || recent[1].Block != 10 || recent[1].LogIndex != 4 {
+	if len(recent) != 2 || recent[0].Block != 11 || recent[1].TxIndex != 5 {
 		t.Fatalf("recent = %+v", recent)
 	}
 }
@@ -154,7 +164,7 @@ func TestFeedReaderNewestCursors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if trade != (feed.Cursor{Block: 11, LogIndex: 1}) || graduation != (feed.Cursor{Block: 10, LogIndex: 2}) || launch != (feed.Cursor{Block: 11}) {
+	if trade != (feed.Cursor{Block: 11, LogIndex: 1}) || graduation != (feed.Cursor{Block: 10, TxIndex: 7, LogIndex: 2}) || launch != (feed.Cursor{Block: 11}) {
 		t.Fatalf("newest = %+v %+v %+v", trade, graduation, launch)
 	}
 }
@@ -183,10 +193,15 @@ func TestFeedReaderGraduationsAfter(t *testing.T) {
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("graduations = %+v err=%v", rows, err)
 	}
-	if rows[0].Token != f.token || rows[0].Pair != f.pair || rows[0].Name != "Token" || rows[0].Symbol != "TKN" || rows[0].Block != 10 || rows[0].LogIndex != 2 {
+	if rows[0].Token != f.token || rows[0].Pair != f.pair || rows[0].Name != "Token" || rows[0].Symbol != "TKN" || rows[0].Block != 10 || rows[0].TxIndex != 7 || rows[0].LogIndex != 2 {
 		t.Fatalf("graduation = %+v", rows[0])
 	}
-	none, err := f.reader.GraduationsAfter(ctx, feedChainID, feed.Cursor{Block: 10, LogIndex: 2}, 10)
+	// Cursor at a later log of an earlier transaction: only the transaction index orders the graduation after it.
+	later, err := f.reader.GraduationsAfter(ctx, feedChainID, feed.Cursor{Block: 10, TxIndex: 5, LogIndex: 9}, 10)
+	if err != nil || len(later) != 1 {
+		t.Fatalf("tuple cursor ignored transaction index: %+v err=%v", later, err)
+	}
+	none, err := f.reader.GraduationsAfter(ctx, feedChainID, feed.Cursor{Block: 10, TxIndex: 7, LogIndex: 2}, 10)
 	if err != nil || len(none) != 0 {
 		t.Fatalf("after newest = %+v err=%v", none, err)
 	}
