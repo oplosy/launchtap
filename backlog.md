@@ -33,6 +33,25 @@
 - **Pitfalls / notes:** Never commit the key. The manifest copies must stay byte-identical
   (`task verify` checks drift).
 
+### P0-A parked review minors
+
+- **Date:** 2026-11-06
+- **Reason:** scope decision (final P0-A review minors, not merge-blocking)
+- **Where it stopped:** P0-A final review fixes landed (`d3edb35..98850bd`); these were parked.
+- **Related files:** `backend/internal/pricefeed/feed.go`, `web/src/discovery/highlights.tsx`,
+  `backend/internal/apiserver/watchlist_routes_test.go`, `web/e2e/task6-anvil.spec.ts`
+- **Resume (next step):**
+  1. Once the CoinGecko key exists, measure the provider's `last_updated_at` lag; if USD flickers
+     against the 120 s freshness budget, make the poll jitter symmetric and allow a few seconds
+     of future-skew tolerance (`feed.go` ~201 and ~258).
+  2. Pause `useHighlights` polling while the tab is hidden and show a staleness cue when refreshes
+     keep failing after a first success.
+  3. Tighten `TestWatchlistLogsUnexpectedErrorsWithoutDID` to assert a non-empty `request_id`.
+  4. Investigate the local Anvil gate flake: the API/indexer stopped mid-run in 2 of 5 runs
+     during Task 12 (18/18 passed twice in the fix wave).
+- **Pitfalls / notes:** The Anvil gate rewrites tracked `.impeccable/review/*.png`; do not commit
+  those incidentally.
+
 ### Operator actions: testnet engine switch and fork RPC secret
 
 - **Date:** 2026-10-05
