@@ -194,7 +194,8 @@ func (c *Client) CallContract(ctx context.Context, message ethereum.CallMsg) ([]
 // outcome to the observer once, whatever the number of attempts.
 func (c *Client) retry(ctx context.Context, method string, capacitySensitive bool, operation func(context.Context) error) error {
 	err := c.retryAttempts(ctx, capacitySensitive, operation)
-	if c.config.Observer != nil {
+	// A parent-context cancel is shutdown, not an RPC failure; do not observe it.
+	if c.config.Observer != nil && !errors.Is(err, context.Canceled) {
 		c.config.Observer.ObserveRPC(method, rpcOutcome(err))
 	}
 	return err
