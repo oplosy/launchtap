@@ -39,6 +39,20 @@
 - **Pitfalls / notes:** Never commit the key. The manifest copies must stay byte-identical
   (`task verify` checks drift).
 
+### P0-B: live trade feed, in-app notifications and share cards
+
+- **Date:** 2026-11-06
+- **Reason:** scope decision (pre-flight written; implementation not started)
+- **Where it stopped:** Scope and design approved by the owner in conversation; spec
+  `docs/specs/2026-11-06-p0b-live-feed-notifications-share-design.md` written, awaiting written
+  review. The profile/wallet share card, public wallet page and PnL moved to sub-project C.
+- **Related files:** `backend/internal/realtime/`, `backend/internal/apiserver/event_routes.go`,
+  `backend/cmd/api/main.go`, `web/src/discovery/`, `web/src/token/`, `web/app/token/[address]/`
+- **Resume (next step):** owner reviews the spec, then write the implementation plan
+  (`docs/plans/2026-11-06-p0b-live-feed.md`) and execute it.
+- **Pitfalls / notes:** Card content is user input; fetch images only from our own API. The
+  `finality` event exists because a trade row does not change when it becomes safe.
+
 ### Wallet SDK upgrade: Privy 3 to clear allowlisted advisories
 
 - **Date:** 2026-11-06
