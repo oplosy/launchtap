@@ -184,8 +184,8 @@ tests:
   - name: DatabaseDown fires when the API pool waits with no idle connection
     interval: 1m
     input_series:
-      - series: 'launchpad_api_db_pool_acquire_wait_seconds_total{job="api"}'
-        values: "0+10x15"
+      - series: 'launchpad_api_db_pool_empty_acquire_total{job="api"}'
+        values: "0+1x15"
       - series: 'launchpad_api_db_pool_idle_conns{job="api"}'
         values: "0x15"
     alert_rule_test:
@@ -199,8 +199,8 @@ tests:
     input_series:
       - series: 'launchpad_indexer_db_up{job="indexer"}'
         values: "1x15"
-      - series: 'launchpad_api_db_pool_acquire_wait_seconds_total{job="api"}'
-        values: "0+10x15"
+      - series: 'launchpad_api_db_pool_empty_acquire_total{job="api"}'
+        values: "0+1x15"
       - series: 'launchpad_api_db_pool_idle_conns{job="api"}'
         values: "3x15"
     alert_rule_test:

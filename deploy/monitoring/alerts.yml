@@ -56,7 +56,7 @@ groups:
         expr: |
           launchpad_indexer_db_up == 0
           or (
-            rate(launchpad_api_db_pool_acquire_wait_seconds_total[2m]) > 0
+            rate(launchpad_api_db_pool_empty_acquire_total[2m]) > 0
               and launchpad_api_db_pool_idle_conns == 0
           )
         for: 2m

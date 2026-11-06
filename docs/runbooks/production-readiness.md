@@ -143,10 +143,12 @@ Alert rules (`deploy/monitoring/alerts.yml`, unit-tested in `alerts.test.yml`):
 | `IndexerFinalizedLagHigh` | finalized block lag > 1800s | 10m | ticket |
 | `RPCErrorRateHigh` | error or timeout share of chain RPC calls > 5% (10m) | 10m | ticket |
 | `API5xxRateHigh` | 5xx share of API requests > 1% (10m), and at least 1 request/s | 10m | page |
-| `DatabaseDown` | indexer DB check down, or API pool exhausted with wait time growing | 2m | page |
+| `DatabaseDown` | indexer DB check down, or API pool had to make acquires wait (empty acquires rising) with no idle connection | 2m | page |
 | `WriteRejectionSpike` | 5m rejection rate > 10x the 1h average ending 15m ago, and > 0.05/s | 15m | ticket |
 | `EthUsdStale` | last ETH/USD refresh older than 600s (absent series: price source disabled, no alert) | 10m | ticket |
 
+- `IndexerObservedLagHigh` fires during the initial backfill from `StartBlock`; silence it
+  during first sync.
 - `WriteRejectionSpike` deliberately differs from the spec text: it compares against the 1h
   average ending 15m ago (`[1h] offset 15m`) because a plain 1h average includes the surge
   itself and could never fire. It also fires only above 0.05 rejections/s (3 per minute) so a
