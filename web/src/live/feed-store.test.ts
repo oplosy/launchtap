@@ -90,4 +90,12 @@ describe("feed store", () => {
     expect(merged.find((i) => i.block_number === 2)?.finality).toBe("safe");
     expect(mergeRecent(merged, recent, 2)).toHaveLength(2);
   });
+
+  it("mergeRecent drops live items at or below the snapshot that REST no longer returns", () => {
+    const live = [6, 5, 3].map((n) => tradeToFeedItem(trade(n)));
+    const recent = [4, 2].map((n) => tradeToFeedItem(trade(n)));
+    const merged = mergeRecent(live, recent);
+    // 3 was reorged out during the outage (not in REST, below newest=4); 5 and 6 are newer.
+    expect(merged.map((i) => i.block_number)).toEqual([6, 5, 4, 2]);
+  });
 });

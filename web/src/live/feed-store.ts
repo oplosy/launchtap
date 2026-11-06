@@ -124,16 +124,20 @@ function chainOrder(a: FeedItem, b: FeedItem) {
 }
 
 /**
- * Merges a REST recent-trades snapshot into the feed after a reconnect. One copy per key, the
- * higher finality wins, newest first by chain position, capped at `max`.
+ * Merges a REST recent-trades snapshot into the feed after a reconnect. REST is canonical for
+ * every block up to the newest block in `recent`: live items at or below it are replaced by the
+ * snapshot (so an item reorged out during the outage disappears) and only newer live items
+ * are kept. One copy per key (higher finality wins), newest first by chain position, capped.
  */
 export function mergeRecent(
   items: FeedItem[],
   recent: FeedItem[],
   max: number = FEED_MAX_ITEMS,
 ): FeedItem[] {
+  const newest = recent.reduce((top, item) => Math.max(top, item.block_number), -1);
+  const kept = recent.length === 0 ? items : items.filter((item) => item.block_number > newest);
   const byKey = new Map<string, FeedItem>();
-  for (const item of [...items, ...recent]) {
+  for (const item of [...kept, ...recent]) {
     const id = item.key.toLowerCase();
     const existing = byKey.get(id);
     if (!existing || FINALITY_RANK[item.finality] > FINALITY_RANK[existing.finality]) {

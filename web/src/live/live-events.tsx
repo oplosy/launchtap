@@ -4,21 +4,22 @@ import {
   createContext,
   useContext,
   useEffect,
-  useMemo,
   useRef,
+  useState,
   type PropsWithChildren,
 } from "react";
-import { SseInvalidationStream } from "@/api/sse";
-import type { LiveEvent } from "@/api/types";
+import type { EventSourceFactory } from "@/api/sse";
 import { publicConfiguration } from "@/config/public";
+import {
+  createLiveController,
+  type LiveController,
+  type LiveListener,
+  type LiveRecover,
+} from "./live-controller";
 
-export type LiveListener = (event: LiveEvent) => void;
-export type LiveRecover = (signal?: AbortSignal) => Promise<void>;
+export type { LiveListener, LiveRecover } from "./live-controller";
 
-type LiveEventsBus = {
-  subscribe: (listener: LiveListener) => () => void;
-  addRecovery: (recover: LiveRecover) => () => void;
-};
+type LiveEventsBus = Pick<LiveController, "subscribe" | "addRecovery">;
 
 const LiveEventsContext = createContext<LiveEventsBus | null>(null);
 
@@ -26,53 +27,24 @@ const LiveEventsContext = createContext<LiveEventsBus | null>(null);
  * Opens ONE unfiltered `/v1/events` stream for the whole tab and fans events out to subscribers.
  * Without a ready configuration (or outside the provider) subscriptions are inert.
  */
-export function LiveEventsProvider({ children }: PropsWithChildren) {
-  const listeners = useRef(new Set<LiveListener>());
-  const recoveries = useRef(new Set<LiveRecover>());
-  const bus = useMemo<LiveEventsBus>(
-    () => ({
-      subscribe: (listener) => {
-        listeners.current.add(listener);
-        return () => {
-          listeners.current.delete(listener);
-        };
-      },
-      addRecovery: (recover) => {
-        recoveries.current.add(recover);
-        return () => {
-          recoveries.current.delete(recover);
-        };
-      },
+export function LiveEventsProvider({
+  children,
+  eventSourceFactory,
+}: PropsWithChildren<{ eventSourceFactory?: EventSourceFactory }>) {
+  const [controller] = useState(() =>
+    createLiveController({
+      url: `${publicConfiguration().apiBaseUrl ?? ""}/v1/events`,
+      eventSourceFactory,
     }),
-    [],
   );
 
   useEffect(() => {
     const configuration = publicConfiguration();
     if (configuration.status !== "ready" || !configuration.apiBaseUrl) return;
-    const emit = (event: LiveEvent) => {
-      for (const listener of [...listeners.current]) {
-        try {
-          listener(event);
-        } catch {
-          // One failing subscriber must not starve the others.
-        }
-      }
-    };
-    const stream = new SseInvalidationStream({
-      url: `${configuration.apiBaseUrl}/v1/events`,
-      queryClient: { invalidateQueries: async () => undefined },
-      onEvent: emit,
-      onReconnected: () => emit({ event: "reconnected" }),
-      refetchSnapshot: async (signal) => {
-        // Every subscriber refills its canonical REST state before the stream reopens.
-        await Promise.all([...recoveries.current].map((recover) => recover(signal)));
-      },
-    });
-    return stream.start();
-  }, []);
+    return controller.start();
+  }, [controller]);
 
-  return <LiveEventsContext.Provider value={bus}>{children}</LiveEventsContext.Provider>;
+  return <LiveEventsContext.Provider value={controller}>{children}</LiveEventsContext.Provider>;
 }
 
 /**
