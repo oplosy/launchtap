@@ -4,10 +4,12 @@ package postgrestest
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/Contictus/launchtap/backend/internal/feed"
+	"github.com/Contictus/launchtap/backend/internal/pagination"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,6 +19,7 @@ const feedChainID int64 = 48100
 
 type feedFixture struct {
 	reader feed.Reader
+	store  storepostgres.FeedReader
 	token  common.Address
 	pair   common.Address
 	second common.Address
@@ -32,7 +35,8 @@ func newFeedFixture(t *testing.T, ctx context.Context, seed bool) feedFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
-	fixture := feedFixture{reader: storepostgres.FeedReader{Pool: pool}}
+	store := storepostgres.FeedReader{Pool: pool}
+	fixture := feedFixture{reader: store, store: store}
 	if !seed {
 		return fixture
 	}
@@ -218,5 +222,60 @@ func TestFeedReaderLaunchesAfter(t *testing.T) {
 	}
 	if rows[0].Token != f.token || rows[0].Name != "Token" || rows[0].Symbol != "TKN" || rows[0].Creator != common.BytesToAddress(addressBytes(0x55)) || rows[0].Block != 10 {
 		t.Fatalf("launch = %+v", rows[0])
+	}
+}
+
+func TestFeedReaderRecentTradesSnapshot(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	f := newFeedFixture(t, ctx, true)
+	store := f.store
+	store.DeploymentID = "feed-test"
+
+	page, err := store.RecentTradesSnapshot(ctx, feedChainID, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := f.reader.RecentTrades(ctx, feedChainID, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(want) != 3 || len(page.Items) != len(want) {
+		t.Fatalf("items = %d, want %d: %+v", len(page.Items), len(want), page.Items)
+	}
+	for i := range want {
+		got, exp := page.Items[i], want[i]
+		if got.Token != exp.Token || got.TxHash != exp.TxHash || got.Block != exp.Block || got.TxIndex != exp.TxIndex || got.LogIndex != exp.LogIndex ||
+			got.Source != exp.Source || got.Buy != exp.Buy || got.ETHVolume.Cmp(exp.ETHVolume) != 0 || got.TokenVolume.Cmp(exp.TokenVolume) != 0 || got.Finality != exp.Finality {
+			t.Fatalf("item %d = %+v, want %+v", i, got, exp)
+		}
+	}
+	// Newest first: block 11, then block 10 by descending (tx_index, log_index).
+	if page.Items[0].Block != 11 || page.Items[1].TxIndex != 5 || page.Items[2].TxIndex != 3 {
+		t.Fatalf("order = %+v", page.Items)
+	}
+	if page.Snapshot.ChainID != feedChainID || page.Snapshot.BlockNumber != 11 {
+		t.Fatalf("snapshot = %+v", page.Snapshot)
+	}
+	// Observed block 11 is above the safe block 10, so the snapshot itself is provisional.
+	if page.Finality != "provisional" {
+		t.Fatalf("finality = %q", page.Finality)
+	}
+
+	limited, err := store.RecentTradesSnapshot(ctx, feedChainID, 2)
+	if err != nil || len(limited.Items) != 2 || limited.Items[0].Block != 11 {
+		t.Fatalf("limited = %+v err=%v", limited.Items, err)
+	}
+}
+
+func TestFeedReaderRecentTradesSnapshotUnknownDeployment(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	f := newFeedFixture(t, ctx, true)
+	store := f.store
+	store.DeploymentID = "no-such-deployment"
+
+	if _, err := store.RecentTradesSnapshot(ctx, feedChainID, 10); !errors.Is(err, pagination.ErrSnapshotUnavailable) {
+		t.Fatalf("err = %v, want ErrSnapshotUnavailable", err)
 	}
 }

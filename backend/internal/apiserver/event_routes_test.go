@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
@@ -307,23 +308,28 @@ func TestEventStreamStalledSubscriberEvicted(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	token := "0x00000000000000000000000000000000000000aa"
-	const total = 70
+	const total = 65 // the stalled subscriber's 64-slot buffer overflows on the 65th event
+	received := 0
 	for i := int64(1); i <= total; i++ {
 		hub.Publish(realtime.Event{Type: "trade", ChainID: 46630, DeploymentID: "testnet", Token: token, Trade: feedTestTrade(token, i)})
-		time.Sleep(time.Millisecond) // lets the live stream drain its own 64-slot buffer
+		// Wait for the live stream to deliver this event before publishing the next, so it never lags.
+		got := readUntil(t, reader, fmt.Sprintf(`"block_number":%d,`, i), 2*time.Second)
+		received += strings.Count(got, "event: trade\n")
+	}
+	if received != total {
+		t.Fatalf("live subscriber received %d trades, want %d", received, total)
+	}
+	for deadline := time.Now().Add(2 * time.Second); hub.Evictions() < 1 && time.Now().Before(deadline); {
+		time.Sleep(time.Millisecond)
 	}
 	if hub.Evictions() != 1 || hub.Active() != 1 {
 		t.Fatalf("evictions=%d active=%d, want the stalled subscriber evicted alone", hub.Evictions(), hub.Active())
 	}
-	got := readUntil(t, reader, `"block_number":70`, 2*time.Second)
-	if n := strings.Count(got, "event: trade\n"); n != total {
-		t.Fatalf("live subscriber received %d trades, want %d", n, total)
+	buffered := 0
+	for range stalled.C { // closed by the eviction, so the loop ends after the buffered events
+		buffered++
 	}
-	received := 0
-	for range stalled.C {
-		received++
-	}
-	if received != 64 {
-		t.Fatalf("stalled subscriber drained %d events before eviction, want 64", received)
+	if buffered != 64 {
+		t.Fatalf("stalled subscriber held %d events at eviction, want 64", buffered)
 	}
 }

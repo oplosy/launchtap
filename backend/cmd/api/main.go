@@ -105,11 +105,7 @@ func run() error {
 	}
 	server.RegisterReferenceRoutes(references)
 	tail := &feed.Tail{Reader: feedReader, Hub: hub, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, Observer: apiMetrics, Logger: slog.Default()}
-	go func() {
-		if err := tail.Start(ctx); err != nil {
-			slog.Error("feed tail stopped", "error", err)
-		}
-	}()
+	go func() { _ = tail.Start(ctx) }() // returns only when the signal context ends
 	go listenRefreshHints(ctx, pool, hub, tail, int64(c.ChainID), c.DeploymentID)
 	server.HTTP.Addr = c.APIAddr
 	errCh := make(chan error, 2)
