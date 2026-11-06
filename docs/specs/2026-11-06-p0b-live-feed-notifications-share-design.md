@@ -11,8 +11,8 @@ The product must feel live and be shareable, like competing launchpads. Success 
 
 - Explore shows a running strip of the latest trades, launches and graduations across all tokens,
   and a token page's Recent trades list updates without a reload;
-- while the site is open, a signed-in user is told about activity on tokens they watch or hold,
-  and about their own trades confirming;
+- while the site is open, a signed-in user is told about activity on tokens they watch, and
+  about their own trades confirming;
 - a token link pasted into X or Telegram unfurls into a card with the token's image, name,
   ticker, market cap and bonding progress (or graduated state), and the token page offers
   "Share on X" and "Copy link".
@@ -33,7 +33,7 @@ The product must feel live and be shareable, like competing launchpads. Success 
 | Each API process runs one **trade tail**: on an `api_refresh` hint (coalesced), it reads canonical market trades and graduations after its cursor once and publishes them to the realtime hub as `trade` and `graduation` events. | Database cost is one query per hint per process, independent of the number of viewers; reuses the existing NOTIFY → hub → SSE path. | Every client refetching `/trades` on each hint (load multiplies by viewers; a global strip would query every token); a new WebSocket service (new component for no current need). |
 | The feed source is the existing `market_trades` view (curve trades plus post-graduation pool swaps), ordered by `(block_number, transaction_index, log_index)`. | Same rows and ordering the token page already serves, so the live list and a reload never disagree; graduated tokens keep a live feed. | Curve trades only (graduated tokens would go silent). |
 | A new `GET /v1/trades/recent` returns the latest global market trades (default 50, max 100) for the initial strip; live events append after it. | A new viewer sees a populated strip immediately; SSE stays a delta channel. | Replaying history over SSE (`Last-Event-ID` backfill), which the hub does not buffer. |
-| Notifications are derived entirely in the browser from the SSE stream, filtered by the user's watchlist and the connected wallet's holdings, kept for the tab session only. | The owner chose in-app, session-only delivery; no new table, write path or personal data on the server. | Server-side inbox table with fan-out worker. |
+| Notifications are derived entirely in the browser from the SSE stream, filtered by the user's watchlist and the connected wallet, kept for the tab session only. Matching on wallet holdings needs a public wallet-holdings read, which moved to sub-project C with the public wallet page. | The owner chose in-app, session-only delivery; no new table, write path or personal data on the server. | Server-side inbox table with fan-out worker. |
 | Share cards are rendered by the web app with Next.js `opengraph-image` / `next/og` (bundled with Next, no new dependency), from server-side reads of our own API, cached 5 minutes. | Card and page share one framework and deployment; values at most minutes old are acceptable for an unfurl. | A Go image renderer in the API (new image/font stack in the backend); static identity-only card (owner chose live market data). |
 
 ## Backend
@@ -44,7 +44,8 @@ The product must feel live and be shareable, like competing launchpads. Success 
   startup to the current newest row (a restarted process does not replay history).
 - On each coalesced `token` or `launch` hint it runs one bounded query for rows after the cursor
   (limit 200), joins token name and symbol, and publishes them oldest first.
-- Graduations are published from the `graduations` table with the same cursor rule.
+- Graduations and launches are published from the `graduations` and `token_launches` tables
+  with the same cursor rule.
 - **Reorg:** on a `reorg` hint the cursor moves back to the common ancestor, so canonical
   replacement rows are published again. The existing `reorg` event already reaches clients first;
   clients drop rows above the ancestor before the replacements arrive.
@@ -66,6 +67,9 @@ New SSE event types beside `launch`, `token`, `reorg`:
   gross ETH (wei string), token amount (base-unit string), trader address, tx hash, log index,
   block number, block time, finality.
 - `graduation`: chain, deployment, token, name, symbol, pair address, tx hash, block number.
+- `new_token`: chain, deployment, token, creator, name, symbol, tx hash, block number, read from
+  `token_launches` by the same tail. (The existing `launch` event stays a refresh hint without a
+  name.)
 - `trade_burst`: chain, deployment, window start and end, `[{token, count}]`.
 - `finality`: chain, deployment, `safe_block`, `finalized_block`. Sent to every stream, including
   `?token=` streams.
@@ -107,16 +111,17 @@ on every hint. A reload still yields the same list, because both read `market_tr
 ### In-app notifications
 
 - **Triggers:**
-  - a watched or held token graduates;
-  - a trade of at least 0.5 ETH gross on a watched or held token (constant in code);
+  - a watched token graduates;
+  - a trade of at least 0.5 ETH gross on a watched token (constant in code);
   - the user's own trade (connected wallet is the trader) reaches `safe` finality, detected when a
     `finality` event covers the block of a `trade` event whose trader is the connected wallet.
 - **Where:** a toast for each new notification, collapsed when several arrive within 5 seconds,
   and a bell menu listing this session's notifications.
 - **Storage:** the list lives in memory for the tab; only "last read" is kept in
   `sessionStorage`. No server writes.
-- **Who:** watchlist matching needs sign-in (existing Privy session). Holdings matching uses the
-  connected wallet. Signed-out, not-connected visitors get no notifications and see no bell.
+- **Who:** watchlist matching needs sign-in (existing Privy session); own-trade matching uses the
+  connected wallet. Visitors who are neither signed in nor connected get no notifications and see
+  no bell.
 
 ### Share card and buttons
 
@@ -175,8 +180,8 @@ None. Every input is already in the repository; no external account is needed.
 4. `GET /v1/trades/recent` returns at most 100 items in canonical order and matches the
    `market_trades` rows (integration test); OpenAPI and the generated client have no drift.
 5. Notifications appear for a watched token's graduation, for a trade of 0.5 ETH or more on a
-   held token, and for the user's own trade reaching `safe`, and not for unrelated tokens (web unit
-   tests). Signed-out visitors see no bell.
+   watched token, and for the user's own trade reaching `safe`, and not for unrelated tokens (web
+   unit tests). Visitors neither signed in nor connected see no bell.
 6. `GET /token/<address>/opengraph-image` returns a 1200×630 PNG for a known token and the
    generic card for an unknown one. The token page HTML carries `og:image`, `twitter:card` and
    title metadata (Playwright).
