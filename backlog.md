@@ -108,30 +108,8 @@
   infrastructure review of the deployment package is still outstanding.
 - **Pitfalls / notes:** These do not authorize changing existing launch economics or adding
   a reserve rescue path. Do not commit credentials, private RPC URLs, wallet keys, or guessed
-  deployment addresses.
-
-### Observability: metrics, alerting, and error tracking
-
-- **Date:** 2026-11-05
-- **Reason:** scope decision (gap found in the 2026-11-05 production-readiness scoring)
-- **Where it stopped:** Pre-flight written 2026-11-06; implementation not started. The API and indexer expose only `/healthz` and structured
-  logs; the backend has no metrics endpoint, tracing, or error tracking (no Prometheus or
-  OpenTelemetry code in `backend/`). `docs/runbooks/production-readiness.md` already lists the
-  signals an operator must watch (indexer head/finality lag, database connectivity, RPC error
-  rate, HTTP 5xx, write rejection rate, notification/reconciliation activity), but nothing in
-  the repository emits them, and Docker health checks do not deliver alerts.
-- **Related files:** `backend/cmd/api/main.go`, `backend/cmd/indexer/main.go`,
-  `backend/internal/apiserver/server.go`, `backend/internal/indexer/`, `deploy/compose.yaml`,
-  `deploy/README.md`, `docs/runbooks/production-readiness.md`
-- **Resume (next step):** Claude pre-flight is done: `docs/specs/2026-11-06-observability-design.md`
-  (owner chose the Prometheus client, an opt-in Compose `monitoring` profile, and deferred error
-  tracking; recorded in the `system-design` design). After the owner reviews the spec, Codex
-  writes the implementation plan from its acceptance criteria and implements it.
-- **Pitfalls / notes:** Metrics and error reports must not carry credentials, access tokens,
-  signatures, cookies, or credentialed RPC URLs (same rule as logs). The API rate limiter is
-  per-process in memory (`backend/internal/apiserver/ratelimit.go`); if the chosen topology
-  runs more than one API instance, decide on shared limiting in the same pre-flight. Naming
-  the monitoring owner and alert destination stays under the production-inputs item above.
+  deployment addresses. The monitoring owner and the real alert destination
+  (`ALERTMANAGER_WEBHOOK_URL_FILE`, see the runbook "Monitoring" section) are also still unassigned.
 
 ### <short title>
 - **Date:** YYYY-MM-DD
@@ -145,6 +123,22 @@
 ---
 
 ## Done
+
+### Observability: metrics and alerting
+
+- **Completed:** 2026-11-06
+- **Evidence:** commits c7a377b, eabb748, 975464c, 48844a9, 5298920, 480be42, 5bb9da9. The API
+  (private `API_METRICS_ADDR` listener) and the indexer (`/metrics` on its health port) export
+  Prometheus metrics, including ETH/USD price feed, indexer, RPC and aggregation series. An
+  opt-in Compose `monitoring` profile runs Prometheus and Alertmanager with tested alert rules
+  (`deploy/monitoring/alerts.yml`, `alerts.test.yml`). The runbook "Monitoring" section documents
+  enabling it, the webhook secret, access, retention and the alert table. Gate output is in
+  `.superpowers/sdd/2026-11-06-observability/task-6-report.md`.
+- **Boundary:** Error tracking (Sentry or similar) was deferred by the owner; it is not an
+  active item. The monitoring owner and alert destination stay under "Production release,
+  governance, and audit inputs". The API rate limiter stays per-process, so one API instance
+  is the supported topology. `WriteRejectionSpike` and `RPCErrorRateHigh` differ from the spec
+  text as described in the runbook.
 
 ### P0-A parked review minors and dependency scanning
 

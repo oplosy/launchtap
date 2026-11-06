@@ -59,6 +59,12 @@ do not deliver alerts. Confirm backup restore and record the manifest/commit/ima
 The standard Caddy image supplies TLS and proxying, not a per-client rate-limit policy.
 Configure the approved edge rate limits before exposing transaction-capable production traffic.
 
+## Monitoring
+
+An opt-in Prometheus and Alertmanager stack starts with `docker compose --env-file .env --profile monitoring up -d`.
+Alert destination, access, retention and the alert table are in the "Monitoring" section of
+`docs/runbooks/production-readiness.md`.
+
 ## Backup and recovery
 
 Stop metadata writes and take an encrypted off-host backup according to the agreed

@@ -104,6 +104,56 @@ uncertain, then rolls the web/API/indexer deployment back to the last passing co
 roll back a database migration independently; deploy a forward-compatible fix. Preserve the
 incident timeline, manifest digest, gate output, health responses, and scrubbed request IDs.
 
+## Monitoring
+
+Metrics, alerting and the optional Prometheus/Alertmanager stack are opt-in. Error tracking
+(Sentry or similar) was deferred by the owner and is not part of this package.
+
+Enable the stack from `deploy/`:
+
+```sh
+docker compose --env-file .env --profile monitoring up -d
+```
+
+- **Alert destination.** Set `ALERTMANAGER_WEBHOOK_URL_FILE` in `.env` to a file outside the
+  repository that holds only the receiver webhook URL. Alertmanager runs as `nobody`
+  (uid 65534), so that file must be readable by that user. If the variable is unset the
+  profile uses `deploy/monitoring/webhook-url.example`, a no-op receiver, and alerts go
+  nowhere. Naming the monitoring owner and the real destination stays in the production
+  inputs above.
+- **Prometheus access.** Only `127.0.0.1:9090` is published. Reach it from the host, or from a
+  workstation through an SSH tunnel such as `ssh -L 9090:127.0.0.1:9090 USER@HOST`. The
+  proxy never serves it.
+- **Retention.** Prometheus keeps 15 days of data, capped at 2GB, on the named volume
+  `prometheus_data`. Do not remove it with `docker compose down --volumes`.
+- **Metric endpoints.** API metrics are served on `API_METRICS_ADDR` (`:8082` in Compose) and
+  are never routed through Caddy or published. Indexer metrics are on its health port `:8081`
+  at `/metrics`.
+- **Rate limiting.** The API rate limiter is per process and in memory. One API instance is
+  the supported topology; running several multiplies the effective limits until shared
+  limiting is added.
+
+Alert rules (`deploy/monitoring/alerts.yml`, unit-tested in `alerts.test.yml`):
+
+| Alert | Condition | For | Severity |
+|-------|-----------|-----|----------|
+| `TargetDown` | `up{job=~"api\|indexer"} == 0` | 2m | page |
+| `IndexerNotReady` | indexer writer-lock ownership is 0, or chain RPC unhealthy | 5m | page |
+| `IndexerObservedLagHigh` | chain head minus observed block > 300 blocks | 5m | page |
+| `IndexerFinalizedLagHigh` | finalized block lag > 1800s | 10m | ticket |
+| `RPCErrorRateHigh` | error or timeout share of chain RPC calls > 5% (10m) | 10m | ticket |
+| `API5xxRateHigh` | 5xx share of API requests > 1% (10m), and at least 1 request/s | 10m | page |
+| `DatabaseDown` | indexer DB check down, or API pool exhausted with wait time growing | 2m | page |
+| `WriteRejectionSpike` | 5m rejection rate > 10x the 1h average ending 15m ago, and > 0.05/s | 15m | ticket |
+| `EthUsdStale` | last ETH/USD refresh older than 600s (absent series: price source disabled, no alert) | 10m | ticket |
+
+- `WriteRejectionSpike` deliberately differs from the spec text: it compares against the 1h
+  average ending 15m ago (`[1h] offset 15m`) because a plain 1h average includes the surge
+  itself and could never fire. It also fires only above 0.05 rejections/s (3 per minute) so a
+  zero baseline does not produce noise; the owner can retune that floor.
+- `RPCErrorRateHigh` counts an unsupported safe or finalized block tag as an
+  `eth_getBlockByNumber` error, so a chain without those tags will raise it.
+
 ## Audit evidence checklist
 
 The audit packet must identify the exact commit and contain the Solidity source/artifact
