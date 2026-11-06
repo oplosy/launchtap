@@ -248,9 +248,10 @@ func TestRPCObserverClassifiesOutcomes(t *testing.T) {
 	t.Parallel()
 	var slow atomic.Bool
 	var failing atomic.Bool
+	release := make(chan struct{})
 	server := fakeRPCServer(t, func(request rpcRequest) any {
 		if slow.Load() {
-			time.Sleep(200 * time.Millisecond)
+			<-release // never answers within the short client's budget
 		}
 		if failing.Load() {
 			return rpcFailure{Code: -32602, Message: "invalid params"}
@@ -258,12 +259,26 @@ func TestRPCObserverClassifiesOutcomes(t *testing.T) {
 		return testHeader(7)
 	})
 	defer server.Close()
+	defer close(release) // runs before server.Close so Close never waits on a blocked handler
+
 	observer := &recordingObserver{}
-	client, err := Dial(context.Background(), server.URL, RPCConfig{Timeout: 50 * time.Millisecond, RetryBackoff: time.Millisecond, Observer: observer})
+	// The ok and error phases get a generous budget so a slow CI machine cannot turn them
+	// into timeouts; only the timeout phases use the short client.
+	client, err := Dial(context.Background(), server.URL, RPCConfig{Timeout: 5 * time.Second, RetryBackoff: time.Millisecond, Observer: observer})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer client.Close()
+	short, err := Dial(context.Background(), server.URL, RPCConfig{Timeout: 50 * time.Millisecond, RetryBackoff: time.Millisecond, Observer: observer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer short.Close()
+	retried, err := Dial(context.Background(), server.URL, RPCConfig{Timeout: 50 * time.Millisecond, MaxRetries: 2, RetryBackoff: time.Millisecond, Observer: observer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer retried.Close()
 
 	if _, err := client.HeaderByNumber(context.Background(), 7); err != nil {
 		t.Fatal(err)
@@ -272,21 +287,39 @@ func TestRPCObserverClassifiesOutcomes(t *testing.T) {
 		t.Fatalf("success observations = %v, want %v", got, want)
 	}
 
-	slow.Store(true)
-	if _, err := client.HeaderByNumber(context.Background(), 7); err == nil {
-		t.Fatal("expected timeout error")
-	}
-	if got, want := observer.take(), []recordedRPC{{"eth_getBlockByNumber", "timeout"}}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("timeout observations = %v, want %v", got, want)
-	}
-
-	slow.Store(false)
 	failing.Store(true)
 	if _, err := client.HeaderByNumber(context.Background(), 7); err == nil {
 		t.Fatal("expected rpc error")
 	}
 	if got, want := observer.take(), []recordedRPC{{"eth_getBlockByNumber", "error"}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("error observations = %v, want %v", got, want)
+	}
+	failing.Store(false)
+
+	slow.Store(true)
+	if _, err := short.HeaderByNumber(context.Background(), 7); err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if got, want := observer.take(), []recordedRPC{{"eth_getBlockByNumber", "timeout"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("timeout observations = %v, want %v", got, want)
+	}
+
+	// A retried timeout is one logical call: reported once, after the last attempt.
+	if _, err := retried.HeaderByNumber(context.Background(), 7); err == nil {
+		t.Fatal("expected timeout error after retries")
+	}
+	if got, want := observer.take(), []recordedRPC{{"eth_getBlockByNumber", "timeout"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("retried timeout observations = %v, want %v", got, want)
+	}
+
+	// Shutdown cancellation is not an RPC failure and is not observed.
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := client.HeaderByNumber(canceled, 7); err == nil {
+		t.Fatal("expected cancellation error")
+	}
+	if got := observer.take(); len(got) != 0 {
+		t.Fatalf("canceled call observations = %v, want none", got)
 	}
 }
 

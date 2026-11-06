@@ -431,10 +431,16 @@ func TestFeedObserveOncePerCoalescedFetch(t *testing.T) {
 		wg.Add(1)
 		go func() { defer wg.Done(); _ = f.Refresh(context.Background()) }()
 	}
-	for hits.Load() == 0 {
+	// Wait until the three other callers have joined the in-flight call.
+	for {
+		f.mu.Lock()
+		joined := f.waiters
+		f.mu.Unlock()
+		if joined == 3 {
+			break
+		}
 		time.Sleep(time.Millisecond)
 	}
-	time.Sleep(50 * time.Millisecond) // let the other callers join the in-flight call
 	close(release)
 	wg.Wait()
 	if hits.Load() != 1 || observed.Load() != 1 {
