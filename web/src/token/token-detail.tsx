@@ -10,6 +10,8 @@ import { ApiClient, resolveApiAssetUrl, type TokenDetailResponse } from "@/api/c
 import { ApiProblem } from "@/api/problems";
 import type { LiveEvent } from "@/api/types";
 import { useLiveEvents } from "@/live/live-events";
+import type { FeedItem } from "@/live/feed-store";
+import { liveTradeRows, reduceTokenTrades } from "@/live/live-strip-model";
 import { formatCanonicalBaseUnits, formatSignificantPrice } from "@/amounts";
 import { CoinGeckoAttribution, UsdLine } from "@/market/usd-line";
 import { DEFAULT_E2E_WEB_URL, publicConfiguration } from "@/config/public";
@@ -92,6 +94,10 @@ export function TokenDetail({
   const [collectionLoading, setCollectionLoading] = useState(false);
   const [collectionError, setCollectionError] = useState<Error | null>(null);
   const [resetNotice, setResetNotice] = useState(false);
+  const [liveFeed, setLiveFeed] = useState<{ address: string; items: FeedItem[] }>({
+    address: "",
+    items: [],
+  });
   const clientRef = useRef<ApiClient | null>(null);
   const tokenRef = useRef<TokenDetailResponse | null>(null);
   const tokenAbortRef = useRef<AbortController | null>(null);
@@ -327,6 +333,20 @@ export function TokenDetail({
   const onLiveEvent = useCallback(
     (event: LiveEvent) => {
       if (useFixture || configuration.status !== "ready") return;
+      if (configuration.chainId !== null && configuration.deploymentId !== null) {
+        // Trades prepend client-side from the shared stream; no refetch is needed.
+        const scope = { chainId: configuration.chainId, deploymentId: configuration.deploymentId };
+        setLiveFeed((current) => ({
+          address: tokenAddress,
+          // Live rows belong to one token; never carry them across a route change.
+          items: reduceTokenTrades(
+            current.address === tokenAddress ? current.items : [],
+            event,
+            tokenAddress,
+            scope,
+          ),
+        }));
+      }
       if (event.event !== "launch" && event.event !== "token" && event.event !== "reorg") return;
       if (
         event.data.chain_id !== configuration.chainId ||
@@ -374,8 +394,10 @@ export function TokenDetail({
       if (!next) throw new Error("Token unavailable");
       await loaders.loadCandles(signal);
       await loaders.loadCollection(tabRef.current, undefined, false, signal);
+      // REST is canonical again after recovery; live rows it already covers are deduplicated.
+      setLiveFeed({ address: tokenAddress, items: [] });
     },
-    [configuration.status, useFixture],
+    [configuration.status, tokenAddress, useFixture],
   );
   useLiveEvents(onLiveEvent, recoverLive);
 
@@ -408,9 +430,16 @@ export function TokenDetail({
     for (const item of page.items ?? []) pagesItems.push(item);
   }
   // Both tab panels stay mounted, but `pages` holds only the active tab's rows.
-  const tradeItems = (tab === "trades"
+  const restTrades = (tab === "trades"
     ? pagesItems
     : []) as unknown as components["schemas"]["TradeDTO"][];
+  const tradeItems =
+    tab === "trades"
+      ? [
+          ...liveTradeRows(liveFeed.address === tokenAddress ? liveFeed.items : [], restTrades),
+          ...restTrades,
+        ]
+      : [];
   const holderItems = (tab === "holders"
     ? pagesItems
     : []) as unknown as components["schemas"]["HolderDTO"][];
@@ -787,7 +816,12 @@ function Trades({
         <span>Finality</span>
       </div>
       {items.map((item) => (
-        <div className="history-row" role="row" key={`${item.tx_hash}-${item.log_index}`}>
+        <div
+          className="history-row"
+          role="row"
+          key={`${item.tx_hash}-${item.log_index}`}
+          data-pending={item.finality === "observed" ? "" : undefined}
+        >
           <span className="mono">{safeDate(item.time)}</span>
           <span className={item.side === "buy" ? "trade-buy" : "trade-sell"}>
             {item.side || "—"}
@@ -798,8 +832,14 @@ function Trades({
             <UsdLine wei={item.eth_volume} />
           </span>
           <span className="mono trade-prices">
-            {safeMarketValue(item.execution_price)} / {safeMarketValue(item.spot_price)}
-            <UsdLine wei={item.execution_price} />
+            {item.execution_price === "" ? (
+              "—"
+            ) : (
+              <>
+                {safeMarketValue(item.execution_price)} / {safeMarketValue(item.spot_price)}
+                <UsdLine wei={item.execution_price} />
+              </>
+            )}
           </span>
           <span>
             <Badge tone={finalityTone(item.finality)}>{finalityLabel(item.finality)}</Badge>

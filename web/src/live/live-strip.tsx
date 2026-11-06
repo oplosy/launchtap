@@ -1,0 +1,121 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ApiClient } from "@/api/client";
+import type { LiveEvent } from "@/api/types";
+import { publicConfiguration } from "@/config/public";
+import { UsdLine } from "@/market/usd-line";
+import { mergeRecent, tradeToFeedItem, FEED_MAX_ITEMS, type FeedItem } from "./feed-store";
+import { useLiveEvents } from "./live-events";
+import { reduceStripFeed, toStripItem, type StripItemView } from "./live-strip-model";
+
+const TICK_MS = 15_000;
+
+/** Live trade strip: recent trades, launches and graduations, newest first, max 50. */
+export function LiveStrip() {
+  const configuration = publicConfiguration();
+  const ready =
+    configuration.status === "ready" &&
+    Boolean(configuration.apiBaseUrl) &&
+    configuration.chainId !== null &&
+    configuration.deploymentId !== null;
+  const [items, setItems] = useState<FeedItem[]>([]);
+  const [now, setNow] = useState(() => Date.now());
+  const chainId = configuration.chainId ?? -1;
+  const deploymentId = configuration.deploymentId ?? "";
+  const baseUrl = configuration.apiBaseUrl;
+
+  const fetchRecent = useCallback(
+    async (signal?: AbortSignal): Promise<FeedItem[]> => {
+      if (!ready || !baseUrl) return [];
+      const body = await new ApiClient({ baseUrl }).listRecentTrades(FEED_MAX_ITEMS, signal);
+      return (body.items ?? [])
+        .filter((trade) => trade.chain_id === chainId && trade.deployment_id === deploymentId)
+        .map(tradeToFeedItem);
+    },
+    [baseUrl, chainId, deploymentId, ready],
+  );
+  const refill = useCallback(
+    async (signal?: AbortSignal) => {
+      const recent = await fetchRecent(signal);
+      if (!signal?.aborted) setItems((current) => mergeRecent(current, recent));
+    },
+    [fetchRecent],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchRecent(controller.signal)
+      .then((recent) => {
+        if (!controller.signal.aborted) setItems((current) => mergeRecent(current, recent));
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [fetchRecent]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), TICK_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  const onEvent = useCallback(
+    (event: LiveEvent) => {
+      setItems((current) => reduceStripFeed(current, event, { chainId, deploymentId }));
+    },
+    [chainId, deploymentId],
+  );
+  useLiveEvents(onEvent, refill);
+
+  const views = useMemo(() => items.map((item) => toStripItem(item, now)), [items, now]);
+  if (!ready || views.length === 0) return null;
+
+  return (
+    <section className="live-strip" aria-label="Live activity">
+      <span className="live-strip-label">Live</span>
+      <ul className="live-strip-track">
+        {views.map((view) => (
+          <li key={view.key} className="live-strip-item" data-pending={view.pending || undefined}>
+            <StripEntry view={view} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function StripEntry({ view }: { view: StripItemView }) {
+  const body = (
+    <>
+      {view.badge ? (
+        <span className="live-strip-badge" data-kind={view.kind}>
+          {view.badge}
+        </span>
+      ) : (
+        <span className="live-strip-arrow" data-side={view.side ?? undefined} aria-hidden="true">
+          {view.arrow ?? "·"}
+        </span>
+      )}
+      <span className="live-strip-ticker" title={view.name}>
+        {view.ticker}
+      </span>
+      {view.side ? <span className="sr-only">{view.side}</span> : null}
+      {view.eth ? (
+        <span className="live-strip-eth mono">
+          {view.eth}
+          {view.wei ? <UsdLine wei={view.wei} /> : null}
+        </span>
+      ) : null}
+      <span className="live-strip-trader mono">{view.trader}</span>
+      <span className="live-strip-time mono">{view.time}</span>
+      {view.pending ? <span className="sr-only">Updating</span> : null}
+    </>
+  );
+  return view.href ? (
+    <Link className="live-strip-link" href={view.href as never}>
+      {body}
+    </Link>
+  ) : (
+    <span className="live-strip-link">{body}</span>
+  );
+}

@@ -12,6 +12,7 @@ export type HoldersResponse = components["schemas"]["HoldersBody"];
 export type QuoteResponse = components["schemas"]["QuoteBody"];
 export type CanonicalTransactionResponse = components["schemas"]["CanonicalObservationBody"];
 export type EthUsdReference = components["schemas"]["EthUsdBody"];
+export type RecentTradesResponse = components["schemas"]["RecentTradesBody"];
 export type TokenHighlights = components["schemas"]["HighlightsBody"];
 export type WatchlistResponse = components["schemas"]["WatchlistBody"];
 export type TokenListQuery = {
@@ -208,6 +209,10 @@ export class ApiClient {
 
   getEthUsd(signal?: AbortSignal) {
     return this.request<EthUsdReference>("/v1/reference/eth-usd", { signal });
+  }
+
+  listRecentTrades(limit = 50, signal?: AbortSignal) {
+    return this.request<RecentTradesResponse>(`/v1/trades/recent?limit=${limit}`, { signal });
   }
 
   getHighlights(signal?: AbortSignal) {

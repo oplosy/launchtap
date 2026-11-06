@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { Hero } from "@/landing/hero";
 import { LaunchStory } from "@/landing/launch-story";
+import { LiveStrip } from "@/live/live-strip";
 import { WatchlistToaster } from "@/watchlist/star-button";
 import { TokenDiscovery } from "./token-discovery";
 
@@ -13,6 +14,7 @@ export function ExploreHub() {
         <h2 id="explore-title">Explore launches.</h2>
         <p>Search graduated tokens, then follow active launches moving toward liquidity.</p>
       </section>
+      <LiveStrip />
       <Suspense fallback={<ExploreFallback label="Loading graduated tokens…" />}>
         <TokenDiscovery
           defaultPhase="graduated"

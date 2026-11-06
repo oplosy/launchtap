@@ -1,0 +1,106 @@
+/* Live trade strip (Explore) and live rows on the token page. */
+.live-strip {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-block: 1px solid var(--line);
+  padding: 10px 0;
+  min-width: 0;
+}
+.live-strip-label {
+  flex: none;
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.live-strip-track {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.live-strip-item {
+  flex: none;
+}
+.live-strip-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  color: var(--text);
+  font-size: 13px;
+  white-space: nowrap;
+  text-decoration: none;
+}
+a.live-strip-link:hover {
+  background: var(--surface-hover);
+}
+.live-strip-ticker {
+  max-width: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.live-strip-arrow[data-side="buy"] {
+  color: var(--accent-text);
+}
+.live-strip-arrow[data-side="sell"] {
+  color: var(--danger);
+}
+.live-strip-badge {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 0 8px;
+  color: var(--text-soft);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.live-strip-eth .usd-line {
+  display: inline;
+  margin-left: 6px;
+}
+.live-strip-trader,
+.live-strip-time {
+  color: var(--text-faint);
+}
+/* Observed (not yet safe) items read as provisional until finality. */
+.live-strip-item[data-pending] .live-strip-link,
+.history-row[data-pending] {
+  opacity: 0.65;
+  border-style: dashed;
+}
+.history-row[data-pending] {
+  border-style: solid;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .live-strip-item:first-child {
+    animation: live-strip-in 240ms ease-out;
+  }
+}
+@keyframes live-strip-in {
+  from {
+    transform: translateX(-12px);
+  }
+  to {
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-strip-item,
+  .live-strip-item:first-child {
+    animation: none;
+  }
+  .live-strip-track {
+    overflow-x: auto;
+  }
+}
