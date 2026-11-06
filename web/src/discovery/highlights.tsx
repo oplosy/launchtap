@@ -22,10 +22,46 @@ export function progressPercent(bps: number) {
   return `${(Math.floor(clamped / 10) / 10).toFixed(1)}%`;
 }
 
+/** Kept highlights older than this (two missed refreshes) are flagged as possibly out of date. */
+export const HIGHLIGHTS_STALE_MS = 2 * HIGHLIGHTS_REFRESH_MS;
+
+export function highlightsStale(lastSuccessAt: number | null, now: number) {
+  return lastSuccessAt !== null && now - lastSuccessAt > HIGHLIGHTS_STALE_MS;
+}
+
+type VisibilityDocument = Pick<
+  Document,
+  "visibilityState" | "addEventListener" | "removeEventListener"
+>;
+
+/**
+ * Calls `tick` every `intervalMs` while the document is visible, skips ticks while it is hidden,
+ * and refreshes immediately when it becomes visible again. Returns the cleanup function.
+ */
+export function startVisiblePolling(
+  tick: () => void,
+  intervalMs: number,
+  doc: VisibilityDocument | null,
+) {
+  const timer = setInterval(() => {
+    if (doc?.visibilityState !== "hidden") tick();
+  }, intervalMs);
+  const onVisibility = () => {
+    if (doc?.visibilityState !== "hidden") tick();
+  };
+  doc?.addEventListener("visibilitychange", onVisibility);
+  return () => {
+    clearInterval(timer);
+    doc?.removeEventListener("visibilitychange", onVisibility);
+  };
+}
+
 export type HighlightsState = {
   data: TokenHighlights | null;
   loading: boolean;
   failed: boolean;
+  /** True when the shown data is kept from an earlier success because refreshes keep failing. */
+  stale: boolean;
   retry: () => void;
 };
 
@@ -33,7 +69,9 @@ export function useHighlights(apiBaseUrl: string | null): HighlightsState {
   const [data, setData] = useState<TokenHighlights | null>(null);
   const [loading, setLoading] = useState(apiBaseUrl !== null);
   const [failed, setFailed] = useState(false);
+  const [stale, setStale] = useState(false);
   const controllerRef = useRef<AbortController | null>(null);
+  const lastSuccessRef = useRef<number | null>(null);
 
   const load = useCallback(
     async (initial: boolean) => {
@@ -44,12 +82,16 @@ export function useHighlights(apiBaseUrl: string | null): HighlightsState {
       try {
         const next = await getHighlights(apiBaseUrl, controller.signal);
         if (controller.signal.aborted) return;
+        lastSuccessRef.current = Date.now();
         setData(next);
         setFailed(false);
+        setStale(false);
       } catch {
         if (controller.signal.aborted) return;
-        // Keep the last good highlights through a transient refresh failure.
-        if (initial) setFailed(true);
+        // Keep the last good highlights through a transient refresh failure, but say so once
+        // they are old enough that the ranking may have changed.
+        if (initial && lastSuccessRef.current === null) setFailed(true);
+        else setStale(highlightsStale(lastSuccessRef.current, Date.now()));
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -61,9 +103,13 @@ export function useHighlights(apiBaseUrl: string | null): HighlightsState {
     // Fetching is the intended synchronization with the external API.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load(true);
-    const timer = setInterval(() => void load(false), HIGHLIGHTS_REFRESH_MS);
+    const stop = startVisiblePolling(
+      () => void load(false),
+      HIGHLIGHTS_REFRESH_MS,
+      typeof document === "undefined" ? null : document,
+    );
     return () => {
-      clearInterval(timer);
+      stop();
       controllerRef.current?.abort();
     };
   }, [load]);
@@ -73,7 +119,7 @@ export function useHighlights(apiBaseUrl: string | null): HighlightsState {
     void load(true);
   }, [load]);
 
-  return { data, loading, failed, retry };
+  return { data, loading, failed, stale, retry };
 }
 
 export function KingOfTheHill({

@@ -137,6 +137,14 @@
   border: 1px dashed var(--line-strong);
   border-radius: var(--radius-lg);
 }
+.discovery-stale {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius-lg);
+  color: var(--warning);
+  background: var(--warning-wash);
+  font-size: 13px;
+}
 
 /* Token cards: the whole card is the link target via the stretched heading link. */
 .token-list {

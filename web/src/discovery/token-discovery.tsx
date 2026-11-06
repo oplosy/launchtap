@@ -405,10 +405,17 @@ export function TokenDiscovery({
           ) : highlights.loading || !highlights.data ? (
             <TokenListSkeleton />
           ) : (
-            <TrendingList
-              items={highlights.data.trending ?? []}
-              apiBaseUrl={configuration.apiBaseUrl}
-            />
+            <>
+              {highlights.stale ? (
+                <p className="discovery-stale" role="status">
+                  Trending may be out of date. Retrying automatically.
+                </p>
+              ) : null}
+              <TrendingList
+                items={highlights.data.trending ?? []}
+                apiBaseUrl={configuration.apiBaseUrl}
+              />
+            </>
           )
         ) : error ? (
           <div className="discovery-state">
