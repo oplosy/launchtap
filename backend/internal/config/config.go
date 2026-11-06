@@ -73,6 +73,7 @@ type Config struct {
 	PrivyVerificationKey string   `env:"PRIVY_VERIFICATION_KEY"`
 	LogLevel             string   `env:"LOG_LEVEL"`
 	APIAddr              string   `env:"API_ADDR"`
+	APIMetricsAddr       string   `env:"API_METRICS_ADDR"`
 	APIAllowedOrigins    []string `env:"API_ALLOWED_ORIGINS"`
 	// APITrustedProxyCIDRs lists reverse proxies whose X-Forwarded-For entries identify the
 	// client for rate limiting. Empty means the TCP peer address is the client.
@@ -160,6 +161,10 @@ func Load(getenv func(string) string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	apiMetricsAddr, err := parseAPIMetricsAddr(values.apiMetricsAddr, apiAddr)
+	if err != nil {
+		return Config{}, err
+	}
 	apiOrigins, err := parseOrigins(values.apiAllowedOrigins)
 	if err != nil {
 		return Config{}, err
@@ -237,6 +242,7 @@ func Load(getenv func(string) string) (Config, error) {
 		PrivyVerificationKey:       values.privyVerificationKey,
 		LogLevel:                   logLevel,
 		APIAddr:                    apiAddr,
+		APIMetricsAddr:             apiMetricsAddr,
 		APIAllowedOrigins:          apiOrigins,
 		APITrustedProxyCIDRs:       trustedProxies,
 		APIRateLimitPerMinute:      rateLimitPerMinute,
@@ -302,6 +308,7 @@ type environmentValues struct {
 	privyVerificationKey       string
 	logLevel                   string
 	apiAddr                    string
+	apiMetricsAddr             string
 	apiAllowedOrigins          string
 	apiTrustedProxyCIDRs       string
 	apiRateLimitPerMinute      string
@@ -333,6 +340,7 @@ func readEnvironment(getenv func(string) string) environmentValues {
 		privyVerificationKey:       strings.TrimSpace(getenv("PRIVY_VERIFICATION_KEY")),
 		logLevel:                   strings.TrimSpace(getenv("LOG_LEVEL")),
 		apiAddr:                    strings.TrimSpace(getenv("API_ADDR")),
+		apiMetricsAddr:             strings.TrimSpace(getenv("API_METRICS_ADDR")),
 		apiAllowedOrigins:          strings.TrimSpace(getenv("API_ALLOWED_ORIGINS")),
 		apiTrustedProxyCIDRs:       strings.TrimSpace(getenv("API_TRUSTED_PROXY_CIDRS")),
 		apiRateLimitPerMinute:      strings.TrimSpace(getenv("API_RATE_LIMIT_PER_MINUTE")),
@@ -510,6 +518,24 @@ func parseLogLevel(value string) (string, error) {
 
 func parseAPIAddr(value string) (string, error) {
 	return parseListenerAddr("API_ADDR", value, defaultAPIAddr)
+}
+
+// parseAPIMetricsAddr validates the optional metrics listener. Empty disables it;
+// a value equal to the API listener is rejected so metrics never share the
+// public port.
+func parseAPIMetricsAddr(value, apiAddr string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	addr, err := parseListenerAddr("API_METRICS_ADDR", value, "")
+	if err != nil {
+		return "", err
+	}
+	if addr == apiAddr {
+		return "", &FieldError{Field: "API_METRICS_ADDR", Err: ErrInvalid}
+	}
+
+	return addr, nil
 }
 
 func parseListenerAddr(field, value, defaultValue string) (string, error) {

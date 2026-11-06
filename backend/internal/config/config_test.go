@@ -87,6 +87,7 @@ func TestConfigEnvironmentMapping(t *testing.T) {
 		"PrivyVerificationKey":       "PRIVY_VERIFICATION_KEY",
 		"LogLevel":                   "LOG_LEVEL",
 		"APIAddr":                    "API_ADDR",
+		"APIMetricsAddr":             "API_METRICS_ADDR",
 		"APIAllowedOrigins":          "API_ALLOWED_ORIGINS",
 		"APITrustedProxyCIDRs":       "API_TRUSTED_PROXY_CIDRS",
 		"APIRateLimitPerMinute":      "API_RATE_LIMIT_PER_MINUTE",
@@ -118,6 +119,41 @@ func TestConfigEnvironmentMapping(t *testing.T) {
 			t.Errorf("Config.%s env tag = %q, want %q", field.Name, got, want[field.Name])
 		}
 	}
+}
+
+func TestAPIMetricsAddr(t *testing.T) {
+	t.Parallel()
+
+	env := validEnvironment()
+	got, err := Load(mapGetenv(env))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.APIMetricsAddr != "" {
+		t.Fatalf("APIMetricsAddr = %q, want empty (disabled)", got.APIMetricsAddr)
+	}
+
+	env["API_METRICS_ADDR"] = ":8082"
+	got, err = Load(mapGetenv(env))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.APIMetricsAddr != ":8082" {
+		t.Fatalf("APIMetricsAddr = %q, want :8082", got.APIMetricsAddr)
+	}
+
+	for _, value := range []string{"8082", ":0", ":99999"} {
+		env["API_METRICS_ADDR"] = value
+		assertFieldError(t, Load, env, "API_METRICS_ADDR", ErrInvalid)
+	}
+
+	env["API_ADDR"] = ":8080"
+	env["API_METRICS_ADDR"] = ":8080"
+	assertFieldError(t, Load, env, "API_METRICS_ADDR", ErrInvalid)
+
+	delete(env, "API_ADDR")
+	env["API_METRICS_ADDR"] = defaultAPIAddr
+	assertFieldError(t, Load, env, "API_METRICS_ADDR", ErrInvalid)
 }
 
 func TestAPIAllowedOrigins(t *testing.T) {

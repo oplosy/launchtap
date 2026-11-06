@@ -100,6 +100,15 @@ linters:
           deny:
             - pkg: github.com/Contictus/launchtap/backend/internal/store/postgres/migrations
               desc: API and indexer startup must never run migrations implicitly
+        prometheus-boundary:
+          files:
+            - $all
+            - "!**/internal/metrics/*.go"
+            - "!**/internal/metrics/**/*.go"
+            - "!**/cmd/**/*.go"
+          deny:
+            - pkg: github.com/prometheus
+              desc: only internal/metrics and cmd/* may import Prometheus
         generated-sqlc-boundary:
           files:
             - $all
