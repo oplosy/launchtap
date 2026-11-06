@@ -1,0 +1,85 @@
+groups:
+  - name: launchpad
+    rules:
+      - alert: TargetDown
+        expr: up{job=~"api|indexer"} == 0
+        for: 2m
+        labels: {severity: page}
+        annotations:
+          summary: "{{ $labels.job }} target {{ $labels.instance }} is down"
+
+      - alert: IndexerNotReady
+        expr: launchpad_indexer_ownership_held == 0 or launchpad_indexer_rpc_healthy == 0
+        for: 5m
+        labels: {severity: page}
+        annotations:
+          summary: "indexer is not ready (writer lock or chain RPC)"
+
+      - alert: IndexerObservedLagHigh
+        expr: launchpad_indexer_chain_head_block - on() launchpad_indexer_block_number{level="observed"} > 300
+        for: 5m
+        labels: {severity: page}
+        annotations:
+          summary: "indexer observed block is more than 300 blocks behind the chain head"
+
+      - alert: IndexerFinalizedLagHigh
+        expr: launchpad_indexer_lag_seconds{level="finalized"} > 1800
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: "indexer finalized block is older than 30 minutes"
+
+      # The indexer counts an unsupported safe/finalized block tag as an
+      # eth_getBlockByNumber error, so a chain without those tags raises this alert.
+      - alert: RPCErrorRateHigh
+        expr: |
+          sum(rate(launchpad_indexer_rpc_requests_total{outcome=~"error|timeout"}[10m]))
+            / sum(rate(launchpad_indexer_rpc_requests_total[10m])) > 0.05
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: "more than 5% of chain RPC calls fail or time out"
+
+      - alert: API5xxRateHigh
+        expr: |
+          (
+            sum(rate(launchpad_api_http_requests_total{code_class="5xx"}[10m]))
+              / sum(rate(launchpad_api_http_requests_total[10m])) > 0.01
+          )
+          and sum(rate(launchpad_api_http_requests_total[10m])) >= 1
+        for: 10m
+        labels: {severity: page}
+        annotations:
+          summary: "more than 1% of API requests return 5xx"
+
+      - alert: DatabaseDown
+        expr: |
+          launchpad_indexer_db_up == 0
+          or (
+            rate(launchpad_api_db_pool_acquire_wait_seconds_total[2m]) > 0
+              and launchpad_api_db_pool_idle_conns == 0
+          )
+        for: 2m
+        labels: {severity: page}
+        annotations:
+          summary: "database is unreachable or the API pool is exhausted"
+
+      # The baseline is the 1h average ending 15m ago (the "for" hold); a plain 1h average
+      # includes the surge itself and could never exceed 10x over a 15m hold. With a zero
+      # baseline any sustained rejection fires.
+      - alert: WriteRejectionSpike
+        expr: |
+          sum(rate(launchpad_api_write_rejections_total[5m]))
+            > 10 * sum(rate(launchpad_api_write_rejections_total[1h] offset 15m))
+        for: 15m
+        labels: {severity: ticket}
+        annotations:
+          summary: "write rejections are more than 10x their 1 hour average"
+
+      # An absent series means the price source is disabled, which does not alert.
+      - alert: EthUsdStale
+        expr: time() - launchpad_api_eth_usd_last_success_timestamp_seconds > 600
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: "ETH/USD price has not been refreshed for 10 minutes"

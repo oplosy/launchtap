@@ -1,0 +1,265 @@
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # TargetDown
+  - name: TargetDown fires after 2m down
+    interval: 1m
+    input_series:
+      - series: 'up{job="api",instance="api:8082"}'
+        values: "0x5"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: TargetDown
+        exp_alerts:
+          - exp_labels: {severity: page, job: api, instance: "api:8082"}
+            exp_annotations: {summary: "api target api:8082 is down"}
+  - name: TargetDown quiet while up
+    interval: 1m
+    input_series:
+      - series: 'up{job="indexer",instance="indexer:8081"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: TargetDown
+        exp_alerts: []
+
+  # IndexerNotReady
+  - name: IndexerNotReady fires when ownership is lost
+    interval: 1m
+    input_series:
+      - series: 'launchpad_indexer_ownership_held{job="indexer"}'
+        values: "0x10"
+      - series: 'launchpad_indexer_rpc_healthy{job="indexer"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: IndexerNotReady
+        exp_alerts:
+          - exp_labels: {severity: page, job: indexer}
+            exp_annotations: {summary: "indexer is not ready (writer lock or chain RPC)"}
+  - name: IndexerNotReady fires when RPC is unhealthy
+    interval: 1m
+    input_series:
+      - series: 'launchpad_indexer_ownership_held{job="indexer"}'
+        values: "1x10"
+      - series: 'launchpad_indexer_rpc_healthy{job="indexer"}'
+        values: "0x10"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: IndexerNotReady
+        exp_alerts:
+          - exp_labels: {severity: page, job: indexer}
+            exp_annotations: {summary: "indexer is not ready (writer lock or chain RPC)"}
+  - name: IndexerNotReady quiet when healthy
+    interval: 1m
+    input_series:
+      - series: 'launchpad_indexer_ownership_held{job="indexer"}'
+        values: "1x10"
+      - series: 'launchpad_indexer_rpc_healthy{job="indexer"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: IndexerNotReady
+        exp_alerts: []
+
+  # IndexerObservedLagHigh
+  - name: IndexerObservedLagHigh fires when head is 400 blocks ahead
+    interval: 1m
+    input_series:
+      - series: 'launchpad_indexer_chain_head_block{job="indexer"}'
+        values: "1400x10"
+      - series: 'launchpad_indexer_block_number{job="indexer",level="observed"}'
+        values: "1000x10"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: IndexerObservedLagHigh
+        exp_alerts:
+          - exp_labels: {severity: page}
+            exp_annotations: {summary: "indexer observed block is more than 300 blocks behind the chain head"}
+  - name: IndexerObservedLagHigh quiet when 100 blocks behind
+    interval: 1m
+    input_series:
+      - series: 'launchpad_indexer_chain_head_block{job="indexer"}'
+        values: "1100x10"
+      - series: 'launchpad_indexer_block_number{job="indexer",level="observed"}'
+        values: "1000x10"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: IndexerObservedLagHigh
+        exp_alerts: []
+
+  # IndexerFinalizedLagHigh
+  - name: IndexerFinalizedLagHigh fires above 30m
+    interval: 1m
+    input_series:
+      - series: 'launchpad_indexer_lag_seconds{job="indexer",level="finalized"}'
+        values: "2000x15"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: IndexerFinalizedLagHigh
+        exp_alerts:
+          - exp_labels: {severity: ticket, job: indexer, level: finalized}
+            exp_annotations: {summary: "indexer finalized block is older than 30 minutes"}
+  - name: IndexerFinalizedLagHigh ignores the observed level
+    interval: 1m
+    input_series:
+      - series: 'launchpad_indexer_lag_seconds{job="indexer",level="observed"}'
+        values: "2000x15"
+      - series: 'launchpad_indexer_lag_seconds{job="indexer",level="finalized"}'
+        values: "600x15"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: IndexerFinalizedLagHigh
+        exp_alerts: []
+
+  # RPCErrorRateHigh: 10% errors and timeouts versus 1% errors
+  - name: RPCErrorRateHigh fires at 10 percent failures
+    interval: 1m
+    input_series:
+      - series: 'launchpad_indexer_rpc_requests_total{job="indexer",method="eth_getBlockByNumber",outcome="ok"}'
+        values: "0+90x30"
+      - series: 'launchpad_indexer_rpc_requests_total{job="indexer",method="eth_getBlockByNumber",outcome="error"}'
+        values: "0+5x30"
+      - series: 'launchpad_indexer_rpc_requests_total{job="indexer",method="eth_getLogs",outcome="timeout"}'
+        values: "0+5x30"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: RPCErrorRateHigh
+        exp_alerts:
+          - exp_labels: {severity: ticket}
+            exp_annotations: {summary: "more than 5% of chain RPC calls fail or time out"}
+  - name: RPCErrorRateHigh quiet at 1 percent failures
+    interval: 1m
+    input_series:
+      - series: 'launchpad_indexer_rpc_requests_total{job="indexer",method="eth_getBlockByNumber",outcome="ok"}'
+        values: "0+99x30"
+      - series: 'launchpad_indexer_rpc_requests_total{job="indexer",method="eth_getBlockByNumber",outcome="error"}'
+        values: "0+1x30"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: RPCErrorRateHigh
+        exp_alerts: []
+
+  # API5xxRateHigh: 5% 5xx at 2 req/s versus the same share at 0.1 req/s
+  - name: API5xxRateHigh fires at 5 percent 5xx and 2 req/s
+    interval: 1m
+    input_series:
+      - series: 'launchpad_api_http_requests_total{job="api",route="/v1/tokens",method="GET",code_class="2xx"}'
+        values: "0+114x30"
+      - series: 'launchpad_api_http_requests_total{job="api",route="/v1/tokens",method="GET",code_class="5xx"}'
+        values: "0+6x30"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: API5xxRateHigh
+        exp_alerts:
+          - exp_labels: {severity: page}
+            exp_annotations: {summary: "more than 1% of API requests return 5xx"}
+  - name: API5xxRateHigh quiet below one request per second
+    interval: 1m
+    input_series:
+      - series: 'launchpad_api_http_requests_total{job="api",route="/v1/tokens",method="GET",code_class="2xx"}'
+        values: "0+3x30"
+      - series: 'launchpad_api_http_requests_total{job="api",route="/v1/tokens",method="GET",code_class="5xx"}'
+        values: "0+3x30"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: API5xxRateHigh
+        exp_alerts: []
+
+  # DatabaseDown
+  - name: DatabaseDown fires when the indexer database is down
+    interval: 1m
+    input_series:
+      - series: 'launchpad_indexer_db_up{job="indexer"}'
+        values: "0x10"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: DatabaseDown
+        exp_alerts:
+          - exp_labels: {severity: page, job: indexer}
+            exp_annotations: {summary: "database is unreachable or the API pool is exhausted"}
+  - name: DatabaseDown fires when the API pool waits with no idle connection
+    interval: 1m
+    input_series:
+      - series: 'launchpad_api_db_pool_acquire_wait_seconds_total{job="api"}'
+        values: "0+10x15"
+      - series: 'launchpad_api_db_pool_idle_conns{job="api"}'
+        values: "0x15"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: DatabaseDown
+        exp_alerts:
+          - exp_labels: {severity: page, job: api}
+            exp_annotations: {summary: "database is unreachable or the API pool is exhausted"}
+  - name: DatabaseDown quiet when the pool waits but has idle connections
+    interval: 1m
+    input_series:
+      - series: 'launchpad_indexer_db_up{job="indexer"}'
+        values: "1x15"
+      - series: 'launchpad_api_db_pool_acquire_wait_seconds_total{job="api"}'
+        values: "0+10x15"
+      - series: 'launchpad_api_db_pool_idle_conns{job="api"}'
+        values: "3x15"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: DatabaseDown
+        exp_alerts: []
+
+  # WriteRejectionSpike: the 5m rate must exceed 10x the 1h average
+  - name: WriteRejectionSpike fires after a sustained surge
+    interval: 1m
+    input_series:
+      # 1 per minute for the first 10 minutes, flat for 50, then 60 per minute.
+      - series: 'launchpad_api_write_rejections_total{job="api",reason="rate_limited"}'
+        values: "0+1x10 10x50 10+60x40"
+    alert_rule_test:
+      - eval_time: 78m
+        alertname: WriteRejectionSpike
+        exp_alerts:
+          - exp_labels: {severity: ticket}
+            exp_annotations: {summary: "write rejections are more than 10x their 1 hour average"}
+  - name: WriteRejectionSpike quiet at a steady rejection rate
+    interval: 1m
+    input_series:
+      - series: 'launchpad_api_write_rejections_total{job="api",reason="rate_limited"}'
+        values: "0+5x90"
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: WriteRejectionSpike
+        exp_alerts: []
+
+  # EthUsdStale
+  - name: EthUsdStale fires when the last success is older than 10m
+    interval: 1m
+    input_series:
+      # The last success was at timestamp 0 and never advanced.
+      - series: 'launchpad_api_eth_usd_last_success_timestamp_seconds{job="api"}'
+        values: "0x30"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: EthUsdStale
+        exp_alerts:
+          - exp_labels: {severity: ticket, job: api}
+            exp_annotations: {summary: "ETH/USD price has not been refreshed for 10 minutes"}
+  - name: EthUsdStale quiet while the price keeps refreshing
+    interval: 1m
+    input_series:
+      # Refreshed every minute: the value tracks the evaluation time in seconds.
+      - series: 'launchpad_api_eth_usd_last_success_timestamp_seconds{job="api"}'
+        values: "0+60x30"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: EthUsdStale
+        exp_alerts: []
+  - name: EthUsdStale quiet when the price source is disabled (no series)
+    interval: 1m
+    input_series:
+      - series: 'up{job="api",instance="api:8082"}'
+        values: "1x30"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: EthUsdStale
+        exp_alerts: []
