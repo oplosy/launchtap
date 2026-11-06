@@ -176,10 +176,17 @@ export function createWatchlistStore() {
           throw new Error("session unavailable");
         }
         if (adding) await api.add(address, headers);
-        else await api.remove(address, headers);
+        else {
+          await api.remove(address, headers);
+          // A removal frees a slot, so a stale server-side "full" no longer holds.
+          fullByServer = false;
+        }
       } catch (cause) {
         set({ addresses: withAddress(address, !adding) });
-        if (cause instanceof ApiProblem && (cause.code === "watchlist_full" || cause.status === 409)) {
+        if (
+          cause instanceof ApiProblem &&
+          (cause.code === "watchlist_full" || cause.status === 409)
+        ) {
           fullByServer = true;
           toastFull();
         } else if (cause instanceof ApiProblem && cause.status === 401) {

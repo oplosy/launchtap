@@ -18,6 +18,7 @@ export const HIGHLIGHTS_REFRESH_MS = 30_000;
 /** Basis points as a one-decimal percentage, clamped to 0-100. */
 export function progressPercent(bps: number) {
   const clamped = Math.min(10_000, Math.max(0, Number.isFinite(bps) ? bps : 0));
+  if (clamped > 0 && clamped < 10) return "<0.1%";
   return `${(Math.floor(clamped / 10) / 10).toFixed(1)}%`;
 }
 

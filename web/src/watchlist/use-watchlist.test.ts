@@ -78,6 +78,22 @@ describe("watchlist store", () => {
     expect(snapshot.full).toBe(true);
   });
 
+  it("clears the server-full flag once a removal succeeds", async () => {
+    const { store, deps } = setup({
+      list: vi.fn(async () => ({
+        items: [{ address: OTHER, added_at: "2026-11-05T00:00:00Z", token: null }],
+      })),
+      add: vi.fn(async () => {
+        throw new ApiProblem(409, "watchlist_full");
+      }),
+    });
+    await store.load(deps);
+    await store.toggle(TOKEN, deps);
+    expect(store.getSnapshot().full).toBe(true);
+    await store.toggle(OTHER, deps);
+    expect(store.getSnapshot().full).toBe(false);
+  });
+
   it("does not send a request once the local list is already full", async () => {
     const items = Array.from({ length: WATCHLIST_LIMIT }, (_, index) => ({
       address: `0x${(index + 4096).toString(16).padStart(40, "0")}`,
@@ -225,7 +241,9 @@ describe("watchlist availability", () => {
   const base = { apiReady: true, sessionAvailable: false, walletAvailable: true };
 
   it("is ready whenever a Privy session exists", () => {
-    expect(watchlistAvailability({ ...base, sessionAvailable: true, stack: "mounted" })).toBe("ready");
+    expect(watchlistAvailability({ ...base, sessionAvailable: true, stack: "mounted" })).toBe(
+      "ready",
+    );
   });
 
   it("is unavailable when the mounted stack has no watchlist session (no Privy)", () => {
