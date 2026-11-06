@@ -4,8 +4,12 @@ package realtime
 import (
 	"encoding/json"
 	"errors"
+	"math/big"
 	"sync"
 	"sync/atomic"
+	"time"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var ErrCapacity = errors.New("SSE subscriber capacity reached")
@@ -18,6 +22,57 @@ type Event struct {
 	AsOfBlock      int64  `json:"as_of_block,omitempty"`
 	AsOfBlockHash  string `json:"as_of_block_hash,omitempty"`
 	CommonAncestor int64  `json:"common_ancestor,omitempty"`
+
+	// Feed events (trade, graduation, new_token, trade_burst, finality) are produced in-process by the
+	// feed tail and never decoded from NOTIFY.
+	Trade          *Trade       `json:"trade,omitempty"`
+	Graduation     *Graduation  `json:"graduation,omitempty"`
+	Launch         *Launch      `json:"launch,omitempty"`
+	Burst          []BurstCount `json:"burst,omitempty"`
+	BurstStart     time.Time    `json:"burst_start,omitempty"`
+	BurstEnd       time.Time    `json:"burst_end,omitempty"`
+	SafeBlock      int64        `json:"safe_block,omitempty"`
+	FinalizedBlock int64        `json:"finalized_block,omitempty"`
+}
+
+// BurstCount is the number of trades of one token that were rolled into a trade_burst event.
+type BurstCount struct {
+	Token string `json:"token"`
+	Count int    `json:"count"`
+}
+
+type Trade struct {
+	Token        common.Address
+	Name, Symbol string
+	Source       string
+	Trader       *common.Address
+	Buy          bool
+	ETHVolume    *big.Int
+	TokenVolume  *big.Int
+	Block        int64
+	TxIndex      int32
+	TxHash       common.Hash
+	LogIndex     int32
+	Time         time.Time
+	Finality     string
+}
+
+type Graduation struct {
+	Token, Pair  common.Address
+	Name, Symbol string
+	TxHash       common.Hash
+	Block        int64
+	TxIndex      int32
+	LogIndex     int32
+}
+
+type Launch struct {
+	Token, Creator common.Address
+	Name, Symbol   string
+	TxHash         common.Hash
+	Block          int64
+	TxIndex        int32
+	LogIndex       int32
 }
 
 func Decode(data []byte) (Event, error) {

@@ -2,10 +2,8 @@ package feed
 
 import (
 	"context"
-	"math/big"
-	"time"
 
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/Contictus/launchtap/backend/internal/realtime"
 )
 
 // Cursor is a chain position ordered by (Block, TxIndex, LogIndex). The zero value precedes every event.
@@ -15,39 +13,12 @@ type Cursor struct {
 	LogIndex int32
 }
 
-type Trade struct {
-	Token        common.Address
-	Name, Symbol string
-	Source       string
-	Trader       *common.Address
-	Buy          bool
-	ETHVolume    *big.Int
-	TokenVolume  *big.Int
-	Block        int64
-	TxIndex      int32
-	TxHash       common.Hash
-	LogIndex     int32
-	Time         time.Time
-	Finality     string
-}
-
-type Graduation struct {
-	Token, Pair  common.Address
-	Name, Symbol string
-	TxHash       common.Hash
-	Block        int64
-	TxIndex      int32
-	LogIndex     int32
-}
-
-type Launch struct {
-	Token, Creator common.Address
-	Name, Symbol   string
-	TxHash         common.Hash
-	Block          int64
-	TxIndex        int32
-	LogIndex       int32
-}
+// Trade, Graduation and Launch live in realtime (Event embeds them, and realtime cannot import feed).
+type (
+	Trade      = realtime.Trade
+	Graduation = realtime.Graduation
+	Launch     = realtime.Launch
+)
 
 // Watermarks holds the safe and finalized block numbers; 0 when unknown.
 type Watermarks struct{ Safe, Finalized int64 }
