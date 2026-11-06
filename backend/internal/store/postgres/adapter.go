@@ -202,7 +202,7 @@ func (adapter *Adapter) InsertPoolSwap(ctx context.Context, event ledger.PoolSwa
 		return ledger.InsertResult{}, err
 	}
 	return adapter.insertEvent(ctx, "pool_swap", eventParams(event.EventCoordinates), func() (int64, error) { return adapter.queries.InsertPoolSwap(ctx, arg) }, func() (pgtype.Bool, error) {
-		return adapter.queries.PoolSwapMatchesEvent(ctx, sqlc.PoolSwapMatchesEventParams(arg))
+		return adapter.queries.PoolSwapMatchesEvent(ctx, poolSwapMatchParams(arg))
 	})
 }
 func (adapter *Adapter) InsertPoolSync(ctx context.Context, event ledger.PoolSync) (ledger.InsertResult, error) {

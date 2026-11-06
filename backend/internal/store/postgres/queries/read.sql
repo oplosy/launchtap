@@ -316,7 +316,7 @@ WITH curve AS (
     SELECT token.token_address, swap.block_number, swap.block_time, swap.transaction_index,
            swap.tx_hash, swap.log_index, 'dex'::TEXT AS source,
            CASE WHEN token.token_is_token0 THEN swap.amount0_out > 0 ELSE swap.amount1_out > 0 END AS side_buy,
-           NULL::BYTEA AS trader, legs.eth_volume AS gross_eth_volume, legs.token_volume,
+           swap.tx_from AS trader, legs.eth_volume AS gross_eth_volume, legs.token_volume,
            block.finality_status AS finality
     FROM pool_swaps AS swap
     JOIN tokens AS token
@@ -374,7 +374,7 @@ WITH curve AS (
     SELECT token.token_address, swap.block_number, swap.block_time, swap.transaction_index,
            swap.tx_hash, swap.log_index, 'dex'::TEXT AS source,
            CASE WHEN token.token_is_token0 THEN swap.amount0_out > 0 ELSE swap.amount1_out > 0 END AS side_buy,
-           NULL::BYTEA AS trader, legs.eth_volume AS gross_eth_volume, legs.token_volume,
+           swap.tx_from AS trader, legs.eth_volume AS gross_eth_volume, legs.token_volume,
            block.finality_status AS finality
     FROM pool_swaps AS swap
     JOIN tokens AS token
@@ -449,7 +449,7 @@ WITH curve AS (
     SELECT token.token_address, swap.block_number, swap.block_time, swap.transaction_index,
            swap.tx_hash, swap.log_index, 'dex'::TEXT AS source,
            CASE WHEN token.token_is_token0 THEN swap.amount0_out > 0 ELSE swap.amount1_out > 0 END AS side_buy,
-           NULL::BYTEA AS trader, legs.eth_volume AS gross_eth_volume, legs.token_volume,
+           swap.tx_from AS trader, legs.eth_volume AS gross_eth_volume, legs.token_volume,
            block.finality_status AS finality
     FROM pool_swaps AS swap
     JOIN tokens AS token

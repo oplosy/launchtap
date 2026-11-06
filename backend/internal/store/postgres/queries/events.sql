@@ -101,8 +101,9 @@ SELECT chain_id=$1 AND block_number=$2 AND block_hash=$3 AND block_time=$4 AND t
 FROM pool_burns WHERE chain_id=$1 AND tx_hash=$6 AND log_index=$7;
 
 -- name: InsertPoolSwap :execrows
-INSERT INTO pool_swaps (chain_id, block_number, block_hash, block_time, transaction_index, tx_hash, log_index, pair_address, sender, amount0_in, amount1_in, amount0_out, amount1_out, to_address)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT (chain_id, tx_hash, log_index) DO NOTHING;
+INSERT INTO pool_swaps (chain_id, block_number, block_hash, block_time, transaction_index, tx_hash, log_index, pair_address, sender, amount0_in, amount1_in, amount0_out, amount1_out, to_address, tx_from)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT (chain_id, tx_hash, log_index) DO NOTHING;
+-- tx_from is enrichment, not event identity: the match below ignores it.
 -- name: PoolSwapMatchesEvent :one
 SELECT chain_id=$1 AND block_number=$2 AND block_hash=$3 AND block_time=$4 AND transaction_index=$5 AND tx_hash=$6 AND log_index=$7 AND pair_address=$8 AND sender=$9 AND amount0_in=$10 AND amount1_in=$11 AND amount0_out=$12 AND amount1_out=$13 AND to_address=$14
 FROM pool_swaps WHERE chain_id=$1 AND tx_hash=$6 AND log_index=$7;

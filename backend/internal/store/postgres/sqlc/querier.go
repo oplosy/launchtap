@@ -128,6 +128,7 @@ type Querier interface {
 	NotifyAPIRefresh(ctx context.Context, payload string) error
 	PoolBurnMatchesEvent(ctx context.Context, arg PoolBurnMatchesEventParams) (pgtype.Bool, error)
 	PoolMintMatchesEvent(ctx context.Context, arg PoolMintMatchesEventParams) (pgtype.Bool, error)
+	// tx_from is enrichment, not event identity: the match below ignores it.
 	PoolSwapMatchesEvent(ctx context.Context, arg PoolSwapMatchesEventParams) (pgtype.Bool, error)
 	PoolSyncMatchesEvent(ctx context.Context, arg PoolSyncMatchesEventParams) (pgtype.Bool, error)
 	PromoteIndexedBlocks(ctx context.Context, arg PromoteIndexedBlocksParams) error

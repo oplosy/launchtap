@@ -523,8 +523,8 @@ func (q *Queries) InsertPoolMint(ctx context.Context, arg InsertPoolMintParams) 
 }
 
 const insertPoolSwap = `-- name: InsertPoolSwap :execrows
-INSERT INTO pool_swaps (chain_id, block_number, block_hash, block_time, transaction_index, tx_hash, log_index, pair_address, sender, amount0_in, amount1_in, amount0_out, amount1_out, to_address)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT (chain_id, tx_hash, log_index) DO NOTHING
+INSERT INTO pool_swaps (chain_id, block_number, block_hash, block_time, transaction_index, tx_hash, log_index, pair_address, sender, amount0_in, amount1_in, amount0_out, amount1_out, to_address, tx_from)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT (chain_id, tx_hash, log_index) DO NOTHING
 `
 
 type InsertPoolSwapParams struct {
@@ -542,6 +542,7 @@ type InsertPoolSwapParams struct {
 	Amount0Out       Uint256
 	Amount1Out       Uint256
 	ToAddress        Address
+	TxFrom           *Address
 }
 
 func (q *Queries) InsertPoolSwap(ctx context.Context, arg InsertPoolSwapParams) (int64, error) {
@@ -560,6 +561,7 @@ func (q *Queries) InsertPoolSwap(ctx context.Context, arg InsertPoolSwapParams) 
 		arg.Amount0Out,
 		arg.Amount1Out,
 		arg.ToAddress,
+		arg.TxFrom,
 	)
 	if err != nil {
 		return 0, err
@@ -1081,6 +1083,7 @@ type PoolSwapMatchesEventParams struct {
 	ToAddress        Address
 }
 
+// tx_from is enrichment, not event identity: the match below ignores it.
 func (q *Queries) PoolSwapMatchesEvent(ctx context.Context, arg PoolSwapMatchesEventParams) (pgtype.Bool, error) {
 	row := q.db.QueryRow(ctx, poolSwapMatchesEvent,
 		arg.ChainID,

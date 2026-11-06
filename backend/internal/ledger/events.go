@@ -101,6 +101,8 @@ type PoolSwap struct {
 	Pair, Sender                                 common.Address
 	Amount0In, Amount1In, Amount0Out, Amount1Out *big.Int
 	To                                           common.Address
+	// TxFrom is the transaction sender, the wallet that traded. Nil means not yet known.
+	TxFrom *common.Address
 }
 type PoolSync struct {
 	EventCoordinates

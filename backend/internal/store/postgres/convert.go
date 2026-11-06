@@ -7,6 +7,7 @@ import (
 
 	"github.com/Contictus/launchtap/backend/internal/ledger"
 	"github.com/Contictus/launchtap/backend/internal/store/postgres/sqlc"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -191,7 +192,26 @@ func poolSwapParams(event ledger.PoolSwap) (sqlc.InsertPoolSwapParams, error) {
 			return sqlc.InsertPoolSwapParams{}, err
 		}
 	}
-	return sqlc.InsertPoolSwapParams{ChainID: b.ChainID, BlockNumber: b.BlockNumber, BlockHash: b.BlockHash, BlockTime: b.BlockTime, TransactionIndex: b.TransactionIndex, TxHash: b.TxHash, LogIndex: b.LogIndex, PairAddress: sqlc.Address(event.Pair), Sender: sqlc.Address(event.Sender), Amount0In: converted[0], Amount1In: converted[1], Amount0Out: converted[2], Amount1Out: converted[3], ToAddress: sqlc.Address(event.To)}, nil
+	return sqlc.InsertPoolSwapParams{ChainID: b.ChainID, BlockNumber: b.BlockNumber, BlockHash: b.BlockHash, BlockTime: b.BlockTime, TransactionIndex: b.TransactionIndex, TxHash: b.TxHash, LogIndex: b.LogIndex, PairAddress: sqlc.Address(event.Pair), Sender: sqlc.Address(event.Sender), Amount0In: converted[0], Amount1In: converted[1], Amount0Out: converted[2], Amount1Out: converted[3], ToAddress: sqlc.Address(event.To), TxFrom: txFromBytes(event.TxFrom)}, nil
+}
+
+// txFromBytes maps an unknown (nil) sender to SQL NULL.
+func txFromBytes(sender *common.Address) *sqlc.Address {
+	if sender == nil {
+		return nil
+	}
+	converted := sqlc.Address(*sender)
+	return &converted
+}
+
+// poolSwapMatchParams drops tx_from: the sender is enrichment, not part of event identity.
+func poolSwapMatchParams(arg sqlc.InsertPoolSwapParams) sqlc.PoolSwapMatchesEventParams {
+	return sqlc.PoolSwapMatchesEventParams{
+		ChainID: arg.ChainID, BlockNumber: arg.BlockNumber, BlockHash: arg.BlockHash, BlockTime: arg.BlockTime,
+		TransactionIndex: arg.TransactionIndex, TxHash: arg.TxHash, LogIndex: arg.LogIndex,
+		PairAddress: arg.PairAddress, Sender: arg.Sender, Amount0In: arg.Amount0In, Amount1In: arg.Amount1In,
+		Amount0Out: arg.Amount0Out, Amount1Out: arg.Amount1Out, ToAddress: arg.ToAddress,
+	}
 }
 func poolSyncParams(event ledger.PoolSync) (sqlc.InsertPoolSyncParams, error) {
 	b := eventParams(event.EventCoordinates)
