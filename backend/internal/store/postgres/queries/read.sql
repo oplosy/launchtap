@@ -245,7 +245,7 @@ WITH legs AS (
            max(block_time)::timestamptz AS last_trade_time
     FROM legs
     GROUP BY token_address
-    HAVING sum(volume) > 0
+    HAVING sum(volume) > 0 AND count(DISTINCT buyer) > 0
 )
 SELECT t.token_address, t.name, t.symbol, t.phase,
        t.launch_block_number, t.launch_block_time, t.total_supply,

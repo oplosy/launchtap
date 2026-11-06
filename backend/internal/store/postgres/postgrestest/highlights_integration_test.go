@@ -78,8 +78,8 @@ func TestHighlightsTrending(t *testing.T) {
 	windowStart := now.Add(-60 * time.Minute)
 	db := database.DB
 
-	a, b, c, d, e := newHighlightsToken(0x10), newHighlightsToken(0x20), newHighlightsToken(0x30), newHighlightsToken(0x40), newHighlightsToken(0x60)
-	for i, tok := range []highlightsToken{a, b, c, d, e} {
+	a, b, c, d, e, f := newHighlightsToken(0x10), newHighlightsToken(0x20), newHighlightsToken(0x30), newHighlightsToken(0x40), newHighlightsToken(0x60), newHighlightsToken(0x70)
+	for i, tok := range []highlightsToken{a, b, c, d, e, f} {
 		insertHighlightsLaunch(t, ctx, db, int64(i+1), now.Add(-3*time.Hour), tok)
 	}
 	// A: one buyer, 10. Latest trade of the tie below.
@@ -98,9 +98,11 @@ func TestHighlightsTrending(t *testing.T) {
 	}
 	// C: only a trade 61 minutes old, outside the window.
 	insertHighlightsTrade(t, ctx, db, 17, now.Add(-61*time.Minute), c, 0xb5, true, 50)
+	// F: volume in the window but only sells, so no buyer: must not be listed.
+	insertHighlightsTrade(t, ctx, db, 18, now.Add(-15*time.Minute), f, 0xb7, false, 40)
 	// D: a trade in a block that is reorged away below.
 	insertHighlightsTrade(t, ctx, db, 30, now.Add(-time.Minute), d, 0xb6, true, 100)
-	for _, tok := range []highlightsToken{a, b, c, d, e} {
+	for _, tok := range []highlightsToken{a, b, c, d, e, f} {
 		callRebuild(t, ctx, db, highlightsChainID, tok.address)
 	}
 	insertHighlightsSync(t, ctx, db, deployment, 20, now)
@@ -137,6 +139,9 @@ func TestHighlightsTrending(t *testing.T) {
 	for _, row := range got.Trending {
 		if row.Address == common.BytesToAddress(c.address) {
 			t.Fatal("token C (trade outside the window) must be absent")
+		}
+		if row.Address == common.BytesToAddress(f.address) {
+			t.Fatal("token F (sell-only, zero buyers) must be absent")
 		}
 		if row.Address == common.BytesToAddress(d.address) {
 			t.Fatal("token D (reorged trade) must be absent")
