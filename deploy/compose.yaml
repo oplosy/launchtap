@@ -151,8 +151,9 @@ services:
     # Operators reach the UI locally; it is never exposed by the proxy.
     ports: ["127.0.0.1:9090:9090"]
     depends_on:
-      api: { condition: service_healthy }
-      indexer: { condition: service_healthy }
+      # started, not healthy: monitoring must come up while the indexer is unhealthy.
+      api: { condition: service_started }
+      indexer: { condition: service_started }
       alertmanager: { condition: service_healthy }
     read_only: true
     cap_drop: [ALL]
