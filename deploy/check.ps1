@@ -123,10 +123,6 @@ try {
         '-p', '127.0.0.1::8080') + $chainEnv + @('-e', 'API_METRICS_ADDR=:8082',
         '-e', 'PRIVY_APP_ID=container-check-only', '-e', "PRIVY_VERIFICATION_KEY=$publicPem",
         '-e', 'API_ALLOWED_ORIGINS=https://web.example.invalid', $backendImage)) | Out-Null
-    Invoke-Docker (@('run', '-d', '--name', $indexer, '--network', $network, '--network-alias', 'indexer',
-        '--read-only', '--tmpfs', '/tmp', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true') + $chainEnv +
-        @('-e', 'INDEXER_HEALTH_ADDR=:8081', '-e', 'INDEXER_WORKER_ID=disposable-check',
-        $backendImage, '/app/indexer')) | Out-Null
     Invoke-Docker @('run', '-d', '--name', $web, '--read-only', '--tmpfs', '/tmp',
         '--tmpfs', '/app/.next/cache:uid=1000,gid=1000', '--cap-drop', 'ALL',
         '--security-opt', 'no-new-privileges:true', '-p', '127.0.0.1::3000', $webImage) | Out-Null
@@ -150,6 +146,11 @@ try {
     # Caddy only forwards to api:8080, so a 404 here proves the public listener serves no metrics.
     $publicMetrics = Invoke-WebRequest "http://$apiBinding/metrics" -SkipHttpErrorCheck
     if ($publicMetrics.StatusCode -ne 404) { throw 'Public API listener must not serve /metrics' }
+    # Started only after the readiness rejection: the indexer would commit a watermark and make /readyz 200.
+    Invoke-Docker (@('run', '-d', '--name', $indexer, '--network', $network, '--network-alias', 'indexer',
+        '--read-only', '--tmpfs', '/tmp', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true') + $chainEnv +
+        @('-e', 'INDEXER_HEALTH_ADDR=:8081', '-e', 'INDEXER_WORKER_ID=disposable-check',
+        $backendImage, '/app/indexer')) | Out-Null
 
     Invoke-Docker @('run', '-d', '--name', $alertmanager, '--network', $network, '--network-alias', 'alertmanager',
         '--read-only', '--tmpfs', '/alertmanager:uid=65534,gid=65534', '--cap-drop', 'ALL',

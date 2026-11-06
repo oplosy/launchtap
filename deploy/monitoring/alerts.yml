@@ -66,11 +66,12 @@ groups:
 
       # The baseline is the 1h average ending 15m ago (the "for" hold); a plain 1h average
       # includes the surge itself and could never exceed 10x over a 15m hold. With a zero
-      # baseline any sustained rejection fires.
+      # baseline only rates above 0.05/s (3 per minute) fire.
       - alert: WriteRejectionSpike
         expr: |
           sum(rate(launchpad_api_write_rejections_total[5m]))
             > 10 * sum(rate(launchpad_api_write_rejections_total[1h] offset 15m))
+          and sum(rate(launchpad_api_write_rejections_total[5m])) > 0.05
         for: 15m
         labels: {severity: ticket}
         annotations:

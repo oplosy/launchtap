@@ -221,6 +221,28 @@ tests:
         exp_alerts:
           - exp_labels: {severity: ticket}
             exp_annotations: {summary: "write rejections are more than 10x their 1 hour average"}
+  - name: WriteRejectionSpike quiet with a zero baseline and a rate below the floor
+    interval: 1m
+    input_series:
+      # No rejections for an hour, then 1 per minute (0.017/s, under the 0.05/s floor).
+      - series: 'launchpad_api_write_rejections_total{job="api",reason="rate_limited"}'
+        values: "0x60 0+1x30"
+    alert_rule_test:
+      - eval_time: 85m
+        alertname: WriteRejectionSpike
+        exp_alerts: []
+  - name: WriteRejectionSpike fires on a burst above the floor with a zero baseline
+    interval: 1m
+    input_series:
+      # No rejections for an hour, then 60 per minute (1/s).
+      - series: 'launchpad_api_write_rejections_total{job="api",reason="rate_limited"}'
+        values: "0x60 0+60x30"
+    alert_rule_test:
+      - eval_time: 78m
+        alertname: WriteRejectionSpike
+        exp_alerts:
+          - exp_labels: {severity: ticket}
+            exp_annotations: {summary: "write rejections are more than 10x their 1 hour average"}
   - name: WriteRejectionSpike quiet at a steady rejection rate
     interval: 1m
     input_series:
