@@ -88,6 +88,38 @@
 - **Pitfalls / notes:** Existing clones cannot be fixed. Do not commit the RPC URL, keys, or a
   predicted implementation address before its deployment receipt exists.
 
+### P0-B follow-ups: live feed minors deferred in review
+
+- **Date:** 2026-11-06
+- **Reason:** scope decision (minor findings from the P0-B task and final reviews)
+- **Where it stopped:** P0-B is done (see Done). These were judged minor and deferred.
+- **Related files:** `backend/internal/feed/tail.go`, `backend/cmd/api/main.go`,
+  `web/src/live/`, `web/src/token/token-detail.tsx`, `web/e2e/`,
+  `web/scripts/run-e2e-live-strip.mjs`, `.gitattributes`
+- **Resume (next step):** pick from this list, highest first:
+  1. Backend tail: rewind to the safe block when the Postgres LISTEN connection reconnects (a
+     lost `reorg` hint means no rewind); rate-limit or batch `new_token`/`graduation` like
+     trades (a launch-heavy block can evict subscribers with the 64-event buffer); publish
+     launches/trades/graduations in global chain order; guard `Tail.Start` against a second
+     call; a reorg hint before `Newest` succeeds replays history.
+  2. Notifications: large-trade and own-trade notifications are lost when trades fold into
+     `trade_burst`; own pool (dex) trades never notify because the trader is null.
+  3. Web: emit the `reconnected` signal on the EventSource `open` event, not right after
+     `connect()`, to close the last small recovery gap (`web/src/api/sse.ts` ~131); catch the
+     harmless abort rejection when a reconnect reload cancels a reorg refresh on the token page;
+     show the token image in the strip (spec item); live token-page rows show "—" prices
+     until the next REST refresh; `generateMetadata` can block up to 3 s on a slow API; a
+     generic share card served during an API outage stays cached up to 300 s.
+  4. Tests/tooling: `.gitattributes` `eol=lf` for `backend/openapi/v1.json` (local CRLF makes
+     `check-openapi` report stale); live e2e excludes "mobile footer" (fix: wait for the
+     `/create` panel to settle) and Windows `shell: true` splits `--grep-invert`; release-hardening
+     SVG clipping exemption is broader than needed (skip opacity-0 elements instead); no e2e for
+     bell focus-out or the browser reorg flow.
+  5. Ops: 5+ tabs from one client exceed `API_SSE_MAX_PER_CLIENT` (default 4) because the stream
+     is app-wide; document share-card render cost per distinct address in the runbook.
+- **Pitfalls / notes:** keep amounts as decimal strings / `*big.Int`; the web unit tests run in
+  node only (no DOM), so put logic in pure `.ts` modules.
+
 ### Production release, governance, and audit inputs
 
 - **Date:** 2026-10-04
@@ -135,19 +167,19 @@
 ### P0-B: live trade feed, in-app notifications and share cards
 
 - **Date:** 2026-11-06
-- **Commits:** `145bf0f..43c2e01` on `dev` (plan `docs/plans/2026-11-06-p0b-live-feed.md`,
-  spec `docs/specs/2026-11-06-p0b-live-feed-notifications-share-design.md`).
-- **Gate evidence:** see `.superpowers/sdd/2026-11-06-p0b-live-feed/task-8-report.md`. The Anvil
-  gate (`cd web && npm run test:anvil`) asserts that a buy shows in the Explore strip and in
-  Recent trades without reload within 3 s (AC1). The gate has no reorg path for the feed; reorg
-  removal is covered by `backend/internal/feed/tail_test.go`, `web/src/live/feed-store.test.ts`
-  and the `mergeRecent` R13 test.
+- **Commits:** `145bf0f..727317b` on `dev` (plan `docs/plans/2026-11-06-p0b-live-feed.md`,
+  spec `docs/specs/2026-11-06-p0b-live-feed-notifications-share-design.md`), plus this backlog
+  update.
+- **Gate evidence:** the Anvil gate (`cd web && npm run test:anvil`, 20 passed) asserts that a
+  buy shows in the Explore strip and in Recent trades without reload within 3 s (AC1).
+  `task verify`, web lint/typecheck/test (267) and the token-detail and live-strip e2e suites
+  passed locally. The gate has no reorg path for the feed; reorg removal is covered by
+  `backend/internal/feed/tail_test.go`, `web/src/live/feed-store.test.ts` and
+  `web/src/live/live-strip-model.test.ts` (token-page reload after a reorg).
 - **Sub-project C scope note:** notifications matching on wallet holdings (needs a public
   wallet-holdings read), the profile/wallet share card, public wallet page and PnL move to
   sub-project C. P0-B notifications cover watched tokens and the signed-in wallet's own trades.
-- **Open follow-ups (minor, deferred in review):** see the ledger
-  `.superpowers/sdd/2026-11-06-p0b-live-feed/progress.md` (for example verify:bundle on a
-  plain no-env build, live e2e `mobile footer` grep, Windows `--grep-invert` splitting).
+- **Open follow-ups:** see the Active item "P0-B follow-ups".
 
 ### Observability: metrics and alerting
 
