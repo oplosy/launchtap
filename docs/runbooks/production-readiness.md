@@ -156,6 +156,39 @@ Alert rules (`deploy/monitoring/alerts.yml`, unit-tested in `alerts.test.yml`):
 - `RPCErrorRateHigh` counts an unsupported safe or finalized block tag as an
   `eth_getBlockByNumber` error, so a chain without those tags will raise it.
 
+### Live feed (P0-B)
+
+The API publishes trades, graduations and launches over the existing SSE stream
+(`GET /v1/events`) and `GET /v1/trades/recent`. Four API metrics (on `API_METRICS_ADDR`)
+describe it:
+
+| Metric | Meaning |
+|--------|---------|
+| `launchpad_api_feed_events_published_total{type}` | feed events handed to the hub, by event type |
+| `launchpad_api_feed_bursts_total` | trade bursts: more than 20 trade events/s in one API process, the overflow becomes one `trade_burst` event |
+| `launchpad_api_feed_tail_lag_seconds` | age of the newest feed event the tail has published |
+| `launchpad_api_feed_read_errors_total{op}` | feed database read failures; `op` is `newest`, `trades`, `graduations`, `launches` or `watermarks` |
+
+- Each SSE subscriber has a buffer of 64 events. A subscriber that falls behind is evicted and
+  reconnects, then refills from `GET /v1/trades/recent`. A steady rise in evictions points at
+  slow clients or an event storm, not at the database.
+- The web app opens one shared SSE stream per browser tab on every route. Five or more tabs from
+  one client address exceed `API_SSE_MAX_PER_CLIENT` (default 4); the extra tabs fall back to
+  slow retries. Raise the limit only if shared NATs make this common.
+- Web server-side reads (share-card metadata and images) use the private `API_INTERNAL_BASE_URL`
+  (Compose: `http://api:8080`, http or https only). It is required when
+  `NEXT_PUBLIC_API_BASE_URL` is a loopback address, and the container preflight rejects the
+  deployment otherwise. `NEXT_PUBLIC_WEB_ORIGIN` also drives share links and canonical URLs.
+- Share cards (`/token/<address>/opengraph-image` and the Twitter image) are cached in memory
+  per web process for 300 s (`experimental.isrFlushToDisk=false`, because the container root
+  filesystem is read-only). A generic card served during an API outage, or for a token seconds
+  after launch, can stay cached up to 300 s, plus any downstream stale-while-revalidate window.
+  Card text shows only characters the bundled font covers (emoji and CJK are stripped; the card
+  falls back to `$SYMBOL`), so the renderer never contacts a third party.
+- Notifications are in-app and session-only (watched tokens and the signed-in wallet's own
+  trades). They exist only where the wallet stack is loaded (token, create and profile routes,
+  then for the rest of the tab). Matching on wallet holdings is sub-project C.
+
 ## Audit evidence checklist
 
 The audit packet must identify the exact commit and contain the Solidity source/artifact

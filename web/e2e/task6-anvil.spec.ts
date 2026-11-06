@@ -94,6 +94,12 @@ async function installWallet(page: Page, initialChainId = "0x7a69") {
   );
 }
 
+// The notification toast region is also a polite live region (role="status") on every
+// wallet route, so transaction status excludes it.
+function transactionStatus(page: Page) {
+  return page.locator('[role="status"]:not(.notify-toasts)');
+}
+
 async function connectWallet(page: Page) {
   await page.getByRole("button", { name: "Connect wallet" }).last().click();
   const dialog = page.getByRole("dialog", { name: "Choose a wallet" });
@@ -161,7 +167,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
       fullPage: true,
     });
     await page.getByRole("button", { name: "Sign launch" }).click();
-    const status = page.getByRole("status");
+    const status = transactionStatus(page);
     await expect(status).toContainText(/indexing|indexed|safe|finalized/i, { timeout: 30_000 });
     const hash = (await status.textContent())?.match(/0x[0-9a-f]{64}/i)?.[0];
     expect(hash).toBeTruthy();
@@ -186,7 +192,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.getByLabel("Ticker").fill("BT6");
     await page.getByRole("button", { name: "Review launch" }).click();
     await page.getByRole("button", { name: "Sign launch" }).click();
-    const launchStatus = page.getByRole("status").last();
+    const launchStatus = transactionStatus(page).last();
     await expect(launchStatus).toContainText(/indexing|indexed|safe|finalized/i, {
       timeout: 30_000,
     });
@@ -313,10 +319,9 @@ test.describe("Task 6 Anvil transaction gate", () => {
     expect(reviewedCall).toMatch(/^buy\(/);
     expect(reviewedValueWei).toBeGreaterThan(0n);
     await page.getByRole("button", { name: "Sign buy" }).click();
-    await expect(page.getByRole("status").last()).toContainText(
-      /indexing|indexed|safe|finalized/i,
-      { timeout: 30_000 },
-    );
+    await expect(transactionStatus(page).last()).toContainText(/indexing|indexed|safe|finalized/i, {
+      timeout: 30_000,
+    });
     const writeRequests = await page.evaluate(
       () =>
         (
@@ -441,7 +446,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
       (window as unknown as { __task6RejectNext: boolean }).__task6RejectNext = true;
     });
     await page.getByRole("button", { name: "Sign launch" }).click();
-    await expect(page.getByRole("status")).toContainText(/rejected-signature/i, {
+    await expect(transactionStatus(page)).toContainText(/rejected-signature/i, {
       timeout: 10_000,
     });
   });
@@ -459,7 +464,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
       /developer buy exceeds the contract cap/i,
       { timeout: 15_000 },
     );
-    await expect(page.getByRole("status")).toContainText(/simulation-reverted/i);
+    await expect(transactionStatus(page)).toContainText(/simulation-reverted/i);
   });
 
   test("uses the reviewed graduated router for wrong-chain, buy, approval, and sell", async ({
@@ -472,7 +477,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.getByLabel("Ticker").fill("GR6");
     await page.getByRole("button", { name: "Review launch" }).click();
     await page.getByRole("button", { name: "Sign launch" }).click();
-    const launchStatus = page.getByRole("status").last();
+    const launchStatus = transactionStatus(page).last();
     await expect(launchStatus).toContainText(/indexing|indexed|safe|finalized/i, {
       timeout: 30_000,
     });
@@ -493,11 +498,10 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.getByLabel("ETH input").fill("5");
     await page.getByRole("button", { name: "Review buy" }).click();
     await page.getByRole("button", { name: "Sign buy" }).click();
-    await expect(page.getByRole("status").last()).toContainText(
-      /indexing|indexed|safe|finalized/i,
-      { timeout: 45_000 },
-    );
-    const graduationHash = (await page.getByRole("status").last().textContent())?.match(
+    await expect(transactionStatus(page).last()).toContainText(/indexing|indexed|safe|finalized/i, {
+      timeout: 45_000,
+    });
+    const graduationHash = (await transactionStatus(page).last().textContent())?.match(
       /0x[0-9a-f]{64}/i,
     )?.[0];
     expect(graduationHash).toBeTruthy();
@@ -610,10 +614,9 @@ test.describe("Task 6 Anvil transaction gate", () => {
       fullPage: true,
     });
     await page.getByRole("button", { name: "Sign buy" }).click();
-    await expect(page.getByRole("status").last()).toContainText(
-      /indexing|indexed|safe|finalized/i,
-      { timeout: 30_000 },
-    );
+    await expect(transactionStatus(page).last()).toContainText(/indexing|indexed|safe|finalized/i, {
+      timeout: 30_000,
+    });
     await page.getByRole("tab", { name: "Sell" }).click();
     await page.getByLabel(/GR6 input/).fill("1");
     await page.getByRole("button", { name: "Review sell" }).click();
@@ -679,7 +682,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.getByLabel("Ticker").fill("DS12");
     await page.getByRole("button", { name: "Review launch" }).click();
     await page.getByRole("button", { name: "Sign launch" }).click();
-    const launchStatus = page.getByRole("status").last();
+    const launchStatus = transactionStatus(page).last();
     await expect(launchStatus).toContainText(/indexing|indexed|safe|finalized/i, {
       timeout: 30_000,
     });
@@ -701,10 +704,9 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.getByLabel("ETH input").fill("0.001");
     await page.getByRole("button", { name: "Review buy" }).click();
     await page.getByRole("button", { name: "Sign buy" }).click();
-    await expect(page.getByRole("status").last()).toContainText(
-      /indexing|indexed|safe|finalized/i,
-      { timeout: 30_000 },
-    );
+    await expect(transactionStatus(page).last()).toContainText(/indexing|indexed|safe|finalized/i, {
+      timeout: 30_000,
+    });
 
     // The token detail page shows no USD line or CoinGecko attribution without a price source.
     await expect(page.getByText("Data provided by CoinGecko")).toHaveCount(0);
@@ -784,6 +786,81 @@ test.describe("Task 6 Anvil transaction gate", () => {
     }
   });
 
+  test("a buy appears in the Explore strip and Recent trades without reload within 3 seconds of commit", async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(120_000);
+    const tokenName = "Live Feed Task 8";
+    await installWallet(page);
+    await page.goto("/create");
+    await connectWallet(page);
+    await page.getByLabel("Name").fill(tokenName);
+    await page.getByLabel("Ticker").fill("LF8");
+    await page.getByRole("button", { name: "Review launch" }).click();
+    await page.getByRole("button", { name: "Sign launch" }).click();
+    const launchStatus = transactionStatus(page).last();
+    await expect(launchStatus).toContainText(/indexing|indexed|safe|finalized/i, {
+      timeout: 30_000,
+    });
+    const launchHash = (await launchStatus.textContent())?.match(/0x[0-9a-f]{64}/i)?.[0];
+    expect(launchHash).toBeTruthy();
+    const api = process.env.TASK6_ANVIL_API_URL!;
+    let tokenAddress = "";
+    await expect
+      .poll(
+        async () => {
+          tokenAddress = await canonicalTokenForLaunch(page, api, launchHash!, tokenName);
+          return tokenAddress;
+        },
+        { timeout: 30_000 },
+      )
+      .toMatch(/^0x[0-9a-f]{40}$/i);
+
+    // A second tab stays on Explore and must never reload while the buy happens.
+    const explore = await context.newPage();
+    await explore.goto("/");
+    await explore.evaluate(() => {
+      (window as unknown as { __noReloadMarker: boolean }).__noReloadMarker = true;
+    });
+
+    await page.goto(`/token/${tokenAddress}`);
+    await expect(page.getByRole("heading", { name: tokenName })).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("tab", { name: "Recent trades" }).click();
+    await page.getByLabel("ETH input").fill("0.001");
+    await page.getByRole("button", { name: "Review buy" }).click();
+    await page.getByRole("button", { name: "Sign buy" }).click();
+    // The wallet stub forwards eth_sendTransaction to Anvil, which commits on receipt of the
+    // request; start the clock when the transaction hash exists.
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () =>
+              (window as unknown as { __task6WriteRequests: unknown[] }).__task6WriteRequests
+                .length,
+          ),
+        { timeout: 30_000 },
+      )
+      .toBeGreaterThan(0);
+    const committedAt = Date.now();
+
+    const strip = explore.getByRole("region", { name: "Live activity" });
+    await expect(
+      strip.getByRole("listitem").filter({ hasText: "LF8" }).filter({ hasText: "buy" }).first(),
+    ).toBeVisible({
+      timeout: 3_000,
+    });
+    const trades = page.getByRole("table", { name: "Recent trades" });
+    await expect(trades.getByText("buy").first()).toBeVisible({ timeout: 3_000 });
+    const elapsed = Date.now() - committedAt;
+    expect(elapsed, "live delivery after commit").toBeLessThanOrEqual(3_500);
+    expect(
+      await explore.evaluate(() => (window as unknown as Record<string, unknown>).__noReloadMarker),
+    ).toBe(true);
+    await explore.close();
+  });
+
   test("regresses to unavailable after the canonical launch disappears in an Anvil reorg", async ({
     page,
   }) => {
@@ -798,7 +875,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.getByLabel("Ticker").fill("RG6");
     await page.getByRole("button", { name: "Review launch" }).click();
     await page.getByRole("button", { name: "Sign launch" }).click();
-    const status = page.getByRole("status").last();
+    const status = transactionStatus(page).last();
     await expect(status).toContainText(/indexing|indexed|safe|finalized/i, { timeout: 30_000 });
     const hash = (await status.textContent())?.match(/0x[0-9a-f]{64}/i)?.[0];
     expect(hash).toBeTruthy();

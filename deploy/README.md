@@ -63,7 +63,12 @@ Configure the approved edge rate limits before exposing transaction-capable prod
 
 An opt-in Prometheus and Alertmanager stack starts with `docker compose --env-file .env --profile monitoring up -d`.
 Alert destination, access, retention and the alert table are in the "Monitoring" section of
-`docs/runbooks/production-readiness.md`.
+`docs/runbooks/production-readiness.md`, including the live feed metrics, the SSE per-client limit
+and the share-card caching notes.
+
+The web container needs `API_INTERNAL_BASE_URL` (Compose sets `http://api:8080`) for server-side
+share-card reads; `NEXT_PUBLIC_WEB_ORIGIN` must be the public HTTPS web origin because share links
+and canonical URLs use it.
 
 ## Backup and recovery
 
