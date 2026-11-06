@@ -13,6 +13,7 @@ import {
   type PropsWithChildren,
 } from "react";
 import { publicConfiguration, type PublicConfiguration } from "@/config/public";
+import { LiveEventsProvider } from "@/live/live-events";
 import {
   WalletConnectionContext,
   fallbackConnection,
@@ -43,6 +44,14 @@ function walletStackAvailable(configuration: PublicConfiguration) {
  * receives a lightweight connection whose `open` loads the stack and opens the wallet picker.
  */
 export function Providers({ children }: PropsWithChildren) {
+  return (
+    <LiveEventsProvider>
+      <WalletProviders>{children}</WalletProviders>
+    </LiveEventsProvider>
+  );
+}
+
+function WalletProviders({ children }: PropsWithChildren) {
   const pathname = usePathname();
   const available = useMemo(() => walletStackAvailable(publicConfiguration()), []);
   const required = available && WALLET_ROUTES.some((route) => route.test(pathname));

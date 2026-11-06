@@ -287,6 +287,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/trades/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listRecentTrades"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/transactions/{tx_hash}": {
         parameters: {
             query?: never;
@@ -307,6 +323,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        BurstItem: {
+            /** Format: int64 */
+            count: number;
+            token: string;
+        };
         CandleBody: {
             /**
              * Format: uri
@@ -422,6 +443,27 @@ export interface components {
             provider_updated_at: string | null;
             source: string | null;
         };
+        FinalityFeedEvent: {
+            /** Format: int64 */
+            chain_id: number;
+            deployment_id: string;
+            /** Format: int64 */
+            finalized_block: number;
+            /** Format: int64 */
+            safe_block: number;
+        };
+        GraduationFeedEvent: {
+            /** Format: int64 */
+            block_number: number;
+            /** Format: int64 */
+            chain_id: number;
+            deployment_id: string;
+            name: string;
+            pair: string;
+            symbol: string;
+            token: string;
+            tx_hash: string;
+        };
         HealthResponse: {
             /**
              * Format: uri
@@ -512,6 +554,18 @@ export interface components {
             revision: number;
             telegram_url?: string;
             x_url?: string;
+        };
+        NewTokenFeedEvent: {
+            /** Format: int64 */
+            block_number: number;
+            /** Format: int64 */
+            chain_id: number;
+            creator: string;
+            deployment_id: string;
+            name: string;
+            symbol: string;
+            token: string;
+            tx_hash: string;
         };
         ProfileActionDTO: {
             creator_fees: string;
@@ -609,6 +663,16 @@ export interface components {
             amount: string;
             /** @enum {string} */
             side: "buy" | "sell";
+        };
+        RecentTradesBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/RecentTradesBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["TradeFeedItem"][] | null;
+            snapshot: components["schemas"]["SnapshotDTO"];
         };
         ReorgEvent: {
             /** Format: int64 */
@@ -727,6 +791,14 @@ export interface components {
             next_cursor?: string;
             snapshot: components["schemas"]["SnapshotDTO"];
         };
+        TradeBurstFeedEvent: {
+            /** Format: int64 */
+            chain_id: number;
+            deployment_id: string;
+            items: components["schemas"]["BurstItem"][] | null;
+            window_end: string;
+            window_start: string;
+        };
         TradeDTO: {
             /** Format: int64 */
             block_number: number;
@@ -739,6 +811,28 @@ export interface components {
             source: string;
             spot_price: string;
             time: string;
+            token_volume: string;
+            trader: string | null;
+            /** Format: int32 */
+            transaction_index: number;
+            tx_hash: string;
+        };
+        TradeFeedItem: {
+            /** Format: int64 */
+            block_number: number;
+            /** Format: int64 */
+            chain_id: number;
+            deployment_id: string;
+            eth_volume: string;
+            finality: string;
+            /** Format: int32 */
+            log_index: number;
+            name: string;
+            side: string;
+            source: string;
+            symbol: string;
+            time: string;
+            token: string;
             token_volume: string;
             trader: string | null;
             /** Format: int32 */
@@ -817,12 +911,45 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": ({
+                        data: components["schemas"]["FinalityFeedEvent"];
+                        /**
+                         * @description The event name.
+                         * @constant
+                         */
+                        event: "finality";
+                        /** @description The event ID. */
+                        id?: number;
+                        /** @description The retry time in milliseconds. */
+                        retry?: number;
+                    } | {
+                        data: components["schemas"]["GraduationFeedEvent"];
+                        /**
+                         * @description The event name.
+                         * @constant
+                         */
+                        event: "graduation";
+                        /** @description The event ID. */
+                        id?: number;
+                        /** @description The retry time in milliseconds. */
+                        retry?: number;
+                    } | {
                         data: components["schemas"]["LaunchEvent"];
                         /**
                          * @description The event name.
                          * @constant
                          */
                         event: "launch";
+                        /** @description The event ID. */
+                        id?: number;
+                        /** @description The retry time in milliseconds. */
+                        retry?: number;
+                    } | {
+                        data: components["schemas"]["NewTokenFeedEvent"];
+                        /**
+                         * @description The event name.
+                         * @constant
+                         */
+                        event: "new_token";
                         /** @description The event ID. */
                         id?: number;
                         /** @description The retry time in milliseconds. */
@@ -845,6 +972,28 @@ export interface operations {
                          * @constant
                          */
                         event: "token";
+                        /** @description The event ID. */
+                        id?: number;
+                        /** @description The retry time in milliseconds. */
+                        retry?: number;
+                    } | {
+                        data: components["schemas"]["TradeFeedItem"];
+                        /**
+                         * @description The event name.
+                         * @constant
+                         */
+                        event: "trade";
+                        /** @description The event ID. */
+                        id?: number;
+                        /** @description The retry time in milliseconds. */
+                        retry?: number;
+                    } | {
+                        data: components["schemas"]["TradeBurstFeedEvent"];
+                        /**
+                         * @description The event name.
+                         * @constant
+                         */
+                        event: "trade_burst";
                         /** @description The event ID. */
                         id?: number;
                         /** @description The retry time in milliseconds. */
@@ -1535,6 +1684,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TradesBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    listRecentTrades: {
+        parameters: {
+            query?: {
+                /** @description Number of trades, 1-100; defaults to 50. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecentTradesBody"];
                 };
             };
             /** @description Error */

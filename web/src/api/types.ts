@@ -6,7 +6,16 @@ export type TokenList = components["schemas"]["TokenDTO"];
 export type ApiEvent =
   | { event: "launch"; data: components["schemas"]["LaunchEvent"] }
   | { event: "reorg"; data: components["schemas"]["ReorgEvent"] }
-  | { event: "token"; data: components["schemas"]["TokenEvent"] };
+  | { event: "token"; data: components["schemas"]["TokenEvent"] }
+  | { event: "trade"; data: TradeFeedItem }
+  | { event: "graduation"; data: components["schemas"]["GraduationFeedEvent"] }
+  | { event: "new_token"; data: components["schemas"]["NewTokenFeedEvent"] }
+  | { event: "trade_burst"; data: components["schemas"]["TradeBurstFeedEvent"] }
+  | { event: "finality"; data: components["schemas"]["FinalityFeedEvent"] };
+export type ApiEventName = ApiEvent["event"];
+export type TradeFeedItem = components["schemas"]["TradeFeedItem"];
+/** Emitted by the live stream provider after a dropped stream recovered and REST was refetched. */
+export type LiveEvent = ApiEvent | { event: "reconnected" };
 
 export function stableSerialize(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";

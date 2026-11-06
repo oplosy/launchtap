@@ -7,7 +7,8 @@ import { Plus } from "@phosphor-icons/react";
 import { ApiClient, type TokenListQuery, type TokenListResponse } from "@/api/client";
 import { ApiProblem } from "@/api/problems";
 import { queryKeys, snapshotIdentity, type Snapshot } from "@/api/types";
-import { SseInvalidationStream } from "@/api/sse";
+import type { LiveEvent } from "@/api/types";
+import { useLiveEvents } from "@/live/live-events";
 import { publicConfiguration } from "@/config/public";
 import { CoinGeckoAttribution } from "@/market/usd-line";
 import { WatchlistTab } from "@/watchlist/watchlist-tab";
@@ -212,55 +213,39 @@ export function TokenDiscovery({
     return () => abortRef.current?.abort();
   }, [listActive, loadPage, urlState]);
 
-  useEffect(() => {
-    if (configuration.status !== "ready" || !configuration.apiBaseUrl || injectedFetcher) return;
-    const stream = new SseInvalidationStream({
-      url: `${configuration.apiBaseUrl}/v1/events`,
-      queryClient: {
-        invalidateQueries: async () => {
-          // Hints arrive for every trade on every token. Refresh page one at most once per
-          // interval, and never replace pages the reader has already appended.
-          if (!listActiveRef.current || refreshTimerRef.current || pagesRef.current.length > 1)
-            return;
-          refreshTimerRef.current = setTimeout(() => {
-            refreshTimerRef.current = null;
-            if (pagesRef.current.length > 1) return;
-            void loadPage(latestState.current, undefined, false);
-          }, DISCOVERY_REFRESH_INTERVAL_MS);
-        },
-      },
-      queryKeyForEvent: (event) => {
-        if (
-          event.data.chain_id !== configuration.chainId ||
-          event.data.deployment_id !== configuration.deploymentId
-        )
-          return undefined;
-        return queryKeys.tokens(
-          configuration.chainId,
-          configuration.deploymentId,
-          tokenListFilters(latestState.current),
-          chainSnapshotRef.current,
-        );
-      },
-      refetchSnapshot: async (signal) => {
-        void signal;
-        await loadPage(latestState.current, undefined, false, signal);
-      },
-    });
-    const stop = stream.start();
-    return () => {
-      stop();
+  const onLiveEvent = useCallback(
+    (event: LiveEvent) => {
+      if (event.event !== "launch" && event.event !== "token" && event.event !== "reorg") return;
+      if (
+        event.data.chain_id !== configuration.chainId ||
+        event.data.deployment_id !== configuration.deploymentId
+      )
+        return;
+      // Hints arrive for every trade on every token. Refresh page one at most once per
+      // interval, and never replace pages the reader has already appended.
+      if (!listActiveRef.current || refreshTimerRef.current || pagesRef.current.length > 1) return;
+      refreshTimerRef.current = setTimeout(() => {
+        refreshTimerRef.current = null;
+        if (pagesRef.current.length > 1) return;
+        void loadPage(latestState.current, undefined, false);
+      }, DISCOVERY_REFRESH_INTERVAL_MS);
+    },
+    [configuration.chainId, configuration.deploymentId, loadPage],
+  );
+  const recoverLive = useCallback(
+    async (signal?: AbortSignal) => {
+      await loadPage(latestState.current, undefined, false, signal);
+    },
+    [loadPage],
+  );
+  useLiveEvents(onLiveEvent, recoverLive);
+  useEffect(
+    () => () => {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = null;
-    };
-  }, [
-    configuration.apiBaseUrl,
-    configuration.chainId,
-    configuration.deploymentId,
-    configuration.status,
-    injectedFetcher,
-    loadPage,
-  ]);
+    },
+    [],
+  );
 
   const firstPage = pages[0];
   const snapshot: Snapshot | undefined = firstPage?.snapshot;

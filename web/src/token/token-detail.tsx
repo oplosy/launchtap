@@ -8,8 +8,8 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import type { components } from "@/api/generated";
 import { ApiClient, resolveApiAssetUrl, type TokenDetailResponse } from "@/api/client";
 import { ApiProblem } from "@/api/problems";
-import { queryKeys } from "@/api/types";
-import { SseInvalidationStream } from "@/api/sse";
+import type { LiveEvent } from "@/api/types";
+import { useLiveEvents } from "@/live/live-events";
 import { formatCanonicalBaseUnits, formatSignificantPrice } from "@/amounts";
 import { CoinGeckoAttribution, UsdLine } from "@/market/usd-line";
 import { DEFAULT_E2E_WEB_URL, publicConfiguration } from "@/config/public";
@@ -322,69 +322,62 @@ export function TokenDetail({
     void loadCollection(tab).catch(() => undefined);
   }, [loadCollection, tab]);
 
-  useEffect(() => {
-    if (useFixture || configuration.status !== "ready" || !configuration.apiBaseUrl) return;
-    let refreshing = false;
-    let refreshAgain = false;
-    const stream = new SseInvalidationStream({
-      // The server forwards only this token's hints (plus reorgs) and coalesces bursts.
-      url: `${configuration.apiBaseUrl}/v1/events?token=${tokenAddress}`,
-      queryClient: {
-        invalidateQueries: async () => {
-          // Collapse hints that arrive during a refresh into one follow-up refresh.
-          if (refreshing) {
-            refreshAgain = true;
-            return;
-          }
-          refreshing = true;
-          try {
-            do {
-              refreshAgain = false;
-              const loaders = loadersRef.current;
-              if (!loaders) return;
-              await loaders.loadToken();
-              await loaders.loadCandles();
-              await loaders.loadCollection(tabRef.current);
-            } while (refreshAgain);
-          } finally {
-            refreshing = false;
-          }
-        },
-      },
-      queryKeyForEvent: (event) => {
-        if (
-          event.data.chain_id !== configuration.chainId ||
-          event.data.deployment_id !== configuration.deploymentId
-        )
-          return undefined;
-        if (!isTokenEventForAddress(event, tokenAddress)) return undefined;
-        const currentToken = tokenRef.current;
-        if (!currentToken) return undefined;
-        return queryKeys.token(
-          configuration.chainId,
-          configuration.deploymentId,
-          tokenAddress,
-          currentToken.snapshot,
-        );
-      },
-      refetchSnapshot: async (signal) => {
-        const loaders = loadersRef.current;
-        if (!loaders) return;
-        const next = await loaders.loadToken(signal);
-        if (!next) throw new Error("Token unavailable");
-        await loaders.loadCandles(signal);
-        await loaders.loadCollection(tabRef.current, undefined, false, signal);
-      },
-    });
-    return stream.start();
-  }, [
-    configuration.apiBaseUrl,
-    configuration.chainId,
-    configuration.deploymentId,
-    configuration.status,
-    tokenAddress,
-    useFixture,
-  ]);
+  const refreshingRef = useRef(false);
+  const refreshAgainRef = useRef(false);
+  const onLiveEvent = useCallback(
+    (event: LiveEvent) => {
+      if (useFixture || configuration.status !== "ready") return;
+      if (event.event !== "launch" && event.event !== "token" && event.event !== "reorg") return;
+      if (
+        event.data.chain_id !== configuration.chainId ||
+        event.data.deployment_id !== configuration.deploymentId
+      )
+        return;
+      // The shared stream is unfiltered, so scope hints to this token client-side.
+      if (!isTokenEventForAddress(event, tokenAddress)) return;
+      if (!tokenRef.current) return;
+      // Collapse hints that arrive during a refresh into one follow-up refresh.
+      if (refreshingRef.current) {
+        refreshAgainRef.current = true;
+        return;
+      }
+      void (async () => {
+        refreshingRef.current = true;
+        try {
+          do {
+            refreshAgainRef.current = false;
+            const loaders = loadersRef.current;
+            if (!loaders) return;
+            await loaders.loadToken();
+            await loaders.loadCandles();
+            await loaders.loadCollection(tabRef.current);
+          } while (refreshAgainRef.current);
+        } finally {
+          refreshingRef.current = false;
+        }
+      })();
+    },
+    [
+      configuration.chainId,
+      configuration.deploymentId,
+      configuration.status,
+      tokenAddress,
+      useFixture,
+    ],
+  );
+  const recoverLive = useCallback(
+    async (signal?: AbortSignal) => {
+      if (useFixture || configuration.status !== "ready") return;
+      const loaders = loadersRef.current;
+      if (!loaders) return;
+      const next = await loaders.loadToken(signal);
+      if (!next) throw new Error("Token unavailable");
+      await loaders.loadCandles(signal);
+      await loaders.loadCollection(tabRef.current, undefined, false, signal);
+    },
+    [configuration.status, useFixture],
+  );
+  useLiveEvents(onLiveEvent, recoverLive);
 
   useEffect(() => {
     const refreshAfterReorg = (event: Event) => {

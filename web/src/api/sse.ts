@@ -1,5 +1,5 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
-import type { ApiEvent } from "./types";
+import type { ApiEvent, ApiEventName } from "./types";
 
 export type EventSourceLike = {
   addEventListener: (type: string, listener: (event: Event) => void) => void;
@@ -25,6 +25,10 @@ export class SseInvalidationStream {
       queryKeyForEvent?: (event: ApiEvent) => QueryKey | undefined;
       retry?: { maxAttempts?: number; baseDelayMs?: number; maxDelayMs?: number };
       onRecoveryExhausted?: () => void;
+      /** Receives every validated event (all event types), before query invalidation hints. */
+      onEvent?: (event: ApiEvent) => void;
+      /** Called after REST was refetched and a fresh EventSource was opened. */
+      onReconnected?: () => void;
     },
   ) {}
 
@@ -59,7 +63,7 @@ export class SseInvalidationStream {
         if (this.source === source) this.retryAttempt = 0;
       }, 30_000);
     });
-    for (const eventType of ["launch", "token", "reorg"]) {
+    for (const eventType of API_EVENT_NAMES) {
       source.addEventListener(eventType, (event) => {
         if (this.source === source) this.handleEvent(eventType, event as MessageEvent<string>);
       });
@@ -81,7 +85,11 @@ export class SseInvalidationStream {
     this.retryAttempt = 0;
     if (this.stableConnectionTimer) clearTimeout(this.stableConnectionTimer);
     this.stableConnectionTimer = null;
-    const queryKey = this.options.queryKeyForEvent?.({ event: eventType, data } as ApiEvent);
+    const apiEvent = { event: eventType, data } as ApiEvent;
+    this.options.onEvent?.(apiEvent);
+    // Invalidation hints keep their original scope: only launch, token and reorg events.
+    if (!INVALIDATION_EVENT_NAMES.has(eventType as ApiEventName)) return;
+    const queryKey = this.options.queryKeyForEvent?.(apiEvent);
     if (queryKey) void this.options.queryClient.invalidateQueries({ queryKey });
   }
 
@@ -121,7 +129,10 @@ export class SseInvalidationStream {
     try {
       // Ordering is intentional: refill canonical REST state before accepting new hints.
       await this.options.refetchSnapshot(abortController.signal);
-      if (!this.stopped) this.connect();
+      if (!this.stopped) {
+        this.connect();
+        this.options.onReconnected?.();
+      }
     } catch {
       this.retryAttempt += 1;
       this.scheduleRecovery();
@@ -131,8 +142,20 @@ export class SseInvalidationStream {
   }
 }
 
+const API_EVENT_NAMES: readonly ApiEventName[] = [
+  "launch",
+  "token",
+  "reorg",
+  "trade",
+  "graduation",
+  "new_token",
+  "trade_burst",
+  "finality",
+];
+const INVALIDATION_EVENT_NAMES: ReadonlySet<ApiEventName> = new Set(["launch", "token", "reorg"]);
+
 function isApiEvent(event: string, data: unknown): data is ApiEvent["data"] {
-  if (event !== "launch" && event !== "token" && event !== "reorg") return false;
+  if (!(API_EVENT_NAMES as readonly string[]).includes(event)) return false;
   return (
     typeof data === "object" &&
     data !== null &&
