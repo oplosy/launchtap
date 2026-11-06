@@ -655,6 +655,18 @@ test.describe("Task 6 Anvil transaction gate", () => {
     });
   });
 
+  test("keeps the home page inside the viewport on small phones", async ({ page }) => {
+    for (const width of [320, 375]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto("/");
+      await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      );
+      expect(overflow, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(0);
+    }
+  });
+
   test("lists a traded token in Trending and keeps wallet-less watchlist and USD hidden", async ({
     page,
   }, testInfo) => {
