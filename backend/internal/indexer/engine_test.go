@@ -11,6 +11,7 @@ import (
 	"github.com/Contictus/launchtap/backend/internal/ledger"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 type memoryUnit struct {
@@ -607,4 +608,96 @@ func newDeepReorgFixture(t *testing.T, searchDepth uint64, recoveryMode bool, co
 		t.Fatal(err)
 	}
 	return e, store, source, state, tip
+}
+
+type swapDiscovery struct {
+	source *fakeSource
+	pair   common.Address
+	hashes []common.Hash
+}
+
+func (d swapDiscovery) Discover(_ context.Context, _, _ uint64, e chain.Emitters) (chain.DiscoveryResult, error) {
+	e.Pairs[d.pair] = struct{}{}
+	topic := crypto.Keccak256Hash([]byte("Swap(address,uint256,uint256,uint256,uint256,address)"))
+	data := make([]byte, 128)
+	data[31] = 1
+	var logs []types.Log
+	for index, hash := range d.hashes {
+		header := d.source.headers[1]
+		logs = append(logs, types.Log{
+			Address: d.pair, Topics: []common.Hash{topic, common.BytesToHash(common.HexToAddress("0x01").Bytes()), common.BytesToHash(common.HexToAddress("0x02").Bytes())},
+			Data: data, BlockNumber: 1, BlockHash: header.Hash(), TxHash: hash, TxIndex: uint(index), Index: uint(index),
+		})
+	}
+	return chain.DiscoveryResult{Emitters: e, Logs: logs}, nil
+}
+
+type capturingRouter struct{ swaps []chain.PoolSwap }
+
+func (r *capturingRouter) Apply(_ context.Context, _ UnitOfWork, decoded []chain.DecodedLog, _ map[int64]ledger.IndexedBlock, _ []TokenIdentity) error {
+	for _, log := range decoded {
+		if swap, ok := log.Value.(chain.PoolSwap); ok {
+			r.swaps = append(r.swaps, swap)
+		}
+	}
+	return nil
+}
+
+type fakeSenders struct {
+	senders map[common.Hash]common.Address
+	err     error
+	calls   [][]common.Hash
+}
+
+func (s *fakeSenders) TransactionSenders(_ context.Context, hashes []common.Hash) (map[common.Hash]common.Address, error) {
+	s.calls = append(s.calls, hashes)
+	return s.senders, s.err
+}
+
+func newSwapEngine(t *testing.T, senders SenderSource, hashes ...common.Hash) (*Engine, *capturingRouter, *fakeSenders) {
+	t.Helper()
+	e, _, source := newTestEngine(t)
+	router := &capturingRouter{}
+	e.discovery = swapDiscovery{source: source, pair: common.HexToAddress("0xbeef"), hashes: hashes}
+	e.router = router
+	e.settings.Senders = senders
+	fake, _ := senders.(*fakeSenders)
+	return e, router, fake
+}
+
+func TestEngineAttachesPoolSwapSender(t *testing.T) {
+	sender := common.HexToAddress("0xaaaa")
+	txA, txB := common.HexToHash("0x01"), common.HexToHash("0x02")
+	fake := &fakeSenders{senders: map[common.Hash]common.Address{txA: sender}}
+	e, router, _ := newSwapEngine(t, fake, txA, txA, txB)
+	if _, err := e.Step(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.calls) != 1 || len(fake.calls[0]) != 2 {
+		t.Fatalf("sender calls = %v, want one call with 2 distinct hashes", fake.calls)
+	}
+	if len(router.swaps) != 3 || router.swaps[0].TxFrom == nil || *router.swaps[0].TxFrom != sender || router.swaps[1].TxFrom == nil || router.swaps[2].TxFrom != nil {
+		t.Fatalf("swaps = %+v", router.swaps)
+	}
+}
+
+func TestEngineContinuesWhenSenderFetchFails(t *testing.T) {
+	fake := &fakeSenders{err: errors.New("rpc down")}
+	e, router, _ := newSwapEngine(t, fake, common.HexToHash("0x01"))
+	if advanced, err := e.Step(t.Context()); err != nil || !advanced {
+		t.Fatalf("Step() = %t, %v", advanced, err)
+	}
+	if len(router.swaps) != 1 || router.swaps[0].TxFrom != nil {
+		t.Fatalf("swaps = %+v", router.swaps)
+	}
+}
+
+func TestEngineWithoutSenderSourceLeavesTxFromNil(t *testing.T) {
+	e, router, _ := newSwapEngine(t, nil, common.HexToHash("0x01"))
+	if _, err := e.Step(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(router.swaps) != 1 || router.swaps[0].TxFrom != nil {
+		t.Fatalf("swaps = %+v", router.swaps)
+	}
 }

@@ -89,6 +89,41 @@ func (c *Client) HeadersByNumbers(ctx context.Context, numbers []uint64) ([]*typ
 	return headers, nil
 }
 
+// senderBatchSize stays within common provider JSON-RPC batch limits.
+const senderBatchSize = 100
+
+// TransactionSenders returns the `from` address of each transaction hash, one JSON-RPC batch
+// per 100 hashes. Only the `from` field is decoded. A null result or a per-element error leaves
+// that hash out of the map; a transport failure fails the call.
+func (c *Client) TransactionSenders(ctx context.Context, hashes []common.Hash) (map[common.Hash]common.Address, error) {
+	senders := make(map[common.Hash]common.Address, len(hashes))
+	for start := 0; start < len(hashes); start += senderBatchSize {
+		chunk := hashes[start:min(start+senderBatchSize, len(hashes))]
+		results := make([]*struct {
+			From *common.Address `json:"from"`
+		}, len(chunk))
+		var batch []rpc.BatchElem
+		err := c.retry(ctx, "eth_getTransactionByHash", false, func(callContext context.Context) error {
+			batch = make([]rpc.BatchElem, len(chunk))
+			for index, hash := range chunk {
+				results[index] = nil
+				batch[index] = rpc.BatchElem{Method: "eth_getTransactionByHash", Args: []any{hash}, Result: &results[index]}
+			}
+			return c.rpc.BatchCallContext(callContext, batch)
+		})
+		if err != nil {
+			return nil, err
+		}
+		for index, element := range batch {
+			if element.Error != nil || results[index] == nil || results[index].From == nil {
+				continue
+			}
+			senders[chunk[index]] = *results[index].From
+		}
+	}
+	return senders, nil
+}
+
 func (c *Client) HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error) {
 	var result *types.Header
 	err := c.retry(ctx, "eth_getBlockByHash", false, func(callContext context.Context) error {

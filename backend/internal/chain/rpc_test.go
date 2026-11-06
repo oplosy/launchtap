@@ -352,3 +352,56 @@ func TestRPCObserverCountsBatchOnce(t *testing.T) {
 		t.Fatalf("batch observations = %v, want %v", got, want)
 	}
 }
+
+func TestTransactionSendersBatchesAndSkipsMissing(t *testing.T) {
+	t.Parallel()
+	var batches atomic.Int32
+	hashes := make([]common.Hash, 150)
+	for index := range hashes {
+		hashes[index] = common.BigToHash(big.NewInt(int64(index + 1)))
+	}
+	missing := hashes[7]
+	sender := common.HexToAddress("0x00000000000000000000000000000000000000aa")
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var calls []rpcRequest
+		if err := json.NewDecoder(request.Body).Decode(&calls); err != nil {
+			t.Errorf("batch request was not a JSON array: %v", err)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		batches.Add(1)
+		if len(calls) > 100 {
+			t.Errorf("batch size = %d, want <= 100", len(calls))
+		}
+		responses := make([]map[string]any, 0, len(calls))
+		for _, call := range calls {
+			var hash common.Hash
+			if call.Method != "eth_getTransactionByHash" || json.Unmarshal(call.Params[0], &hash) != nil {
+				t.Errorf("unexpected batch element %+v", call)
+			}
+			response := map[string]any{"jsonrpc": "2.0", "id": call.ID, "result": map[string]any{"hash": hash.Hex(), "from": sender.Hex()}}
+			if hash == missing {
+				response["result"] = nil
+			}
+			responses = append(responses, response)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(responses)
+	}))
+	defer server.Close()
+	client, err := Dial(context.Background(), server.URL, RPCConfig{Timeout: time.Second, RetryBackoff: time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	senders, err := client.TransactionSenders(context.Background(), hashes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(senders) != 149 || batches.Load() != 2 {
+		t.Fatalf("senders = %d, batches = %d; want 149, 2", len(senders), batches.Load())
+	}
+	if _, ok := senders[missing]; ok || senders[hashes[0]] != sender {
+		t.Fatalf("missing hash present or sender wrong: %v", senders[hashes[0]])
+	}
+}

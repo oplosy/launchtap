@@ -96,6 +96,7 @@ func run() error {
 		StartBlock: int64(deployment.StartBlock), ChunkSize: int64(c.IndexerChunkSize), PollInterval: c.IndexerPollInterval,
 		ReorgSearchDepth: c.IndexerReorgSearchDepth, ReorgRecoveryMode: c.IndexerReorgRecoveryMode,
 		OnCommitted: health.Committed, OnFailure: health.Failed, OnHeads: health.ChainHead,
+		Senders: source,
 	}, store, source, discovery, decoder, router)
 	if err != nil {
 		return err

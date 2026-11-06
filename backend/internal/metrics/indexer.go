@@ -16,7 +16,7 @@ type Indexer struct {
 }
 
 var (
-	rpcMethods    = map[string]bool{"eth_getBlockByNumber": true, "eth_getBlockByHash": true, "eth_getCode": true, "eth_chainId": true, "eth_getLogs": true, "eth_call": true, "eth_blockNumber": true}
+	rpcMethods    = map[string]bool{"eth_getBlockByNumber": true, "eth_getBlockByHash": true, "eth_getCode": true, "eth_chainId": true, "eth_getLogs": true, "eth_call": true, "eth_blockNumber": true, "eth_getTransactionByHash": true}
 	rpcOutcomes   = map[string]bool{"ok": true, "timeout": true, "error": true}
 	notifyChannel = map[string]bool{"market_dirty": true, "api_refresh": true}
 )

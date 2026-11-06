@@ -104,6 +104,9 @@ type PoolSwap struct {
 	Pair, Sender                                 common.Address
 	Amount0In, Amount1In, Amount0Out, Amount1Out *big.Int
 	To                                           common.Address
+	// TxFrom is the transaction sender. It is not ABI-decoded; the indexer engine fills it
+	// from eth_getTransactionByHash and leaves it nil when the lookup is unavailable.
+	TxFrom *common.Address
 }
 type PoolSync struct {
 	Pair               common.Address

@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"time"
 
 	"github.com/Contictus/launchtap/backend/internal/chain"
 	"github.com/Contictus/launchtap/backend/internal/ledger"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -34,6 +36,7 @@ type BatchHeaderSource interface {
 }
 
 var _ BatchHeaderSource = (*chain.Client)(nil)
+var _ SenderSource = (*chain.Client)(nil)
 
 type Engine struct {
 	settings  Settings
@@ -52,6 +55,44 @@ func New(settings Settings, store Store, source Source, discovery Discovery, dec
 		return nil, errors.New("invalid indexer dependencies or settings")
 	}
 	return &Engine{settings: settings, store: store, source: source, discovery: discovery, decoder: decoder, router: router}, nil
+}
+
+// attachSenders sets PoolSwap.TxFrom from one batched sender lookup. A failed lookup is
+// logged and ignored: ingestion never stops for enrichment, the swaps are written with a nil
+// sender and backfilled later.
+func (e *Engine) attachSenders(ctx context.Context, decoded []chain.DecodedLog) {
+	if e.settings.Senders == nil {
+		return
+	}
+	seen := make(map[common.Hash]struct{})
+	var hashes []common.Hash
+	for _, log := range decoded {
+		if _, ok := log.Value.(chain.PoolSwap); !ok {
+			continue
+		}
+		if _, dup := seen[log.Coordinates.TransactionHash]; !dup {
+			seen[log.Coordinates.TransactionHash] = struct{}{}
+			hashes = append(hashes, log.Coordinates.TransactionHash)
+		}
+	}
+	if len(hashes) == 0 {
+		return
+	}
+	senders, err := e.settings.Senders.TransactionSenders(ctx, hashes)
+	if err != nil {
+		slog.Warn("pool swap sender lookup failed", "chain_id", e.settings.ChainID, "count", len(hashes), "error", err)
+		return
+	}
+	for index, log := range decoded {
+		swap, ok := log.Value.(chain.PoolSwap)
+		if !ok {
+			continue
+		}
+		if sender, found := senders[log.Coordinates.TransactionHash]; found {
+			swap.TxFrom = &sender
+			decoded[index].Value = swap
+		}
+	}
 }
 
 // Step commits at most one block-aligned chunk. RPC snapshots are checked against
@@ -189,6 +230,7 @@ func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
 			}
 			decoded = append(decoded, event)
 		}
+		e.attachSenders(ctx, decoded)
 		check, err := e.source.HeaderByNumber(ctx, uint64(to))
 		if err != nil {
 			return false, rpcFailure("recheck chunk header", err)

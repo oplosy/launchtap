@@ -93,7 +93,7 @@ func (r LedgerRouter) apply(ctx context.Context, log chain.DecodedLog, blocks ma
 	case chain.PoolSync:
 		return r.Sink.IngestPoolSync(ctx, ledger.PoolSync{EventCoordinates: c, Pair: v.Pair, Reserve0: cp(v.Reserve0), Reserve1: cp(v.Reserve1)})
 	case chain.PoolSwap:
-		return r.Sink.IngestPoolSwap(ctx, ledger.PoolSwap{EventCoordinates: c, Pair: v.Pair, Sender: v.Sender, Amount0In: cp(v.Amount0In), Amount1In: cp(v.Amount1In), Amount0Out: cp(v.Amount0Out), Amount1Out: cp(v.Amount1Out), To: v.To})
+		return r.Sink.IngestPoolSwap(ctx, ledger.PoolSwap{EventCoordinates: c, Pair: v.Pair, Sender: v.Sender, Amount0In: cp(v.Amount0In), Amount1In: cp(v.Amount1In), Amount0Out: cp(v.Amount0Out), Amount1Out: cp(v.Amount1Out), To: v.To, TxFrom: v.TxFrom})
 	case chain.PoolMint:
 		return r.Sink.IngestPoolMint(ctx, ledger.PoolMint{EventCoordinates: c, Pair: v.Pair, Sender: v.Sender, Amount0: cp(v.Amount0), Amount1: cp(v.Amount1)})
 	case chain.PoolBurn:
