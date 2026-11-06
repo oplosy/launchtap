@@ -27,9 +27,12 @@
 - **Resume (next step):**
   1. Provision a CoinGecko commercial API key as the backend secret `COINGECKO_API_KEY` and set
      `ETH_USD_SOURCE=coingecko` in the deployment environment.
-  2. Verify the Dexscreener and GeckoTerminal identifiers for Robinhood Chain, add them as
-     `marketLinks` in the `contracts/deployments` manifests and the backend testdata copy, then
-     run `cd web && npm run web-contracts-sync`.
+  2. Identifiers verified 2026-11-06: Dexscreener chain `robinhood` and GeckoTerminal network
+     `robinhood`. Both index Robinhood Chain **mainnet** only (sample pairs/pools have code on
+     `rpc.mainnet.chain.robinhood.com` and none on testnet), so they must not go into
+     `robinhood-testnet-v1.json`. Add `"marketLinks": {"dexscreenerChain": "robinhood",
+     "geckoterminalNetwork": "robinhood"}` to the reviewed mainnet manifest when it exists, copy
+     it to the backend testdata, then run `cd web && npm run web-contracts-sync`.
   3. Once the key is live, measure CoinGecko's `last_updated_at` lag. If the USD line flickers
      against the 120 s freshness budget, make the poll jitter symmetric and allow a few seconds
      of future-skew tolerance (`backend/internal/pricefeed/feed.go` ~201 and ~258).
@@ -47,10 +50,14 @@
   SDKs cannot take. Both entries expire on 2027-02-01, after which CI fails again.
 - **Related files:** `web/package.json`, `web/package-lock.json`, `web/audit-allowlist.json`,
   `web/src/wallet/`, `web/src/providers.tsx`
-- **Resume (next step):** Claude pre-flight on the Privy 2 → 3 (and matching `@privy-io/wagmi`,
-  `wagmi`, `viem`) migration notes, then upgrade, run the Anvil gate, and delete the two
-  allowlist entries once `npm run audit:runtime` no longer reports them. Decide with the owner
-  whether to enable Dependabot or Renovate for version-update PRs.
+- **Checked 2026-11-06:** Privy 3 does **not** clear them. `@privy-io/react-auth` 3 depends on
+  `x402`, which pulls wagmi 2 → WalletConnect 2.21.1 → `decode-uri-component` 0.2.2, and zod 3
+  still arrives through `x402`, Reown and `abitype`; wagmi 3 changes nothing. Details:
+  `docs/audits/runtime-advisory-review-2026-11-06.md`. The upgrade was not done.
+- **Resume (next step):** Before 2027-02-01, re-run the trial install from that document with
+  the then-current Privy release. Upgrade only once `npm audit --omit=dev` on the trial tree no
+  longer reports the two highs; otherwise renew the allowlist entries with a fresh impact review.
+  Decide with the owner whether to enable Dependabot or Renovate for version-update PRs.
 - **Pitfalls / notes:** This touches wallet authentication; treat it as high-risk. Do not
   extend the allowlist dates without a fresh impact review.
 
@@ -90,8 +97,9 @@
   preflight, external secret files, backup/restore instructions, and a disposable runtime check.
   Container build/runtime, database dump/restore, web unit/browser, and configuration rejection
   checks passed locally. The runtime npm audit gate (`npm run audit:runtime`) passes with two
-  reviewed high advisories allowlisted (see the wallet SDK item) and 23 low/moderate advisories
-  still requiring impact review. Hosting and domain are not provisioned; no mainnet
+  reviewed high advisories allowlisted (see the wallet SDK item) and 23 low/moderate package findings
+  (7 advisories) reviewed in `docs/audits/runtime-advisory-review-2026-11-06.md`: none reachable
+  with impact beyond the user's own browser tab. Hosting and domain are not provisioned; no mainnet
   manifest, production Privy allowlist, signer, monitoring owner, or external audit is invented.
 - **Related files:** `docs/runbooks/production-readiness.md`,
   `docs/runbooks/web-release.md`, `web/.env.example`, `backend/.env.example`,
@@ -102,7 +110,7 @@
   secret/variable manager, and run `node scripts/verify-release.mjs --target=production`.
   Provision hosting/domain and production Privy inputs, choose object storage/CDN delivery
   for token images (today they are stored in PostgreSQL and served by the API with an ETag and
-  a short public cache), complete dependency impact review,
+  a short public cache),
   obtain a reviewed mainnet deployment manifest, then build/promote using `deploy/README.md`.
   Production approval still requires signed governance and external-audit evidence. An independent
   infrastructure review of the deployment package is still outstanding.
