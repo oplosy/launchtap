@@ -23,6 +23,8 @@ type IndexerStore struct {
 	Owner        *Ownership
 	ChainID      int64
 	DeploymentID string
+	// OnNotify, when set, is told the outcome of each NOTIFY (channel is market_dirty or api_refresh).
+	OnNotify func(channel string, ok bool)
 }
 
 func (s IndexerStore) Transaction(ctx context.Context, fn func(context.Context, indexer.UnitOfWork) error) error {
@@ -46,16 +48,24 @@ func (s IndexerStore) Transaction(ctx context.Context, fn func(context.Context, 
 func (s IndexerStore) notifyRefresh(ctx context.Context) error {
 	if s.Pool != nil && s.ChainID > 0 && s.DeploymentID != "" {
 		_, err := s.Pool.Exec(ctx, `SELECT pg_notify('market_dirty', $1)`, fmt.Sprintf(`{"chain_id":%d,"deployment_id":%q}`, s.ChainID, s.DeploymentID))
+		s.notified("market_dirty", err)
 		if err != nil {
 			slog.Warn("market dirty notification failed", "error", err)
 		}
 		_, err = s.Pool.Exec(ctx, `SELECT pg_notify('api_refresh', $1)`, fmt.Sprintf(`{"type":"token","chain_id":%d,"deployment_id":%q}`, s.ChainID, s.DeploymentID))
+		s.notified("api_refresh", err)
 		if err != nil {
 			slog.Warn("API refresh notification failed", "error", err)
 		}
 	}
 	return nil
 }
+func (s IndexerStore) notified(channel string, err error) {
+	if s.OnNotify != nil {
+		s.OnNotify(channel, err == nil)
+	}
+}
+
 func (a *Adapter) ReadState(ctx context.Context, chainID int64, deployment string) (indexer.State, error) {
 	state, err := a.GetSyncState(ctx, chainID, deployment)
 	if err != nil {

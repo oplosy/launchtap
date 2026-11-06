@@ -34,6 +34,8 @@ type Worker struct {
 	BatchSize    int32
 	Wake         <-chan struct{}
 	OnError      func(Claim, error)
+	// OnComputed receives the number of claims completed per drain.
+	OnComputed func(count int)
 }
 
 func (w Worker) Run(ctx context.Context) error {
@@ -64,6 +66,12 @@ func (w Worker) drain(ctx context.Context, batch int32) error {
 	if err != nil {
 		return err
 	}
+	completed := 0
+	defer func() {
+		if w.OnComputed != nil {
+			w.OnComputed(completed)
+		}
+	}()
 	if batchComputer, ok := w.Source.(BatchComputer); ok {
 		batchErrors := batchComputer.ComputeBatch(ctx, claims)
 		if len(batchErrors) != len(claims) {
@@ -79,6 +87,7 @@ func (w Worker) drain(ctx context.Context, batch int32) error {
 			if _, err := w.Source.Complete(ctx, claim, w.WorkerID); err != nil {
 				return err
 			}
+			completed++
 		}
 		return nil
 	}
@@ -92,6 +101,7 @@ func (w Worker) drain(ctx context.Context, batch int32) error {
 		if _, err := w.Source.Complete(ctx, claim, w.WorkerID); err != nil {
 			return err
 		}
+		completed++
 	}
 	return nil
 }

@@ -147,3 +147,32 @@ func (source *batchWorkerTestSource) Complete(_ context.Context, claim Claim, _ 
 	}
 	return true, nil
 }
+
+func TestWorkerReportsComputedCount(t *testing.T) {
+	claims := []Claim{{ChainID: 1, Generation: 1}, {ChainID: 1, Token: [20]byte{2}, Generation: 1}, {ChainID: 1, Token: [20]byte{3}, Generation: 1}}
+	source := &countingSource{claims: claims, failAt: 1}
+	var reported []int
+	worker := Worker{Source: source, WorkerID: "count-test", OnComputed: func(count int) { reported = append(reported, count) }}
+	if err := worker.drain(context.Background(), 32); err != nil {
+		t.Fatal(err)
+	}
+	if len(reported) != 1 || reported[0] != 2 {
+		t.Fatalf("OnComputed calls = %v, want [2]", reported)
+	}
+}
+
+type countingSource struct {
+	claims []Claim
+	failAt int
+	calls  int
+}
+
+func (s *countingSource) Claim(context.Context, string, int32) ([]Claim, error) { return s.claims, nil }
+func (s *countingSource) Compute(context.Context, Claim) error {
+	s.calls++
+	if s.calls-1 == s.failAt {
+		return errTestCompute
+	}
+	return nil
+}
+func (s *countingSource) Complete(context.Context, Claim, string) (bool, error) { return true, nil }

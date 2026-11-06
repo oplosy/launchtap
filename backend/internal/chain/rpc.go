@@ -18,10 +18,18 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+// RPCObserver receives one observation per client call (a batch counts once).
+// method is the JSON-RPC method name; outcome is "ok", "timeout" or "error".
+type RPCObserver interface {
+	ObserveRPC(method, outcome string)
+}
+
 type RPCConfig struct {
 	Timeout      time.Duration
 	MaxRetries   uint64
 	RetryBackoff time.Duration
+	// Observer is optional; nil disables call reporting.
+	Observer RPCObserver
 }
 
 type Client struct {
@@ -56,7 +64,7 @@ func (c *Client) HeaderByNumber(ctx context.Context, number uint64) (*types.Head
 // failed batch element fails the whole call, so callers never see a partial range.
 func (c *Client) HeadersByNumbers(ctx context.Context, numbers []uint64) ([]*types.Header, error) {
 	headers := make([]*types.Header, len(numbers))
-	err := c.retry(ctx, false, func(callContext context.Context) error {
+	err := c.retry(ctx, "eth_getBlockByNumber", false, func(callContext context.Context) error {
 		batch := make([]rpc.BatchElem, len(numbers))
 		for index, number := range numbers {
 			headers[index] = nil
@@ -83,7 +91,7 @@ func (c *Client) HeadersByNumbers(ctx context.Context, numbers []uint64) ([]*typ
 
 func (c *Client) HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error) {
 	var result *types.Header
-	err := c.retry(ctx, false, func(callContext context.Context) error {
+	err := c.retry(ctx, "eth_getBlockByHash", false, func(callContext context.Context) error {
 		var callErr error
 		result, callErr = c.eth.HeaderByHash(callContext, hash)
 		return callErr
@@ -134,7 +142,7 @@ func isUnsupportedTag(err error) bool {
 
 func (c *Client) header(ctx context.Context, number *big.Int) (*types.Header, error) {
 	var result *types.Header
-	err := c.retry(ctx, false, func(callContext context.Context) error {
+	err := c.retry(ctx, "eth_getBlockByNumber", false, func(callContext context.Context) error {
 		var callErr error
 		result, callErr = c.eth.HeaderByNumber(callContext, number)
 		return callErr
@@ -144,7 +152,7 @@ func (c *Client) header(ctx context.Context, number *big.Int) (*types.Header, er
 
 func (c *Client) CodeAt(ctx context.Context, address common.Address) ([]byte, error) {
 	var result []byte
-	err := c.retry(ctx, false, func(callContext context.Context) error {
+	err := c.retry(ctx, "eth_getCode", false, func(callContext context.Context) error {
 		var callErr error
 		result, callErr = c.eth.CodeAt(callContext, address, nil)
 		return callErr
@@ -154,7 +162,7 @@ func (c *Client) CodeAt(ctx context.Context, address common.Address) ([]byte, er
 
 func (c *Client) ChainID(ctx context.Context) (*big.Int, error) {
 	var result *big.Int
-	err := c.retry(ctx, false, func(callContext context.Context) error {
+	err := c.retry(ctx, "eth_chainId", false, func(callContext context.Context) error {
 		var callErr error
 		result, callErr = c.eth.ChainID(callContext)
 		return callErr
@@ -164,7 +172,7 @@ func (c *Client) ChainID(ctx context.Context) (*big.Int, error) {
 
 func (c *Client) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
 	var result []types.Log
-	err := c.retry(ctx, true, func(callContext context.Context) error {
+	err := c.retry(ctx, "eth_getLogs", true, func(callContext context.Context) error {
 		var callErr error
 		result, callErr = c.eth.FilterLogs(callContext, query)
 		return callErr
@@ -174,7 +182,7 @@ func (c *Client) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]
 
 func (c *Client) CallContract(ctx context.Context, message ethereum.CallMsg) ([]byte, error) {
 	var result []byte
-	err := c.retry(ctx, false, func(callContext context.Context) error {
+	err := c.retry(ctx, "eth_call", false, func(callContext context.Context) error {
 		var callErr error
 		result, callErr = c.eth.CallContract(callContext, message, nil)
 		return callErr
@@ -182,7 +190,28 @@ func (c *Client) CallContract(ctx context.Context, message ethereum.CallMsg) ([]
 	return result, err
 }
 
-func (c *Client) retry(ctx context.Context, capacitySensitive bool, operation func(context.Context) error) error {
+// retry runs operation with the configured retry policy and reports the final
+// outcome to the observer once, whatever the number of attempts.
+func (c *Client) retry(ctx context.Context, method string, capacitySensitive bool, operation func(context.Context) error) error {
+	err := c.retryAttempts(ctx, capacitySensitive, operation)
+	if c.config.Observer != nil {
+		c.config.Observer.ObserveRPC(method, rpcOutcome(err))
+	}
+	return err
+}
+
+func rpcOutcome(err error) string {
+	if err == nil {
+		return "ok"
+	}
+	var networkErr net.Error
+	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &networkErr) && networkErr.Timeout()) {
+		return "timeout"
+	}
+	return "error"
+}
+
+func (c *Client) retryAttempts(ctx context.Context, capacitySensitive bool, operation func(context.Context) error) error {
 	var err error
 	for attempt := uint64(0); attempt <= c.config.MaxRetries; attempt++ {
 		callContext, cancel := context.WithTimeout(ctx, c.config.Timeout)

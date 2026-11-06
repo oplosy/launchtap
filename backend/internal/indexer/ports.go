@@ -59,6 +59,8 @@ type Settings struct {
 	ReorgRecoveryMode bool
 	OnCommitted       func(State)
 	OnFailure         func(error)
+	// OnHeads receives the latest block number after each successful heads read.
+	OnHeads func(latest int64)
 }
 
 type ReorgRecord struct {

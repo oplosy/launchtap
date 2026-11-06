@@ -80,6 +80,9 @@ func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
 	if err != nil {
 		return false, rpcFailure("read heads", err)
 	}
+	if e.settings.OnHeads != nil && heads.Latest != nil && heads.Latest.Number != nil {
+		e.settings.OnHeads(heads.Latest.Number.Int64())
+	}
 	latest, err := e.block(heads.Latest)
 	if err != nil {
 		return false, err
