@@ -4,11 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus } from "@phosphor-icons/react";
-import {
-  ApiClient,
-  type TokenListQuery,
-  type TokenListResponse,
-} from "@/api/client";
+import { ApiClient, type TokenListQuery, type TokenListResponse } from "@/api/client";
 import { ApiProblem } from "@/api/problems";
 import { queryKeys, snapshotIdentity, type Snapshot } from "@/api/types";
 import { SseInvalidationStream } from "@/api/sse";
@@ -38,13 +34,7 @@ import {
 import { KingOfTheHill, TrendingList, useHighlights } from "./highlights";
 import { TokenCard } from "./token-card";
 import { loadTokenDiscoveryPage } from "./controller";
-import {
-  Button,
-  EmptyState,
-  ErrorState,
-  Input,
-  Skeleton,
-} from "@/components/primitives";
+import { Button, EmptyState, ErrorState, Input, Skeleton } from "@/components/primitives";
 
 export type TokenListFetcher = (
   query: TokenListQuery,
@@ -65,7 +55,6 @@ type TokenDiscoveryProps = {
 };
 
 const DISCOVERY_REFRESH_INTERVAL_MS = 2_000;
-
 
 export function TokenDiscovery({
   defaultPhase = "curve",
