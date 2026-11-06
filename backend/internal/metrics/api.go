@@ -34,7 +34,7 @@ func NewAPI(reg prometheus.Registerer) *API {
 			Buckets: prometheus.DefBuckets,
 		}, []string{"route", "method"}),
 		rejected: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "launchpad_api_write_rejected_total",
+			Name: "launchpad_api_write_rejections_total",
 			Help: "Rejected write requests (POST, PUT, DELETE) by reason.",
 		}, []string{"reason"}),
 		sse: prometheus.NewGauge(prometheus.GaugeOpts{

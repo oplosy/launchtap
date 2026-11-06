@@ -38,7 +38,7 @@ func TestAPIMetricsLabelsAreSafe(t *testing.T) {
 	if got := seriesValue(t, reg, "launchpad_api_http_requests_total", map[string]string{"route": "rate_limited", "method": "other", "code_class": "4xx"}); got != 1 {
 		t.Fatalf("unknown method must be normalised to other, got %v", got)
 	}
-	if got := seriesValue(t, reg, "launchpad_api_write_rejected_total", map[string]string{"reason": "rate_limited"}); got != 1 {
+	if got := seriesValue(t, reg, "launchpad_api_write_rejections_total", map[string]string{"reason": "rate_limited"}); got != 1 {
 		t.Fatalf("rejected rate_limited = %v, want 1", got)
 	}
 	if got := seriesValue(t, reg, "launchpad_api_sse_clients", nil); got != 1 {
