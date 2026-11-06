@@ -304,19 +304,24 @@ test("emoji, CJK and all-emoji names still render a 1200x630 card", async ({ req
   }
 });
 
-test("card images are cached for 300s and read the API once per window", async ({ request }) => {
-  const address = `0x${randomBytes(20).toString("hex")}`;
-  const first = await request.get(`/token/${address}/opengraph-image`);
-  const second = await request.get(`/token/${address}/opengraph-image`);
-  expect(first.status()).toBe(200);
-  expect(second.status()).toBe(200);
-  const cacheControl = first.headers()["cache-control"] ?? "";
-  expect(cacheControl).toContain("public");
-  expect(cacheControl).toContain("s-maxage=300");
-  const counts = (await (await request.get(`${mockApi}/__calls`)).json()) as Record<string, number>;
-  expect(counts[`/v1/tokens/${address}`]).toBe(1);
-  expect(counts[`/v1/tokens/${address}/image`]).toBe(1);
-});
+for (const route of ["opengraph-image", "twitter-image"]) {
+  test(`${route} is cached for 300s and reads the API once per window`, async ({ request }) => {
+    const address = `0x${randomBytes(20).toString("hex")}`;
+    const first = await request.get(`/token/${address}/${route}`);
+    const second = await request.get(`/token/${address}/${route}`);
+    expect(first.status()).toBe(200);
+    expect(second.status()).toBe(200);
+    const cacheControl = first.headers()["cache-control"] ?? "";
+    expect(cacheControl).toContain("public");
+    expect(cacheControl).toContain("s-maxage=300");
+    const counts = (await (await request.get(`${mockApi}/__calls`)).json()) as Record<
+      string,
+      number
+    >;
+    expect(counts[`/v1/tokens/${address}`]).toBe(1);
+    expect(counts[`/v1/tokens/${address}/image`]).toBe(1);
+  });
+}
 
 test("token page metadata does not download the image or read the price", async ({ request }) => {
   // A fresh address per run: the Next data cache outlives the server in .next/cache.

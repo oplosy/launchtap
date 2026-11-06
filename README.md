@@ -496,7 +496,7 @@ exposed by the release workflow, not one of the five browser runtime values.
 | `NEXT_PUBLIC_CHAIN_ID`      | Yes                             | Positive decimal chain ID matching that manifest exactly                                                         |
 | `NEXT_PUBLIC_API_BASE_URL`  | Yes                             | Public API base URL; HTTPS except localhost; no credentials, query, or fragment                                  |
 | `NEXT_PUBLIC_RPC_URL`       | Yes                             | Public RPC URL; HTTPS except localhost; no credentials, query, or fragment                                       |
-| `NEXT_PUBLIC_WEB_ORIGIN`    | Production operations           | Exact deployed HTTPS origin, recorded in release variables and Privy allowlist; not read by browser runtime code |
+| `NEXT_PUBLIC_WEB_ORIGIN`    | Production operations           | Exact deployed HTTPS origin, recorded in release variables and Privy allowlist; used for share links and canonical URLs |
 
 Never put bearer credentials or a private/credentialed RPC endpoint in a browser-visible value.
 The app resolves the deployment by the `(deployment ID, chain ID)` pair against generated
