@@ -60,8 +60,10 @@ type Querier interface {
 	GetIndexedBlockByHash(ctx context.Context, arg GetIndexedBlockByHashParams) (IndexedBlock, error)
 	GetIndexedBlockByNumber(ctx context.Context, arg GetIndexedBlockByNumberParams) (IndexedBlock, error)
 	GetKingOfTheHill(ctx context.Context, chainID int64) (GetKingOfTheHillRow, error)
+	GetNewestFeedCursors(ctx context.Context, chainID int64) (GetNewestFeedCursorsRow, error)
 	GetProtocolStats(ctx context.Context, chainID int64) (GetProtocolStatsRow, error)
 	GetSyncState(ctx context.Context, arg GetSyncStateParams) (SyncState, error)
+	GetSyncWatermarks(ctx context.Context, arg GetSyncWatermarksParams) (GetSyncWatermarksRow, error)
 	GetTokenCreatorForUpdate(ctx context.Context, arg GetTokenCreatorForUpdateParams) (Address, error)
 	GetTokenDetail(ctx context.Context, arg GetTokenDetailParams) (GetTokenDetailRow, error)
 	GetTokenImage(ctx context.Context, arg GetTokenImageParams) (GetTokenImageRow, error)
@@ -93,9 +95,13 @@ type Querier interface {
 	// Each row is keyed by its UTC-aligned group start (not the first stored source bucket), so
 	// sparse groups report a stable timestamp and the next-page cursor can skip a whole group.
 	ListCandlesAggregated(ctx context.Context, arg ListCandlesAggregatedParams) ([]ListCandlesAggregatedRow, error)
+	ListGraduationsAfter(ctx context.Context, arg ListGraduationsAfterParams) ([]ListGraduationsAfterRow, error)
+	ListLaunchesAfter(ctx context.Context, arg ListLaunchesAfterParams) ([]ListLaunchesAfterRow, error)
 	ListMarketTrades(ctx context.Context, arg ListMarketTradesParams) ([]ListMarketTradesRow, error)
+	ListMarketTradesAfter(ctx context.Context, arg ListMarketTradesAfterParams) ([]ListMarketTradesAfterRow, error)
 	ListProfileActions(ctx context.Context, arg ListProfileActionsParams) ([]ListProfileActionsRow, error)
 	ListProtocolDaily(ctx context.Context, arg ListProtocolDailyParams) ([]ListProtocolDailyRow, error)
+	ListRecentMarketTrades(ctx context.Context, arg ListRecentMarketTradesParams) ([]ListRecentMarketTradesRow, error)
 	ListStoredCandles(ctx context.Context, arg ListStoredCandlesParams) ([]ListStoredCandlesRow, error)
 	// Metric sorts walk tokens_phase_*_cursor_idx; the sort columns mirror token_stats (0 when
 	// no stats row exists) through triggers, see migration 00014.

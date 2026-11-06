@@ -296,3 +296,80 @@ WITH curve_tokens AS (
 SELECT * FROM curve_tokens
 ORDER BY graduation_progress_bps DESC, launch_block_time DESC, token_address
 LIMIT 1;
+
+-- name: ListMarketTradesAfter :many
+SELECT m.token_address, l.name, l.symbol,
+       CASE m.source WHEN 'dex' THEN 'pool' ELSE m.source END::text AS source,
+       COALESCE(encode(m.trader, 'hex'), '')::text AS trader_hex,
+       m.side_buy, m.gross_eth_volume, m.token_volume, m.block_number, m.transaction_index,
+       m.tx_hash, m.log_index, m.block_time, m.finality
+FROM market_trades AS m
+JOIN token_launches AS l ON l.chain_id = m.chain_id AND l.token_address = m.token_address
+WHERE m.chain_id = sqlc.arg(chain_id)
+  AND (m.block_number, m.transaction_index, m.log_index) >
+      (sqlc.arg(after_block)::bigint, sqlc.arg(after_transaction_index)::integer, sqlc.arg(after_log_index)::integer)
+ORDER BY m.block_number ASC, m.transaction_index ASC, m.log_index ASC
+LIMIT sqlc.arg(page_size)::integer;
+
+-- name: ListRecentMarketTrades :many
+SELECT m.token_address, l.name, l.symbol,
+       CASE m.source WHEN 'dex' THEN 'pool' ELSE m.source END::text AS source,
+       COALESCE(encode(m.trader, 'hex'), '')::text AS trader_hex,
+       m.side_buy, m.gross_eth_volume, m.token_volume, m.block_number, m.transaction_index,
+       m.tx_hash, m.log_index, m.block_time, m.finality
+FROM market_trades AS m
+JOIN token_launches AS l ON l.chain_id = m.chain_id AND l.token_address = m.token_address
+WHERE m.chain_id = sqlc.arg(chain_id)
+ORDER BY m.block_number DESC, m.transaction_index DESC, m.log_index DESC
+LIMIT sqlc.arg(page_size)::integer;
+
+-- name: ListGraduationsAfter :many
+SELECT g.token_address, g.lp_pair, l.name, l.symbol, g.tx_hash, g.block_number, g.transaction_index, g.log_index
+FROM graduations AS g
+JOIN token_launches AS l ON l.chain_id = g.chain_id AND l.token_address = g.token_address
+WHERE g.chain_id = sqlc.arg(chain_id)
+  AND (g.block_number, g.transaction_index, g.log_index) >
+      (sqlc.arg(after_block)::bigint, sqlc.arg(after_transaction_index)::integer, sqlc.arg(after_log_index)::integer)
+ORDER BY g.block_number ASC, g.transaction_index ASC, g.log_index ASC
+LIMIT sqlc.arg(page_size)::integer;
+
+-- name: ListLaunchesAfter :many
+SELECT token_address, creator, name, symbol, tx_hash, block_number, transaction_index, log_index
+FROM token_launches
+WHERE chain_id = sqlc.arg(chain_id)
+  AND (block_number, transaction_index, log_index) >
+      (sqlc.arg(after_block)::bigint, sqlc.arg(after_transaction_index)::integer, sqlc.arg(after_log_index)::integer)
+ORDER BY block_number ASC, transaction_index ASC, log_index ASC
+LIMIT sqlc.arg(page_size)::integer;
+
+-- name: GetNewestFeedCursors :one
+SELECT COALESCE(t.block_number, 0)::bigint AS trade_block,
+       COALESCE(t.transaction_index, 0)::integer AS trade_transaction_index,
+       COALESCE(t.log_index, 0)::integer AS trade_log_index,
+       COALESCE(g.block_number, 0)::bigint AS graduation_block,
+       COALESCE(g.transaction_index, 0)::integer AS graduation_transaction_index,
+       COALESCE(g.log_index, 0)::integer AS graduation_log_index,
+       COALESCE(l.block_number, 0)::bigint AS launch_block,
+       COALESCE(l.transaction_index, 0)::integer AS launch_transaction_index,
+       COALESCE(l.log_index, 0)::integer AS launch_log_index
+FROM (SELECT 1) AS base
+LEFT JOIN LATERAL (
+    SELECT m.block_number, m.transaction_index, m.log_index FROM market_trades AS m
+    WHERE m.chain_id = sqlc.arg(chain_id)
+    ORDER BY m.block_number DESC, m.transaction_index DESC, m.log_index DESC LIMIT 1
+) AS t ON true
+LEFT JOIN LATERAL (
+    SELECT g.block_number, g.transaction_index, g.log_index FROM graduations AS g
+    WHERE g.chain_id = sqlc.arg(chain_id)
+    ORDER BY g.block_number DESC, g.transaction_index DESC, g.log_index DESC LIMIT 1
+) AS g ON true
+LEFT JOIN LATERAL (
+    SELECT l.block_number, l.transaction_index, l.log_index FROM token_launches AS l
+    WHERE l.chain_id = sqlc.arg(chain_id)
+    ORDER BY l.block_number DESC, l.transaction_index DESC, l.log_index DESC LIMIT 1
+) AS l ON true;
+
+-- name: GetSyncWatermarks :one
+SELECT COALESCE(safe_number, 0)::bigint AS safe_number, COALESCE(finalized_number, 0)::bigint AS finalized_number
+FROM sync_state
+WHERE chain_id = sqlc.arg(chain_id) AND deployment_id = sqlc.arg(deployment_id);

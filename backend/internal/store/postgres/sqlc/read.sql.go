@@ -87,6 +87,63 @@ func (q *Queries) GetKingOfTheHill(ctx context.Context, chainID int64) (GetKingO
 	return i, err
 }
 
+const getNewestFeedCursors = `-- name: GetNewestFeedCursors :one
+SELECT COALESCE(t.block_number, 0)::bigint AS trade_block,
+       COALESCE(t.transaction_index, 0)::integer AS trade_transaction_index,
+       COALESCE(t.log_index, 0)::integer AS trade_log_index,
+       COALESCE(g.block_number, 0)::bigint AS graduation_block,
+       COALESCE(g.transaction_index, 0)::integer AS graduation_transaction_index,
+       COALESCE(g.log_index, 0)::integer AS graduation_log_index,
+       COALESCE(l.block_number, 0)::bigint AS launch_block,
+       COALESCE(l.transaction_index, 0)::integer AS launch_transaction_index,
+       COALESCE(l.log_index, 0)::integer AS launch_log_index
+FROM (SELECT 1) AS base
+LEFT JOIN LATERAL (
+    SELECT m.block_number, m.transaction_index, m.log_index FROM market_trades AS m
+    WHERE m.chain_id = $1
+    ORDER BY m.block_number DESC, m.transaction_index DESC, m.log_index DESC LIMIT 1
+) AS t ON true
+LEFT JOIN LATERAL (
+    SELECT g.block_number, g.transaction_index, g.log_index FROM graduations AS g
+    WHERE g.chain_id = $1
+    ORDER BY g.block_number DESC, g.transaction_index DESC, g.log_index DESC LIMIT 1
+) AS g ON true
+LEFT JOIN LATERAL (
+    SELECT l.block_number, l.transaction_index, l.log_index FROM token_launches AS l
+    WHERE l.chain_id = $1
+    ORDER BY l.block_number DESC, l.transaction_index DESC, l.log_index DESC LIMIT 1
+) AS l ON true
+`
+
+type GetNewestFeedCursorsRow struct {
+	TradeBlock                 int64
+	TradeTransactionIndex      int32
+	TradeLogIndex              int32
+	GraduationBlock            int64
+	GraduationTransactionIndex int32
+	GraduationLogIndex         int32
+	LaunchBlock                int64
+	LaunchTransactionIndex     int32
+	LaunchLogIndex             int32
+}
+
+func (q *Queries) GetNewestFeedCursors(ctx context.Context, chainID int64) (GetNewestFeedCursorsRow, error) {
+	row := q.db.QueryRow(ctx, getNewestFeedCursors, chainID)
+	var i GetNewestFeedCursorsRow
+	err := row.Scan(
+		&i.TradeBlock,
+		&i.TradeTransactionIndex,
+		&i.TradeLogIndex,
+		&i.GraduationBlock,
+		&i.GraduationTransactionIndex,
+		&i.GraduationLogIndex,
+		&i.LaunchBlock,
+		&i.LaunchTransactionIndex,
+		&i.LaunchLogIndex,
+	)
+	return i, err
+}
+
 const getProtocolStats = `-- name: GetProtocolStats :one
 SELECT volume_24h_eth_wad, volume_all_time_eth_wad, launches_24h,
        launches_all_time, trades_24h, trades_all_time, graduations_24h,
@@ -121,6 +178,29 @@ func (q *Queries) GetProtocolStats(ctx context.Context, chainID int64) (GetProto
 		&i.GraduationsAllTime,
 		&i.UpdatedAt,
 	)
+	return i, err
+}
+
+const getSyncWatermarks = `-- name: GetSyncWatermarks :one
+SELECT COALESCE(safe_number, 0)::bigint AS safe_number, COALESCE(finalized_number, 0)::bigint AS finalized_number
+FROM sync_state
+WHERE chain_id = $1 AND deployment_id = $2
+`
+
+type GetSyncWatermarksParams struct {
+	ChainID      int64
+	DeploymentID string
+}
+
+type GetSyncWatermarksRow struct {
+	SafeNumber      int64
+	FinalizedNumber int64
+}
+
+func (q *Queries) GetSyncWatermarks(ctx context.Context, arg GetSyncWatermarksParams) (GetSyncWatermarksRow, error) {
+	row := q.db.QueryRow(ctx, getSyncWatermarks, arg.ChainID, arg.DeploymentID)
+	var i GetSyncWatermarksRow
+	err := row.Scan(&i.SafeNumber, &i.FinalizedNumber)
 	return i, err
 }
 
@@ -406,6 +486,135 @@ func (q *Queries) ListCandlesAggregated(ctx context.Context, arg ListCandlesAggr
 	return items, nil
 }
 
+const listGraduationsAfter = `-- name: ListGraduationsAfter :many
+SELECT g.token_address, g.lp_pair, l.name, l.symbol, g.tx_hash, g.block_number, g.transaction_index, g.log_index
+FROM graduations AS g
+JOIN token_launches AS l ON l.chain_id = g.chain_id AND l.token_address = g.token_address
+WHERE g.chain_id = $1
+  AND (g.block_number, g.transaction_index, g.log_index) >
+      ($2::bigint, $3::integer, $4::integer)
+ORDER BY g.block_number ASC, g.transaction_index ASC, g.log_index ASC
+LIMIT $5::integer
+`
+
+type ListGraduationsAfterParams struct {
+	ChainID               int64
+	AfterBlock            int64
+	AfterTransactionIndex int32
+	AfterLogIndex         int32
+	PageSize              int32
+}
+
+type ListGraduationsAfterRow struct {
+	TokenAddress     Address
+	LpPair           Address
+	Name             string
+	Symbol           string
+	TxHash           Hash
+	BlockNumber      int64
+	TransactionIndex int32
+	LogIndex         int32
+}
+
+func (q *Queries) ListGraduationsAfter(ctx context.Context, arg ListGraduationsAfterParams) ([]ListGraduationsAfterRow, error) {
+	rows, err := q.db.Query(ctx, listGraduationsAfter,
+		arg.ChainID,
+		arg.AfterBlock,
+		arg.AfterTransactionIndex,
+		arg.AfterLogIndex,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListGraduationsAfterRow{}
+	for rows.Next() {
+		var i ListGraduationsAfterRow
+		if err := rows.Scan(
+			&i.TokenAddress,
+			&i.LpPair,
+			&i.Name,
+			&i.Symbol,
+			&i.TxHash,
+			&i.BlockNumber,
+			&i.TransactionIndex,
+			&i.LogIndex,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLaunchesAfter = `-- name: ListLaunchesAfter :many
+SELECT token_address, creator, name, symbol, tx_hash, block_number, transaction_index, log_index
+FROM token_launches
+WHERE chain_id = $1
+  AND (block_number, transaction_index, log_index) >
+      ($2::bigint, $3::integer, $4::integer)
+ORDER BY block_number ASC, transaction_index ASC, log_index ASC
+LIMIT $5::integer
+`
+
+type ListLaunchesAfterParams struct {
+	ChainID               int64
+	AfterBlock            int64
+	AfterTransactionIndex int32
+	AfterLogIndex         int32
+	PageSize              int32
+}
+
+type ListLaunchesAfterRow struct {
+	TokenAddress     Address
+	Creator          Address
+	Name             string
+	Symbol           string
+	TxHash           Hash
+	BlockNumber      int64
+	TransactionIndex int32
+	LogIndex         int32
+}
+
+func (q *Queries) ListLaunchesAfter(ctx context.Context, arg ListLaunchesAfterParams) ([]ListLaunchesAfterRow, error) {
+	rows, err := q.db.Query(ctx, listLaunchesAfter,
+		arg.ChainID,
+		arg.AfterBlock,
+		arg.AfterTransactionIndex,
+		arg.AfterLogIndex,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLaunchesAfterRow{}
+	for rows.Next() {
+		var i ListLaunchesAfterRow
+		if err := rows.Scan(
+			&i.TokenAddress,
+			&i.Creator,
+			&i.Name,
+			&i.Symbol,
+			&i.TxHash,
+			&i.BlockNumber,
+			&i.TransactionIndex,
+			&i.LogIndex,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMarketTrades = `-- name: ListMarketTrades :many
 SELECT source, COALESCE(encode(trader, 'hex'), '')::text AS trader_hex,
        side_buy, execution_price_wad, spot_price_wad,
@@ -487,6 +696,87 @@ func (q *Queries) ListMarketTrades(ctx context.Context, arg ListMarketTradesPara
 	return items, nil
 }
 
+const listMarketTradesAfter = `-- name: ListMarketTradesAfter :many
+SELECT m.token_address, l.name, l.symbol,
+       CASE m.source WHEN 'dex' THEN 'pool' ELSE m.source END::text AS source,
+       COALESCE(encode(m.trader, 'hex'), '')::text AS trader_hex,
+       m.side_buy, m.gross_eth_volume, m.token_volume, m.block_number, m.transaction_index,
+       m.tx_hash, m.log_index, m.block_time, m.finality
+FROM market_trades AS m
+JOIN token_launches AS l ON l.chain_id = m.chain_id AND l.token_address = m.token_address
+WHERE m.chain_id = $1
+  AND (m.block_number, m.transaction_index, m.log_index) >
+      ($2::bigint, $3::integer, $4::integer)
+ORDER BY m.block_number ASC, m.transaction_index ASC, m.log_index ASC
+LIMIT $5::integer
+`
+
+type ListMarketTradesAfterParams struct {
+	ChainID               int64
+	AfterBlock            int64
+	AfterTransactionIndex int32
+	AfterLogIndex         int32
+	PageSize              int32
+}
+
+type ListMarketTradesAfterRow struct {
+	TokenAddress     Address
+	Name             string
+	Symbol           string
+	Source           string
+	TraderHex        string
+	SideBuy          bool
+	GrossEthVolume   Uint256
+	TokenVolume      Uint256
+	BlockNumber      int64
+	TransactionIndex int32
+	TxHash           Hash
+	LogIndex         int32
+	BlockTime        pgtype.Timestamptz
+	Finality         string
+}
+
+func (q *Queries) ListMarketTradesAfter(ctx context.Context, arg ListMarketTradesAfterParams) ([]ListMarketTradesAfterRow, error) {
+	rows, err := q.db.Query(ctx, listMarketTradesAfter,
+		arg.ChainID,
+		arg.AfterBlock,
+		arg.AfterTransactionIndex,
+		arg.AfterLogIndex,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMarketTradesAfterRow{}
+	for rows.Next() {
+		var i ListMarketTradesAfterRow
+		if err := rows.Scan(
+			&i.TokenAddress,
+			&i.Name,
+			&i.Symbol,
+			&i.Source,
+			&i.TraderHex,
+			&i.SideBuy,
+			&i.GrossEthVolume,
+			&i.TokenVolume,
+			&i.BlockNumber,
+			&i.TransactionIndex,
+			&i.TxHash,
+			&i.LogIndex,
+			&i.BlockTime,
+			&i.Finality,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProtocolDaily = `-- name: ListProtocolDaily :many
 SELECT day, volume_eth_wad, launches_count, trades_count, graduations_count
 FROM protocol_daily
@@ -532,6 +822,76 @@ func (q *Queries) ListProtocolDaily(ctx context.Context, arg ListProtocolDailyPa
 			&i.LaunchesCount,
 			&i.TradesCount,
 			&i.GraduationsCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecentMarketTrades = `-- name: ListRecentMarketTrades :many
+SELECT m.token_address, l.name, l.symbol,
+       CASE m.source WHEN 'dex' THEN 'pool' ELSE m.source END::text AS source,
+       COALESCE(encode(m.trader, 'hex'), '')::text AS trader_hex,
+       m.side_buy, m.gross_eth_volume, m.token_volume, m.block_number, m.transaction_index,
+       m.tx_hash, m.log_index, m.block_time, m.finality
+FROM market_trades AS m
+JOIN token_launches AS l ON l.chain_id = m.chain_id AND l.token_address = m.token_address
+WHERE m.chain_id = $1
+ORDER BY m.block_number DESC, m.transaction_index DESC, m.log_index DESC
+LIMIT $2::integer
+`
+
+type ListRecentMarketTradesParams struct {
+	ChainID  int64
+	PageSize int32
+}
+
+type ListRecentMarketTradesRow struct {
+	TokenAddress     Address
+	Name             string
+	Symbol           string
+	Source           string
+	TraderHex        string
+	SideBuy          bool
+	GrossEthVolume   Uint256
+	TokenVolume      Uint256
+	BlockNumber      int64
+	TransactionIndex int32
+	TxHash           Hash
+	LogIndex         int32
+	BlockTime        pgtype.Timestamptz
+	Finality         string
+}
+
+func (q *Queries) ListRecentMarketTrades(ctx context.Context, arg ListRecentMarketTradesParams) ([]ListRecentMarketTradesRow, error) {
+	rows, err := q.db.Query(ctx, listRecentMarketTrades, arg.ChainID, arg.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRecentMarketTradesRow{}
+	for rows.Next() {
+		var i ListRecentMarketTradesRow
+		if err := rows.Scan(
+			&i.TokenAddress,
+			&i.Name,
+			&i.Symbol,
+			&i.Source,
+			&i.TraderHex,
+			&i.SideBuy,
+			&i.GrossEthVolume,
+			&i.TokenVolume,
+			&i.BlockNumber,
+			&i.TransactionIndex,
+			&i.TxHash,
+			&i.LogIndex,
+			&i.BlockTime,
+			&i.Finality,
 		); err != nil {
 			return nil, err
 		}
