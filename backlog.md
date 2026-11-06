@@ -30,27 +30,29 @@
   2. Verify the Dexscreener and GeckoTerminal identifiers for Robinhood Chain, add them as
      `marketLinks` in the `contracts/deployments` manifests and the backend testdata copy, then
      run `cd web && npm run web-contracts-sync`.
+  3. Once the key is live, measure CoinGecko's `last_updated_at` lag. If the USD line flickers
+     against the 120 s freshness budget, make the poll jitter symmetric and allow a few seconds
+     of future-skew tolerance (`backend/internal/pricefeed/feed.go` ~201 and ~258).
 - **Pitfalls / notes:** Never commit the key. The manifest copies must stay byte-identical
   (`task verify` checks drift).
 
-### P0-A parked review minors
+### Wallet SDK upgrade: Privy 3 to clear allowlisted advisories
 
 - **Date:** 2026-11-06
-- **Reason:** scope decision (final P0-A review minors, not merge-blocking)
-- **Where it stopped:** P0-A final review fixes landed (`d3edb35..98850bd`); these were parked.
-- **Related files:** `backend/internal/pricefeed/feed.go`, `web/src/discovery/highlights.tsx`,
-  `backend/internal/apiserver/watchlist_routes_test.go`, `web/e2e/task6-anvil.spec.ts`
-- **Resume (next step):**
-  1. Once the CoinGecko key exists, measure the provider's `last_updated_at` lag; if USD flickers
-     against the 120 s freshness budget, make the poll jitter symmetric and allow a few seconds
-     of future-skew tolerance (`feed.go` ~201 and ~258).
-  2. Pause `useHighlights` polling while the tab is hidden and show a staleness cue when refreshes
-     keep failing after a first success.
-  3. Tighten `TestWatchlistLogsUnexpectedErrorsWithoutDID` to assert a non-empty `request_id`.
-  4. Investigate the local Anvil gate flake: the API/indexer stopped mid-run in 2 of 5 runs
-     during Task 12 (18/18 passed twice in the fix wave).
-- **Pitfalls / notes:** The Anvil gate rewrites tracked `.impeccable/review/*.png`; do not commit
-  those incidentally.
+- **Reason:** scope decision (major-version auth/wallet upgrade, needs its own review)
+- **Where it stopped:** The runtime audit gate allowlists two high advisories that only the
+  wallet SDK chain pulls in: zod 3.x (GHSA-mrhx-c7xc-m3w5) and decode-uri-component 0.2.x
+  (GHSA-qr28-fpjm-wq7f), both reached through `@privy-io/react-auth` 2.17.3, WalletConnect and
+  Reown. Their only fixes are zod 4 and an ESM-only decode-uri-component, which the current
+  SDKs cannot take. Both entries expire on 2027-02-01, after which CI fails again.
+- **Related files:** `web/package.json`, `web/package-lock.json`, `web/audit-allowlist.json`,
+  `web/src/wallet/`, `web/src/providers.tsx`
+- **Resume (next step):** Claude pre-flight on the Privy 2 → 3 (and matching `@privy-io/wagmi`,
+  `wagmi`, `viem`) migration notes, then upgrade, run the Anvil gate, and delete the two
+  allowlist entries once `npm run audit:runtime` no longer reports them. Decide with the owner
+  whether to enable Dependabot or Renovate for version-update PRs.
+- **Pitfalls / notes:** This touches wallet authentication; treat it as high-risk. Do not
+  extend the allowlist dates without a fresh impact review.
 
 ### Operator actions: testnet engine switch and fork RPC secret
 
@@ -87,8 +89,9 @@
   PostgreSQL and HTTPS proxy images, migrations before API/indexer startup, public configuration
   preflight, external secret files, backup/restore instructions, and a disposable runtime check.
   Container build/runtime, database dump/restore, web unit/browser, and configuration rejection
-  checks passed locally. Runtime npm audit has zero critical/high advisories, with 39 low/moderate
-  advisories still requiring impact review. Hosting and domain are not provisioned; no mainnet
+  checks passed locally. The runtime npm audit gate (`npm run audit:runtime`) passes with two
+  reviewed high advisories allowlisted (see the wallet SDK item) and 23 low/moderate advisories
+  still requiring impact review. Hosting and domain are not provisioned; no mainnet
   manifest, production Privy allowlist, signer, monitoring owner, or external audit is invented.
 - **Related files:** `docs/runbooks/production-readiness.md`,
   `docs/runbooks/web-release.md`, `web/.env.example`, `backend/.env.example`,
@@ -131,27 +134,6 @@
   runs more than one API instance, decide on shared limiting in the same pre-flight. Naming
   the monitoring owner and alert destination stays under the production-inputs item above.
 
-### Automated dependency vulnerability scanning in CI
-
-- **Date:** 2026-11-05
-- **Reason:** scope decision (gap found in the 2026-11-05 production-readiness scoring)
-- **Where it stopped:** Not started. No workflow in `.github/workflows/` runs `govulncheck`,
-  `npm audit`, or an equivalent, and there is no Dependabot/Renovate configuration. The web
-  runtime audit last showed 0 critical/high and 39 low/moderate advisories whose impact review
-  is still open (see the production-inputs item above). Slither already runs in the contracts
-  release gate and is out of scope here.
-- **Related files:** `.github/workflows/backend.yml`, `.github/workflows/web.yml`,
-  `backend/Taskfile.yml`, `web/package.json`, `web/package-lock.json`, `backend/go.mod`
-- **Resume (next step):** Codex adds a pinned `go run golang.org/x/vuln/cmd/govulncheck@<version>`
-  task to the backend gate and an `npm audit --omit=dev --audit-level=high` step to the web
-  workflow, both failing CI on reachable high/critical findings, then decides with the owner
-  whether to enable Dependabot or Renovate for version-update PRs.
-- **Pitfalls / notes:** Follow the repository rule that backend tools are pinned and run via
-  `go run`, never installed globally. Fail only on high/critical so the 39 open low/moderate
-  advisories do not block CI before their impact review is done; record accepted advisories
-  explicitly instead of silencing the whole audit.
-
-<!-- Template:
 ### <short title>
 - **Date:** YYYY-MM-DD
 - **Reason:** time | limit (~__%) | scope decision
@@ -164,6 +146,25 @@
 ---
 
 ## Done
+
+### P0-A parked review minors and dependency scanning
+
+- **Completed:** 2026-11-06
+- **Evidence:** `govulncheck` v1.9.0 runs in `task verify` (`vulncheck` task). It found 15
+  reachable vulnerabilities, all closed: the Go toolchain moved to 1.26.10 (`toolchain`
+  directive and `backend/Dockerfile`), and klauspost/compress, x/crypto, gorilla/websocket
+  and moby/go-archive were raised to fixed versions. The web workflow runs
+  `npm run audit:runtime` (`web/scripts/audit-runtime.mjs`), which fails on any high or
+  critical runtime advisory missing from the reviewed, expiring `web/audit-allowlist.json`.
+  Next.js moved to 16.4.5 for the critical image-optimizer RCE (GHSA-2464-fhr4-w9xw), and
+  `npm audit fix` cleared follow-redirects, sharp and source-map-js. Highlights polling now
+  pauses while the tab is hidden and shows a staleness cue after two failed refreshes. The
+  watchlist log test asserts the response's own request ID.
+- **Boundary:** The local Anvil gate "flake" was not a product failure: in both runs the
+  indexer logged a graceful `indexer stopped error="context canceled"`, meaning the gate's
+  console was interrupted from outside (an agent tool timeout), not a crash. Run the gate in
+  the background or with a long timeout. The price freshness tuning moved to the P0-A external
+  inputs item because it needs the real key.
 
 ### 2026-10-05 logic review remediation
 
