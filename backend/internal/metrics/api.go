@@ -15,6 +15,7 @@ type API struct {
 	duration *prometheus.HistogramVec
 	rejected *prometheus.CounterVec
 	sse      prometheus.Gauge
+	feed     feedInstruments
 
 	// Registered only by RegisterPriceFeed, when the ETH/USD source is enabled.
 	priceSuccess prometheus.Gauge
@@ -42,7 +43,9 @@ func NewAPI(reg prometheus.Registerer) *API {
 			Help: "Currently open server-sent event streams.",
 		}),
 	}
+	a.feed = newFeedInstruments()
 	reg.MustRegister(a.requests, a.duration, a.rejected, a.sse)
+	reg.MustRegister(a.feed.collectors()...)
 
 	return a
 }

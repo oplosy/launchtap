@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Contictus/launchtap/backend/internal/realtime"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 func TestSSEInitialRetryEventHeartbeatAndCancellation(t *testing.T) {
@@ -202,5 +204,126 @@ func readUntil(t *testing.T, reader *bufio.Reader, wanted string, timeout time.D
 	case <-time.After(timeout):
 		t.Fatalf("timed out waiting for %q", wanted)
 		return ""
+	}
+}
+
+func feedTestTrade(token string, block int64) *realtime.Trade {
+	buyer := common.HexToAddress("0x00000000000000000000000000000000000000cc")
+	return &realtime.Trade{
+		Token: common.HexToAddress(token), Name: "Alpha", Symbol: "ALP", Source: "curve", Trader: &buyer, Buy: true,
+		ETHVolume: big.NewInt(1500), TokenVolume: big.NewInt(2500), Block: block, TxIndex: 1, LogIndex: 2,
+		TxHash: common.HexToHash("0x01"), Time: time.Unix(1700000000, 0).UTC(), Finality: "provisional",
+	}
+}
+
+func openFeedStream(t *testing.T, hub *realtime.Hub, query string) *bufio.Reader {
+	t.Helper()
+	server := New(DefaultConfig(), ReadyFunc(func(context.Context) error { return nil }), nil)
+	server.RegisterEventRoutes(EventRoutes{Hub: hub, ChainID: 46630, DeploymentID: "testnet", Heartbeat: time.Hour, Coalesce: time.Hour})
+	httpServer := httptest.NewServer(server.Handler)
+	t.Cleanup(httpServer.Close)
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, httpServer.URL+"/v1/events"+query, nil)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = response.Body.Close() })
+	reader := bufio.NewReader(response.Body)
+	readUntil(t, reader, "refresh-only", time.Second)
+	for deadline := time.Now().Add(time.Second); hub.Active() < 1 && time.Now().Before(deadline); {
+		time.Sleep(time.Millisecond)
+	}
+	return reader
+}
+
+func TestEventStreamForwardsFeedEventsUncoalesced(t *testing.T) {
+	hub := realtime.NewHub(4, 64)
+	reader := openFeedStream(t, hub, "")
+	token := "0x00000000000000000000000000000000000000aa"
+	// The coalescing window is an hour, so a delivered trade proves feed events bypass it.
+	hub.Publish(realtime.Event{Type: "trade", ChainID: 46630, DeploymentID: "testnet", Token: token, Trade: feedTestTrade(token, 10)})
+	hub.Publish(realtime.Event{Type: "trade", ChainID: 46630, DeploymentID: "testnet", Token: token, Trade: feedTestTrade(token, 11)})
+	got := readUntil(t, reader, `"block_number":11`, time.Second)
+	if strings.Count(got, "event: trade\n") != 2 || !strings.Contains(got, `"block_number":10`) {
+		t.Fatalf("stream=%q", got)
+	}
+	for _, want := range []string{`"source":"curve"`, `"side":"buy"`, `"eth_volume":"1500"`, `"token_volume":"2500"`, `"symbol":"ALP"`, `"deployment_id":"testnet"`, `"finality":"provisional"`, `"trader":"0x00000000000000000000000000000000000000cc"`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %s in %q", want, got)
+		}
+	}
+}
+
+func TestEventStreamAllFeedEventTypes(t *testing.T) {
+	hub := realtime.NewHub(4, 64)
+	reader := openFeedStream(t, hub, "")
+	token := "0x00000000000000000000000000000000000000aa"
+	start := time.Unix(1700000000, 0).UTC()
+	hub.Publish(realtime.Event{Type: "graduation", ChainID: 46630, DeploymentID: "testnet", Token: token, Graduation: &realtime.Graduation{Token: common.HexToAddress(token), Name: "Alpha", Symbol: "ALP", Block: 12}})
+	hub.Publish(realtime.Event{Type: "new_token", ChainID: 46630, DeploymentID: "testnet", Token: token, Launch: &realtime.Launch{Token: common.HexToAddress(token), Name: "Alpha", Symbol: "ALP", Block: 13}})
+	hub.Publish(realtime.Event{Type: "trade_burst", ChainID: 46630, DeploymentID: "testnet", Burst: []realtime.BurstCount{{Token: token, Count: 7}}, BurstStart: start, BurstEnd: start.Add(time.Second)})
+	hub.Publish(realtime.Event{Type: "finality", ChainID: 46630, DeploymentID: "testnet", SafeBlock: 20, FinalizedBlock: 18})
+	got := readUntil(t, reader, `"finalized_block":18`, time.Second)
+	for _, want := range []string{"event: graduation", `"block_number":12`, "event: new_token", `"block_number":13`, "event: trade_burst", `"count":7`, `"window_start":"2023-11-14T22:13:20Z"`, "event: finality", `"safe_block":20`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %s in %q", want, got)
+		}
+	}
+}
+
+func TestEventStreamTokenFilterAppliesToFeed(t *testing.T) {
+	hub := realtime.NewHub(4, 64)
+	a, b := "0x00000000000000000000000000000000000000aa", "0x00000000000000000000000000000000000000bb"
+	reader := openFeedStream(t, hub, "?token="+a)
+	hub.Publish(realtime.Event{Type: "trade", ChainID: 46630, DeploymentID: "testnet", Token: common.HexToAddress(b).Hex(), Trade: feedTestTrade(b, 1)})
+	hub.Publish(realtime.Event{Type: "new_token", ChainID: 46630, DeploymentID: "testnet", Token: a, Launch: &realtime.Launch{Token: common.HexToAddress(a), Block: 2}})
+	hub.Publish(realtime.Event{Type: "graduation", ChainID: 46630, DeploymentID: "testnet", Token: common.HexToAddress(b).Hex(), Graduation: &realtime.Graduation{Token: common.HexToAddress(b), Block: 3}})
+	hub.Publish(realtime.Event{Type: "trade", ChainID: 46630, DeploymentID: "testnet", Token: common.HexToAddress(a).Hex(), Trade: feedTestTrade(a, 4)})
+	hub.Publish(realtime.Event{Type: "graduation", ChainID: 46630, DeploymentID: "testnet", Token: common.HexToAddress(a).Hex(), Graduation: &realtime.Graduation{Token: common.HexToAddress(a), Block: 5}})
+	hub.Publish(realtime.Event{Type: "trade_burst", ChainID: 46630, DeploymentID: "testnet", Burst: []realtime.BurstCount{{Token: b, Count: 3}}})
+	hub.Publish(realtime.Event{Type: "finality", ChainID: 46630, DeploymentID: "testnet", SafeBlock: 9, FinalizedBlock: 8})
+	got := readUntil(t, reader, `"finalized_block":8`, time.Second)
+	if strings.Contains(got, "event: new_token") || strings.Contains(got, `"block_number":1,`) || strings.Contains(got, `"block_number":3`) {
+		t.Fatalf("leaked events for other tokens: %q", got)
+	}
+	for _, want := range []string{"event: trade\n", `"block_number":4`, "event: graduation", `"block_number":5`, "event: trade_burst", "event: finality"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %s in %q", want, got)
+		}
+	}
+}
+
+func TestEventStreamStalledSubscriberEvicted(t *testing.T) {
+	hub := realtime.NewHub(4, 64)
+	stalled, err := hub.Subscribe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stalled.Close()
+	reader := openFeedStream(t, hub, "")
+	for deadline := time.Now().Add(time.Second); hub.Active() != 2 && time.Now().Before(deadline); {
+		time.Sleep(time.Millisecond)
+	}
+	token := "0x00000000000000000000000000000000000000aa"
+	const total = 70
+	for i := int64(1); i <= total; i++ {
+		hub.Publish(realtime.Event{Type: "trade", ChainID: 46630, DeploymentID: "testnet", Token: token, Trade: feedTestTrade(token, i)})
+		time.Sleep(time.Millisecond) // lets the live stream drain its own 64-slot buffer
+	}
+	if hub.Evictions() != 1 || hub.Active() != 1 {
+		t.Fatalf("evictions=%d active=%d, want the stalled subscriber evicted alone", hub.Evictions(), hub.Active())
+	}
+	got := readUntil(t, reader, `"block_number":70`, 2*time.Second)
+	if n := strings.Count(got, "event: trade\n"); n != total {
+		t.Fatalf("live subscriber received %d trades, want %d", n, total)
+	}
+	received := 0
+	for range stalled.C {
+		received++
+	}
+	if received != 64 {
+		t.Fatalf("stalled subscriber drained %d events before eviction, want 64", received)
 	}
 }

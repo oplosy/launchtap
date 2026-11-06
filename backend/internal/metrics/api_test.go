@@ -130,3 +130,42 @@ func TestPriceFeedMetrics(t *testing.T) {
 		t.Fatalf("unsafe labels: %v %v", unsafe, err)
 	}
 }
+
+func TestAPIFeedMetricsRegistered(t *testing.T) {
+	t.Parallel()
+
+	reg := NewRegistry(ComponentAPI)
+	api := NewAPI(reg)
+
+	api.Published("trade")
+	api.Published("trade")
+	api.Published("finality")
+	api.Published("0x0000000000000000000000000000000000000001") // unknown types must not become labels
+	api.Burst()
+	api.Lag(1500 * time.Millisecond)
+	api.ReadFailed("trades")
+	api.ReadFailed("not-an-op")
+
+	unsafe, err := UnsafeLabels(reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(unsafe) != 0 {
+		t.Fatalf("unsafe labels: %v", unsafe)
+	}
+	if got := seriesValue(t, reg, "launchpad_api_feed_events_published_total", map[string]string{"type": "trade"}); got != 2 {
+		t.Fatalf("published trade = %v, want 2", got)
+	}
+	if got := seriesValue(t, reg, "launchpad_api_feed_events_published_total", map[string]string{"type": "finality"}); got != 1 {
+		t.Fatalf("published finality = %v, want 1", got)
+	}
+	if got := seriesValue(t, reg, "launchpad_api_feed_bursts_total", nil); got != 1 {
+		t.Fatalf("bursts = %v, want 1", got)
+	}
+	if got := seriesValue(t, reg, "launchpad_api_feed_tail_lag_seconds", nil); got != 1.5 {
+		t.Fatalf("lag = %v, want 1.5", got)
+	}
+	if got := seriesValue(t, reg, "launchpad_api_feed_read_errors_total", map[string]string{"op": "trades"}); got != 1 {
+		t.Fatalf("read errors trades = %v, want 1", got)
+	}
+}

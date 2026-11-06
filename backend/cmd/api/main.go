@@ -13,6 +13,7 @@ import (
 	"github.com/Contictus/launchtap/backend/deployments"
 	"github.com/Contictus/launchtap/backend/internal/apiserver"
 	"github.com/Contictus/launchtap/backend/internal/config"
+	"github.com/Contictus/launchtap/backend/internal/feed"
 	"github.com/Contictus/launchtap/backend/internal/metrics"
 	"github.com/Contictus/launchtap/backend/internal/pricefeed"
 	"github.com/Contictus/launchtap/backend/internal/privyauth"
@@ -87,21 +88,29 @@ func run() error {
 	protocol := storepostgres.ProtocolReader{Pool: pool, DeploymentID: c.DeploymentID}
 	server.RegisterPublicRoutes(apiserver.PublicRoutes{Tokens: tokens, Market: market, Protocol: protocol, ProtocolDaily: protocol, ChainID: int64(c.ChainID)})
 	server.RegisterQuoteRoutes(apiserver.QuoteRoutes{Provider: quote.Service{Reader: tokens, ChainID: int64(c.ChainID)}})
-	hub := realtime.NewHub(1000, 16)
+	hub := realtime.NewHub(1000, 64)
 	server.RegisterMetadataRoutes(apiserver.MetadataRoutes{Store: storepostgres.MetadataStore{Pool: pool, DeploymentID: c.DeploymentID}, Verifier: verifier, ChainID: int64(c.ChainID)})
 	server.RegisterProfileRoutes(apiserver.ProfileRoutes{Reader: storepostgres.ProfileReader{Pool: pool, DeploymentID: c.DeploymentID}, Verifier: verifier, ChainID: int64(c.ChainID)})
 	server.RegisterWatchlistRoutes(apiserver.WatchlistRoutes{Verifier: verifier, Store: storepostgres.WatchlistStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterEventRoutes(apiserver.EventRoutes{Hub: hub, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, Streams: apiserver.NewStreamLimiter(int(c.APISSEMaxPerClient))})
+	feedReader := storepostgres.FeedReader{Pool: pool, DeploymentID: c.DeploymentID}
+	server.RegisterFeedRoutes(apiserver.FeedRoutes{Reader: feedReader, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterObservationRoutes(apiserver.ObservationRoutes{Reader: storepostgres.ObservationReader{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	references := apiserver.ReferenceRoutes{}
 	if c.ETHUSDSource == config.ETHUSDSourceCoinGecko {
 		apiMetrics.RegisterPriceFeed(metricsRegistry)
-		feed := pricefeed.New(pricefeed.Options{APIKey: c.CoinGeckoAPIKey, Logger: slog.Default(), Observe: apiMetrics.ObservePriceFeed})
-		go func() { _ = feed.Run(ctx) }() // stops with the signal context on shutdown
-		references.Prices = feed
+		prices := pricefeed.New(pricefeed.Options{APIKey: c.CoinGeckoAPIKey, Logger: slog.Default(), Observe: apiMetrics.ObservePriceFeed})
+		go func() { _ = prices.Run(ctx) }() // stops with the signal context on shutdown
+		references.Prices = prices
 	}
 	server.RegisterReferenceRoutes(references)
-	go listenRefreshHints(ctx, pool, hub, int64(c.ChainID), c.DeploymentID)
+	tail := &feed.Tail{Reader: feedReader, Hub: hub, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, Observer: apiMetrics, Logger: slog.Default()}
+	go func() {
+		if err := tail.Start(ctx); err != nil {
+			slog.Error("feed tail stopped", "error", err)
+		}
+	}()
+	go listenRefreshHints(ctx, pool, hub, tail, int64(c.ChainID), c.DeploymentID)
 	server.HTTP.Addr = c.APIAddr
 	errCh := make(chan error, 2)
 	go func() { errCh <- server.HTTP.ListenAndServe() }()
@@ -145,7 +154,7 @@ func loadDeploymentRegistry() (*deployments.Registry, error) {
 	return deployments.LoadEmbedded()
 }
 
-func listenRefreshHints(ctx context.Context, pool *pgxpool.Pool, hub *realtime.Hub, chainID int64, deploymentID string) {
+func listenRefreshHints(ctx context.Context, pool *pgxpool.Pool, hub *realtime.Hub, tail *feed.Tail, chainID int64, deploymentID string) {
 	for ctx.Err() == nil {
 		err := storepostgres.ListenAPIRefresh(ctx, pool, func(payload []byte) {
 			event, err := realtime.Decode(payload)
@@ -153,6 +162,8 @@ func listenRefreshHints(ctx context.Context, pool *pgxpool.Pool, hub *realtime.H
 				return
 			}
 			hub.Publish(event)
+			// Tail.Hint does no scope check, so it is called only after the filter above.
+			tail.Hint(event)
 		})
 		if err == nil || errors.Is(err, context.Canceled) || ctx.Err() != nil {
 			return

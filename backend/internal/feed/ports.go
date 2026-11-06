@@ -3,6 +3,7 @@ package feed
 import (
 	"context"
 
+	"github.com/Contictus/launchtap/backend/internal/pagination"
 	"github.com/Contictus/launchtap/backend/internal/realtime"
 )
 
@@ -22,6 +23,13 @@ type (
 
 // Watermarks holds the safe and finalized block numbers; 0 when unknown.
 type Watermarks struct{ Safe, Finalized int64 }
+
+// RecentPage is the newest trades (descending) with the canonical snapshot they were read at.
+type RecentPage struct {
+	Snapshot pagination.Snapshot
+	Finality string
+	Items    []Trade
+}
 
 type Reader interface {
 	TradesAfter(ctx context.Context, chainID int64, after Cursor, limit int) ([]Trade, error) // ascending

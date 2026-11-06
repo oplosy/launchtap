@@ -17,6 +17,8 @@ import (
 // FeedReader serves the live-feed tail queries across all tokens of a chain.
 type FeedReader struct {
 	Pool *pgxpool.Pool
+	// DeploymentID scopes the read snapshot of RecentTradesSnapshot; the tail queries ignore it.
+	DeploymentID string
 }
 
 var _ feed.Reader = FeedReader{}
@@ -60,6 +62,29 @@ func (r FeedReader) RecentTrades(ctx context.Context, chainID int64, limit int) 
 			row.BlockNumber, row.TransactionIndex, row.TxHash, row.LogIndex, row.BlockTime.Time, row.Finality))
 	}
 	return out, nil
+}
+
+// RecentTradesSnapshot returns the newest market trades with the canonical read snapshot they were read at.
+func (r FeedReader) RecentTradesSnapshot(ctx context.Context, chainID int64, limit int) (feed.RecentPage, error) {
+	if err := checkFeedLimit(limit); err != nil {
+		return feed.RecentPage{}, err
+	}
+	var out feed.RecentPage
+	err := withReadSnapshotBeginner(ctx, r.Pool, chainID, r.DeploymentID, func(ctx context.Context, a *Adapter, s ReadSnapshot) error {
+		rows, err := a.queries.ListRecentMarketTrades(ctx, sqlc.ListRecentMarketTradesParams{ChainID: chainID, PageSize: int32(limit)})
+		if err != nil {
+			return err
+		}
+		out.Items = make([]feed.Trade, 0, len(rows))
+		for _, row := range rows {
+			out.Items = append(out.Items, feedTrade(row.TokenAddress, row.Name, row.Symbol, row.Source, row.TraderHex, row.SideBuy, row.GrossEthVolume, row.TokenVolume,
+				row.BlockNumber, row.TransactionIndex, row.TxHash, row.LogIndex, row.BlockTime.Time, row.Finality))
+		}
+		out.Snapshot = s.Identity
+		out.Finality = finality(s.State, s.Identity.BlockNumber)
+		return nil
+	})
+	return out, err
 }
 
 func feedTrade(token sqlc.Address, name, symbol, source, traderHex string, buy bool, eth, tokens sqlc.Uint256,
