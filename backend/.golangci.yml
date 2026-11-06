@@ -37,6 +37,13 @@ linters:
             - strings
             - testing
             - time
+        position-stdlib-only:
+          list-mode: strict
+          files:
+            - "**/internal/position/*.go"
+            - "**/internal/position/**/*.go"
+          allow:
+            - $gostd
         pricefeed-stdlib-only:
           list-mode: strict
           files:
