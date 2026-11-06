@@ -114,7 +114,7 @@
 
 - **Date:** 2026-11-05
 - **Reason:** scope decision (gap found in the 2026-11-05 production-readiness scoring)
-- **Where it stopped:** Not started. The API and indexer expose only `/healthz` and structured
+- **Where it stopped:** Pre-flight written 2026-11-06; implementation not started. The API and indexer expose only `/healthz` and structured
   logs; the backend has no metrics endpoint, tracing, or error tracking (no Prometheus or
   OpenTelemetry code in `backend/`). `docs/runbooks/production-readiness.md` already lists the
   signals an operator must watch (indexer head/finality lag, database connectivity, RPC error
@@ -123,11 +123,10 @@
 - **Related files:** `backend/cmd/api/main.go`, `backend/cmd/indexer/main.go`,
   `backend/internal/apiserver/server.go`, `backend/internal/indexer/`, `deploy/compose.yaml`,
   `deploy/README.md`, `docs/runbooks/production-readiness.md`
-- **Resume (next step):** Claude pre-flight first (architecture decision): choose the metrics
-  and alerting stack and where it runs relative to the Compose package, then record it with the
-  `system-design` MCP. Codex then implements the metric set above for API and indexer (plus
-  browser error reporting for web if chosen), wires it into `deploy/`, and adds tests that the
-  metrics endpoint is not publicly reachable through Caddy.
+- **Resume (next step):** Claude pre-flight is done: `docs/specs/2026-11-06-observability-design.md`
+  (owner chose the Prometheus client, an opt-in Compose `monitoring` profile, and deferred error
+  tracking; recorded in the `system-design` design). After the owner reviews the spec, Codex
+  writes the implementation plan from its acceptance criteria and implements it.
 - **Pitfalls / notes:** Metrics and error reports must not carry credentials, access tokens,
   signatures, cookies, or credentialed RPC URLs (same rule as logs). The API rate limiter is
   per-process in memory (`backend/internal/apiserver/ratelimit.go`); if the chosen topology
