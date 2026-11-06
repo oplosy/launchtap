@@ -15,11 +15,11 @@ export function NotificationIdentityBridge() {
   const watchlist = useWatchlist();
   const watchedKey = useMemo(
     () =>
-      watchlist.entries
-        .map((entry) => entry.address.toLowerCase())
+      [...watchlist.addresses]
+        .map((address) => address.toLowerCase())
         .sort()
         .join(","),
-    [watchlist.entries],
+    [watchlist.addresses],
   );
   const signedIn = watchlist.authenticated;
   const address = wallet.connected ? wallet.address : undefined;

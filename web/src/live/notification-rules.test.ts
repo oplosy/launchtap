@@ -6,6 +6,7 @@ import {
   bellVisible,
   createRuleState,
   evaluate,
+  identityChanged,
 } from "./notification-rules";
 
 const TOKEN = "0x00000000000000000000000000000000000000Aa";
@@ -167,5 +168,30 @@ describe("bellVisible", () => {
     expect(bellVisible({ signedIn: false, connected: false })).toBe(false);
     expect(bellVisible({ signedIn: true, connected: false })).toBe(true);
     expect(bellVisible({ signedIn: false, connected: true })).toBe(true);
+  });
+});
+
+describe("already-safe own trade", () => {
+  it("notifies immediately and only once when a later finality also covers it", () => {
+    const state = createRuleState();
+    const ctx = { watched: new Set<string>(), wallet: WALLET };
+    const first = evaluate(trade({ trader: WALLET, finality: "safe" }), ctx, state);
+    expect(first.map((n) => n.kind)).toEqual(["own_trade_safe"]);
+    expect(state.pendingOwn.size).toBe(0);
+    expect(evaluate(finality(50), ctx, state)).toEqual([]);
+  });
+});
+
+describe("identityChanged", () => {
+  it("detects wallet change (case-insensitive), disconnect and sign-out", () => {
+    const base = { signedIn: true, wallet: WALLET };
+    expect(
+      identityChanged(base, { ...base, wallet: WALLET.toUpperCase().replace("0X", "0x") }),
+    ).toBe(false);
+    expect(identityChanged(base, { signedIn: true })).toBe(true);
+    expect(identityChanged(base, { signedIn: false, wallet: WALLET })).toBe(true);
+    expect(
+      identityChanged(base, { ...base, wallet: "0x3333333333333333333333333333333333333333" }),
+    ).toBe(true);
   });
 });

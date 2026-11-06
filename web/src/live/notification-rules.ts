@@ -132,3 +132,11 @@ export function evaluate(
 export function bellVisible(identity: { signedIn: boolean; connected: boolean }): boolean {
   return identity.signedIn || identity.connected;
 }
+
+/** A different wallet, or signing in or out, starts a fresh notification session. */
+export function identityChanged(
+  a: { signedIn: boolean; wallet?: string },
+  b: { signedIn: boolean; wallet?: string },
+): boolean {
+  return a.signedIn !== b.signedIn || a.wallet?.toLowerCase() !== b.wallet?.toLowerCase();
+}

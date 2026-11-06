@@ -72,3 +72,33 @@ describe("notification store", () => {
     expect(store.getSnapshot().items.map((n) => n.id)).toEqual(["b", "a"]);
   });
 });
+
+describe("notification store reset and de-duplication", () => {
+  it("reset clears list, unread badge and toast", () => {
+    const store = createNotificationStore({ storage: null, now: () => 10 });
+    store.add([note("a", 10)]);
+    expect(store.getSnapshot().toast).not.toBeNull();
+    store.reset();
+    expect(store.getSnapshot()).toMatchObject({ items: [], unread: 0, toast: null });
+    store.add([note("a", 11)]);
+    expect(store.getSnapshot().items).toHaveLength(1);
+  });
+
+  it("drops a repeated id even after the visible list rolled over", () => {
+    const store = createNotificationStore({ storage: null, now: () => 1, max: 2 });
+    store.add([note("a", 1)]);
+    store.add([note("b", 2), note("c", 3)]);
+    expect(store.getSnapshot().items.map((n) => n.id)).toEqual(["c", "b"]);
+    store.add([note("a", 4)]);
+    expect(store.getSnapshot().items.map((n) => n.id)).toEqual(["c", "b"]);
+  });
+
+  it("bounds the remembered ids", () => {
+    const store = createNotificationStore({ storage: null, now: () => 1, max: 1, seenMax: 2 });
+    store.add([note("a", 1)]);
+    store.add([note("b", 2)]);
+    store.add([note("c", 3)]);
+    store.add([note("a", 4)]);
+    expect(store.getSnapshot().items.map((n) => n.id)).toEqual(["a"]);
+  });
+});

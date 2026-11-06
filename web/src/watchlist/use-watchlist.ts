@@ -344,6 +344,8 @@ export function useWatchlist() {
       status: snapshot.status,
       full: snapshot.full,
       entries: snapshot.entries,
+      /** Live lowercase set of watched addresses, including optimistic toggles. */
+      addresses: snapshot.addresses,
       toast: snapshot.toast,
       has,
       toggle,
@@ -359,6 +361,7 @@ export function useWatchlist() {
       ready,
       reload,
       sessionAvailable,
+      snapshot.addresses,
       snapshot.entries,
       snapshot.full,
       snapshot.status,

@@ -2,6 +2,8 @@ import type { Notification } from "./notification-rules";
 
 export const TOAST_COLLAPSE_MS = 5_000;
 export const NOTIFICATION_MAX_ITEMS = 50;
+/** Ids remembered for de-duplication, independent of the visible list. */
+export const SEEN_IDS_MAX = 500;
 export const LAST_READ_KEY = "launchpad:notifications:last-read";
 
 /** The slice of Web Storage the store needs; injected so it is testable without a DOM. */
@@ -71,9 +73,12 @@ export function createNotificationStore(options: {
   storage: KeyValueStorage | null;
   now?: () => number;
   max?: number;
+  seenMax?: number;
 }) {
   const now = options.now ?? Date.now;
   const max = options.max ?? NOTIFICATION_MAX_ITEMS;
+  const seenMax = options.seenMax ?? SEEN_IDS_MAX;
+  const seenIds = new Set<string>();
   let items: Notification[] = [];
   let lastRead = readLastRead(options.storage);
   let toast: Toast | null = null;
@@ -94,16 +99,27 @@ export function createNotificationStore(options: {
     getSnapshot: () => snapshot,
     /** Adds notifications, skipping ids already listed (replays after a reconnect). */
     add(incoming: readonly Notification[]) {
-      const seen = new Set(items.map((item) => item.id));
       const fresh = incoming.filter((item) => {
-        if (seen.has(item.id)) return false;
-        seen.add(item.id);
+        if (seenIds.has(item.id)) return false;
+        seenIds.add(item.id);
         return true;
       });
+      while (seenIds.size > seenMax) {
+        const oldest = seenIds.values().next().value;
+        if (oldest === undefined) break;
+        seenIds.delete(oldest);
+      }
       if (fresh.length === 0) return;
       items = [...fresh.slice().reverse(), ...items].slice(0, max);
       toast = collapseToast(toast, fresh, now(), toastId + 1);
       if (toast && toast.id > toastId) toastId = toast.id;
+      publish();
+    },
+    /** Forgets everything shown to the previous identity (list, badge, toast, seen ids). */
+    reset() {
+      items = [];
+      toast = null;
+      seenIds.clear();
       publish();
     },
     dismissToast() {

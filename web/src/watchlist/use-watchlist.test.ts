@@ -37,6 +37,18 @@ function setup(overrides: Partial<WatchlistApi> = {}, auth: Partial<WatchlistAut
   return { store: createWatchlistStore(), api, login, deps };
 }
 
+describe("watched set exposed to notifications", () => {
+  it("follows star and unstar during the session", async () => {
+    const { store, deps } = setup();
+    await store.load(deps);
+    expect(store.getSnapshot().addresses.has(TOKEN)).toBe(false);
+    await store.toggle(TOKEN.toUpperCase().replace("0X", "0x"), deps);
+    expect(store.getSnapshot().addresses.has(TOKEN)).toBe(true);
+    await store.toggle(TOKEN, deps);
+    expect(store.getSnapshot().addresses.has(TOKEN)).toBe(false);
+  });
+});
+
 describe("watchlist store", () => {
   it("adds optimistically and keeps the entry on success", async () => {
     let release: () => void = () => undefined;

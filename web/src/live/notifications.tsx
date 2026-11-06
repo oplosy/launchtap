@@ -23,6 +23,7 @@ import {
   bellVisible,
   createRuleState,
   evaluate,
+  identityChanged,
   type Notification,
   type RuleState,
 } from "./notification-rules";
@@ -67,15 +68,19 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
   const identityRef = useRef(identity);
   const ruleState = useRef<RuleState>(createRuleState());
 
-  const setIdentity = useCallback((next: NotificationIdentity) => {
-    if (identityKey(next) === identityKey(identityRef.current)) return;
-    // Pending own trades belong to the wallet that made them.
-    if (next.wallet?.toLowerCase() !== identityRef.current.wallet?.toLowerCase()) {
-      ruleState.current = createRuleState();
-    }
-    identityRef.current = next;
-    setIdentityState(next);
-  }, []);
+  const setIdentity = useCallback(
+    (next: NotificationIdentity) => {
+      if (identityKey(next) === identityKey(identityRef.current)) return;
+      // Notifications and pending own trades belong to the identity that earned them.
+      if (identityChanged(identityRef.current, next)) {
+        ruleState.current = createRuleState();
+        store.reset();
+      }
+      identityRef.current = next;
+      setIdentityState(next);
+    },
+    [store],
+  );
 
   const onEvent = useCallback(
     (event: LiveEvent) => {
@@ -221,11 +226,11 @@ export function NotificationBell() {
     };
   }, [open]);
 
-  // Opening the menu reads everything in it, including items that arrive while it is open.
-  const itemCount = snapshot.items.length;
+  // While the menu is open everything in it counts as read, including items that arrive later.
+  const newestId = snapshot.items[0]?.id;
   useEffect(() => {
-    if (open && itemCount >= 0) store?.markAllRead();
-  }, [open, itemCount, store]);
+    if (open) store?.markAllRead();
+  }, [open, newestId, store]);
 
   if (
     !context ||
@@ -237,7 +242,14 @@ export function NotificationBell() {
     return null;
   const unread = snapshot.unread;
   return (
-    <div className="notify-bell" ref={rootRef}>
+    <div
+      className="notify-bell"
+      ref={rootRef}
+      onBlur={(event) => {
+        const next = event.relatedTarget;
+        if (open && next instanceof Node && !event.currentTarget.contains(next)) setOpen(false);
+      }}
+    >
       <button
         ref={buttonRef}
         type="button"
