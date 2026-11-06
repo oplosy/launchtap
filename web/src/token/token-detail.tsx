@@ -19,6 +19,7 @@ import { reviewedDeployments } from "@/contracts/generated";
 import { addressExplorerUrl } from "@/wallet/explorer";
 import { marketLinks } from "./market-links";
 import { StarButton, WatchlistToaster } from "@/watchlist/star-button";
+import { ShareActions } from "@/share/share-actions";
 import {
   Badge,
   Button,
@@ -480,6 +481,7 @@ export function TokenDetail({
             <Badge tone={finalityTone(snapshot.finality)}>{finalityLabel(snapshot.finality)}</Badge>
           </div>
           <StarButton address={token.address} label={title} />
+          <ShareActions address={token.address} symbol={token.symbol} />
           {explorer ? (
             <SafeExternalLink
               href={explorer}

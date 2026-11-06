@@ -48,7 +48,9 @@ services:
         NEXT_PUBLIC_API_BASE_URL: https://${API_DOMAIN:?Set API_DOMAIN}
         NEXT_PUBLIC_RPC_URL: ${NEXT_PUBLIC_RPC_URL:?Set the public HTTPS RPC URL}
         NEXT_PUBLIC_WEB_ORIGIN: https://${WEB_DOMAIN:?Set WEB_DOMAIN}
-    environment: *public-env
+    environment:
+      <<: *public-env
+      API_INTERNAL_BASE_URL: http://api:8080
     command: [node, scripts/container-preflight.mjs]
     read_only: true
     cap_drop: [ALL]
@@ -102,6 +104,8 @@ services:
 
   web:
     image: launchpad-web:${RELEASE_TAG:?Set RELEASE_TAG to the reviewed commit}
+    environment:
+      API_INTERNAL_BASE_URL: http://api:8080
     depends_on:
       preflight: { condition: service_completed_successfully }
     read_only: true

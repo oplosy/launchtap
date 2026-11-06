@@ -18,6 +18,7 @@ const fixtureRouter = process.env.TASK6_ANVIL_ROUTER ?? "";
 const fixtureUniswapFactory = process.env.TASK6_ANVIL_UNISWAP_FACTORY ?? "";
 const fixtureRpc = process.env.TASK6_ANVIL_RPC_URL ?? "";
 const fixtureApi = process.env.TASK6_ANVIL_API_URL ?? "";
+const mockApiPort = Number(process.env.TASK7_MOCK_API_PORT ?? "3418");
 
 export default defineConfig({
   testDir: "./e2e",
@@ -27,29 +28,39 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: "line",
   use: { baseURL: `http://127.0.0.1:${webPort}`, trace: "on-first-retry" },
-  webServer: {
-    // Build with the E2E-only fixture flag, then exercise the production server and CSP.
-    command: "npm run build && npm run start",
-    env: {
-      NEXT_PUBLIC_E2E_FIXTURE: "1",
-      TASK6_ANVIL_FACTORY: fixtureFactory,
-      TASK6_ANVIL_WETH: fixtureWeth,
-      TASK6_ANVIL_ROUTER: fixtureRouter,
-      TASK6_ANVIL_UNISWAP_FACTORY: fixtureUniswapFactory,
-      TASK6_ANVIL_RPC_URL: fixtureRpc,
-      TASK6_ANVIL_API_URL: fixtureApi,
-      NEXT_PUBLIC_TASK6_ANVIL_FACTORY: fixtureFactory,
-      NEXT_PUBLIC_TASK6_ANVIL_WETH: fixtureWeth,
-      NEXT_PUBLIC_TASK6_ANVIL_ROUTER: fixtureRouter,
-      NEXT_PUBLIC_TASK6_ANVIL_UNISWAP_FACTORY: fixtureUniswapFactory,
-      NEXT_PUBLIC_TASK6_ANVIL_RPC_URL: fixtureRpc,
-      NEXT_PUBLIC_TASK6_ANVIL_API_URL: fixtureApi,
-      NEXT_PUBLIC_TASK6_ANVIL_WEB_URL: `http://127.0.0.1:${webPort}`,
-      PORT: String(webPort),
+  webServer: [
+    {
+      // Serves the API reads that the Next server makes itself (share cards, token metadata).
+      command: "node e2e/support/mock-internal-api.mjs",
+      env: { TASK7_MOCK_API_PORT: String(mockApiPort) },
+      url: `http://127.0.0.1:${mockApiPort}/healthz`,
+      reuseExistingServer: false,
     },
-    url: `http://127.0.0.1:${webPort}`,
-    reuseExistingServer: false,
-  },
+    {
+      // Build with the E2E-only fixture flag, then exercise the production server and CSP.
+      command: "npm run build && npm run start",
+      env: {
+        NEXT_PUBLIC_E2E_FIXTURE: "1",
+        TASK6_ANVIL_FACTORY: fixtureFactory,
+        TASK6_ANVIL_WETH: fixtureWeth,
+        TASK6_ANVIL_ROUTER: fixtureRouter,
+        TASK6_ANVIL_UNISWAP_FACTORY: fixtureUniswapFactory,
+        TASK6_ANVIL_RPC_URL: fixtureRpc,
+        TASK6_ANVIL_API_URL: fixtureApi,
+        NEXT_PUBLIC_TASK6_ANVIL_FACTORY: fixtureFactory,
+        NEXT_PUBLIC_TASK6_ANVIL_WETH: fixtureWeth,
+        NEXT_PUBLIC_TASK6_ANVIL_ROUTER: fixtureRouter,
+        NEXT_PUBLIC_TASK6_ANVIL_UNISWAP_FACTORY: fixtureUniswapFactory,
+        NEXT_PUBLIC_TASK6_ANVIL_RPC_URL: fixtureRpc,
+        NEXT_PUBLIC_TASK6_ANVIL_API_URL: fixtureApi,
+        NEXT_PUBLIC_TASK6_ANVIL_WEB_URL: `http://127.0.0.1:${webPort}`,
+        API_INTERNAL_BASE_URL: `http://127.0.0.1:${mockApiPort}`,
+        PORT: String(webPort),
+      },
+      url: `http://127.0.0.1:${webPort}`,
+      reuseExistingServer: false,
+    },
+  ],
   projects: [
     {
       name: "small-laptop",

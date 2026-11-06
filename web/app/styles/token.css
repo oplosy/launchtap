@@ -94,6 +94,16 @@
   align-items: center;
   gap: 12px;
 }
+.share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.share-status {
+  color: var(--text-faint);
+  font-size: 13px;
+}
 .token-badges {
   display: flex;
   flex-wrap: wrap;

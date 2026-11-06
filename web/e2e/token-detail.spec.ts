@@ -257,3 +257,48 @@ test("populated token detail renders controls, pages, and responsive captures", 
     fullPage: true,
   });
 });
+
+function pngSize(body: Buffer) {
+  // PNG signature (8 bytes) + IHDR length/type (8 bytes), then width and height as uint32 BE.
+  expect(body.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+  return { width: body.readUInt32BE(16), height: body.readUInt32BE(20) };
+}
+
+test("GET /token/<known>/opengraph-image returns 200 image/png 1200x630", async ({ request }) => {
+  const response = await request.get(`/token/${tokenAddress}/opengraph-image`);
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toContain("image/png");
+  expect(pngSize(await response.body())).toEqual({ width: 1200, height: 630 });
+});
+
+test("unknown token returns 200 generic card", async ({ request }) => {
+  for (const address of ["0x00000000000000000000000000000000000000ff", "not-an-address"]) {
+    const response = await request.get(`/token/${address}/opengraph-image`);
+    expect(response.status()).toBe(200);
+    expect(response.headers()["content-type"]).toContain("image/png");
+    expect(pngSize(await response.body())).toEqual({ width: 1200, height: 630 });
+  }
+});
+
+test("token page has og:image, twitter:card and a token title", async ({ request }) => {
+  const response = await request.get(`/token/${tokenAddress}`);
+  expect(response.status()).toBe(200);
+  const html = await response.text();
+  expect(html).toMatch(/<title>\$FIX - Fixture Route \| Launchpad<\/title>/);
+  expect(html).toMatch(/<meta property="og:image" content="[^"]*\/opengraph-image[^"]*"/);
+  expect(html).toContain('<meta name="twitter:card" content="summary_large_image"/>');
+  expect(html).toMatch(/<meta name="twitter:image" content="[^"]*\/twitter-image[^"]*"/);
+  expect(html).toMatch(/<link rel="canonical" href="[^"]*\/token\/0x0{39}1"/);
+});
+
+test("token page offers Share on X and Copy link", async ({ page }) => {
+  await installFixture(page);
+  await page.goto(`/token/${tokenAddress}?fixture=populated`);
+  const share = page.getByRole("link", { name: "Share on X" });
+  await expect(share).toBeVisible();
+  const href = new URL((await share.getAttribute("href")) ?? "");
+  expect(href.origin + href.pathname).toBe("https://x.com/intent/post");
+  expect(href.searchParams.get("text")).toBe("$FIX on Launchpad");
+  expect(href.searchParams.get("url")).toContain(`/token/${tokenAddress}`);
+  await expect(page.getByRole("button", { name: "Copy link" })).toBeVisible();
+});
