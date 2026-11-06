@@ -448,8 +448,11 @@ WHERE pairs.wallet <> decode(repeat('00', 20), 'hex')
   AND pairs.wallet <> $3::bytea
   AND NOT EXISTS (
     SELECT 1 FROM tokens AS excluded
-    WHERE excluded.chain_id=$1
-      AND (excluded.curve_address=pairs.wallet OR excluded.lp_pair=pairs.wallet)
+    WHERE excluded.chain_id=$1 AND excluded.curve_address=pairs.wallet
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id=$1 AND excluded.lp_pair=pairs.wallet
   )
 ORDER BY pairs.wallet, pairs.token_address
 `

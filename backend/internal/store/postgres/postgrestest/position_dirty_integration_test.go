@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"math/big"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -212,5 +213,103 @@ func TestReorgRemarksPairsOfDeletedToken(t *testing.T) {
 		if got[index] != want[index] {
 			t.Fatalf("dirty = %v, want %v", got, want)
 		}
+	}
+}
+
+// The launch mint Transfer(0 -> curve) is emitted by the token constructor, before TokenLaunched,
+// so it is ingested while the token row does not exist yet (R4).
+func TestLaunchMintDoesNotLeaveCurveDirty(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	database := NewMigrated(t)
+	pool := openPool(t, ctx, database.URL)
+	at := time.Date(2026, time.November, 6, 9, 0, 0, 0, time.UTC)
+	hash := hashBytes(0x21)
+	mustInsertBlock(t, ctx, database.DB, walletChainID, 10, hash, hashBytes(0x20), at, "safe")
+	token, curve, pair := common.BytesToAddress(addressBytes(0x10)), common.BytesToAddress(addressBytes(0x41)), common.BytesToAddress(addressBytes(0x31))
+	coords := func(txByte byte, logIndex int32) ledger.EventCoordinates {
+		return ledger.EventCoordinates{ChainID: walletChainID, BlockNumber: 10, BlockHash: common.BytesToHash(hash), BlockTime: at, TxHash: common.BytesToHash(hashBytes(txByte)), LogIndex: logIndex}
+	}
+	mint := ledger.Transfer{EventCoordinates: coords(0x50, 0), Token: token, From: common.Address{}, To: curve, Value: big.NewInt(1000)}
+	// A pair-bound transfer can also precede the launch row in the same block.
+	toPair := ledger.Transfer{EventCoordinates: coords(0x50, 1), Token: token, From: common.Address{}, To: pair, Value: big.NewInt(1)}
+	launch := ledger.TokenLaunch{EventCoordinates: coords(0x50, 2), Token: token, Curve: curve, Creator: common.BytesToAddress(addressBytes(0x55)), LPPair: pair, WETH: common.BytesToAddress(addressBytes(0x90)), ProtocolTreasury: common.BytesToAddress(addressBytes(0x56)), EngineVersion: 1, Name: "Token", Symbol: "TKN", TotalSupply: big.NewInt(1000000), VirtualETH: big.NewInt(10), VirtualToken: big.NewInt(1000000), CurveTokens: big.NewInt(800000), LPTokens: big.NewInt(200000), GraduationETH: big.NewInt(100), LaunchFeePaid: big.NewInt(1), TradeFeeBPS: 100, ProtocolShareBPS: 50}
+	factory := common.BytesToAddress(addressBytes(0xc4))
+	// One transaction, in log order, like the ledger router: the transfers' launch FK is deferred.
+	if err := storepostgres.WithinTx(ctx, pool, func(ctx context.Context, adapter *storepostgres.Adapter) error {
+		adapter = adapter.WithFactory(factory)
+		if _, err := adapter.IngestTransfer(ctx, mint); err != nil {
+			return err
+		}
+		if _, err := adapter.IngestTransfer(ctx, toPair); err != nil {
+			return err
+		}
+		_, err := adapter.IngestTokenLaunch(ctx, launch)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := database.DB.QueryContext(ctx, `SELECT wallet, token_address FROM position_dirty WHERE chain_id = $1`, walletChainID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var wallet, tokenAddress []byte
+		if err := rows.Scan(&wallet, &tokenAddress); err != nil {
+			t.Fatal(err)
+		}
+		t.Errorf("position_dirty holds %x/%x after launch, want none (curve and pair are protocol addresses)", wallet, tokenAddress)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMarkPositionsDirtyDedupesPairs(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	f := newWalletSchemaFixture(t, ctx)
+	pair := indexer.PositionPair{Wallet: common.BytesToAddress(addressBytes(0x91)), Token: common.BytesToAddress(addressBytes(0x10))}
+	if err := storepostgres.WithinTx(ctx, f.pool, func(ctx context.Context, a *storepostgres.Adapter) error {
+		return a.MarkPositionsDirty(ctx, walletChainID, []indexer.PositionPair{pair, pair})
+	}); err != nil {
+		t.Fatalf("duplicate pairs: %v", err)
+	}
+	if got := keys(f.dirty(t, ctx)); len(got) != 1 {
+		t.Fatalf("dirty = %v, want one row", got)
+	}
+}
+
+func TestPositionExclusionLookupsUseIndexes(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	f := newWalletSchemaFixture(t, ctx)
+	tx, err := f.database.DB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `SET LOCAL enable_seqscan = off`); err != nil {
+		t.Fatal(err)
+	}
+	for _, column := range []string{"curve_address", "lp_pair"} {
+		var plan string
+		rows, err := tx.QueryContext(ctx, `EXPLAIN SELECT 1 FROM tokens WHERE chain_id = 48200 AND `+column+` = '\x00'::bytea`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for rows.Next() {
+			var line string
+			if err := rows.Scan(&line); err != nil {
+				t.Fatal(err)
+			}
+			plan += line + "\n"
+		}
+		_ = rows.Close()
+		if !strings.Contains(plan, "Index") || strings.Contains(plan, "Seq Scan") {
+			t.Errorf("%s lookup plan:\n%s", column, plan)
+		}
+		t.Log(plan)
 	}
 }

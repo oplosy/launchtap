@@ -23,6 +23,10 @@ type Querier interface {
 	ApplyTradeReserveProjection(ctx context.Context, arg ApplyTradeReserveProjectionParams) error
 	ApplyTransferProjection(ctx context.Context, arg ApplyTransferProjectionParams) (pgtype.Bool, error)
 	ClaimAggregationDirty(ctx context.Context, arg ClaimAggregationDirtyParams) ([]ClaimAggregationDirtyRow, error)
+	// The launch mint Transfer(0 -> curve) is ingested before the tokens row exists (the token
+	// constructor logs it before TokenLaunched), so the exclusion lookup could not see the curve.
+	// Drop the curve and pair marks once the row is written (R4).
+	ClearLaunchPositionDirty(ctx context.Context, arg ClearLaunchPositionDirtyParams) error
 	ClearOrphanProjections(ctx context.Context, arg ClearOrphanProjectionsParams) error
 	ClearProtocolDaily(ctx context.Context, chainID int64) error
 	CompleteAggregationDirty(ctx context.Context, arg CompleteAggregationDirtyParams) (int64, error)

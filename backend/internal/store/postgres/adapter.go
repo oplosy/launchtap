@@ -287,6 +287,10 @@ func (adapter *Adapter) IngestTokenLaunch(ctx context.Context, event ledger.Toke
 	if err := adapter.queries.MarkTokenDirty(ctx, sqlc.MarkTokenDirtyParams{ChainID: event.ChainID, TokenAddress: sqlc.Address(event.Token)}); err != nil {
 		return ledger.InsertResult{}, fmt.Errorf("mark token dirty: %w", err)
 	}
+	// The launch mint is ingested before this row exists, so it was marked as a position (R4).
+	if err := adapter.queries.ClearLaunchPositionDirty(ctx, sqlc.ClearLaunchPositionDirtyParams{ChainID: event.ChainID, TokenAddress: event.Token[:], Curve: event.Curve[:], LpPair: event.LPPair[:]}); err != nil {
+		return ledger.InsertResult{}, fmt.Errorf("clear launch position dirty: %w", err)
+	}
 	return result, nil
 }
 

@@ -262,6 +262,33 @@ func (q *Queries) ClaimAggregationDirty(ctx context.Context, arg ClaimAggregatio
 	return items, nil
 }
 
+const clearLaunchPositionDirty = `-- name: ClearLaunchPositionDirty :exec
+DELETE FROM position_dirty
+WHERE chain_id = $1::bigint
+  AND token_address = $2::bytea
+  AND wallet IN ($3::bytea, $4::bytea)
+`
+
+type ClearLaunchPositionDirtyParams struct {
+	ChainID      int64
+	TokenAddress []byte
+	Curve        []byte
+	LpPair       []byte
+}
+
+// The launch mint Transfer(0 -> curve) is ingested before the tokens row exists (the token
+// constructor logs it before TokenLaunched), so the exclusion lookup could not see the curve.
+// Drop the curve and pair marks once the row is written (R4).
+func (q *Queries) ClearLaunchPositionDirty(ctx context.Context, arg ClearLaunchPositionDirtyParams) error {
+	_, err := q.db.Exec(ctx, clearLaunchPositionDirty,
+		arg.ChainID,
+		arg.TokenAddress,
+		arg.Curve,
+		arg.LpPair,
+	)
+	return err
+}
+
 const clearOrphanProjections = `-- name: ClearOrphanProjections :exec
 WITH reserves AS (DELETE FROM token_reserves WHERE token_reserves.chain_id=$1 AND token_reserves.token_address=$2),
 holders AS (DELETE FROM holder_balances WHERE holder_balances.chain_id=$1 AND holder_balances.token_address=$2),
@@ -390,8 +417,11 @@ WHERE token.chain_id = $2::bigint AND token.lp_pair = $3::bytea
   AND $1::bytea <> $4::bytea
   AND NOT EXISTS (
     SELECT 1 FROM tokens AS excluded
-    WHERE excluded.chain_id = $2::bigint
-      AND (excluded.curve_address = $1::bytea OR excluded.lp_pair = $1::bytea)
+    WHERE excluded.chain_id = $2::bigint AND excluded.curve_address = $1::bytea
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id = $2::bigint AND excluded.lp_pair = $1::bytea
   )
 ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq')
 `
@@ -421,8 +451,11 @@ WHERE $2::bytea <> decode(repeat('00', 20), 'hex')
   AND $2::bytea <> $4::bytea
   AND NOT EXISTS (
     SELECT 1 FROM tokens AS excluded
-    WHERE excluded.chain_id = $1::bigint
-      AND (excluded.curve_address = $2::bytea OR excluded.lp_pair = $2::bytea)
+    WHERE excluded.chain_id = $1::bigint AND excluded.curve_address = $2::bytea
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id = $1::bigint AND excluded.lp_pair = $2::bytea
   )
 ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq')
 `
@@ -447,9 +480,12 @@ func (q *Queries) MarkPositionDirty(ctx context.Context, arg MarkPositionDirtyPa
 
 const markPositionPairsDirty = `-- name: MarkPositionPairsDirty :exec
 INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
-SELECT $1::bigint, w.wallet, t.token_address, nextval('position_dirty_generation_seq')
-FROM unnest($2::bytea[]) WITH ORDINALITY AS w(wallet, ord)
-JOIN unnest($3::bytea[]) WITH ORDINALITY AS t(token_address, ord) ON t.ord = w.ord
+SELECT $1::bigint, pair.wallet, pair.token_address, nextval('position_dirty_generation_seq')
+FROM (
+    SELECT DISTINCT w.wallet, t.token_address
+    FROM unnest($2::bytea[]) WITH ORDINALITY AS w(wallet, ord)
+    JOIN unnest($3::bytea[]) WITH ORDINALITY AS t(token_address, ord) ON t.ord = w.ord
+) AS pair
 ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq')
 `
 
@@ -550,8 +586,11 @@ FROM (
       AND side.wallet <> $5::bytea
       AND NOT EXISTS (
         SELECT 1 FROM tokens AS excluded
-        WHERE excluded.chain_id = $1::bigint
-          AND (excluded.curve_address = side.wallet OR excluded.lp_pair = side.wallet)
+        WHERE excluded.chain_id = $1::bigint AND excluded.curve_address = side.wallet
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM tokens AS excluded
+        WHERE excluded.chain_id = $1::bigint AND excluded.lp_pair = side.wallet
       )
 ) AS sides
 ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq')
