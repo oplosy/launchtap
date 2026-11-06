@@ -32,6 +32,20 @@ export function isEventInScope(event: LiveEvent, scope: ChainScope): boolean {
   return data.chain_id === scope.chainId && data.deployment_id === scope.deploymentId;
 }
 
+/**
+ * What a live event asks of REST-backed views. `reorg`: an in-scope reorg (it has no token field)
+ * means REST rows above the ancestor may be gone, so refetch. `reconnected`: the stream is open
+ * again after the recovery fetch, so refetch once more to close the gap between the two.
+ */
+export function liveRefreshKind(
+  event: LiveEvent,
+  scope: ChainScope,
+): "reorg" | "reconnected" | null {
+  if (event.event === "reconnected") return "reconnected";
+  if (event.event === "reorg" && isEventInScope(event, scope)) return "reorg";
+  return null;
+}
+
 /** Short relative time ("now", "5s", "3m", "2h", "4d") from an ISO timestamp. */
 export function relativeTime(at: string | number | undefined, now: number): string {
   if (at === undefined || at === "") return "now";

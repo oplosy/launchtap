@@ -166,11 +166,11 @@ describe it:
 |--------|---------|
 | `launchpad_api_feed_events_published_total{type}` | feed events handed to the hub, by event type |
 | `launchpad_api_feed_bursts_total` | trade bursts: more than 20 trade events/s in one API process, the overflow becomes one `trade_burst` event |
-| `launchpad_api_feed_tail_lag_seconds` | age of the newest feed event the tail has published |
+| `launchpad_api_feed_tail_lag_seconds` | seconds since the block time of the newest published trade |
 | `launchpad_api_feed_read_errors_total{op}` | feed database read failures; `op` is `newest`, `trades`, `graduations`, `launches` or `watermarks` |
 
 - Each SSE subscriber has a buffer of 64 events. A subscriber that falls behind is evicted and
-  reconnects, then refills from `GET /v1/trades/recent`. A steady rise in evictions points at
+  reconnects, then refills from `GET /v1/trades/recent`. Frequent client reconnects point at
   slow clients or an event storm, not at the database.
 - The web app opens one shared SSE stream per browser tab on every route. Five or more tabs from
   one client address exceed `API_SSE_MAX_PER_CLIENT` (default 4); the extra tabs fall back to

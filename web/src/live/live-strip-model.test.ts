@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { LiveEvent, TradeFeedItem } from "@/api/types";
 import { mergeRecent, tradeToFeedItem, type FeedItem } from "./feed-store";
 import {
+  liveRefreshKind,
   liveTradeRows,
   reduceStripFeed,
   reduceStripState,
@@ -276,5 +277,43 @@ describe("token page live trades", () => {
     const rest = [{ ...trade(1), execution_price: "1", spot_price: "1" }];
     expect(liveTradeRows(items, rest)).toEqual([]);
     expect(liveTradeRows(items, [])).toHaveLength(1);
+  });
+  it("decides which live events refresh REST-backed views", () => {
+    const reorg = (over: object = {}) =>
+      ({
+        event: "reorg",
+        data: { chain_id: 1, deployment_id: "local", common_ancestor: 1, ...over },
+      }) as LiveEvent;
+    expect(liveRefreshKind(reorg(), scope)).toBe("reorg");
+    expect(liveRefreshKind(reorg({ chain_id: 2 }), scope)).toBeNull();
+    expect(liveRefreshKind(reorg({ deployment_id: "other" }), scope)).toBeNull();
+    expect(liveRefreshKind({ event: "reconnected" }, scope)).toBe("reconnected");
+    expect(liveRefreshKind(ev(trade(1)), scope)).toBeNull();
+  });
+
+  it("shows the replacement trade after a reorg once REST is reloaded", () => {
+    // Before the reload REST still holds the orphaned block-2 row and hides a replacement at 2.
+    const staleRest = [
+      { ...trade(2, { tx_hash: "0xold" }), execution_price: "1", spot_price: "1" },
+    ];
+    const replacement = reduceTokenTrades([], ev(trade(2, { tx_hash: "0xnew" })), TOKEN, scope);
+    expect(liveTradeRows(replacement, staleRest)).toEqual([]);
+    // After the reload REST no longer has 0xold; the replacement is covered by REST or shown live.
+    const freshRest = [
+      { ...trade(2, { tx_hash: "0xnew" }), execution_price: "1", spot_price: "1" },
+    ];
+    expect(liveTradeRows(replacement, freshRest)).toEqual([]);
+    expect(liveTradeRows(replacement, [])).toHaveLength(1);
+    // Live rows above the ancestor are pruned by the reorg event itself.
+    const pruned = reduceTokenTrades(
+      replacement,
+      {
+        event: "reorg",
+        data: { chain_id: 1, deployment_id: "local", common_ancestor: 1 },
+      } as LiveEvent,
+      TOKEN,
+      scope,
+    );
+    expect(liveTradeRows(pruned, [])).toEqual([]);
   });
 });

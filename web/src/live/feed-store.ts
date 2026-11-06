@@ -126,8 +126,8 @@ function chainOrder(a: FeedItem, b: FeedItem) {
 /**
  * Merges a REST recent-trades snapshot into the feed after a reconnect. REST is canonical for
  * every block up to the newest block in `recent`: live items at or below it are replaced by the
- * snapshot (so an item reorged out during the outage disappears) and only newer live items
- * are kept. One copy per key (higher finality wins), newest first by chain position, capped.
+ * snapshot (so a trade reorged out during the outage disappears) and only newer live trades
+ * are kept; live launch and graduation items are kept because REST does not carry them. One copy per key (higher finality wins), newest first by chain position, capped.
  */
 export function mergeRecent(
   items: FeedItem[],
@@ -135,7 +135,12 @@ export function mergeRecent(
   max: number = FEED_MAX_ITEMS,
 ): FeedItem[] {
   const newest = recent.reduce((top, item) => Math.max(top, item.block_number), -1);
-  const kept = recent.length === 0 ? items : items.filter((item) => item.block_number > newest);
+  // REST only returns trades, so live launch/graduation items are always kept (reorg pruning
+  // happens in applyFeedEvent); only trades at or below the snapshot are replaced by it.
+  const kept =
+    recent.length === 0
+      ? items
+      : items.filter((item) => item.kind !== "trade" || item.block_number > newest);
   const byKey = new Map<string, FeedItem>();
   for (const item of [...kept, ...recent]) {
     const id = item.key.toLowerCase();

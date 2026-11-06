@@ -9,6 +9,7 @@ import { UsdLine } from "@/market/usd-line";
 import { mergeRecent, tradeToFeedItem, FEED_MAX_ITEMS, type FeedItem } from "./feed-store";
 import { useLiveEvents } from "./live-events";
 import {
+  liveRefreshKind,
   reduceStripState,
   toStripItem,
   type StripState,
@@ -68,11 +69,16 @@ export function LiveStrip() {
 
   const onEvent = useCallback(
     (event: LiveEvent) => {
+      // The recovery fetch ran before the new stream opened; refill once more to close the gap.
+      if (liveRefreshKind(event, { chainId, deploymentId }) === "reconnected") {
+        void refill().catch(() => undefined);
+        return;
+      }
       setState((current) =>
         reduceStripState(current, event, { chainId, deploymentId }, Date.now()),
       );
     },
-    [chainId, deploymentId],
+    [chainId, deploymentId, refill],
   );
   useLiveEvents(onEvent, refill);
 

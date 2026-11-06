@@ -11,7 +11,7 @@ import { ApiProblem } from "@/api/problems";
 import type { LiveEvent } from "@/api/types";
 import { useLiveEvents } from "@/live/live-events";
 import type { FeedItem } from "@/live/feed-store";
-import { liveTradeRows, reduceTokenTrades } from "@/live/live-strip-model";
+import { liveRefreshKind, liveTradeRows, reduceTokenTrades } from "@/live/live-strip-model";
 import { formatCanonicalBaseUnits, formatSignificantPrice } from "@/amounts";
 import { CoinGeckoAttribution, UsdLine } from "@/market/usd-line";
 import { DEFAULT_E2E_WEB_URL, publicConfiguration } from "@/config/public";
@@ -334,9 +334,11 @@ export function TokenDetail({
   const onLiveEvent = useCallback(
     (event: LiveEvent) => {
       if (useFixture || configuration.status !== "ready") return;
+      let refreshKind: ReturnType<typeof liveRefreshKind> = null;
       if (configuration.chainId !== null && configuration.deploymentId !== null) {
         // Trades prepend client-side from the shared stream; no refetch is needed.
         const scope = { chainId: configuration.chainId, deploymentId: configuration.deploymentId };
+        refreshKind = liveRefreshKind(event, scope);
         setLiveFeed((current) => {
           // Live rows belong to one token; never carry them across a route change.
           const base = current.address === tokenAddress ? current.items : [];
@@ -347,14 +349,23 @@ export function TokenDetail({
             : { address: tokenAddress, items };
         });
       }
-      if (event.event !== "launch" && event.event !== "token" && event.event !== "reorg") return;
-      if (
-        event.data.chain_id !== configuration.chainId ||
-        event.data.deployment_id !== configuration.deploymentId
-      )
+      if (refreshKind === "reconnected") {
+        // The recovery fetch ran before the stream reopened; reload trades to close that gap.
+        const loaders = loadersRef.current;
+        if (loaders && tokenRef.current)
+          void loaders.loadCollection(tabRef.current).catch(() => undefined);
         return;
-      // The shared stream is unfiltered, so scope hints to this token client-side.
-      if (!isTokenEventForAddress(event, tokenAddress)) return;
+      }
+      if (refreshKind !== "reorg") {
+        if (event.event !== "launch" && event.event !== "token") return;
+        if (
+          event.data.chain_id !== configuration.chainId ||
+          event.data.deployment_id !== configuration.deploymentId
+        )
+          return;
+        // The shared stream is unfiltered, so scope hints to this token client-side.
+        if (!isTokenEventForAddress(event, tokenAddress)) return;
+      }
       if (!tokenRef.current) return;
       // Collapse hints that arrive during a refresh into one follow-up refresh.
       if (refreshingRef.current) {

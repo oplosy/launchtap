@@ -98,4 +98,25 @@ describe("feed store", () => {
     // 3 was reorged out during the outage (not in REST, below newest=4); 5 and 6 are newer.
     expect(merged.map((i) => i.block_number)).toEqual([6, 5, 4, 2]);
   });
+
+  it("mergeRecent keeps live launch and graduation items that REST cannot carry", () => {
+    const base = { chain_id: 1, deployment_id: "local", name: "N", symbol: "S" };
+    let live = applyFeedEvent([], {
+      event: "new_token",
+      data: { ...base, block_number: 3, creator: "0xc", token: "0xT", tx_hash: "0xh" },
+    });
+    live = applyFeedEvent(live, {
+      event: "graduation",
+      data: { ...base, block_number: 2, pair: "0xp", token: "0xU", tx_hash: "0xg" },
+    });
+    const recent = [5, 4].map((n) => tradeToFeedItem(trade(n)));
+    const merged = mergeRecent(live, recent);
+    expect(merged.map((i) => i.kind)).toEqual(["trade", "trade", "launch", "graduation"]);
+    // A reorg to ancestor 2 still prunes the launch above it.
+    const pruned = applyFeedEvent(merged, {
+      event: "reorg",
+      data: { chain_id: 1, deployment_id: "local", common_ancestor: 2 },
+    });
+    expect(pruned.map((i) => i.kind)).toEqual(["graduation"]);
+  });
 });
