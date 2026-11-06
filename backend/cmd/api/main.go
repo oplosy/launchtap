@@ -13,12 +13,14 @@ import (
 	"github.com/Contictus/launchtap/backend/deployments"
 	"github.com/Contictus/launchtap/backend/internal/apiserver"
 	"github.com/Contictus/launchtap/backend/internal/config"
+	"github.com/Contictus/launchtap/backend/internal/metrics"
 	"github.com/Contictus/launchtap/backend/internal/pricefeed"
 	"github.com/Contictus/launchtap/backend/internal/privyauth"
 	"github.com/Contictus/launchtap/backend/internal/quote"
 	"github.com/Contictus/launchtap/backend/internal/realtime"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func main() {
@@ -72,6 +74,9 @@ func run() error {
 	apiConfig.AllowedOrigins = c.APIAllowedOrigins
 	apiConfig.TrustedProxies = c.APITrustedProxyCIDRs
 	apiConfig.RateLimitPerMinute, apiConfig.RateLimitBurst = c.APIRateLimitPerMinute, c.APIRateLimitBurst
+	metricsRegistry := metrics.NewRegistry(metrics.ComponentAPI)
+	apiConfig.Metrics = metrics.NewAPI(metricsRegistry)
+	metrics.RegisterPool(metricsRegistry, "launchpad_api", pool.Stat)
 	server := apiserver.New(apiConfig, ready, slog.Default())
 	server.RegisterTokenRoutes(apiserver.TokenRoutes{Reader: storepostgres.TokenReader{Pool: pool, DeploymentID: c.DeploymentID}, ChainID: int64(c.ChainID)})
 	server.RegisterHighlightsRoutes(apiserver.HighlightsRoutes{Reader: storepostgres.HighlightsReader{Pool: pool, DeploymentID: c.DeploymentID}, ChainID: int64(c.ChainID)})
@@ -96,12 +101,25 @@ func run() error {
 	server.RegisterReferenceRoutes(references)
 	go listenRefreshHints(ctx, pool, hub, int64(c.ChainID), c.DeploymentID)
 	server.HTTP.Addr = c.APIAddr
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 2)
 	go func() { errCh <- server.HTTP.ListenAndServe() }()
+	var metricsServer *http.Server
+	if c.APIMetricsAddr != "" {
+		// Separate listener: metrics are never served on the public API_ADDR.
+		metricsServer = &http.Server{Addr: c.APIMetricsAddr, Handler: metricsMux(metricsRegistry), ReadHeaderTimeout: 5 * time.Second}
+		go func() {
+			if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				errCh <- err
+			}
+		}()
+	}
 	select {
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), apiserver.DefaultConfig().ShutdownTimeout)
 		defer cancel()
+		if metricsServer != nil {
+			_ = metricsServer.Shutdown(shutdownCtx)
+		}
 		return server.Shutdown(shutdownCtx)
 	case err := <-errCh:
 		if errors.Is(err, http.ErrServerClosed) {
@@ -109,6 +127,13 @@ func run() error {
 		}
 		return err
 	}
+}
+
+// metricsMux serves only /metrics.
+func metricsMux(g prometheus.Gatherer) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", metrics.Handler(g))
+	return mux
 }
 
 func loadDeploymentRegistry() (*deployments.Registry, error) {

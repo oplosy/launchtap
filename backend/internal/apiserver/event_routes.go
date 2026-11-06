@@ -22,6 +22,7 @@ type EventRoutes struct {
 	// one window are delivered once. Zero uses the default window.
 	Coalesce time.Duration
 	shutdown <-chan struct{}
+	metrics  Metrics
 }
 
 const defaultEventCoalesce = 500 * time.Millisecond
@@ -71,6 +72,10 @@ func (r EventRoutes) stream(ctx context.Context, input *eventInput, send sse.Sen
 		return
 	}
 	defer release()
+	if r.metrics != nil {
+		r.metrics.StreamOpened()
+		defer r.metrics.StreamClosed()
+	}
 	subscription, err := r.Hub.Subscribe()
 	if err != nil {
 		_ = send(sse.Message{Comment: "subscriber capacity reached", Retry: 3000})
