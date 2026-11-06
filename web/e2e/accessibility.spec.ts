@@ -22,3 +22,9 @@ test("analytics unavailable state is explicit when no reviewed API is configured
   await expect(page.getByRole("heading", { name: "Analytics unavailable" })).toBeVisible();
   await expect(page.getByText("No reviewed API deployment is connected.")).toBeVisible();
 });
+
+test("a visitor sees no notification bell", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: /^Notifications/ })).toHaveCount(0);
+  await expect(page.locator(".notify-bell")).toHaveCount(0);
+});

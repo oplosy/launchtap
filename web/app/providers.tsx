@@ -14,6 +14,8 @@ import {
 } from "react";
 import { publicConfiguration, type PublicConfiguration } from "@/config/public";
 import { LiveEventsProvider } from "@/live/live-events";
+import { NotificationIdentityBridge } from "@/live/notification-bridge";
+import { NotificationsProvider } from "@/live/notifications";
 import {
   WalletConnectionContext,
   fallbackConnection,
@@ -46,7 +48,9 @@ function walletStackAvailable(configuration: PublicConfiguration) {
 export function Providers({ children }: PropsWithChildren) {
   return (
     <LiveEventsProvider>
-      <WalletProviders>{children}</WalletProviders>
+      <NotificationsProvider>
+        <WalletProviders>{children}</WalletProviders>
+      </NotificationsProvider>
     </LiveEventsProvider>
   );
 }
@@ -114,7 +118,10 @@ function WalletProviders({ children }: PropsWithChildren) {
   if (Stack)
     return (
       <WalletStackStatus.Provider value={status}>
-        <Stack openOnMount={openOnMount}>{children}</Stack>
+        <Stack openOnMount={openOnMount}>
+          <NotificationIdentityBridge />
+          {children}
+        </Stack>
       </WalletStackStatus.Provider>
     );
   return (

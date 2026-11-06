@@ -20,6 +20,7 @@ const result = spawnSync(
     "playwright",
     "test",
     "live-strip",
+    "notifications",
     "release-hardening",
     // The /create footer check is a fail-closed-configuration check (ready config lays /create out differently).
     "--grep-invert",

@@ -27,6 +27,7 @@ import {
 } from "./theme";
 import { WalletConnectButton } from "@/wallet/connection-context";
 import { publicConfiguration } from "@/config/public";
+import { NotificationBell } from "@/live/notifications";
 import { CoinGeckoAttribution } from "@/market/usd-line";
 
 // The palette is only downloaded the first time someone opens it.
@@ -136,6 +137,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <UserCircle size={19} />
             </Link>
+            <NotificationBell />
             <WalletConnectButton />
             <button
               className="ui-icon-button navbar-menu-button"

@@ -2,6 +2,7 @@
 
 import {
   ArrowSquareOut,
+  BellSimple,
   BookOpenText,
   ChartLineUp,
   Compass,
@@ -19,6 +20,7 @@ import {
 
 export {
   ArrowSquareOut,
+  BellSimple,
   BookOpenText,
   ChartLineUp,
   Compass,
