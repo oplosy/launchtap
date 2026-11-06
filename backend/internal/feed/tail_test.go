@@ -3,6 +3,8 @@ package feed
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"math/big"
 	"sync"
 	"testing"
@@ -20,6 +22,8 @@ type fakeReader struct {
 	launches []Launch
 	marks    Watermarks
 	err      error
+	// tradeErrs makes TradesAfter fail that many times, then succeed.
+	tradeErrs int
 }
 
 func (f *fakeReader) TradesAfter(_ context.Context, _ int64, after Cursor, limit int) ([]Trade, error) {
@@ -27,6 +31,10 @@ func (f *fakeReader) TradesAfter(_ context.Context, _ int64, after Cursor, limit
 	defer f.mu.Unlock()
 	if f.err != nil {
 		return nil, f.err
+	}
+	if f.tradeErrs > 0 {
+		f.tradeErrs--
+		return nil, errors.New("trades boom")
 	}
 	var out []Trade
 	for _, row := range f.trades {
@@ -144,6 +152,19 @@ func quiet() { time.Sleep(80 * time.Millisecond) }
 type countObserver struct {
 	mu     sync.Mutex
 	bursts int
+	failed []string
+}
+
+func (o *countObserver) ReadFailed(op string) {
+	o.mu.Lock()
+	o.failed = append(o.failed, op)
+	o.mu.Unlock()
+}
+
+func (o *countObserver) failures() []string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return append([]string(nil), o.failed...)
 }
 
 func (o *countObserver) Published(string)  {}
@@ -377,4 +398,137 @@ func TestTailStartReturnsOnCancel(t *testing.T) {
 	tail := newTail(&fakeReader{}, newRecorder(), &clock{t: time.Unix(100, 0)})
 	stop := startTail(t, tail)
 	stop()
+}
+
+func TestTailTradesReadFailureIsObservedAndRetried(t *testing.T) {
+	reader := &fakeReader{}
+	rec := newRecorder()
+	obs := &countObserver{}
+	tail := newTail(reader, rec, &clock{t: time.Unix(100, 0)})
+	tail.Observer = obs
+	tail.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	stop := startTail(t, tail)
+	defer stop()
+	reader.update(func(f *fakeReader) {
+		f.trades = append(f.trades, trade(1, 0, 0, 1))
+		f.tradeErrs = 1
+	})
+	tail.Hint(tokenHint)
+	quiet()
+	if got := obs.failures(); len(got) != 1 || got[0] != "trades" {
+		t.Fatalf("failures = %v", got)
+	}
+	if len(rec.snapshot()) != 0 {
+		t.Fatal("published despite error")
+	}
+	tail.Hint(tokenHint)
+	rec.waitCount(t, 1)
+	quiet()
+	if len(rec.snapshot()) != 1 || rec.snapshot()[0].Trade.Block != 1 {
+		t.Fatalf("unexpected %v", rec.types())
+	}
+}
+
+func TestTailReadsWatermarksOnHint(t *testing.T) {
+	reader := &fakeReader{}
+	rec := newRecorder()
+	tail := newTail(reader, rec, &clock{t: time.Unix(100, 0)}) // ticker is an hour away
+	stop := startTail(t, tail)
+	defer stop()
+	reader.update(func(f *fakeReader) { f.marks = Watermarks{Safe: 7, Finalized: 3} })
+	tail.Hint(tokenHint)
+	rec.waitCount(t, 1)
+	if e := rec.snapshot()[0]; e.Type != "finality" || e.SafeBlock != 7 || e.FinalizedBlock != 3 {
+		t.Fatalf("unexpected %+v", e)
+	}
+}
+
+func TestTailFinalityPublishedOnlyWhenAdvancing(t *testing.T) {
+	reader := &fakeReader{marks: Watermarks{Safe: 10, Finalized: 5}}
+	rec := newRecorder()
+	tail := newTail(reader, rec, &clock{t: time.Unix(100, 0)})
+	stop := startTail(t, tail)
+	defer stop()
+	tail.Hint(tokenHint)
+	rec.waitCount(t, 1)
+	reader.update(func(f *fakeReader) { f.marks = Watermarks{Safe: 8, Finalized: 5} })
+	tail.Hint(tokenHint)
+	quiet()
+	if len(rec.snapshot()) != 1 {
+		t.Fatalf("lower watermark published: %v", rec.types())
+	}
+	reader.update(func(f *fakeReader) { f.marks = Watermarks{Safe: 8, Finalized: 6} })
+	tail.Hint(tokenHint)
+	rec.waitCount(t, 2)
+	if e := rec.snapshot()[1]; e.SafeBlock != 10 || e.FinalizedBlock != 6 {
+		t.Fatalf("unexpected %+v", e)
+	}
+}
+
+func TestTailRewindsGraduationAndLaunchCursors(t *testing.T) {
+	reader := &fakeReader{
+		launches: []Launch{{Token: common.Address{1}, Name: "A", Symbol: "A", Block: 8}},
+		grads:    []Graduation{{Token: common.Address{1}, Name: "A", Symbol: "A", Block: 9}},
+	}
+	rec := newRecorder()
+	tail := newTail(reader, rec, &clock{t: time.Unix(100, 0)})
+	stop := startTail(t, tail)
+	defer stop()
+	reader.update(func(f *fakeReader) {
+		f.launches = []Launch{{Token: common.Address{2}, Name: "B", Symbol: "B", Block: 6}}
+		f.grads = []Graduation{{Token: common.Address{2}, Name: "B", Symbol: "B", Block: 7}}
+	})
+	tail.Hint(realtime.Event{Type: "reorg", CommonAncestor: 5})
+	rec.waitCount(t, 2)
+	quiet()
+	got := map[string]int64{}
+	for _, e := range rec.snapshot() {
+		switch e.Type {
+		case "new_token":
+			got[e.Type] = e.Launch.Block
+		case "graduation":
+			got[e.Type] = e.Graduation.Block
+		}
+	}
+	if got["new_token"] != 6 || got["graduation"] != 7 || len(rec.snapshot()) != 2 {
+		t.Fatalf("unexpected %v %v", got, rec.types())
+	}
+}
+
+func TestTailBurstClosedByTimerWithoutFurtherReads(t *testing.T) {
+	reader := &fakeReader{}
+	rec := newRecorder()
+	obs := &countObserver{}
+	clk := &clock{t: time.Unix(100, 0)}
+	tail := newTail(reader, rec, clk)
+	tail.Observer = obs
+	tail.PerSecond = 2
+	stop := startTail(t, tail)
+	defer stop()
+	reader.update(func(f *fakeReader) {
+		for i := 0; i < 4; i++ {
+			f.trades = append(f.trades, trade(1, int32(i), 0, 1))
+		}
+	})
+	tail.Hint(tokenHint)
+	rec.waitCount(t, 2)
+	quiet()
+	if obs.burstCount() != 0 {
+		t.Fatal("burst emitted before window closed")
+	}
+	clk.advance(1100 * time.Millisecond) // no further hint: only the window timer can close it
+	rec.waitCount(t, 3)
+	quiet()
+	bursts, total := 0, 0
+	for _, e := range rec.snapshot() {
+		if e.Type == "trade_burst" {
+			bursts++
+			for _, b := range e.Burst {
+				total += b.Count
+			}
+		}
+	}
+	if bursts != 1 || total != 2 || obs.burstCount() != 1 {
+		t.Fatalf("bursts=%d total=%d observer=%d types=%v", bursts, total, obs.burstCount(), rec.types())
+	}
 }

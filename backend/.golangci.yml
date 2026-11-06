@@ -82,6 +82,7 @@ linters:
             - "**/internal/realtime/**/*.go"
           allow:
             - $gostd
+            - github.com/ethereum/go-ethereum/common
         deployments-boundary:
           list-mode: strict
           files:

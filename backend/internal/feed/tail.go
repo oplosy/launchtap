@@ -2,6 +2,7 @@ package feed
 
 import (
 	"context"
+	"log/slog"
 	"math"
 	"sort"
 	"sync"
@@ -18,9 +19,13 @@ type Observer interface {
 	Published(eventType string)
 	Burst()
 	Lag(time.Duration)
+	// ReadFailed counts a failed Reader call. op is one of newest, trades, graduations, launches, watermarks.
+	ReadFailed(op string)
 }
 
 type noopObserver struct{}
+
+func (noopObserver) ReadFailed(string) {}
 
 func (noopObserver) Published(string)  {}
 func (noopObserver) Burst()            {}
@@ -36,6 +41,7 @@ type Tail struct {
 	ChainID        int64
 	DeploymentID   string
 	Observer       Observer
+	Logger         *slog.Logger // nil uses slog.Default()
 	Now            func() time.Time
 	Limit          int           // rows per read, default 200
 	PerSecond      int           // trade events per 1-second window, default 20
@@ -90,6 +96,9 @@ func (t *Tail) Start(ctx context.Context) error {
 	if t.Observer == nil {
 		t.Observer = noopObserver{}
 	}
+	if t.Logger == nil {
+		t.Logger = slog.Default()
+	}
 	if t.Now == nil {
 		t.Now = time.Now
 	}
@@ -117,6 +126,7 @@ func (t *Tail) Start(ctx context.Context) error {
 			close(t.ready)
 			break
 		}
+		t.readFailed(ctx, "newest", err)
 		select {
 		case <-ctx.Done():
 			return nil
@@ -130,6 +140,7 @@ func (t *Tail) Start(ctx context.Context) error {
 			return nil
 		case <-t.signal:
 			t.drain(ctx)
+			t.publishFinality(ctx)
 		case <-ticker.C:
 			t.drain(ctx)
 			t.publishFinality(ctx)
@@ -144,6 +155,15 @@ func (t *Tail) Start(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+// readFailed logs and counts a Reader error. The cursor is untouched, so the next hint or tick retries.
+func (t *Tail) readFailed(ctx context.Context, op string, err error) {
+	if ctx.Err() != nil {
+		return
+	}
+	t.Logger.Warn("feed tail read failed", "op", op, "chain_id", t.ChainID, "error", err)
+	t.Observer.ReadFailed(op)
 }
 
 func minDuration(a, b time.Duration) time.Duration {
@@ -200,6 +220,7 @@ func (t *Tail) drainLaunches(ctx context.Context) {
 	for ctx.Err() == nil {
 		rows, err := t.Reader.LaunchesAfter(ctx, t.ChainID, t.launch, t.Limit)
 		if err != nil {
+			t.readFailed(ctx, "launches", err)
 			return
 		}
 		for i := range rows {
@@ -217,6 +238,7 @@ func (t *Tail) drainGraduations(ctx context.Context) {
 	for ctx.Err() == nil {
 		rows, err := t.Reader.GraduationsAfter(ctx, t.ChainID, t.grad, t.Limit)
 		if err != nil {
+			t.readFailed(ctx, "graduations", err)
 			return
 		}
 		for i := range rows {
@@ -234,6 +256,7 @@ func (t *Tail) drainTrades(ctx context.Context) {
 	for ctx.Err() == nil {
 		rows, err := t.Reader.TradesAfter(ctx, t.ChainID, t.trade, t.Limit)
 		if err != nil {
+			t.readFailed(ctx, "trades", err)
 			return
 		}
 		for i := range rows {
@@ -286,12 +309,14 @@ func (t *Tail) closeWindowIfDue() {
 
 func (t *Tail) publishFinality(ctx context.Context) {
 	marks, err := t.Reader.Watermarks(ctx, t.ChainID, t.DeploymentID)
-	if err != nil || (marks.Safe == t.lastSafe && marks.Finalized == t.lastFinal) {
+	if err != nil {
+		t.readFailed(ctx, "watermarks", err)
 		return
 	}
-	if marks.Safe == 0 && marks.Finalized == 0 {
+	// Publish only when a watermark advances; a lower value after a reorg is not published.
+	if marks.Safe <= t.lastSafe && marks.Finalized <= t.lastFinal {
 		return
 	}
-	t.lastSafe, t.lastFinal = marks.Safe, marks.Finalized
-	t.publish(realtime.Event{Type: "finality", SafeBlock: marks.Safe, FinalizedBlock: marks.Finalized})
+	t.lastSafe, t.lastFinal = max(t.lastSafe, marks.Safe), max(t.lastFinal, marks.Finalized)
+	t.publish(realtime.Event{Type: "finality", SafeBlock: t.lastSafe, FinalizedBlock: t.lastFinal})
 }
