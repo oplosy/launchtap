@@ -3,6 +3,8 @@ package apiserver
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/Contictus/launchtap/backend/internal/privyauth"
@@ -19,6 +21,8 @@ type WatchlistRoutes struct {
 	Store        watchlist.Store
 	ChainID      int64
 	DeploymentID string
+	// Logger records unexpected store failures; Server.RegisterWatchlistRoutes defaults it.
+	Logger *slog.Logger
 }
 
 // WatchlistAuthInput leaves the credential headers optional at the schema level so a missing
@@ -69,7 +73,9 @@ func (r WatchlistRoutes) owner(ctx context.Context, in WatchlistAuthInput) (watc
 	return watchlist.Owner{ChainID: r.ChainID, DeploymentID: r.DeploymentID, PrivyDID: principal.PrivyDID}, nil
 }
 
-func watchlistError(ctx context.Context, err error) error {
+// fail maps a store error to its API problem. Unexpected failures are logged with the request
+// ID and the error type only: store errors may embed the DID or query arguments.
+func (r WatchlistRoutes) fail(ctx context.Context, err error) error {
 	switch {
 	case errors.Is(err, watchlist.ErrUnknownToken):
 		return apiProblem(http.StatusNotFound, "token_not_found", "Token not found")
@@ -78,6 +84,9 @@ func watchlistError(ctx context.Context, err error) error {
 	case errors.Is(err, context.Canceled):
 		return err
 	default:
+		if r.Logger != nil {
+			r.Logger.ErrorContext(ctx, "watchlist request failed", "request_id", RequestID(ctx), "error_type", fmt.Sprintf("%T", err))
+		}
 		return apiRequestProblem(ctx, http.StatusInternalServerError, "internal_error", "Request failed")
 	}
 }
@@ -89,7 +98,7 @@ func (r WatchlistRoutes) list(ctx context.Context, in *WatchlistAuthInput) (*wat
 	}
 	entries, err := r.Store.List(ctx, owner)
 	if err != nil {
-		return nil, watchlistError(ctx, err)
+		return nil, r.fail(ctx, err)
 	}
 	out := watchlistOutput{Body: watchlistBody{Items: make([]watchlistEntryDTO, 0, len(entries))}}
 	for _, e := range entries {
@@ -113,7 +122,7 @@ func (r WatchlistRoutes) add(ctx context.Context, in *watchlistEntryInput) (*wat
 		return nil, err
 	}
 	if err := r.Store.Add(ctx, owner, token); err != nil {
-		return nil, watchlistError(ctx, err)
+		return nil, r.fail(ctx, err)
 	}
 	return &watchlistEmptyOutput{}, nil
 }
@@ -128,7 +137,7 @@ func (r WatchlistRoutes) remove(ctx context.Context, in *watchlistEntryInput) (*
 		return nil, err
 	}
 	if err := r.Store.Remove(ctx, owner, token); err != nil {
-		return nil, watchlistError(ctx, err)
+		return nil, r.fail(ctx, err)
 	}
 	return &watchlistEmptyOutput{}, nil
 }

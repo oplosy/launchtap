@@ -228,6 +228,24 @@ func TestWatchlistScopesByDID(t *testing.T) {
 	}
 }
 
+func TestWatchlistLogsUnexpectedErrorsWithoutDID(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	server := newWatchlistServer(&watchlistStoreStub{addErr: errors.New("db failed for " + watchlistTestDID)}, watchlistTestDID, logger)
+	w := httptest.NewRecorder()
+	server.Handler.ServeHTTP(w, watchlistRequest(http.MethodPut, "/v1/me/watchlist/"+watchlistTokenHex, true))
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status=%d", w.Code)
+	}
+	logs := buf.String()
+	if !strings.Contains(logs, "watchlist request failed") || !strings.Contains(logs, "level=ERROR") || !strings.Contains(logs, "request_id=") {
+		t.Fatalf("missing error log: %s", logs)
+	}
+	if strings.Contains(logs, watchlistTestDID) || strings.Contains(strings.ToLower(logs), "bearer") {
+		t.Fatalf("logs leak credentials: %s", logs)
+	}
+}
+
 func TestWatchlistLogsOmitDID(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))

@@ -46,6 +46,7 @@ type Server struct {
 	HTTP    *http.Server
 	API     huma.API
 
+	logger         *slog.Logger
 	streamShutdown chan struct{}
 	shutdownOnce   sync.Once
 }
@@ -119,6 +120,7 @@ func New(cfg Config, ready Readiness, logger *slog.Logger) *Server {
 	return &Server{
 		Handler:        h,
 		API:            api,
+		logger:         logger,
 		HTTP:           &http.Server{Handler: h, ReadHeaderTimeout: cfg.ReadHeaderTimeout, ReadTimeout: cfg.ReadTimeout, WriteTimeout: cfg.WriteTimeout, IdleTimeout: cfg.IdleTimeout, MaxHeaderBytes: cfg.MaxHeaderBytes},
 		streamShutdown: make(chan struct{}),
 	}
@@ -137,7 +139,12 @@ func (s *Server) RegisterEventRoutes(r EventRoutes) {
 func (s *Server) RegisterObservationRoutes(r ObservationRoutes) { r.Register(s.API) }
 func (s *Server) RegisterProfileRoutes(r ProfileRoutes)         { r.Register(s.API) }
 func (s *Server) RegisterReferenceRoutes(r ReferenceRoutes)     { r.Register(s.API) }
-func (s *Server) RegisterWatchlistRoutes(r WatchlistRoutes)     { r.Register(s.API) }
+func (s *Server) RegisterWatchlistRoutes(r WatchlistRoutes) {
+	if r.Logger == nil {
+		r.Logger = s.logger
+	}
+	r.Register(s.API)
+}
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.shutdownOnce.Do(func() { close(s.streamShutdown) })
