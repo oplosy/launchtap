@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import { webOrigin } from "@/config/server";
-import { loadCardData } from "@/share/card-data";
-import { canonicalTokenUrl } from "@/share/share-links";
+import { loadMetadataSummary } from "@/share/card-data";
+import { canonicalTokenUrl, publicWebOrigin } from "@/share/share-links";
 import { parseTokenAddress } from "@/token/address";
 import { TokenDetail } from "@/token/token-detail";
 import Link from "next/link";
@@ -14,18 +13,21 @@ export async function generateMetadata({
   const { address } = await params;
   const parsed = parseTokenAddress(address);
   if (!parsed) return { title: "Token not found" };
-  const origin = webOrigin();
-  const card = await loadCardData(parsed);
-  const title =
-    card.kind === "token" ? (card.symbol ? `$${card.symbol} - ${card.name}` : card.name) : "Token";
-  const description =
-    card.kind === "token"
-      ? `${card.name} on Launchpad: market cap ${card.marketCapEth} ETH, ${
-          card.phase === "graduated"
-            ? "graduated to a liquidity pool"
-            : "trading on its bonding curve"
-        }.`
-      : "A fixed-supply token on Launchpad.";
+  const origin = publicWebOrigin();
+  // One cached token read; metadata never downloads the image or reads the ETH/USD price.
+  const summary = await loadMetadataSummary(parsed);
+  const title = summary
+    ? summary.symbol
+      ? `$${summary.symbol} - ${summary.name}`
+      : summary.name
+    : "Token";
+  const description = summary
+    ? `${summary.name} on Launchpad: market cap ${summary.marketCapEth} ETH, ${
+        summary.phase === "graduated"
+          ? "graduated to a liquidity pool"
+          : "trading on its bonding curve"
+      }.`
+    : "A fixed-supply token on Launchpad.";
   return {
     title,
     description,

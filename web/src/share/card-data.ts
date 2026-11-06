@@ -28,19 +28,41 @@ export const MAX_NAME_LENGTH = 32;
 const MAX_SYMBOL_LENGTH = 16;
 /** Mirrors backend maxImageBytes (metadata_routes.go): 5 MiB. */
 export const MAX_IMAGE_BYTES = 5 << 20;
-/** Upload path accepts PNG, JPEG and WebP; the renderer can only embed PNG and JPEG. */
 
 type Fetcher = typeof fetch;
 
-function clean(value: unknown, max: number): string {
+/** Seconds the upstream API reads (and the rendered card) may be reused. */
+export const CARD_REVALIDATE_SECONDS = 300;
+const NEXT_CACHE = { next: { revalidate: CARD_REVALIDATE_SECONDS } } as const;
+
+/**
+ * Plain text for titles and cards: control characters, bidi overrides/isolates and zero-width
+ * characters are removed (they can reorder or hide text in an unfurl), whitespace is collapsed.
+ */
+export function cleanText(value: unknown, max: number): string {
   if (typeof value !== "string") return "";
-  // Plain text only: drop control characters and collapse whitespace.
   const text = value
-    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ")
+    .replace(/[​-‏‪-‮⁦-⁩﻿]/g, "")
     .replace(/\s+/g, " ")
     .trim();
   const chars = Array.from(text);
   return chars.length > max ? `${chars.slice(0, max - 1).join("")}…` : text;
+}
+
+/**
+ * Card-only text: keeps just the characters the bundled default font (Geist) covers, so the
+ * renderer never asks for a fallback font or emoji asset from a third-party host. The allowed set
+ * is printable ASCII, Latin-1 letters and punctuation (U+00A1-U+00FF without the soft hyphen), and
+ * the ellipsis U+2026 that truncation emits. src/share/card-font.test.ts renders every allowed
+ * character with outbound network blocked to prove the font covers it.
+ */
+export const CARD_TEXT_DISALLOWED = /[^ -~¡-¬®-ÿ…]/gu;
+
+export function cardText(value: unknown, max: number): string {
+  if (typeof value !== "string") return "";
+  const kept = cleanText(value, Number.MAX_SAFE_INTEGER).replace(CARD_TEXT_DISALLOWED, "");
+  return cleanText(kept, max);
 }
 
 function detectImageType(bytes: Uint8Array): "image/png" | "image/jpeg" | null {
@@ -114,6 +136,7 @@ async function getJson(url: string, fetcher: Fetcher): Promise<unknown> {
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     redirect: "error",
     headers: { Accept: "application/json" },
+    ...NEXT_CACHE,
   });
   if (!response.ok) throw new Error(`API responded ${response.status}`);
   return response.json();
@@ -129,6 +152,50 @@ async function loadEthUsd(base: string, fetcher: Fetcher): Promise<string | null
   }
 }
 
+type TokenSummary = {
+  raw: Record<string, unknown>;
+  marketCapRaw: string;
+  marketCapEth: string;
+  phase: "bonding" | "graduated";
+};
+
+async function loadSummary(base: string, address: string, fetcher: Fetcher): Promise<TokenSummary> {
+  const raw = (await getJson(`${base}/v1/tokens/${address}`, fetcher)) as Record<string, unknown>;
+  const marketCapRaw = raw.market_cap_eth;
+  if (typeof marketCapRaw !== "string") throw new Error("token response is malformed");
+  const marketCapEth = formatCanonicalBaseUnits(marketCapRaw, 2);
+  if (marketCapEth === null) throw new Error("market cap is not a canonical amount");
+  // The API reports phase "curve" until graduation, then "graduated" (openapi TokenDetailDTO).
+  const phase = raw.phase === "graduated" ? "graduated" : "bonding";
+  return { raw, marketCapRaw, marketCapEth, phase };
+}
+
+export type MetadataSummary = {
+  name: string;
+  symbol: string;
+  marketCapEth: string;
+  phase: "bonding" | "graduated";
+};
+
+/** Light loader for page metadata: one cached token read, no image and no ETH/USD price. */
+export async function loadMetadataSummary(
+  address: string,
+  fetcher: Fetcher = fetch,
+  baseUrl?: string,
+): Promise<MetadataSummary | null> {
+  const parsed = parseTokenAddress(address);
+  if (!parsed) return null;
+  try {
+    const summary = await loadSummary(baseUrl ?? apiInternalBaseUrl(), parsed, fetcher);
+    const symbol = cleanText(summary.raw.symbol, MAX_SYMBOL_LENGTH);
+    const name = cleanText(summary.raw.name, MAX_NAME_LENGTH) || symbol || "Unnamed token";
+    return { name, symbol, marketCapEth: summary.marketCapEth, phase: summary.phase };
+  } catch (cause) {
+    console.error("share metadata: token unavailable", cause);
+    return null;
+  }
+}
+
 export async function loadCardData(
   address: string,
   fetcher: Fetcher = fetch,
@@ -138,15 +205,11 @@ export async function loadCardData(
   if (!parsed) return { kind: "generic" };
   try {
     const base = baseUrl ?? apiInternalBaseUrl();
-    const raw = (await getJson(`${base}/v1/tokens/${parsed}`, fetcher)) as Record<string, unknown>;
-    const name = clean(raw.name, MAX_NAME_LENGTH);
-    const symbol = clean(raw.symbol, MAX_SYMBOL_LENGTH);
-    const marketCapRaw = raw.market_cap_eth;
-    if (typeof marketCapRaw !== "string") throw new Error("token response is malformed");
-    const marketCapEth = formatCanonicalBaseUnits(marketCapRaw, 2);
-    if (marketCapEth === null) throw new Error("market cap is not a canonical amount");
+    const { raw, marketCapRaw, marketCapEth, phase } = await loadSummary(base, parsed, fetcher);
+    const symbol = cardText(raw.symbol, MAX_SYMBOL_LENGTH);
+    // An all-emoji or all-CJK name becomes empty: fall back to $SYMBOL, then a generic label.
+    const name = cardText(raw.name, MAX_NAME_LENGTH) || (symbol ? `$${symbol}` : "Unnamed token");
     const bps = Number(raw.graduation_progress_bps);
-    const phase = raw.phase === "graduated" ? "graduated" : "bonding";
     const [price, image] = await Promise.all([
       loadEthUsd(base, fetcher),
       loadImage(`${base}/v1/tokens/${parsed}/image`, fetcher),
@@ -161,7 +224,7 @@ export async function loadCardData(
     }
     return {
       kind: "token",
-      name: name || symbol || "Unnamed token",
+      name,
       symbol,
       imageUrl: image?.imageUrl ?? null,
       imageDataUri: image?.imageDataUri ?? null,

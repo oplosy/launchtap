@@ -34,19 +34,3 @@ export function apiInternalBaseUrl(
   if (publicBase) return httpBase(publicBase, "NEXT_PUBLIC_API_BASE_URL");
   throw new Error("API_INTERNAL_BASE_URL or NEXT_PUBLIC_API_BASE_URL is required");
 }
-
-/** Public site origin used for canonical and share URLs; null when none is configured. */
-export function webOrigin(
-  env: Record<string, string | undefined> = {
-    NEXT_PUBLIC_WEB_ORIGIN: process.env.NEXT_PUBLIC_WEB_ORIGIN,
-    NEXT_PUBLIC_TASK6_ANVIL_WEB_URL: process.env.NEXT_PUBLIC_TASK6_ANVIL_WEB_URL,
-  },
-): string | null {
-  const value = env.NEXT_PUBLIC_WEB_ORIGIN?.trim() || env.NEXT_PUBLIC_TASK6_ANVIL_WEB_URL?.trim();
-  if (!value) return null;
-  try {
-    return httpBase(value, "NEXT_PUBLIC_WEB_ORIGIN");
-  } catch {
-    return null;
-  }
-}

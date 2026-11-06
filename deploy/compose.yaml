@@ -1,5 +1,8 @@
 name: launchpad
 
+# One value for both services: the preflight validates exactly what the web container receives.
+x-api-internal-base-url: &api-internal-base-url http://api:8080
+
 x-backend: &backend
   image: launchpad-backend:${RELEASE_TAG:?Set RELEASE_TAG to the reviewed commit}
   build:
@@ -50,7 +53,7 @@ services:
         NEXT_PUBLIC_WEB_ORIGIN: https://${WEB_DOMAIN:?Set WEB_DOMAIN}
     environment:
       <<: *public-env
-      API_INTERNAL_BASE_URL: http://api:8080
+      API_INTERNAL_BASE_URL: *api-internal-base-url
     command: [node, scripts/container-preflight.mjs]
     read_only: true
     cap_drop: [ALL]
@@ -105,7 +108,7 @@ services:
   web:
     image: launchpad-web:${RELEASE_TAG:?Set RELEASE_TAG to the reviewed commit}
     environment:
-      API_INTERNAL_BASE_URL: http://api:8080
+      API_INTERNAL_BASE_URL: *api-internal-base-url
     depends_on:
       preflight: { condition: service_completed_successfully }
     read_only: true

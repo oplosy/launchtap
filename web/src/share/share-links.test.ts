@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonicalTokenUrl, shareOnXUrl } from "./share-links";
+import { canonicalTokenUrl, publicWebOrigin, shareOnXUrl } from "./share-links";
 
 describe("share links", () => {
   it("builds a lower-case canonical token url", () => {
@@ -14,5 +14,15 @@ describe("share links", () => {
     expect(link.searchParams.get("text")).toBe("$A&B on Launchpad");
     expect(link.searchParams.get("url")).toBe("https://launch.example/token/0x1?x=1&y=2");
     expect(link.searchParams.get("y")).toBeNull();
+  });
+});
+
+describe("publicWebOrigin", () => {
+  it("returns a plain http(s) origin and null otherwise", () => {
+    expect(publicWebOrigin("https://launch.example/")).toBe("https://launch.example");
+    expect(publicWebOrigin("javascript:alert(1)")).toBeNull();
+    expect(publicWebOrigin("https://u:p@launch.example")).toBeNull();
+    expect(publicWebOrigin("")).toBeNull();
+    expect(publicWebOrigin(undefined)).toBeNull();
   });
 });

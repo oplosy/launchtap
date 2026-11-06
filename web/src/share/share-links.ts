@@ -13,3 +13,22 @@ export function shareOnXUrl(symbol: string, canonicalUrl: string): string {
   });
   return `https://x.com/intent/post?${params.toString()}`;
 }
+
+/**
+ * The public site origin (NEXT_PUBLIC_WEB_ORIGIN) or null. Server metadata and the client share
+ * buttons both use this one function so they always agree; no request or window fallback.
+ */
+export function publicWebOrigin(
+  value: string | undefined = process.env.NEXT_PUBLIC_WEB_ORIGIN,
+): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (url.username || url.password || url.search || url.hash) return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}

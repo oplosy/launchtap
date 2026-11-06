@@ -3,7 +3,7 @@
 import { Check, Copy, ShareNetwork } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { SafeExternalLink } from "@/components/primitives";
-import { canonicalTokenUrl, shareOnXUrl } from "./share-links";
+import { canonicalTokenUrl, publicWebOrigin, shareOnXUrl } from "./share-links";
 
 type Status = "idle" | "copied" | "failed";
 
@@ -15,9 +15,7 @@ export function ShareActions({ address, symbol }: { address: string; symbol: str
     const timer = window.setTimeout(() => setStatus("idle"), 2400);
     return () => window.clearTimeout(timer);
   }, [status]);
-  const origin =
-    process.env.NEXT_PUBLIC_WEB_ORIGIN?.trim() ||
-    (typeof window === "undefined" ? "" : window.location.origin);
+  const origin = publicWebOrigin();
   const canonical = origin ? canonicalTokenUrl(origin, address) : "";
   return (
     <div className="share-actions">

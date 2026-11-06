@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { apiInternalBaseUrl, webOrigin } from "./server";
+import { apiInternalBaseUrl } from "./server";
 
 describe("apiInternalBaseUrl", () => {
   it("prefers API_INTERNAL_BASE_URL over the public base", () => {
@@ -27,15 +27,5 @@ describe("apiInternalBaseUrl", () => {
     expect(() => apiInternalBaseUrl({ API_INTERNAL_BASE_URL: "http://u:p@api:8080" })).toThrow();
     expect(() => apiInternalBaseUrl({ API_INTERNAL_BASE_URL: "http://api:8080/?k=v" })).toThrow();
     expect(() => apiInternalBaseUrl({})).toThrow(/required/);
-  });
-});
-
-describe("webOrigin", () => {
-  it("returns a configured origin and null otherwise", () => {
-    expect(webOrigin({ NEXT_PUBLIC_WEB_ORIGIN: "https://launch.example/" })).toBe(
-      "https://launch.example",
-    );
-    expect(webOrigin({ NEXT_PUBLIC_WEB_ORIGIN: "javascript:alert(1)" })).toBeNull();
-    expect(webOrigin({})).toBeNull();
   });
 });

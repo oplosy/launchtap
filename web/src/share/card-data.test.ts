@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadCardData, MAX_IMAGE_BYTES, MAX_NAME_LENGTH } from "./card-data";
+import {
+  cleanText,
+  loadCardData,
+  loadMetadataSummary,
+  MAX_IMAGE_BYTES,
+  MAX_NAME_LENGTH,
+} from "./card-data";
 
 const ADDRESS = "0x0000000000000000000000000000000000000001";
 const BASE = "http://api:8080";
@@ -138,5 +144,69 @@ describe("loadCardData", () => {
     });
     const card = await loadCardData(ADDRESS, fetcher, BASE);
     expect(card).toMatchObject({ phase: "graduated", name: "A B C", symbol: "<b>X</b>" });
+  });
+});
+
+describe("card text sanitiser", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  async function nameFor(name: string, symbol = "FIX") {
+    const { fetcher } = fakeFetch({ token: () => Response.json(token({ name, symbol })) });
+    const card = await loadCardData(ADDRESS, fetcher, BASE);
+    if (card.kind !== "token") throw new Error("expected a token card");
+    return card;
+  }
+
+  it("drops emoji from the card but keeps the Latin text", async () => {
+    expect((await nameFor("Rocket \u{1F680}")).name).toBe("Rocket");
+    expect((await nameFor("Café Crème")).name).toBe("Café Crème");
+  });
+
+  it("drops CJK from the card", async () => {
+    expect((await nameFor("Moon 日本語")).name).toBe("Moon");
+  });
+
+  it("falls back to $SYMBOL, then a generic label, when nothing renderable is left", async () => {
+    expect(await nameFor("\u{1F680}\u{1F680}", "FIX")).toMatchObject({
+      name: "$FIX",
+      symbol: "FIX",
+    });
+    expect(await nameFor("日本語", "\u{1F525}")).toMatchObject({
+      name: "Unnamed token",
+      symbol: "",
+    });
+  });
+
+  it("strips bidi overrides, isolates and zero-width characters", async () => {
+    const card = await nameFor("A‮B⁦C​D﻿E‏", "X‮y");
+    expect(card.name).toBe("ABCDE");
+    expect(card.symbol).toBe("Xy");
+    expect(cleanText("A‮B​C", 32)).toBe("ABC");
+    // Metadata text keeps emoji but never bidi/zero-width characters.
+    expect(cleanText("Rocket \u{1F680}‮", 32)).toBe("Rocket \u{1F680}");
+  });
+});
+
+describe("loadMetadataSummary", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("reads only the token, never the image or the ETH/USD price", async () => {
+    const { fetcher, calls } = fakeFetch({});
+    const summary = await loadMetadataSummary(ADDRESS, fetcher, BASE);
+    expect(summary).toMatchObject({ name: "Fixture Route", symbol: "FIX", marketCapEth: "500" });
+    expect(calls).toEqual([`${BASE}/v1/tokens/${ADDRESS}`]);
+  });
+
+  it("returns null for an invalid address and on API failure", async () => {
+    const { fetcher, calls } = fakeFetch({ token: () => new Response("x", { status: 500 }) });
+    expect(await loadMetadataSummary("nope", fetcher, BASE)).toBeNull();
+    expect(calls).toEqual([]);
+    expect(await loadMetadataSummary(ADDRESS, fetcher, BASE)).toBeNull();
   });
 });

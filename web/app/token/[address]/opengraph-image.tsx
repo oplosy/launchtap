@@ -1,5 +1,5 @@
 import { ImageResponse } from "next/og";
-import { loadCardData, type CardData } from "@/share/card-data";
+import { CARD_REVALIDATE_SECONDS, loadCardData, type CardData } from "@/share/card-data";
 
 export const alt = "Token on Launchpad";
 export const size = { width: 1200, height: 630 };
@@ -87,9 +87,21 @@ function TokenCard({ card }: { card: Extract<CardData, { kind: "token" }> }) {
             {(card.symbol || card.name).slice(0, 1).toUpperCase()}
           </div>
         )}
-        <div style={{ display: "flex", flexDirection: "column", marginLeft: 48 }}>
-          <div style={{ display: "flex", fontSize: 64, fontWeight: 700 }}>{card.name}</div>
-          {card.symbol ? (
+        <div style={{ display: "flex", flexDirection: "column", marginLeft: 48, width: 824 }}>
+          <div
+            style={{
+              display: "block",
+              width: 824,
+              fontSize: card.name.length > 18 ? 44 : 64,
+              fontWeight: 700,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {card.name}
+          </div>
+          {card.symbol && card.name !== `$${card.symbol}` ? (
             <div style={{ display: "flex", fontSize: 44, color: palette.accent, marginTop: 8 }}>
               {`$${card.symbol}`}
             </div>
@@ -158,11 +170,37 @@ function TokenCard({ card }: { card: Extract<CardData, { kind: "token" }> }) {
   );
 }
 
+// An empty list makes this an ISR route: each address renders on first request and is then served
+// from the route cache for `revalidate` seconds.
+export function generateStaticParams() {
+  return [];
+}
+
+async function render(card: CardData) {
+  // The default bundled font is used. Card text is restricted to glyphs that font covers (see
+  // cardText), so satori never loads a fallback font or emoji asset from a third-party host.
+  const response = new ImageResponse(
+    card.kind === "token" ? <TokenCard card={card} /> : <GenericCard />,
+    { ...size },
+  );
+  // ImageResponse renders lazily; buffer it so a render failure falls back to the generic card
+  // instead of a broken stream.
+  const bytes = await response.arrayBuffer();
+  return new Response(bytes, {
+    headers: {
+      "Content-Type": contentType,
+      "Cache-Control": `public, s-maxage=${CARD_REVALIDATE_SECONDS}, stale-while-revalidate=${CARD_REVALIDATE_SECONDS}`,
+    },
+  });
+}
+
 export default async function Image({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
   const card = await loadCardData(address);
-  // The default bundled font is used; the renderer makes no third-party request.
-  return new ImageResponse(card.kind === "token" ? <TokenCard card={card} /> : <GenericCard />, {
-    ...size,
-  });
+  try {
+    return await render(card);
+  } catch (cause) {
+    console.error("share card: render failed, using the generic card", cause);
+    return render({ kind: "generic" });
+  }
 }

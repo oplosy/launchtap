@@ -11,10 +11,27 @@ export const publicKeys = [
   "NEXT_PUBLIC_WEB_ORIGIN",
 ];
 
-/** The server-side API base must be a plain http(s) URL; the web container fetches it directly. */
+/**
+ * The server-side API base must be a plain http(s) URL the container can reach. When it is unset
+ * the web container falls back to NEXT_PUBLIC_API_BASE_URL, which must then not be a loopback
+ * address (inside the container that is the container itself, not the API).
+ */
 export function apiInternalErrors(env) {
   const value = env.API_INTERNAL_BASE_URL?.trim();
-  if (!value) return [];
+  if (!value) {
+    const publicBase = env.NEXT_PUBLIC_API_BASE_URL?.trim();
+    if (!publicBase) return [];
+    try {
+      const host = new URL(publicBase).hostname;
+      if (["localhost", "127.0.0.1", "[::1]", "::1"].includes(host))
+        return [
+          "API_INTERNAL_BASE_URL is required when NEXT_PUBLIC_API_BASE_URL is not reachable from the container",
+        ];
+    } catch {
+      return [];
+    }
+    return [];
+  }
   try {
     const url = new URL(value);
     if (url.protocol !== "http:" && url.protocol !== "https:")

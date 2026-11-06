@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 
 const tokenAddress = "0x0000000000000000000000000000000000000001";
@@ -289,6 +290,44 @@ test("token page has og:image, twitter:card and a token title", async ({ request
   expect(html).toContain('<meta name="twitter:card" content="summary_large_image"/>');
   expect(html).toMatch(/<meta name="twitter:image" content="[^"]*\/twitter-image[^"]*"/);
   expect(html).toMatch(/<link rel="canonical" href="[^"]*\/token\/0x0{39}1"/);
+});
+
+const mockApi = "http://127.0.0.1:3418";
+const addressWithTail = (tail: string) => `0x${"1".repeat(36)}${tail}`;
+
+test("emoji, CJK and all-emoji names still render a 1200x630 card", async ({ request }) => {
+  for (const tail of ["0002", "0003", "0004"]) {
+    const response = await request.get(`/token/${addressWithTail(tail)}/opengraph-image`);
+    expect(response.status()).toBe(200);
+    expect(response.headers()["content-type"]).toContain("image/png");
+    expect(pngSize(await response.body())).toEqual({ width: 1200, height: 630 });
+  }
+});
+
+test("card images are cached for 300s and read the API once per window", async ({ request }) => {
+  const address = `0x${randomBytes(20).toString("hex")}`;
+  const first = await request.get(`/token/${address}/opengraph-image`);
+  const second = await request.get(`/token/${address}/opengraph-image`);
+  expect(first.status()).toBe(200);
+  expect(second.status()).toBe(200);
+  const cacheControl = first.headers()["cache-control"] ?? "";
+  expect(cacheControl).toContain("public");
+  expect(cacheControl).toContain("s-maxage=300");
+  const counts = (await (await request.get(`${mockApi}/__calls`)).json()) as Record<string, number>;
+  expect(counts[`/v1/tokens/${address}`]).toBe(1);
+  expect(counts[`/v1/tokens/${address}/image`]).toBe(1);
+});
+
+test("token page metadata does not download the image or read the price", async ({ request }) => {
+  // A fresh address per run: the Next data cache outlives the server in .next/cache.
+  const address = `0x${randomBytes(20).toString("hex")}`;
+  const response = await request.get(`/token/${address}`);
+  expect(response.status()).toBe(200);
+  // Metadata streams after the shell for browser user agents; read the whole body first.
+  expect(await response.text()).toContain(`Token ${address.slice(-4)}`);
+  const counts = (await (await request.get(`${mockApi}/__calls`)).json()) as Record<string, number>;
+  expect(counts[`/v1/tokens/${address}`]).toBeGreaterThanOrEqual(1);
+  expect(counts[`/v1/tokens/${address}/image`]).toBeUndefined();
 });
 
 test("token page offers Share on X and Copy link", async ({ page }) => {
