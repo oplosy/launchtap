@@ -8,7 +8,12 @@ import { publicConfiguration } from "@/config/public";
 import { UsdLine } from "@/market/usd-line";
 import { mergeRecent, tradeToFeedItem, FEED_MAX_ITEMS, type FeedItem } from "./feed-store";
 import { useLiveEvents } from "./live-events";
-import { reduceStripFeed, toStripItem, type StripItemView } from "./live-strip-model";
+import {
+  reduceStripState,
+  toStripItem,
+  type StripState,
+  type StripItemView,
+} from "./live-strip-model";
 
 const TICK_MS = 15_000;
 
@@ -20,7 +25,7 @@ export function LiveStrip() {
     Boolean(configuration.apiBaseUrl) &&
     configuration.chainId !== null &&
     configuration.deploymentId !== null;
-  const [items, setItems] = useState<FeedItem[]>([]);
+  const [state, setState] = useState<StripState>({ items: [], receivedAt: {} });
   const [now, setNow] = useState(() => Date.now());
   const chainId = configuration.chainId ?? -1;
   const deploymentId = configuration.deploymentId ?? "";
@@ -39,7 +44,8 @@ export function LiveStrip() {
   const refill = useCallback(
     async (signal?: AbortSignal) => {
       const recent = await fetchRecent(signal);
-      if (!signal?.aborted) setItems((current) => mergeRecent(current, recent));
+      if (!signal?.aborted)
+        setState((current) => ({ ...current, items: mergeRecent(current.items, recent) }));
     },
     [fetchRecent],
   );
@@ -48,7 +54,8 @@ export function LiveStrip() {
     const controller = new AbortController();
     fetchRecent(controller.signal)
       .then((recent) => {
-        if (!controller.signal.aborted) setItems((current) => mergeRecent(current, recent));
+        if (!controller.signal.aborted)
+          setState((current) => ({ ...current, items: mergeRecent(current.items, recent) }));
       })
       .catch(() => undefined);
     return () => controller.abort();
@@ -61,13 +68,18 @@ export function LiveStrip() {
 
   const onEvent = useCallback(
     (event: LiveEvent) => {
-      setItems((current) => reduceStripFeed(current, event, { chainId, deploymentId }));
+      setState((current) =>
+        reduceStripState(current, event, { chainId, deploymentId }, Date.now()),
+      );
     },
     [chainId, deploymentId],
   );
   useLiveEvents(onEvent, refill);
 
-  const views = useMemo(() => items.map((item) => toStripItem(item, now)), [items, now]);
+  const views = useMemo(
+    () => state.items.map((item) => toStripItem(item, now, state.receivedAt)),
+    [state, now],
+  );
   if (!ready || views.length === 0) return null;
 
   return (

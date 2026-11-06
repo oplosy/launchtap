@@ -33,9 +33,9 @@ export function isEventInScope(event: LiveEvent, scope: ChainScope): boolean {
 }
 
 /** Short relative time ("now", "5s", "3m", "2h", "4d") from an ISO timestamp. */
-export function relativeTime(iso: string | undefined, now: number): string {
-  if (!iso) return "now";
-  const then = Date.parse(iso);
+export function relativeTime(at: string | number | undefined, now: number): string {
+  if (at === undefined || at === "") return "now";
+  const then = typeof at === "number" ? at : Date.parse(at);
   if (Number.isNaN(then)) return "—";
   const seconds = Math.max(0, Math.floor((now - then) / 1000));
   if (seconds < 5) return "now";
@@ -53,7 +53,14 @@ function traderLabel(trader: string | null | undefined): string {
   return short === "Unavailable" ? "—" : short;
 }
 
-export function toStripItem(item: FeedItem, now: number): StripItemView {
+/** Client receive times (ms) for items that carry no chain timestamp, keyed by feed key. */
+export type ReceivedAt = Record<string, number>;
+
+export function toStripItem(
+  item: FeedItem,
+  now: number,
+  receivedAt: ReceivedAt = {},
+): StripItemView {
   const address = parseTokenAddress(item.token);
   const base = {
     key: item.key,
@@ -84,7 +91,7 @@ export function toStripItem(item: FeedItem, now: number): StripItemView {
     eth: null,
     wei: null,
     trader: item.kind === "launch" ? traderLabel(item.creator) : "—",
-    time: "now",
+    time: relativeTime(receivedAt[item.key], now),
     badge: item.kind === "launch" ? "Launch" : "Graduated",
   };
 }
@@ -100,6 +107,25 @@ export function reduceStripFeed(
 ): FeedItem[] {
   if (event.event === "reconnected" || !isEventInScope(event, scope)) return items;
   return applyFeedEvent(items, event as ApiEvent, FEED_MAX_ITEMS);
+}
+
+export type StripState = { items: FeedItem[]; receivedAt: ReceivedAt };
+
+/** Like `reduceStripFeed`, but stamps newly arrived launch/graduation items with `now`. */
+export function reduceStripState(
+  state: StripState,
+  event: LiveEvent,
+  scope: ChainScope,
+  now: number,
+): StripState {
+  const items = reduceStripFeed(state.items, event, scope);
+  if (items === state.items) return state;
+  const receivedAt: ReceivedAt = {};
+  for (const item of items) {
+    if (item.kind === "trade") continue;
+    receivedAt[item.key] = state.receivedAt[item.key] ?? now;
+  }
+  return { items, receivedAt };
 }
 
 function sameToken(a: string, b: string): boolean {
@@ -127,6 +153,10 @@ export function reduceTokenTrades(
   return items;
 }
 
+function comparePosition(a: [number, number, number], b: [number, number, number]): number {
+  return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+}
+
 type TradeDto = components["schemas"]["TradeDTO"];
 
 /**
@@ -136,10 +166,26 @@ type TradeDto = components["schemas"]["TradeDTO"];
  */
 export function liveTradeRows(items: FeedItem[], rest: TradeDto[]): TradeDto[] {
   const known = new Set(rest.map((row) => `${row.tx_hash}:${row.log_index}`.toLowerCase()));
+  // Same rule as mergeRecent: REST is canonical up to its newest row, so only live trades
+  // strictly newer in chain order may sit above it. Otherwise a page-1 reload would differ.
+  let newest: [number, number, number] | null = null;
+  for (const row of rest) {
+    const position: [number, number, number] = [
+      row.block_number,
+      row.transaction_index,
+      row.log_index,
+    ];
+    if (!newest || comparePosition(position, newest) > 0) newest = position;
+  }
   const rows: TradeDto[] = [];
   for (const item of items) {
     if (item.kind !== "trade") continue;
     if (known.has(item.key.toLowerCase())) continue;
+    if (
+      newest &&
+      comparePosition([item.block_number, item.transaction_index, item.log_index], newest) <= 0
+    )
+      continue;
     rows.push({
       block_number: item.block_number,
       eth_volume: item.eth_volume,

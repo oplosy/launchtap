@@ -16,6 +16,7 @@
   text-transform: uppercase;
 }
 .live-strip-track {
+  position: relative; /* contains the absolutely positioned .sr-only labels */
   display: flex;
   flex: 1;
   gap: 8px;

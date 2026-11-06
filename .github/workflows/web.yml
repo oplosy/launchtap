@@ -87,6 +87,8 @@ jobs:
           pwsh -NoProfile -Command '$script = Get-Content -Raw scripts/anvil-task6-gate.ps1; [void][scriptblock]::Create($script)'
       - name: Run browser gate
         run: npm run test:e2e
+      - name: Run live strip browser gate (ready configuration, mocked API)
+        run: npm run test:e2e:live
       - name: Run real Anvil transaction gate
         run: npm run test:anvil
       - name: Build web

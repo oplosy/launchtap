@@ -336,16 +336,15 @@ export function TokenDetail({
       if (configuration.chainId !== null && configuration.deploymentId !== null) {
         // Trades prepend client-side from the shared stream; no refetch is needed.
         const scope = { chainId: configuration.chainId, deploymentId: configuration.deploymentId };
-        setLiveFeed((current) => ({
-          address: tokenAddress,
+        setLiveFeed((current) => {
           // Live rows belong to one token; never carry them across a route change.
-          items: reduceTokenTrades(
-            current.address === tokenAddress ? current.items : [],
-            event,
-            tokenAddress,
-            scope,
-          ),
-        }));
+          const base = current.address === tokenAddress ? current.items : [];
+          const items = reduceTokenTrades(base, event, tokenAddress, scope);
+          // Unrelated stream events must not re-render the whole page.
+          return items === current.items && current.address === tokenAddress
+            ? current
+            : { address: tokenAddress, items };
+        });
       }
       if (event.event !== "launch" && event.event !== "token" && event.event !== "reorg") return;
       if (

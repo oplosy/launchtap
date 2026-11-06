@@ -4,6 +4,7 @@ import { mergeRecent, tradeToFeedItem, type FeedItem } from "./feed-store";
 import {
   liveTradeRows,
   reduceStripFeed,
+  reduceStripState,
   reduceTokenTrades,
   relativeTime,
   toStripItem,
@@ -161,7 +162,80 @@ describe("live strip model", () => {
   });
 });
 
+describe("launch and graduation age", () => {
+  const launch = (token: string): LiveEvent =>
+    ({
+      event: "new_token",
+      data: {
+        chain_id: 1,
+        deployment_id: "local",
+        token,
+        name: "N",
+        symbol: "N",
+        creator: OTHER,
+        block_number: 3,
+        tx_hash: "0xaa",
+      },
+    }) as LiveEvent;
+
+  it("ages from the client receive time", () => {
+    const t0 = Date.parse("2026-01-01T00:00:00Z");
+    let state = reduceStripState({ items: [], receivedAt: {} }, launch(TOKEN), scope, t0);
+    const item = first(state.items);
+    expect(toStripItem(item, t0, state.receivedAt).time).toBe("now");
+    expect(toStripItem(item, t0 + 125_000, state.receivedAt).time).toBe("2m");
+    // A later event keeps the original receive time.
+    state = reduceStripState(state, ev(trade(9)), scope, t0 + 60_000);
+    expect(
+      toStripItem(
+        first(state.items.filter((i) => i.kind === "launch")),
+        t0 + 125_000,
+        state.receivedAt,
+      ).time,
+    ).toBe("2m");
+  });
+});
+
 describe("token page live trades", () => {
+  it("keeps only live trades newer than REST so a reload yields the same order", () => {
+    let live: FeedItem[] = [];
+    for (let n = 1; n <= 30; n += 1) live = reduceTokenTrades(live, ev(trade(n)), TOKEN, scope);
+    // REST page 1 holds the newest 25 rows (blocks 6..30) except one the stream has not seen.
+    const rest = Array.from({ length: 25 }, (_, i) => ({
+      ...trade(30 - i),
+      execution_price: "1",
+      spot_price: "1",
+    }));
+    expect(liveTradeRows(live, rest)).toEqual([]);
+    // A live trade newer than every REST row stays on top; older ones are dropped.
+    const newer = reduceTokenTrades(live, ev(trade(31)), TOKEN, scope);
+    const rows = liveTradeRows(newer, rest);
+    expect(rows.map((r) => r.block_number)).toEqual([31]);
+    const combined = [...rows, ...rest].map((r) => r.block_number);
+    expect(combined).toEqual([...combined].sort((a, b) => b - a));
+  });
+
+  it("orders by transaction and log index inside one block", () => {
+    const live = reduceTokenTrades(
+      [],
+      ev(trade(5, { transaction_index: 2, log_index: 1, tx_hash: "0x" + "ab".repeat(32) })),
+      TOKEN,
+      scope,
+    );
+    const older = {
+      ...trade(5, { transaction_index: 2, log_index: 0 }),
+      execution_price: "1",
+      spot_price: "1",
+    };
+    const newerRest = {
+      ...trade(5, { transaction_index: 3, log_index: 0 }),
+      execution_price: "1",
+      spot_price: "1",
+    };
+    expect(liveTradeRows(live, [older])).toHaveLength(1);
+    expect(liveTradeRows(live, [newerRest])).toHaveLength(0);
+  });
+
   it("prepends a trade event for this token (case-insensitive) without refetching", () => {
     const lower = TOKEN.toLowerCase();
     let items: FeedItem[] = [];

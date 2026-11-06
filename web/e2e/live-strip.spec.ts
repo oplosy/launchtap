@@ -24,7 +24,7 @@ function trade(n: number, over: Record<string, unknown> = {}) {
     deployment_id: DEPLOYMENT_ID,
     token: tokenA,
     name: longName,
-    symbol: "ROCKET",
+    symbol: "🚀".repeat(20),
     source: "curve",
     trader: null,
     side: "buy",
@@ -80,15 +80,21 @@ test("live strip lists recent trades, links to the token and truncates long name
   const ticker = items.first().locator(".live-strip-ticker");
   const style = await ticker.evaluate((element) => {
     const computed = getComputedStyle(element);
-    return { overflow: computed.overflow, textOverflow: computed.textOverflow };
+    return {
+      overflow: computed.overflow,
+      textOverflow: computed.textOverflow,
+      truncated: element.scrollWidth > element.clientWidth,
+    };
   });
-  expect(style).toEqual({ overflow: "hidden", textOverflow: "ellipsis" });
+  expect(style).toEqual({ overflow: "hidden", textOverflow: "ellipsis", truncated: true });
   // Observed items read as pending until finality.
   await expect(items.first()).toHaveAttribute("data-pending", "true");
 });
 
 test("live strip is a static scrollable row under reduced motion", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "reduced-motion", "Reduced-motion project only.");
+  // Mirrors release-hardening: the project option alone is not honoured by every version.
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await installApi(page);
   await page.goto("/");
   const track = page.locator(".live-strip-track");
