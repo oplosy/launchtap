@@ -103,6 +103,16 @@ func (u *memoryUnit) AffectedTokensAbove(_ context.Context, _ int64, _ int64) ([
 	return []common.Address{common.HexToAddress("0x1001")}, nil
 }
 
+func (u *memoryUnit) AffectedPositionPairsAbove(context.Context, int64, int64) ([]PositionPair, error) {
+	u.action("affected_position_pairs")
+	return nil, nil
+}
+
+func (u *memoryUnit) MarkPositionsDirty(context.Context, int64, []PositionPair) error {
+	u.action("mark_positions_dirty")
+	return nil
+}
+
 func (u *memoryUnit) DeleteCanonicalAbove(_ context.Context, _ int64, ancestor int64) error {
 	for number := range u.blocks {
 		if number > ancestor {
@@ -458,7 +468,7 @@ func TestAcknowledgedDeepReorgUsesAtomicRecoveryAboveSafe(t *testing.T) {
 		t.Fatalf("atomic recovery transaction not recorded: %v", store.committedActions)
 	}
 	wantActions := []string{
-		"affected_tokens", "delete_canonical", "rebuild_token_projections", "delete_token_stats",
+		"affected_tokens", "affected_position_pairs", "delete_canonical", "mark_positions_dirty", "rebuild_token_projections", "delete_token_stats",
 		"recompute_token_stats", "recompute_protocol_aggregates", "write_state", "complete_reorg",
 	}
 	if len(recoveryActions) != len(wantActions) {

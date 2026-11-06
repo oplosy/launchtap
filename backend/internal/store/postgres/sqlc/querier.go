@@ -99,6 +99,10 @@ type Querier interface {
 	ListLaunchesAfter(ctx context.Context, arg ListLaunchesAfterParams) ([]ListLaunchesAfterRow, error)
 	ListMarketTrades(ctx context.Context, arg ListMarketTradesParams) ([]ListMarketTradesRow, error)
 	ListMarketTradesAfter(ctx context.Context, arg ListMarketTradesAfterParams) ([]ListMarketTradesAfterRow, error)
+	// Run before DeleteCanonicalAbove: the rows (and a launched token's own row) are still present.
+	// Excluded wallets (R4) are dropped here because a deleted token's curve and pair are not
+	// resolvable afterwards.
+	ListPositionPairsAbove(ctx context.Context, arg ListPositionPairsAboveParams) ([]ListPositionPairsAboveRow, error)
 	ListProfileActions(ctx context.Context, arg ListProfileActionsParams) ([]ListProfileActionsRow, error)
 	ListProtocolDaily(ctx context.Context, arg ListProtocolDailyParams) ([]ListProtocolDailyRow, error)
 	ListRecentMarketTrades(ctx context.Context, arg ListRecentMarketTradesParams) ([]ListRecentMarketTradesRow, error)
@@ -119,12 +123,20 @@ type Querier interface {
 	// Serializes cap check + insert per owner. The key is hashed in SQL.
 	LockWatchlistOwner(ctx context.Context, ownerKey string) error
 	MarkPairTokenDirty(ctx context.Context, arg MarkPairTokenDirtyParams) error
+	// A NULL tx_from (sender not yet known) is a no-op.
+	MarkPoolSwapPositionDirty(ctx context.Context, arg MarkPoolSwapPositionDirtyParams) error
+	// Excluded wallets (R4): the zero address, the factory, and any token's curve or pair.
+	MarkPositionDirty(ctx context.Context, arg MarkPositionDirtyParams) error
+	// Reorg re-mark: pairs were already filtered at collection time, so no exclusion lookup here
+	// (the token row of a pair may no longer exist).
+	MarkPositionPairsDirty(ctx context.Context, arg MarkPositionPairsDirtyParams) error
 	MarkTokenDirty(ctx context.Context, arg MarkTokenDirtyParams) error
 	// Marks every token with a canonical trade or DEX swap in [window_from, window_to) dirty.
 	MarkTokensDirtyInWindow(ctx context.Context, arg MarkTokensDirtyInWindowParams) (int64, error)
 	// Startup catch-up: marks every token still carrying a non-zero 24h volume dirty so expiries
 	// missed while the sweeper was down are recomputed.
 	MarkTokensWithVolumeDirty(ctx context.Context, chainID int64) (int64, error)
+	MarkTransferPositionsDirty(ctx context.Context, arg MarkTransferPositionsDirtyParams) error
 	NotifyAPIRefresh(ctx context.Context, payload string) error
 	PoolBurnMatchesEvent(ctx context.Context, arg PoolBurnMatchesEventParams) (pgtype.Bool, error)
 	PoolMintMatchesEvent(ctx context.Context, arg PoolMintMatchesEventParams) (pgtype.Bool, error)

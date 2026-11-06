@@ -380,6 +380,92 @@ func (q *Queries) MarkPairTokenDirty(ctx context.Context, arg MarkPairTokenDirty
 	return err
 }
 
+const markPoolSwapPositionDirty = `-- name: MarkPoolSwapPositionDirty :exec
+INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
+SELECT token.chain_id, $1::bytea, token.token_address, nextval('position_dirty_generation_seq')
+FROM tokens AS token
+WHERE token.chain_id = $2::bigint AND token.lp_pair = $3::bytea
+  AND $1::bytea IS NOT NULL
+  AND $1::bytea <> decode(repeat('00', 20), 'hex')
+  AND $1::bytea <> $4::bytea
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id = $2::bigint
+      AND (excluded.curve_address = $1::bytea OR excluded.lp_pair = $1::bytea)
+  )
+ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq')
+`
+
+type MarkPoolSwapPositionDirtyParams struct {
+	TxFrom  []byte
+	ChainID int64
+	Pair    []byte
+	Factory []byte
+}
+
+// A NULL tx_from (sender not yet known) is a no-op.
+func (q *Queries) MarkPoolSwapPositionDirty(ctx context.Context, arg MarkPoolSwapPositionDirtyParams) error {
+	_, err := q.db.Exec(ctx, markPoolSwapPositionDirty,
+		arg.TxFrom,
+		arg.ChainID,
+		arg.Pair,
+		arg.Factory,
+	)
+	return err
+}
+
+const markPositionDirty = `-- name: MarkPositionDirty :exec
+INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
+SELECT $1::bigint, $2::bytea, $3::bytea, nextval('position_dirty_generation_seq')
+WHERE $2::bytea <> decode(repeat('00', 20), 'hex')
+  AND $2::bytea <> $4::bytea
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id = $1::bigint
+      AND (excluded.curve_address = $2::bytea OR excluded.lp_pair = $2::bytea)
+  )
+ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq')
+`
+
+type MarkPositionDirtyParams struct {
+	ChainID      int64
+	Wallet       []byte
+	TokenAddress []byte
+	Factory      []byte
+}
+
+// Excluded wallets (R4): the zero address, the factory, and any token's curve or pair.
+func (q *Queries) MarkPositionDirty(ctx context.Context, arg MarkPositionDirtyParams) error {
+	_, err := q.db.Exec(ctx, markPositionDirty,
+		arg.ChainID,
+		arg.Wallet,
+		arg.TokenAddress,
+		arg.Factory,
+	)
+	return err
+}
+
+const markPositionPairsDirty = `-- name: MarkPositionPairsDirty :exec
+INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
+SELECT $1::bigint, w.wallet, t.token_address, nextval('position_dirty_generation_seq')
+FROM unnest($2::bytea[]) WITH ORDINALITY AS w(wallet, ord)
+JOIN unnest($3::bytea[]) WITH ORDINALITY AS t(token_address, ord) ON t.ord = w.ord
+ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq')
+`
+
+type MarkPositionPairsDirtyParams struct {
+	ChainID        int64
+	Wallets        [][]byte
+	TokenAddresses [][]byte
+}
+
+// Reorg re-mark: pairs were already filtered at collection time, so no exclusion lookup here
+// (the token row of a pair may no longer exist).
+func (q *Queries) MarkPositionPairsDirty(ctx context.Context, arg MarkPositionPairsDirtyParams) error {
+	_, err := q.db.Exec(ctx, markPositionPairsDirty, arg.ChainID, arg.Wallets, arg.TokenAddresses)
+	return err
+}
+
 const markTokenDirty = `-- name: MarkTokenDirty :exec
 INSERT INTO aggregation_dirty (chain_id, token_address, generation) VALUES ($1, $2, nextval('aggregation_dirty_generation_seq'))
 ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregation_dirty_generation_seq')
@@ -452,6 +538,42 @@ func (q *Queries) MarkTokensWithVolumeDirty(ctx context.Context, chainID int64) 
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const markTransferPositionsDirty = `-- name: MarkTransferPositionsDirty :exec
+INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
+SELECT sides.chain_id, sides.wallet, sides.token_address, nextval('position_dirty_generation_seq')
+FROM (
+    SELECT DISTINCT $1::bigint AS chain_id, side.wallet, $2::bytea AS token_address
+    FROM (VALUES ($3::bytea), ($4::bytea)) AS side(wallet)
+    WHERE side.wallet <> decode(repeat('00', 20), 'hex')
+      AND side.wallet <> $5::bytea
+      AND NOT EXISTS (
+        SELECT 1 FROM tokens AS excluded
+        WHERE excluded.chain_id = $1::bigint
+          AND (excluded.curve_address = side.wallet OR excluded.lp_pair = side.wallet)
+      )
+) AS sides
+ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq')
+`
+
+type MarkTransferPositionsDirtyParams struct {
+	ChainID      int64
+	TokenAddress []byte
+	FromAddress  []byte
+	ToAddress    []byte
+	Factory      []byte
+}
+
+func (q *Queries) MarkTransferPositionsDirty(ctx context.Context, arg MarkTransferPositionsDirtyParams) error {
+	_, err := q.db.Exec(ctx, markTransferPositionsDirty,
+		arg.ChainID,
+		arg.TokenAddress,
+		arg.FromAddress,
+		arg.ToAddress,
+		arg.Factory,
+	)
+	return err
 }
 
 const rebuildTokenProjections = `-- name: RebuildTokenProjections :exec

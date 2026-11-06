@@ -127,6 +127,60 @@ INSERT INTO aggregation_dirty (chain_id, token_address, generation)
 SELECT token.chain_id, token.token_address, nextval('aggregation_dirty_generation_seq') FROM tokens AS token WHERE token.chain_id=$1 AND token.lp_pair=$2
 ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregation_dirty_generation_seq');
 
+-- name: MarkPositionDirty :exec
+-- Excluded wallets (R4): the zero address, the factory, and any token's curve or pair.
+INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
+SELECT sqlc.arg(chain_id)::bigint, sqlc.arg(wallet)::bytea, sqlc.arg(token_address)::bytea, nextval('position_dirty_generation_seq')
+WHERE sqlc.arg(wallet)::bytea <> decode(repeat('00', 20), 'hex')
+  AND sqlc.arg(wallet)::bytea <> sqlc.arg(factory)::bytea
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint
+      AND (excluded.curve_address = sqlc.arg(wallet)::bytea OR excluded.lp_pair = sqlc.arg(wallet)::bytea)
+  )
+ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq');
+
+-- name: MarkTransferPositionsDirty :exec
+INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
+SELECT sides.chain_id, sides.wallet, sides.token_address, nextval('position_dirty_generation_seq')
+FROM (
+    SELECT DISTINCT sqlc.arg(chain_id)::bigint AS chain_id, side.wallet, sqlc.arg(token_address)::bytea AS token_address
+    FROM (VALUES (sqlc.arg(from_address)::bytea), (sqlc.arg(to_address)::bytea)) AS side(wallet)
+    WHERE side.wallet <> decode(repeat('00', 20), 'hex')
+      AND side.wallet <> sqlc.arg(factory)::bytea
+      AND NOT EXISTS (
+        SELECT 1 FROM tokens AS excluded
+        WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint
+          AND (excluded.curve_address = side.wallet OR excluded.lp_pair = side.wallet)
+      )
+) AS sides
+ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq');
+
+-- name: MarkPoolSwapPositionDirty :exec
+-- A NULL tx_from (sender not yet known) is a no-op.
+INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
+SELECT token.chain_id, sqlc.arg(tx_from)::bytea, token.token_address, nextval('position_dirty_generation_seq')
+FROM tokens AS token
+WHERE token.chain_id = sqlc.arg(chain_id)::bigint AND token.lp_pair = sqlc.arg(pair)::bytea
+  AND sqlc.arg(tx_from)::bytea IS NOT NULL
+  AND sqlc.arg(tx_from)::bytea <> decode(repeat('00', 20), 'hex')
+  AND sqlc.arg(tx_from)::bytea <> sqlc.arg(factory)::bytea
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint
+      AND (excluded.curve_address = sqlc.arg(tx_from)::bytea OR excluded.lp_pair = sqlc.arg(tx_from)::bytea)
+  )
+ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq');
+
+-- name: MarkPositionPairsDirty :exec
+-- Reorg re-mark: pairs were already filtered at collection time, so no exclusion lookup here
+-- (the token row of a pair may no longer exist).
+INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
+SELECT sqlc.arg(chain_id)::bigint, w.wallet, t.token_address, nextval('position_dirty_generation_seq')
+FROM unnest(sqlc.arg(wallets)::bytea[]) WITH ORDINALITY AS w(wallet, ord)
+JOIN unnest(sqlc.arg(token_addresses)::bytea[]) WITH ORDINALITY AS t(token_address, ord) ON t.ord = w.ord
+ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq');
+
 -- name: ClaimAggregationDirty :many
 WITH candidate AS (
     SELECT chain_id, token_address
