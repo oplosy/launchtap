@@ -71,7 +71,7 @@ func NewIndexer(reg prometheus.Registerer, snapshot func() indexer.Health) *Inde
 	gauge("db_up", "1 while the last operational database read succeeded.", func(h indexer.Health) float64 { return boolValue(h.DatabaseUp) })
 	gauge("dirty_work", "Pending token statistics recomputations.", func(h indexer.Health) float64 { return float64(h.DirtyWork) })
 	gauge("last_reorg_depth", "Depth of the most recent reorg.", func(h indexer.Health) float64 { return float64(h.LastReorgDepth) })
-	counter("reorgs_total", "Reorgs recorded, derived from the latest reorg id.", func(h indexer.Health) float64 { return float64(h.LastReorgID) })
+	counter("reorgs_total", "Latest global reorg id: a monotonically increasing reorg sequence across the database, not a per-deployment count.", func(h indexer.Health) float64 { return float64(h.LastReorgID) })
 
 	return m
 }
