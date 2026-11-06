@@ -12,6 +12,9 @@ const env = {
   TASK6_ANVIL_UNISWAP_FACTORY: "0x0000000000000000000000000000000000000014",
   TASK6_ANVIL_RPC_URL: "http://127.0.0.1:18545",
   TASK6_ANVIL_API_URL: "http://127.0.0.1:18080",
+  // Without Privy the wallet menu offers the injected "Browser wallet" connector that the
+  // notifications spec drives. Set explicitly so CI matches a developer's .env.local.
+  NEXT_PUBLIC_LOCAL_DEV: "1",
 };
 
 const result = spawnSync(
