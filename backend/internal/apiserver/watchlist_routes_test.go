@@ -238,8 +238,21 @@ func TestWatchlistLogsUnexpectedErrorsWithoutDID(t *testing.T) {
 		t.Fatalf("status=%d", w.Code)
 	}
 	logs := buf.String()
-	if !strings.Contains(logs, "watchlist request failed") || !strings.Contains(logs, "level=ERROR") || !strings.Contains(logs, "request_id=") {
+	if !strings.Contains(logs, "watchlist request failed") || !strings.Contains(logs, "level=ERROR") {
 		t.Fatalf("missing error log: %s", logs)
+	}
+	requestID := w.Header().Get("X-Request-ID")
+	if requestID == "" {
+		t.Fatal("response has no X-Request-ID")
+	}
+	var failureLine string
+	for _, line := range strings.Split(logs, "\n") {
+		if strings.Contains(line, "watchlist request failed") {
+			failureLine = line
+		}
+	}
+	if !strings.Contains(failureLine, "request_id="+requestID) {
+		t.Fatalf("error log does not carry the request's ID %q: %s", requestID, failureLine)
 	}
 	if strings.Contains(logs, watchlistTestDID) || strings.Contains(strings.ToLower(logs), "bearer") {
 		t.Fatalf("logs leak credentials: %s", logs)
