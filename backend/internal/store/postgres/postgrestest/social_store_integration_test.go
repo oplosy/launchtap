@@ -152,7 +152,8 @@ func TestPostRejectsUnlinkedNonHolderBannedUnknownToken(t *testing.T) {
 	if err := database.DB.QueryRowContext(ctx, `SELECT wallet FROM social_public_wallets WHERE privy_did = 'did:b'`).Scan(&kept); err != nil || common.BytesToAddress(kept) != socialHolder {
 		t.Fatalf("pruned wallets: kept=%x err=%v", kept, err)
 	}
-	// Pruning also happens when the post itself is then rejected for the wallet (empty link set).
+	// A post prunes stale published wallets of a user whose only row is no longer linked. (A rejected
+	// post rolls back, so it prunes nothing.)
 	mustExecSocial(t, ctx, database.DB, `INSERT INTO social_public_wallets (chain_id, deployment_id, wallet, privy_did) VALUES ($1, $2, $3, 'did:c')`, socialChainID, socialDep, socialStray.Bytes())
 	if _, err := store.Post(ctx, socialActor("did:c", socialHolder), token, socialHolder, "x"); err != nil {
 		t.Fatal(err)
@@ -651,5 +652,58 @@ func TestSocialReportAndSubjectQueries(t *testing.T) {
 	}
 	if !tryLock("did:other") {
 		t.Fatal("different subject must not block")
+	}
+}
+
+func TestHiddenCommentCountsTowardRateLimit(t *testing.T) {
+	database := NewMigrated(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	store, _ := newSocialStore(t, ctx, database)
+	token := seedSocialToken(t, ctx, database, 0x10)
+
+	// A hidden comment posted just now still blocks the 15 s interval.
+	insertSocialComment(t, ctx, database.DB, token.Bytes(), "did:a", socialHolder.Bytes(), "hidden", true)
+	_, err := store.Post(ctx, socialActor("did:a", socialHolder), token, socialHolder, "next")
+	rateLimited(t, err)
+
+	// Thirty hidden comments within the hour still fill the hourly cap.
+	mustExecSocial(t, ctx, database.DB, `
+		INSERT INTO token_comments (chain_id, deployment_id, token_address, privy_did, wallet, author_role, body, created_at, hidden_at, hidden_reason)
+		SELECT $1, $2, $3, 'did:b', $4, 'holder', 'seed ' || g, now() - interval '20 minutes', now(), 'test'
+		FROM generate_series(1, 30) AS g`, socialChainID, socialDep, token.Bytes(), socialHolder.Bytes())
+	_, err = store.Post(ctx, socialActor("did:b", socialHolder), token, socialHolder, "31st")
+	rateLimited(t, err)
+}
+
+func TestReportCommentOfReorgedTokenIsNotFound(t *testing.T) {
+	database := NewMigrated(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	store, _ := newSocialStore(t, ctx, database)
+	token := seedSocialToken(t, ctx, database, 0x10)
+	id := insertSocialComment(t, ctx, database.DB, token.Bytes(), "did:author", socialHolder.Bytes(), "c", false)
+	reporter := socialActor("did:reporter", socialStray)
+
+	conn, err := database.DB.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := conn.ExecContext(ctx, `SET session_replication_role = replica`); err != nil {
+		t.Fatal(err)
+	}
+	moved := addressBytes(0xee)
+	if _, err := conn.ExecContext(ctx, `UPDATE tokens SET token_address = $3 WHERE chain_id = $1 AND token_address = $2`, socialChainID, token.Bytes(), moved); err != nil {
+		t.Fatalf("move token row: %v", err)
+	}
+	if err := store.Report(ctx, reporter, id, social.ReasonSpam); !errors.Is(err, social.ErrCommentNotFound) {
+		t.Fatalf("report after reorg err = %v; want ErrCommentNotFound", err)
+	}
+	if _, err := conn.ExecContext(ctx, `UPDATE tokens SET token_address = $2 WHERE chain_id = $1 AND token_address = $3`, socialChainID, token.Bytes(), moved); err != nil {
+		t.Fatalf("restore token row: %v", err)
+	}
+	if err := store.Report(ctx, reporter, id, social.ReasonSpam); err != nil {
+		t.Fatalf("report after restore: %v", err)
 	}
 }

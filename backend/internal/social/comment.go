@@ -112,7 +112,7 @@ func NormalizeBody(raw string) (string, error) {
 	body := strings.ReplaceAll(raw, "\r\n", "\n")
 	body = strings.ReplaceAll(body, "\r", "\n")
 	for _, r := range body {
-		if r != '\n' && unicode.IsControl(r) {
+		if isControlRune(r) {
 			return "", &BodyError{Rule: "control"}
 		}
 	}
@@ -124,7 +124,7 @@ func NormalizeBody(raw string) (string, error) {
 	longRun := false
 	for _, r := range body {
 		runes++
-		if r != '\n' && unicode.IsControl(r) {
+		if isControlRune(r) {
 			return "", &BodyError{Rule: "control"}
 		}
 		if (r >= 0x202A && r <= 0x202E) || (r >= 0x2066 && r <= 0x2069) {
@@ -146,6 +146,19 @@ func NormalizeBody(raw string) (string, error) {
 		return "", &BodyError{Rule: "too_long"}
 	}
 	return body, nil
+}
+
+// isControlRune reports runes rejected with the control rule: every control rune except LF, the
+// Unicode line and paragraph separators, the invisible directional marks (LRM, RLM, ALM) and the
+// zero-width space and byte order mark. ZWNJ and ZWJ stay allowed (emoji and some scripts need them).
+func isControlRune(r rune) bool {
+	switch r {
+	case 0x0A, 0x200C, 0x200D: // LF, ZWNJ, ZWJ
+		return false
+	case 0x2028, 0x2029, 0x200E, 0x200F, 0x061C, 0x200B, 0xFEFF: // LS, PS, LRM, RLM, ALM, ZWSP, BOM
+		return true
+	}
+	return unicode.IsControl(r)
 }
 
 // ParseReportReason accepts exactly the lowercase reasons.
