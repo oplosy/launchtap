@@ -10,6 +10,7 @@ import {
 } from "viem";
 import fs from "node:fs";
 import path from "node:path";
+import type { WalletResponse } from "../src/api/client";
 import { browserAbis } from "../src/contracts/generated";
 import { formatSignedEth } from "../src/portfolio/wallet-model";
 
@@ -883,6 +884,18 @@ test.describe("Task 6 Anvil transaction gate", () => {
       type: "expected-realized-pnl-wei",
       description: `${realized} from legs ${JSON.stringify(legs, (_, value) => (typeof value === "bigint" ? value.toString() : value))}`,
     });
+
+    // Spec AC4: the API's realized PnL equals the receipt-derived value exactly, in wei.
+    await expect
+      .poll(
+        async () => {
+          const response = await page.request.get(`${api}/v1/wallets/${trader.toLowerCase()}`);
+          if (!response.ok()) return `HTTP ${response.status()}`;
+          return ((await response.json()) as WalletResponse).realized_pnl_wei;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(realized.toString());
 
     // The same helper the page renders with; there is no page.reload() after the page opened.
     const expectedText = formatSignedEth(realized.toString());
