@@ -548,3 +548,25 @@ func TestTailSecondStartReturnsErrStarted(t *testing.T) {
 		t.Fatal("second Start did not return")
 	}
 }
+
+func TestTailReorgHintBeforeStartDoesNotReplayHistory(t *testing.T) {
+	reader := &fakeReader{trades: []Trade{trade(6, 0, 0, 1), trade(8, 0, 0, 1)}}
+	rec := newRecorder()
+	tail := newTail(reader, rec, &clock{t: time.Unix(100, 0)})
+	// Recorded before Newest is read: the newest heads already reflect the reorg, nothing was published.
+	tail.Hint(realtime.Event{Type: "reorg", CommonAncestor: 5})
+	stop := startTail(t, tail)
+	defer stop()
+	tail.Hint(tokenHint)
+	quiet()
+	if got := rec.snapshot(); len(got) != 0 {
+		t.Fatalf("history replayed: %v", rec.types())
+	}
+	reader.update(func(f *fakeReader) { f.trades = append(f.trades, trade(9, 0, 0, 1)) })
+	tail.Hint(tokenHint)
+	rec.waitCount(t, 1)
+	quiet()
+	if got := rec.snapshot(); len(got) != 1 || got[0].Trade.Block != 9 {
+		t.Fatalf("unexpected %v", rec.types())
+	}
+}

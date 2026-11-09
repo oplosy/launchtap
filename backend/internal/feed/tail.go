@@ -130,6 +130,12 @@ func (t *Tail) Start(ctx context.Context) error {
 	defer window.Stop()
 
 	for {
+		// A rewind recorded before this read is dropped: nothing has been published yet and the heads read
+		// below already reflect it. One recorded while the read runs is kept, so it is applied relative to
+		// those heads and replays at most the reorged range.
+		t.mu.Lock()
+		t.rewind = nil
+		t.mu.Unlock()
 		trade, grad, launch, err := t.Reader.Newest(ctx, t.ChainID)
 		if err == nil {
 			t.trade, t.grad, t.launch = trade, grad, launch
