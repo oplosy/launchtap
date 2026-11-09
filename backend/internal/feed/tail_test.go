@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"math/big"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -39,10 +40,20 @@ func (f *fakeReader) TradesAfter(_ context.Context, _ int64, after Cursor, limit
 	var out []Trade
 	for _, row := range f.trades {
 		if cursorLess(after, Cursor{row.Block, row.TxIndex, row.LogIndex}) && len(out) < limit {
+			row.TxHash = rowHash(row.TxHash, row.Block, row.TxIndex)
 			out = append(out, row)
 		}
 	}
 	return out, nil
+}
+
+// rowHash gives fixture rows without a tx hash one derived from their transaction position, so rows of
+// distinct transactions have distinct identities.
+func rowHash(h common.Hash, block int64, tx int32) common.Hash {
+	if h != (common.Hash{}) {
+		return h
+	}
+	return common.BigToHash(big.NewInt(block<<20 | int64(tx)))
 }
 
 func (f *fakeReader) RecentTrades(context.Context, int64, int) ([]Trade, error) { return nil, nil }
@@ -53,6 +64,7 @@ func (f *fakeReader) GraduationsAfter(_ context.Context, _ int64, after Cursor, 
 	var out []Graduation
 	for _, row := range f.grads {
 		if cursorLess(after, Cursor{row.Block, row.TxIndex, row.LogIndex}) && len(out) < limit {
+			row.TxHash = rowHash(row.TxHash, row.Block, row.TxIndex)
 			out = append(out, row)
 		}
 	}
@@ -65,6 +77,7 @@ func (f *fakeReader) LaunchesAfter(_ context.Context, _ int64, after Cursor, lim
 	var out []Launch
 	for _, row := range f.launches {
 		if cursorLess(after, Cursor{row.Block, row.TxIndex, row.LogIndex}) && len(out) < limit {
+			row.TxHash = rowHash(row.TxHash, row.Block, row.TxIndex)
 			out = append(out, row)
 		}
 	}
@@ -792,4 +805,113 @@ func TestTailBurstWithoutTradersHasEmptyList(t *testing.T) {
 	if entry.Traders == nil || len(entry.Traders) != 0 || entry.TradersTruncated || entry.MaxETH.String() != "1" {
 		t.Fatalf("unexpected %+v", entry)
 	}
+}
+
+func TestTailReconnectReplaySkipsPublishedRows(t *testing.T) {
+	reader := &fakeReader{marks: Watermarks{Safe: 5}}
+	rec := newRecorder()
+	tail := newTail(reader, rec, &clock{t: time.Unix(100, 0)}) // the clock never moves: one window
+	tail.PerSecond = 4
+	stop := startTail(t, tail)
+	defer stop()
+	reader.update(func(f *fakeReader) {
+		f.trades = []Trade{trade(6, 0, 0, 1), trade(7, 0, 0, 1)}
+		f.launches = []Launch{{Token: common.Address{9}, Block: 8}}
+	})
+	tail.Hint(tokenHint)
+	rec.waitCount(t, 4) // two trades, one new_token, finality
+	quiet()
+	tail.Reconnected() // rewinds to block 5 and reads the same three rows again
+	quiet()
+	if got := rec.types(); len(got) != 4 {
+		t.Fatalf("replayed rows published again: %v", got)
+	}
+	// The replay used no budget: the fourth event of the window is still published individually.
+	reader.update(func(f *fakeReader) { f.trades = append(f.trades, trade(9, 0, 0, 1)) })
+	tail.Hint(tokenHint)
+	rec.waitCount(t, 5)
+	quiet()
+	if got := rec.snapshot(); len(got) != 5 || got[4].Type != "trade" || got[4].Trade.Block != 9 {
+		t.Fatalf("unexpected %v", rec.types())
+	}
+}
+
+func TestTailReorgRepublishesRowsAboveAncestor(t *testing.T) {
+	reader := &fakeReader{}
+	rec := newRecorder()
+	tail := newTail(reader, rec, &clock{t: time.Unix(100, 0)})
+	stop := startTail(t, tail)
+	defer stop()
+	reader.update(func(f *fakeReader) {
+		f.trades = []Trade{trade(6, 0, 0, 1)}
+		f.grads = []Graduation{{Token: common.Address{1}, Block: 6, TxIndex: 0, LogIndex: 1}}
+	})
+	tail.Hint(tokenHint)
+	rec.waitCount(t, 2)
+	quiet()
+	// The same transactions are re-mined above the ancestor with the same identities.
+	tail.Hint(realtime.Event{Type: "reorg", CommonAncestor: 5})
+	rec.waitCount(t, 4)
+	quiet()
+	if got := rec.types(); len(got) != 4 || got[2] != "trade" || got[3] != "graduation" {
+		t.Fatalf("re-mined rows not published again: %v", got)
+	}
+}
+
+func TestTailFinalityPrunesPublishedIdentities(t *testing.T) {
+	reader := &fakeReader{}
+	rec := newRecorder()
+	tail := newTail(reader, rec, &clock{t: time.Unix(100, 0)})
+	stop := startTail(t, tail)
+	reader.update(func(f *fakeReader) { f.trades = []Trade{trade(6, 0, 0, 1), trade(12, 0, 0, 1)} })
+	tail.Hint(tokenHint)
+	rec.waitCount(t, 2)
+	reader.update(func(f *fakeReader) { f.marks = Watermarks{Safe: 10} })
+	tail.Hint(tokenHint)
+	rec.waitCount(t, 3) // finality
+	quiet()
+	stop()
+	if len(tail.seen) != 1 || len(tail.seenOrder) != 1 || tail.seenOrder[0].block != 12 {
+		t.Fatalf("identities after finality: %v", tail.seenOrder)
+	}
+}
+
+func TestTailPublishedIdentitiesAreCapped(t *testing.T) {
+	reader := &fakeReader{}
+	rec := newRecorder()
+	var logs syncBuffer
+	tail := newTail(reader, rec, &clock{t: time.Unix(100, 0)})
+	tail.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+	tail.seenCap = 2
+	stop := startTail(t, tail)
+	reader.update(func(f *fakeReader) {
+		f.trades = []Trade{trade(6, 0, 0, 1), trade(7, 0, 0, 1), trade(8, 0, 0, 1), trade(9, 0, 0, 1)}
+	})
+	tail.Hint(tokenHint)
+	rec.waitCount(t, 4)
+	quiet()
+	stop()
+	if len(tail.seen) != 2 || tail.seenOrder[0].block != 8 || tail.seenOrder[1].block != 9 {
+		t.Fatalf("identities %v", tail.seenOrder)
+	}
+	if n := strings.Count(logs.String(), "feed tail identity cap reached"); n != 1 {
+		t.Fatalf("cap logged %d times: %q", n, logs.String())
+	}
+}
+
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }

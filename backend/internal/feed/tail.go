@@ -8,10 +8,13 @@ import (
 	"math/big"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/Contictus/launchtap/backend/internal/realtime"
 )
@@ -37,6 +40,9 @@ func (noopObserver) Burst()            {}
 func (noopObserver) Lag(time.Duration) {}
 
 const burstWindow = time.Second
+
+// defaultSeenCap bounds the remembered row identities if the safe block stops advancing.
+const defaultSeenCap = 10000
 
 // maxBurstTraders caps the distinct traders listed per trade_burst entry.
 const maxBurstTraders = 32
@@ -74,6 +80,18 @@ type Tail struct {
 	windowCount         int
 	overflow            map[string]*realtime.BurstCount // folded trades per token
 	overflowLaunches    int
+
+	// Identities of rows published or folded above the safe block, oldest first. A replay after a
+	// reconnect rewind skips them; a reorg hint forgets those above its ancestor; finality prunes them.
+	seen          map[string]int64 // identity -> block
+	seenOrder     []seenEntry
+	seenCap       int // default defaultSeenCap
+	seenCapLogged bool
+}
+
+type seenEntry struct {
+	key   string
+	block int64
 }
 
 func (t *Tail) init() {
@@ -106,8 +124,8 @@ func (t *Tail) Hint(event realtime.Event) {
 
 // Reconnected schedules a rewind of every cursor to the current safe block and wakes the worker. Call it
 // each time the hint connection is listening again after a disconnect: a reorg hint sent while it was
-// down is lost, and rows above the safe block may have been replaced. Rows above the safe block are
-// published again; clients dedupe them by transaction hash and log index.
+// down is lost, and rows above the safe block may have been replaced. Replayed rows the tail already
+// published or folded are skipped by identity; only rows it has not seen are published.
 func (t *Tail) Reconnected() {
 	t.init()
 	t.mu.Lock()
@@ -140,6 +158,9 @@ func (t *Tail) Start(ctx context.Context) error {
 	}
 	if t.WatermarkEvery <= 0 {
 		t.WatermarkEvery = 5 * time.Second
+	}
+	if t.seenCap <= 0 {
+		t.seenCap = defaultSeenCap
 	}
 	ticker := time.NewTicker(t.WatermarkEvery)
 	defer ticker.Stop()
@@ -219,6 +240,7 @@ func (t *Tail) drain(ctx context.Context) {
 // feedItem is one row read by the tail, with its chain position.
 type feedItem struct {
 	at    Cursor
+	key   string // row identity: trades and launches by (tx_hash, log_index), graduations by (tx_hash, token)
 	event realtime.Event
 }
 
@@ -267,7 +289,11 @@ func (t *Tail) drainMerged(ctx context.Context) {
 		}
 		item := next.buf[0]
 		next.buf = next.buf[1:]
-		t.emit(item.event)
+		// A row already published or folded (replayed by a reconnect rewind) is skipped without using budget.
+		if _, dup := t.seen[item.key]; !dup {
+			t.emit(item.event)
+			t.remember(item.key, item.at.Block)
+		}
 		*next.cursor = item.at
 	}
 }
@@ -280,7 +306,7 @@ func (t *Tail) readLaunches(ctx context.Context, after Cursor) ([]feedItem, erro
 	items := make([]feedItem, len(rows))
 	for i := range rows {
 		row := rows[i]
-		items[i] = feedItem{Cursor{row.Block, row.TxIndex, row.LogIndex}, realtime.Event{Type: "new_token", Token: row.Token.Hex(), Launch: &row}}
+		items[i] = feedItem{Cursor{row.Block, row.TxIndex, row.LogIndex}, logKey("launch", row.TxHash, row.LogIndex), realtime.Event{Type: "new_token", Token: row.Token.Hex(), Launch: &row}}
 	}
 	return items, nil
 }
@@ -293,7 +319,7 @@ func (t *Tail) readTrades(ctx context.Context, after Cursor) ([]feedItem, error)
 	items := make([]feedItem, len(rows))
 	for i := range rows {
 		row := rows[i]
-		items[i] = feedItem{Cursor{row.Block, row.TxIndex, row.LogIndex}, realtime.Event{Type: "trade", Token: row.Token.Hex(), Trade: &row}}
+		items[i] = feedItem{Cursor{row.Block, row.TxIndex, row.LogIndex}, logKey("trade", row.TxHash, row.LogIndex), realtime.Event{Type: "trade", Token: row.Token.Hex(), Trade: &row}}
 	}
 	return items, nil
 }
@@ -306,9 +332,57 @@ func (t *Tail) readGraduations(ctx context.Context, after Cursor) ([]feedItem, e
 	items := make([]feedItem, len(rows))
 	for i := range rows {
 		row := rows[i]
-		items[i] = feedItem{Cursor{row.Block, row.TxIndex, row.LogIndex}, realtime.Event{Type: "graduation", Token: row.Token.Hex(), Graduation: &row}}
+		key := "graduation:" + row.TxHash.Hex() + ":" + strings.ToLower(row.Token.Hex())
+		items[i] = feedItem{Cursor{row.Block, row.TxIndex, row.LogIndex}, key, realtime.Event{Type: "graduation", Token: row.Token.Hex(), Graduation: &row}}
 	}
 	return items, nil
+}
+
+func logKey(kind string, tx common.Hash, logIndex int32) string {
+	return kind + ":" + tx.Hex() + ":" + strconv.Itoa(int(logIndex))
+}
+
+// remember records a published or folded row above the safe block. Past the cap the oldest identity is
+// dropped (logged once): a replay could then republish it, which clients dedupe.
+func (t *Tail) remember(key string, block int64) {
+	if block <= t.lastSafe {
+		return
+	}
+	if t.seen == nil {
+		t.seen = make(map[string]int64)
+	}
+	t.seen[key] = block
+	t.seenOrder = append(t.seenOrder, seenEntry{key, block})
+	for len(t.seenOrder) > t.seenCap {
+		delete(t.seen, t.seenOrder[0].key)
+		t.seenOrder = t.seenOrder[1:]
+		if !t.seenCapLogged {
+			t.seenCapLogged = true
+			t.Logger.Warn("feed tail identity cap reached; dropping the oldest", "cap", t.seenCap, "chain_id", t.ChainID)
+		}
+	}
+}
+
+// forgetAbove drops identities above block (a reorg's common ancestor).
+func (t *Tail) forgetAbove(block int64) {
+	t.filterSeen(func(e seenEntry) bool { return e.block <= block })
+}
+
+// pruneSeen drops identities at or below the safe block; a rewind never goes below it.
+func (t *Tail) pruneSeen(safe int64) {
+	t.filterSeen(func(e seenEntry) bool { return e.block > safe })
+}
+
+func (t *Tail) filterSeen(keep func(seenEntry) bool) {
+	kept := t.seenOrder[:0:0]
+	for _, e := range t.seenOrder {
+		if keep(e) {
+			kept = append(kept, e)
+		} else {
+			delete(t.seen, e.key)
+		}
+	}
+	t.seenOrder = kept
 }
 
 // emit publishes one feed event. Trades, launches and graduations share one budget per 1-second window;
@@ -379,6 +453,10 @@ func (t *Tail) applyRewind(ctx context.Context) {
 	pending, resync := t.rewind, t.resync
 	t.rewind, t.resync = nil, false
 	t.mu.Unlock()
+	if pending != nil {
+		// Rows above a reorg's common ancestor may be re-mined with the same identity; publish them again.
+		t.forgetAbove(*pending)
+	}
 	if resync {
 		marks, err := t.Reader.Watermarks(ctx, t.ChainID, t.DeploymentID)
 		switch {
@@ -456,6 +534,10 @@ func (t *Tail) publishFinality(ctx context.Context) {
 	if marks.Safe <= t.lastSafe && marks.Finalized <= t.lastFinal {
 		return
 	}
+	advancedSafe := marks.Safe > t.lastSafe
 	t.lastSafe, t.lastFinal = max(t.lastSafe, marks.Safe), max(t.lastFinal, marks.Finalized)
+	if advancedSafe {
+		t.pruneSeen(t.lastSafe)
+	}
 	t.publish(realtime.Event{Type: "finality", SafeBlock: t.lastSafe, FinalizedBlock: t.lastFinal})
 }
