@@ -108,3 +108,22 @@ WHERE chain_id = sqlc.arg(chain_id)
   AND deployment_id = sqlc.arg(deployment_id)
   AND reporter_did = sqlc.arg(reporter_did)
   AND created_at > now() - make_interval(secs => sqlc.arg(window_seconds)::double precision);
+
+-- R10: drop the caller's published wallets that are no longer linked. keep_wallets is the
+-- principal's current wallet list.
+-- name: PrunePublicWallets :exec
+DELETE FROM social_public_wallets
+WHERE chain_id = sqlc.arg(chain_id)
+  AND deployment_id = sqlc.arg(deployment_id)
+  AND privy_did = sqlc.arg(privy_did)
+  AND NOT (wallet = ANY(sqlc.arg(keep_wallets)::bytea[]));
+
+-- name: IsPublicWallet :one
+SELECT EXISTS (
+    SELECT 1
+    FROM social_public_wallets
+    WHERE chain_id = sqlc.arg(chain_id)
+      AND deployment_id = sqlc.arg(deployment_id)
+      AND privy_did = sqlc.arg(privy_did)
+      AND wallet = sqlc.arg(wallet)
+);

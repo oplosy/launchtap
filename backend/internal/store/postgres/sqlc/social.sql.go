@@ -235,6 +235,36 @@ func (q *Queries) InsertReport(ctx context.Context, arg InsertReportParams) (int
 	return result.RowsAffected(), nil
 }
 
+const isPublicWallet = `-- name: IsPublicWallet :one
+SELECT EXISTS (
+    SELECT 1
+    FROM social_public_wallets
+    WHERE chain_id = $1
+      AND deployment_id = $2
+      AND privy_did = $3
+      AND wallet = $4
+)
+`
+
+type IsPublicWalletParams struct {
+	ChainID      int64
+	DeploymentID string
+	PrivyDid     string
+	Wallet       Address
+}
+
+func (q *Queries) IsPublicWallet(ctx context.Context, arg IsPublicWalletParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isPublicWallet,
+		arg.ChainID,
+		arg.DeploymentID,
+		arg.PrivyDid,
+		arg.Wallet,
+	)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const listTokenComments = `-- name: ListTokenComments :many
 SELECT c.id, c.body, c.created_at, c.author_role AS role,
        u.username AS display_username,
@@ -325,6 +355,33 @@ type LockSocialSubjectParams struct {
 // Serializes per-subject social writes (rate limits, username changes). The key is built in SQL.
 func (q *Queries) LockSocialSubject(ctx context.Context, arg LockSocialSubjectParams) error {
 	_, err := q.db.Exec(ctx, lockSocialSubject, arg.ChainID, arg.DeploymentID, arg.SubjectKey)
+	return err
+}
+
+const prunePublicWallets = `-- name: PrunePublicWallets :exec
+DELETE FROM social_public_wallets
+WHERE chain_id = $1
+  AND deployment_id = $2
+  AND privy_did = $3
+  AND NOT (wallet = ANY($4::bytea[]))
+`
+
+type PrunePublicWalletsParams struct {
+	ChainID      int64
+	DeploymentID string
+	PrivyDid     string
+	KeepWallets  [][]byte
+}
+
+// R10: drop the caller's published wallets that are no longer linked. keep_wallets is the
+// principal's current wallet list.
+func (q *Queries) PrunePublicWallets(ctx context.Context, arg PrunePublicWalletsParams) error {
+	_, err := q.db.Exec(ctx, prunePublicWallets,
+		arg.ChainID,
+		arg.DeploymentID,
+		arg.PrivyDid,
+		arg.KeepWallets,
+	)
 	return err
 }
 

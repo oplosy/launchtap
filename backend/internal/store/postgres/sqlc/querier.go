@@ -117,6 +117,7 @@ type Querier interface {
 	InsertTradingPauseEvent(ctx context.Context, arg InsertTradingPauseEventParams) (int64, error)
 	InsertTransfer(ctx context.Context, arg InsertTransferParams) (int64, error)
 	InsertWatchlistEntry(ctx context.Context, arg InsertWatchlistEntryParams) (int64, error)
+	IsPublicWallet(ctx context.Context, arg IsPublicWalletParams) (bool, error)
 	LaunchFeeClaimMatchesEvent(ctx context.Context, arg LaunchFeeClaimMatchesEventParams) (pgtype.Bool, error)
 	LaunchPauseEventMatchesEvent(ctx context.Context, arg LaunchPauseEventMatchesEventParams) (pgtype.Bool, error)
 	// Each row is keyed by its UTC-aligned group start (not the first stored source bucket), so
@@ -205,6 +206,9 @@ type Querier interface {
 	PoolSyncMatchesEvent(ctx context.Context, arg PoolSyncMatchesEventParams) (pgtype.Bool, error)
 	PromoteIndexedBlocks(ctx context.Context, arg PromoteIndexedBlocksParams) error
 	ProtocolFeeClaimMatchesEvent(ctx context.Context, arg ProtocolFeeClaimMatchesEventParams) (pgtype.Bool, error)
+	// R10: drop the caller's published wallets that are no longer linked. keep_wallets is the
+	// principal's current wallet list.
+	PrunePublicWallets(ctx context.Context, arg PrunePublicWalletsParams) error
 	// Wallets that are the token creator or hold a positive balance; creator wins.
 	// deployment_id is accepted for scope uniformity; tokens and balances are chain-scoped.
 	QualifyWallets(ctx context.Context, arg QualifyWalletsParams) ([]QualifyWalletsRow, error)
