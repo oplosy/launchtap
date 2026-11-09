@@ -40,7 +40,9 @@ export function createRuleState(): RuleState {
   return { pendingOwn: new Map() };
 }
 
-const tradeKey = (trade: TradeFeedItem) => `${trade.tx_hash}:${trade.log_index}`.toLowerCase();
+/** Key of a trade in `RuleState.pendingOwn`. */
+export const tradeKey = (trade: TradeFeedItem) =>
+  `${trade.tx_hash}:${trade.log_index}`.toLowerCase();
 
 /** Exact wei comparison; a malformed amount never notifies. */
 export function isLargeTrade(ethVolume: string): boolean {

@@ -112,6 +112,63 @@ describe("holdingsRefreshReason", () => {
     expect(holdingsRefreshReason(finality(9), WALLET, state)).toBeNull();
   });
 
+  it("returns own_trade_seen for an own trade that is not yet safe", () => {
+    const event = trade({ trader: WALLET.toUpperCase().replace("0X", "0x") });
+    expect(holdingsRefreshReason(event, WALLET, createRuleState())).toBe("own_trade_seen");
+  });
+
+  it("loads at most twice for one own trade: when seen and when safe, not on a replay", () => {
+    const state = createRuleState();
+    const ctx = { watched: new Set<string>(), wallet: WALLET };
+    const reasons: Array<string | null> = [];
+    // The provider's order: reason first, then evaluate (which records the pending own trade).
+    const feed = (event: LiveEvent) => {
+      reasons.push(holdingsRefreshReason(event, WALLET, state));
+      if (event.event !== "reconnected") evaluate(event, ctx, state);
+    };
+    const own = trade({ trader: WALLET, block_number: 10 });
+    feed(own);
+    feed(own); // republished after a LISTEN reconnect: already pending, no second load
+    feed(finality(9));
+    feed(finality(10));
+    feed(finality(11));
+    expect(reasons.filter((reason) => reason !== null)).toEqual([
+      "own_trade_seen",
+      "own_trade_safe",
+    ]);
+  });
+
+  it("returns own_trade_seen once for a burst that lists the wallet, never when truncated", () => {
+    const burst = (traders: string[], truncated = false): LiveEvent => ({
+      event: "trade_burst",
+      data: {
+        ...base,
+        window_start: "a",
+        window_end: "b",
+        items: [
+          {
+            token: TOKEN,
+            count: 2,
+            max_eth_wei: "0",
+            traders,
+            traders_truncated: truncated,
+          },
+        ],
+      },
+    });
+    expect(holdingsRefreshReason(burst([WALLET]), WALLET, createRuleState())).toBe(
+      "own_trade_seen",
+    );
+    expect(holdingsRefreshReason(burst([WALLET], true), WALLET, createRuleState())).toBeNull();
+    expect(
+      holdingsRefreshReason(
+        burst(["0x2222222222222222222222222222222222222222"]),
+        WALLET,
+        createRuleState(),
+      ),
+    ).toBeNull();
+  });
+
   it("returns reconnected for a reconnect and null for unrelated events", () => {
     const reconnected: LiveEvent = { event: "reconnected" };
     expect(holdingsRefreshReason(reconnected, WALLET, createRuleState())).toBe("reconnected");

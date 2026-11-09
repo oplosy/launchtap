@@ -1,7 +1,7 @@
 import { ApiClient } from "@/api/client";
 import type { LiveEvent } from "@/api/types";
 import { publicConfiguration } from "@/config/public";
-import type { RuleState } from "./notification-rules";
+import { tradeKey, type RuleState } from "./notification-rules";
 
 /** Same 3 s bound as the share-card fetches; those live in a server-only module, so it is repeated. */
 export const HOLDINGS_FETCH_TIMEOUT_MS = 3000;
@@ -12,24 +12,35 @@ export function mergeWatched(watchlist: readonly string[], holdings: readonly st
 }
 
 /**
- * When the held-token set may have changed: the stream reconnected (events were missed), or one of
- * the connected wallet's own trades just became safe. Call before `evaluate` so a `finality` event
- * still sees the pending own trades it is about to release.
+ * When the held-token set may have changed: the stream reconnected (events were missed), one of
+ * the connected wallet's own trades was just seen, or one just became safe. A trade therefore
+ * causes at most two loads (seen, then safe); an already-safe trade causes one, and a replayed
+ * row that is still pending (republished after a server reconnect) causes none. A `trade_burst`
+ * entry listing the wallet counts as seen (it has no tx hash, so it never becomes "safe" here);
+ * a truncated trader list is unknown and does not. Call before `evaluate` so a `finality` event
+ * still sees the pending own trades it is about to release, and a first sighting is not yet
+ * pending.
  */
 export function holdingsRefreshReason(
   event: LiveEvent,
   wallet: string | null,
   rules: RuleState,
-): "reconnected" | "own_trade_safe" | null {
+): "reconnected" | "own_trade_seen" | "own_trade_safe" | null {
   if (!wallet) return null;
   if (event.event === "reconnected") return "reconnected";
   const lower = wallet.toLowerCase();
   if (event.event === "trade") {
     const trade = event.data;
-    const own = trade.trader?.toLowerCase() === lower;
-    return own && (trade.finality === "safe" || trade.finality === "finalized")
-      ? "own_trade_safe"
-      : null;
+    if (trade.trader?.toLowerCase() !== lower) return null;
+    if (trade.finality === "safe" || trade.finality === "finalized") return "own_trade_safe";
+    return rules.pendingOwn.has(tradeKey(trade)) ? null : "own_trade_seen";
+  }
+  if (event.event === "trade_burst") {
+    for (const item of event.data.items ?? []) {
+      if (item.traders_truncated) continue;
+      if (item.traders.some((trader) => trader.toLowerCase() === lower)) return "own_trade_seen";
+    }
+    return null;
   }
   if (event.event === "finality") {
     for (const trade of rules.pendingOwn.values()) {
