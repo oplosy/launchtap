@@ -1,32 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { LeaderboardResponse } from "@/api/client";
-import { UnavailableState } from "@/components/primitives";
 import { apiInternalBaseUrl } from "@/config/server";
+import { loadLeaderboard } from "@/portfolio/leaderboard-data";
 import { LeaderboardView } from "@/portfolio/leaderboard-view";
 
 export const revalidate = 60;
 export const metadata: Metadata = { title: "Leaderboard" };
 
-const FETCH_TIMEOUT_MS = 3_000;
-
-async function loadLeaderboard(): Promise<LeaderboardResponse | null> {
-  try {
-    const response = await fetch(`${apiInternalBaseUrl()}/v1/leaderboard?limit=100`, {
-      headers: { Accept: "application/json" },
-      next: { revalidate: 60 },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    if (!response.ok) return null;
-    return (await response.json()) as LeaderboardResponse;
-  } catch (cause) {
-    console.error("leaderboard: unavailable", cause);
-    return null;
-  }
-}
-
 export default async function LeaderboardPage() {
-  const board = await loadLeaderboard();
+  // Throws when the API fails: Next then keeps the last good render (or cached data), and only a
+  // route that never rendered shows the friendly state in ./error.tsx.
+  const board = await loadLeaderboard(fetch, apiInternalBaseUrl());
   return (
     <div className="page-stack leaderboard-page">
       <section className="page-hero">
@@ -39,16 +23,9 @@ export default async function LeaderboardPage() {
           </p>
         </div>
       </section>
-      {board ? (
-        <section className="workspace-panel">
-          <LeaderboardView items={board.items ?? []} />
-        </section>
-      ) : (
-        <UnavailableState
-          title="Leaderboard unavailable"
-          description="The ranking could not be loaded. Try again in a minute."
-        />
-      )}
+      <section className="workspace-panel">
+        <LeaderboardView items={board.items ?? []} />
+      </section>
       <p className="ui-field-hint">
         <Link href="/analytics">Back to Analytics</Link>
       </p>
