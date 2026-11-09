@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
   createPublicClient,
+  createWalletClient,
   decodeFunctionData,
   encodeFunctionData,
   http,
@@ -10,6 +11,7 @@ import {
 import fs from "node:fs";
 import path from "node:path";
 import { browserAbis } from "../src/contracts/generated";
+import { formatSignedEth } from "../src/portfolio/wallet-model";
 
 const sender = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" as const;
 
@@ -656,6 +658,238 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await expect(tradeStatus).toContainText(/indexing|indexed|safe|finalized/i, {
       timeout: 30_000,
     });
+  });
+
+  test("wallet page shows realized PnL after curve buy, curve sell and pool sell without reload", async ({
+    page,
+    context,
+  }, testInfo) => {
+    // Launch, five transactions and the live refresh together exceed the 30 s default.
+    test.setTimeout(120_000);
+    // A fresh, unlocked Anvil account per project keeps the expected PnL exact: it starts with no
+    // history, and the other scenarios only trade with the first account.
+    const trader = (
+      testInfo.project.name === "mobile"
+        ? "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc"
+        : "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65"
+    ) as `0x${string}`;
+    const rpcUrl = process.env.TASK6_ANVIL_RPC_URL!;
+    const weth = process.env.TASK6_ANVIL_WETH!.toLowerCase() as `0x${string}`;
+    const router = process.env.TASK6_ANVIL_ROUTER as `0x${string}`;
+    const api = process.env.TASK6_ANVIL_API_URL!;
+
+    await installWallet(page);
+    await page.goto("/create");
+    await connectWallet(page);
+    await page.getByLabel("Name").fill("Wallet PnL Task 11");
+    await page.getByLabel("Ticker").fill("WP11");
+    await page.getByRole("button", { name: "Review launch" }).click();
+    await page.getByRole("button", { name: "Sign launch" }).click();
+    const launchStatus = transactionStatus(page).last();
+    await expect(launchStatus).toContainText(/indexing|indexed|safe|finalized/i, {
+      timeout: 30_000,
+    });
+    const launchHash = (await launchStatus.textContent())?.match(/0x[0-9a-f]{64}/i)?.[0];
+    expect(launchHash).toBeTruthy();
+    let tokenAddress = "";
+    await expect
+      .poll(
+        async () => {
+          tokenAddress = await canonicalTokenForLaunch(
+            page,
+            api,
+            launchHash!,
+            "Wallet PnL Task 11",
+          );
+          return tokenAddress;
+        },
+        { timeout: 30_000 },
+      )
+      .toMatch(/^0x[0-9a-f]{40}$/i);
+    const token = tokenAddress as `0x${string}`;
+    const tokenResponse = await page.request.get(`${api}/v1/tokens/${tokenAddress}`);
+    const curveFromApi = ((await tokenResponse.json()) as { curve?: string }).curve;
+    expect(curveFromApi).toMatch(/^0x[0-9a-f]{40}$/i);
+    const curve = curveFromApi as `0x${string}`;
+
+    // The wallet page is opened before any trade and is never reloaded or navigated afterwards.
+    const walletPage = await context.newPage();
+    await walletPage.goto(`/wallet/${trader.toLowerCase()}`);
+    const totals = walletPage.getByRole("region", { name: "Wallet totals" });
+    const realizedText = totals
+      .getByText("Realized PnL", { exact: true })
+      .locator("xpath=following-sibling::dd[1]");
+    await expect(realizedText).toContainText("0 ETH", { timeout: 30_000 });
+
+    const publicClient = createPublicClient({ transport: http(rpcUrl) });
+    const walletClient = createWalletClient({ transport: http(rpcUrl) });
+    const erc20Abi = parseAbi([
+      "function approve(address spender, uint256 amount) returns (bool)",
+      "function balanceOf(address) view returns (uint256)",
+      "event Transfer(address indexed from, address indexed to, uint256 value)",
+    ]);
+    const tradeAbi = parseAbi([
+      "event Trade(address indexed token, address indexed trader, bool isBuy, uint256 ethGross, uint256 ethRefund, uint256 tokenAmount, uint256 protocolFee, uint256 creatorFee, uint256 newEthReserve, uint256 newTokenReserve)",
+    ]);
+    const swapAbi = parseAbi([
+      "event Swap(address indexed sender, uint256 amount0In, uint256 amount1In, uint256 amount0Out, uint256 amount1Out, address indexed to)",
+    ]);
+    const pairAbi = parseAbi(["function token0() view returns (address)"]);
+    const deadline = () => BigInt(Math.floor(Date.now() / 1000) + 3600);
+    const write = async (request: {
+      address: `0x${string}`;
+      abi: readonly unknown[];
+      functionName: string;
+      args: readonly unknown[];
+      value?: bigint;
+    }) => {
+      const hash = await walletClient.writeContract({
+        account: trader,
+        chain: null,
+        ...request,
+      } as never);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      expect(receipt.status).toBe("success");
+      return receipt;
+    };
+    const balanceOfTrader = () =>
+      publicClient.readContract({
+        address: token,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [trader],
+      });
+
+    // One leg per transaction (ruling R1): TokenDelta from the trader's own ERC-20 transfers,
+    // the ETH legs from the Trade / Swap event amounts.
+    type Leg = { tokenDelta: bigint; ethPaid: bigint; ethReceived: bigint };
+    const legs: Leg[] = [];
+    const trade = async (request: Parameters<typeof write>[0]) => {
+      const receipt = await write(request);
+      let tokenDelta = 0n;
+      for (const log of parseEventLogs({
+        abi: erc20Abi,
+        eventName: "Transfer",
+        logs: receipt.logs.filter((entry) => entry.address.toLowerCase() === token.toLowerCase()),
+      })) {
+        if (log.args.to.toLowerCase() === trader.toLowerCase()) tokenDelta += log.args.value;
+        if (log.args.from.toLowerCase() === trader.toLowerCase()) tokenDelta -= log.args.value;
+      }
+      let ethPaid = 0n;
+      let ethReceived = 0n;
+      for (const log of parseEventLogs({ abi: tradeAbi, logs: receipt.logs })) {
+        if (log.args.trader.toLowerCase() !== trader.toLowerCase()) continue;
+        if (log.args.isBuy) ethPaid += log.args.ethGross;
+        else ethReceived += log.args.ethGross - log.args.protocolFee - log.args.creatorFee;
+      }
+      for (const log of parseEventLogs({ abi: swapAbi, logs: receipt.logs })) {
+        const token0 = await publicClient.readContract({
+          address: log.address,
+          abi: pairAbi,
+          functionName: "token0",
+        });
+        const wethIsToken0 = token0.toLowerCase() === weth;
+        ethPaid += wethIsToken0 ? log.args.amount0In : log.args.amount1In;
+        ethReceived += wethIsToken0 ? log.args.amount0Out : log.args.amount1Out;
+      }
+      legs.push({ tokenDelta, ethPaid, ethReceived });
+    };
+
+    // Curve buy, curve sell, then a graduating curve buy.
+    const curveBuy = (value: bigint) =>
+      trade({
+        address: curve,
+        abi: browserAbis.curve,
+        functionName: "buy",
+        args: [trader, trader, 0n, deadline()],
+        value,
+      });
+    await curveBuy(1_000_000_000_000_000_000n);
+    const curveSellAmount = (await balanceOfTrader()) / 2n;
+    await write({
+      address: token,
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [curve, curveSellAmount],
+    });
+    await trade({
+      address: curve,
+      abi: browserAbis.curve,
+      functionName: "sell",
+      args: [curveSellAmount, trader, 0n, deadline()],
+    });
+    await curveBuy(5_000_000_000_000_000_000n);
+    await expect
+      .poll(
+        async () => {
+          const response = await page.request.get(`${api}/v1/tokens/${tokenAddress}`);
+          if (!response.ok()) return "";
+          return ((await response.json()) as { phase?: string }).phase ?? "";
+        },
+        { timeout: 30_000 },
+      )
+      .toBe("graduated");
+
+    // Pool buy and pool sell through the Uniswap v2 router.
+    await trade({
+      address: router,
+      abi: browserAbis.router,
+      functionName: "swapExactETHForTokens",
+      args: [0n, [weth, token], trader, deadline()],
+      value: 10_000_000_000_000_000n,
+    });
+    const poolSellAmount = (await balanceOfTrader()) / 3n;
+    await write({
+      address: token,
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [router, poolSellAmount],
+    });
+    await trade({
+      address: router,
+      abi: browserAbis.router,
+      functionName: "swapExactTokensForETH",
+      args: [poolSellAmount, 0n, [token, weth], trader, deadline()],
+    });
+
+    // mirrors position.Compute (backend/internal/position/position.go): average-cost accounting,
+    // floor division on the removed cost, and the exact-balance shortcut.
+    let balance = 0n;
+    let remainingCost = 0n;
+    let realized = 0n;
+    for (const leg of legs) {
+      const attributed = leg.ethPaid > 0n || leg.ethReceived > 0n;
+      const net = leg.ethPaid - leg.ethReceived;
+      if (leg.tokenDelta > 0n) {
+        balance += leg.tokenDelta;
+        if (attributed) {
+          if (net > 0n) remainingCost += net;
+          else realized -= net;
+        }
+      } else if (leg.tokenDelta < 0n) {
+        const sold = -leg.tokenDelta;
+        expect(sold <= balance).toBe(true);
+        const removed = sold === balance ? remainingCost : (remainingCost * sold) / balance;
+        balance -= sold;
+        remainingCost -= removed;
+        if (attributed) realized -= net + removed;
+      } else {
+        realized -= net;
+      }
+    }
+    expect(legs).toHaveLength(5);
+    expect(realized).not.toBe(0n);
+    testInfo.annotations.push({
+      type: "expected-realized-pnl-wei",
+      description: `${realized} from legs ${JSON.stringify(legs, (_, value) => (typeof value === "bigint" ? value.toString() : value))}`,
+    });
+
+    // The same helper the page renders with; there is no page.reload() after the page opened.
+    const expectedText = formatSignedEth(realized.toString());
+    await expect(realizedText).toHaveText(
+      new RegExp(`^${expectedText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+      { timeout: 10_000 },
+    );
   });
 
   test("keeps the home page inside the viewport on small phones", async ({ page }) => {
