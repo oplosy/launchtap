@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanText,
   loadCardData,
+  FETCH_TIMEOUT_MS,
   loadMetadataSummary,
   MAX_IMAGE_BYTES,
+  METADATA_FETCH_TIMEOUT_MS,
   MAX_NAME_LENGTH,
 } from "./card-data";
 
@@ -208,5 +210,28 @@ describe("loadMetadataSummary", () => {
     expect(await loadMetadataSummary("nope", fetcher, BASE)).toBeNull();
     expect(calls).toEqual([]);
     expect(await loadMetadataSummary(ADDRESS, fetcher, BASE)).toBeNull();
+  });
+
+  it("bounds the metadata read at 1 s while the card keeps 3 s", async () => {
+    expect(METADATA_FETCH_TIMEOUT_MS).toBe(1000);
+    expect(FETCH_TIMEOUT_MS).toBe(3000);
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    await loadMetadataSummary(ADDRESS, fakeFetch({}).fetcher, BASE);
+    expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([METADATA_FETCH_TIMEOUT_MS]);
+    timeout.mockClear();
+    await loadCardData(ADDRESS, fakeFetch({}).fetcher, BASE);
+    expect(new Set(timeout.mock.calls.map(([ms]) => ms))).toEqual(new Set([FETCH_TIMEOUT_MS]));
+  });
+
+  it("gives up on a hung API after the metadata bound and returns null", async () => {
+    const hung = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) =>
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason)),
+        ),
+    ) as unknown as typeof fetch;
+    const started = Date.now();
+    expect(await loadMetadataSummary(ADDRESS, hung, BASE)).toBeNull();
+    expect(Date.now() - started).toBeLessThan(2500);
   });
 });

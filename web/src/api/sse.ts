@@ -16,6 +16,8 @@ export class SseInvalidationStream {
   private stableConnectionTimer: ReturnType<typeof setTimeout> | null = null;
   private retryAttempt = 0;
   private recoveryAbortController: AbortController | null = null;
+  /** Set when the next source's `open` event completes a reconnection (fires onReconnected). */
+  private announceOnOpen = false;
   constructor(
     private readonly options: {
       url: string;
@@ -27,13 +29,18 @@ export class SseInvalidationStream {
       onRecoveryExhausted?: () => void;
       /** Receives every validated event (all event types), before query invalidation hints. */
       onEvent?: (event: ApiEvent) => void;
-      /** Called after REST was refetched and a fresh EventSource was opened. */
+      /**
+       * Called once after REST was refetched and the fresh EventSource actually opened (its `open`
+       * event), so a refetch triggered by it cannot race events the new source has not delivered.
+       */
       onReconnected?: () => void;
     },
   ) {}
 
-  start() {
+  /** `reconnected: true` announces the first open as a reconnection (a restarted stream). */
+  start(options: { reconnected?: boolean } = {}) {
     this.stopped = false;
+    this.announceOnOpen = options.reconnected === true;
     this.connect();
     return () => this.stop();
   }
@@ -48,6 +55,7 @@ export class SseInvalidationStream {
     this.stableConnectionTimer = null;
     this.source?.close();
     this.source = null;
+    this.announceOnOpen = false;
   }
 
   private connect() {
@@ -62,6 +70,10 @@ export class SseInvalidationStream {
         this.stableConnectionTimer = null;
         if (this.source === source) this.retryAttempt = 0;
       }, 30_000);
+      if (this.announceOnOpen) {
+        this.announceOnOpen = false;
+        this.options.onReconnected?.();
+      }
     });
     for (const eventType of API_EVENT_NAMES) {
       source.addEventListener(eventType, (event) => {
@@ -130,8 +142,10 @@ export class SseInvalidationStream {
       // Ordering is intentional: refill canonical REST state before accepting new hints.
       await this.options.refetchSnapshot(abortController.signal);
       if (!this.stopped) {
+        // onReconnected fires on this source's `open` event, not here: the connection may still
+        // fail, and a refetch before it opens could miss events published in between.
+        this.announceOnOpen = true;
         this.connect();
-        this.options.onReconnected?.();
       }
     } catch {
       this.retryAttempt += 1;

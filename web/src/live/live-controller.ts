@@ -78,7 +78,7 @@ export function createLiveController(options: {
         slowTimer = setTimeout(() => void restart(), slowRetryMs);
       };
 
-      const open = () => {
+      const open = (reconnected = false) => {
         const stream = new SseInvalidationStream({
           url: options.url,
           eventSourceFactory: options.eventSourceFactory,
@@ -92,7 +92,7 @@ export function createLiveController(options: {
             scheduleSlowRetry();
           },
         });
-        stopStream = stream.start();
+        stopStream = stream.start({ reconnected });
       };
 
       const restart = async () => {
@@ -107,8 +107,8 @@ export function createLiveController(options: {
           await runRecoveries(abort.signal);
           if (disposed) return;
           exhausted = false;
-          open();
-          emit({ event: "reconnected" });
+          // `reconnected` is emitted when the new source opens (SseInvalidationStream).
+          open(true);
         } finally {
           if (restartAbort === abort) restartAbort = null;
         }

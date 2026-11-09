@@ -24,6 +24,11 @@ export type CardData =
   | { kind: "generic" };
 
 export const FETCH_TIMEOUT_MS = 3000;
+/**
+ * Page metadata blocks the token page's HTML response (generateMetadata), so a slow API may delay
+ * it by at most this long; the share card renders out of band and keeps FETCH_TIMEOUT_MS.
+ */
+export const METADATA_FETCH_TIMEOUT_MS = 1000;
 export const MAX_NAME_LENGTH = 32;
 const MAX_SYMBOL_LENGTH = 16;
 /** Mirrors backend maxImageBytes (metadata_routes.go): 5 MiB. */
@@ -131,9 +136,13 @@ async function loadImage(
   }
 }
 
-async function getJson(url: string, fetcher: Fetcher): Promise<unknown> {
+async function getJson(
+  url: string,
+  fetcher: Fetcher,
+  timeoutMs: number = FETCH_TIMEOUT_MS,
+): Promise<unknown> {
   const response = await fetcher(url, {
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
     redirect: "error",
     headers: { Accept: "application/json" },
     ...NEXT_CACHE,
@@ -159,8 +168,16 @@ type TokenSummary = {
   phase: "bonding" | "graduated";
 };
 
-async function loadSummary(base: string, address: string, fetcher: Fetcher): Promise<TokenSummary> {
-  const raw = (await getJson(`${base}/v1/tokens/${address}`, fetcher)) as Record<string, unknown>;
+async function loadSummary(
+  base: string,
+  address: string,
+  fetcher: Fetcher,
+  timeoutMs: number = FETCH_TIMEOUT_MS,
+): Promise<TokenSummary> {
+  const raw = (await getJson(`${base}/v1/tokens/${address}`, fetcher, timeoutMs)) as Record<
+    string,
+    unknown
+  >;
   const marketCapRaw = raw.market_cap_eth;
   if (typeof marketCapRaw !== "string") throw new Error("token response is malformed");
   const marketCapEth = formatCanonicalBaseUnits(marketCapRaw, 2);
@@ -186,7 +203,12 @@ export async function loadMetadataSummary(
   const parsed = parseTokenAddress(address);
   if (!parsed) return null;
   try {
-    const summary = await loadSummary(baseUrl ?? apiInternalBaseUrl(), parsed, fetcher);
+    const summary = await loadSummary(
+      baseUrl ?? apiInternalBaseUrl(),
+      parsed,
+      fetcher,
+      METADATA_FETCH_TIMEOUT_MS,
+    );
     const symbol = cleanText(summary.raw.symbol, MAX_SYMBOL_LENGTH);
     const name = cleanText(summary.raw.name, MAX_NAME_LENGTH) || symbol || "Unnamed token";
     return { name, symbol, marketCapEth: summary.marketCapEth, phase: summary.phase };

@@ -31,7 +31,8 @@ function harness() {
       new MessageEvent(name, { data: JSON.stringify(data) }),
     );
   const error = () => listeners.get(`${sources.length - 1}:error`)?.(new Event("error"));
-  return { factory, sources, emit, error };
+  const open = () => listeners.get(`${sources.length - 1}:open`)?.(new Event("open"));
+  return { factory, sources, emit, error, open };
 }
 
 const url = "https://api.example/v1/events";
@@ -103,6 +104,8 @@ describe("live controller", () => {
     await vi.advanceTimersByTimeAsync(250);
     expect(healthyRan).toBe(true);
     expect(h.sources).toHaveLength(2);
+    expect(events).toEqual([]);
+    h.open();
     expect(events).toEqual(["reconnected"]);
     expect(warn).toHaveBeenCalled();
     stop();
@@ -121,6 +124,8 @@ describe("live controller", () => {
     expect(h.sources.length).toBe(before);
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.sources.length).toBe(before + 1);
+    expect(events).not.toContain("reconnected");
+    h.open();
     expect(events).toContain("reconnected");
     stop();
   });

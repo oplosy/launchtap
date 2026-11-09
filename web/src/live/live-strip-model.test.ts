@@ -287,6 +287,26 @@ describe("token page live trades", () => {
     expect(liveTradeRows(items, rest)).toEqual([]);
     expect(liveTradeRows(items, [])).toHaveLength(1);
   });
+
+  it("prices a live row from the trade's own amounts and leaves spot unknown", () => {
+    const items = reduceTokenTrades(
+      [],
+      ev(trade(1, { eth_volume: "1500000000000000000", token_volume: "5000000000000000000" })),
+      TOKEN,
+      scope,
+    );
+    expect(liveTradeRows(items, [])[0]).toMatchObject({
+      execution_price: "300000000000000000",
+      spot_price: "",
+    });
+  });
+
+  it("gives each strip item its token image path, or null for an invalid token", () => {
+    expect(toStripItem(tradeToFeedItem(trade(1)), NOW).imagePath).toBe(
+      `/v1/tokens/${TOKEN.toLowerCase()}/image`,
+    );
+    expect(toStripItem(tradeToFeedItem(trade(1, { token: "nope" })), NOW).imagePath).toBeNull();
+  });
   it("decides which live events refresh REST-backed views", () => {
     const reorg = (over: object = {}) =>
       ({

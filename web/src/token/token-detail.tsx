@@ -39,6 +39,7 @@ import {
   type TokenCollectionFetcher,
 } from "./pagination";
 import { MarketChart } from "./market-chart";
+import { createCoalescedRefresh } from "./coalesced-refresh";
 import { isTokenEventForAddress } from "./sse-scope";
 import { TradingPanel } from "@/transactions-panel";
 import { MetadataEditor } from "./metadata-editor";
@@ -330,8 +331,9 @@ export function TokenDetail({
     void loadCollection(tab).catch(() => undefined);
   }, [loadCollection, tab]);
 
-  const refreshingRef = useRef(false);
-  const refreshAgainRef = useRef(false);
+  // Hints that arrive during a refresh collapse into one follow-up refresh; an abort (a reconnect
+  // reload cancelled it) is swallowed there, not surfaced as an unhandled rejection.
+  const refreshAllRef = useRef<(() => void) | null>(null);
   const onLiveEvent = useCallback(
     (event: LiveEvent) => {
       if (useFixture || configuration.status !== "ready") return;
@@ -368,26 +370,14 @@ export function TokenDetail({
         if (!isTokenEventForAddress(event, tokenAddress)) return;
       }
       if (!tokenRef.current) return;
-      // Collapse hints that arrive during a refresh into one follow-up refresh.
-      if (refreshingRef.current) {
-        refreshAgainRef.current = true;
-        return;
-      }
-      void (async () => {
-        refreshingRef.current = true;
-        try {
-          do {
-            refreshAgainRef.current = false;
-            const loaders = loadersRef.current;
-            if (!loaders) return;
-            await loaders.loadToken();
-            await loaders.loadCandles();
-            await loaders.loadCollection(tabRef.current);
-          } while (refreshAgainRef.current);
-        } finally {
-          refreshingRef.current = false;
-        }
-      })();
+      refreshAllRef.current ??= createCoalescedRefresh(async () => {
+        const loaders = loadersRef.current;
+        if (!loaders) return;
+        await loaders.loadToken();
+        await loaders.loadCandles();
+        await loaders.loadCollection(tabRef.current);
+      });
+      refreshAllRef.current();
     },
     [
       configuration.chainId,
@@ -853,7 +843,9 @@ function Trades({
               "—"
             ) : (
               <>
-                {safeMarketValue(item.execution_price)} / {safeMarketValue(item.spot_price)}
+                {safeMarketValue(item.execution_price)} /{" "}
+                {/* A live row has no spot price until the next REST refresh. */}
+                {item.spot_price === "" ? "—" : safeMarketValue(item.spot_price)}
                 <UsdLine wei={item.execution_price} />
               </>
             )}

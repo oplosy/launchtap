@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ApiClient } from "@/api/client";
+import { ApiClient, resolveApiAssetUrl } from "@/api/client";
+import { SafeImage } from "@/components/primitives";
 import type { LiveEvent } from "@/api/types";
 import { publicConfiguration } from "@/config/public";
 import { UsdLine } from "@/market/usd-line";
@@ -94,7 +95,7 @@ export function LiveStrip() {
       <ul className="live-strip-track">
         {views.map((view) => (
           <li key={view.key} className="live-strip-item" data-pending={view.pending || undefined}>
-            <StripEntry view={view} />
+            <StripEntry view={view} baseUrl={baseUrl} />
           </li>
         ))}
       </ul>
@@ -102,9 +103,20 @@ export function LiveStrip() {
   );
 }
 
-function StripEntry({ view }: { view: StripItemView }) {
+function StripEntry({ view, baseUrl }: { view: StripItemView; baseUrl: string | null }) {
+  const imageUrl = resolveApiAssetUrl(baseUrl, view.imagePath);
   const body = (
     <>
+      {/* Decorative: the ticker names the token. A fixed-size box keeps the layout stable while
+          the image loads or when it falls back to a letter. */}
+      <span className="live-strip-image-box" aria-hidden="true">
+        <SafeImage
+          src={imageUrl}
+          alt={view.ticker === "—" ? "" : view.ticker}
+          fallbackLabel="No artwork"
+          className="live-strip-image"
+        />
+      </span>
       {view.badge ? (
         <span className="live-strip-badge" data-kind={view.kind}>
           {view.badge}

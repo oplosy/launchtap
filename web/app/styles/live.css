@@ -53,6 +53,22 @@ a.live-strip-part:hover,
 a.live-strip-trader-link:hover {
   text-decoration: underline;
 }
+/* Token image at the strip's text scale; same rounded-square shape as .token-image. */
+.live-strip-image-box {
+  display: inline-flex;
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+.live-strip-image {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+.live-strip-image .ui-image-fallback-letter {
+  font-size: 11px;
+}
 .live-strip-ticker {
   max-width: 12ch;
   overflow: hidden;

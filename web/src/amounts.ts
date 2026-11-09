@@ -44,6 +44,26 @@ export function formatCanonicalBaseUnits(value: string, maxFractionDigits = 6): 
   }
 }
 
+/**
+ * Execution price in wad (ETH per whole token, 18 decimals) from a trade's gross ETH and token
+ * amounts, as a canonical decimal string. Mirrors the `market_trades` view's
+ * `execution_price_wad` (backend migration 00004_chain_projections.sql):
+ * `trunc(eth_gross * 1e18 / NULLIF(token_amount, 0))`. Empty when there are no tokens (the view
+ * yields NULL) or an amount is not a canonical integer.
+ */
+export function executionPriceWad(ethWei: string, tokenUnits: string): string {
+  let eth: bigint;
+  let tokens: bigint;
+  try {
+    eth = parseCanonicalBaseUnits(ethWei);
+    tokens = parseCanonicalBaseUnits(tokenUnits);
+  } catch {
+    return "";
+  }
+  if (tokens === 0n) return "";
+  return ((eth * 10n ** 18n) / tokens).toString();
+}
+
 /** Token prices sit far below 1 ETH, so keep four significant digits instead of a fixed scale. */
 export function formatSignificantPrice(value: string): string | null {
   const full = formatCanonicalBaseUnits(value, 18);

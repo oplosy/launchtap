@@ -1,6 +1,6 @@
 import type { components } from "@/api/generated";
 import type { ApiEvent, LiveEvent } from "@/api/types";
-import { formatCanonicalBaseUnits } from "@/amounts";
+import { executionPriceWad, formatCanonicalBaseUnits } from "@/amounts";
 import { walletPath } from "@/portfolio/wallet-model";
 import { parseTokenAddress, shortAddress } from "@/token/address";
 import { applyFeedEvent, FEED_MAX_ITEMS, type FeedItem } from "./feed-store";
@@ -9,6 +9,8 @@ export type StripItemView = {
   key: string;
   kind: FeedItem["kind"];
   href: string | null;
+  /** API-relative path of the token image, or null when the token address is invalid. */
+  imagePath: string | null;
   ticker: string;
   /** Full token name; rendered with CSS ellipsis and exposed as the tooltip. */
   name: string;
@@ -88,6 +90,7 @@ export function toStripItem(
     key: item.key,
     kind: item.kind,
     href: address ? `/token/${address}` : null,
+    imagePath: address ? `/v1/tokens/${encodeURIComponent(address)}/image` : null,
     ticker: item.symbol.trim() || "—",
     name: item.name,
     pending: item.finality === "observed",
@@ -186,7 +189,8 @@ type TradeDto = components["schemas"]["TradeDTO"];
 /**
  * Live trades not yet present in the REST pages, newest first, shaped as table rows.
  * REST rows are canonical: a live item with the same tx hash and log index is dropped.
- * Prices are not on the stream, so they stay empty.
+ * The execution price is derived from the trade's own amounts (same formula as REST); the spot
+ * price needs post-trade reserves, which the stream does not carry, so it stays empty.
  */
 export function liveTradeRows(items: FeedItem[], rest: TradeDto[]): TradeDto[] {
   const known = new Set(rest.map((row) => `${row.tx_hash}:${row.log_index}`.toLowerCase()));
@@ -213,7 +217,7 @@ export function liveTradeRows(items: FeedItem[], rest: TradeDto[]): TradeDto[] {
     rows.push({
       block_number: item.block_number,
       eth_volume: item.eth_volume,
-      execution_price: "",
+      execution_price: executionPriceWad(item.eth_volume, item.token_volume),
       finality: item.finality,
       log_index: item.log_index,
       side: item.side,

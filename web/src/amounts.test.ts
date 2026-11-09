@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  executionPriceWad,
   formatBaseUnits,
   formatCanonicalBaseUnits,
   formatDisplayAmount,
@@ -73,5 +74,24 @@ describe("formatUsd", () => {
     expect(formatUsd(0n, 18, "3456.12")).toBe("$0.00");
     expect(() => formatUsd(1n, 18, "abc")).toThrow();
     expect(() => formatUsd(-1n, 18, "1")).toThrow();
+  });
+});
+
+describe("executionPriceWad", () => {
+  it("mirrors market_trades: trunc(eth * 1e18 / tokens) in wad", () => {
+    // 1.5 ETH for 5 tokens (18 decimals) = 0.3 ETH per token.
+    expect(executionPriceWad("1500000000000000000", "5000000000000000000")).toBe(
+      "300000000000000000",
+    );
+    // Truncates, never rounds: 1 wei / 3 tokens.
+    expect(executionPriceWad("1", "3000000000000000000")).toBe("0");
+    expect(executionPriceWad("2", "3")).toBe("666666666666666666");
+  });
+
+  it("returns empty for zero tokens or non-canonical input", () => {
+    expect(executionPriceWad("1", "0")).toBe("");
+    expect(executionPriceWad("1e18", "1")).toBe("");
+    expect(executionPriceWad("1", "-1")).toBe("");
+    expect(executionPriceWad("01", "1")).toBe("");
   });
 });
