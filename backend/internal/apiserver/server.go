@@ -28,6 +28,8 @@ type Config struct {
 	// requests per client IP (IPv6 per /64).
 	TrustedProxies                     []netip.Prefix
 	RateLimitPerMinute, RateLimitBurst uint64
+	// Metrics receives request, rejection and stream telemetry; nil disables it.
+	Metrics Metrics
 }
 
 var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,128}$`)
@@ -46,7 +48,9 @@ type Server struct {
 	HTTP    *http.Server
 	API     huma.API
 
+	logger         *slog.Logger
 	streamShutdown chan struct{}
+	metrics        Metrics
 	shutdownOnce   sync.Once
 }
 
@@ -119,22 +123,35 @@ func New(cfg Config, ready Readiness, logger *slog.Logger) *Server {
 	return &Server{
 		Handler:        h,
 		API:            api,
+		logger:         logger,
 		HTTP:           &http.Server{Handler: h, ReadHeaderTimeout: cfg.ReadHeaderTimeout, ReadTimeout: cfg.ReadTimeout, WriteTimeout: cfg.WriteTimeout, IdleTimeout: cfg.IdleTimeout, MaxHeaderBytes: cfg.MaxHeaderBytes},
 		streamShutdown: make(chan struct{}),
+		metrics:        metricsOrNoop(cfg.Metrics),
 	}
 }
 
-func (s *Server) RegisterTokenRoutes(r TokenRoutes)       { r.Register(s.API) }
-func (s *Server) RegisterQuoteRoutes(r QuoteRoutes)       { r.Register(s.API) }
-func (s *Server) RegisterCandleRoutes(r CandleRoutes)     { r.Register(s.API) }
-func (s *Server) RegisterPublicRoutes(r PublicRoutes)     { r.Register(s.API) }
-func (s *Server) RegisterMetadataRoutes(r MetadataRoutes) { r.Register(s.API) }
+func (s *Server) RegisterTokenRoutes(r TokenRoutes)           { r.Register(s.API) }
+func (s *Server) RegisterQuoteRoutes(r QuoteRoutes)           { r.Register(s.API) }
+func (s *Server) RegisterHighlightsRoutes(r HighlightsRoutes) { r.Register(s.API) }
+func (s *Server) RegisterCandleRoutes(r CandleRoutes)         { r.Register(s.API) }
+func (s *Server) RegisterPublicRoutes(r PublicRoutes)         { r.Register(s.API) }
+func (s *Server) RegisterMetadataRoutes(r MetadataRoutes)     { r.Register(s.API) }
 func (s *Server) RegisterEventRoutes(r EventRoutes) {
 	r.shutdown = s.streamShutdown
+	r.metrics = s.metrics
 	r.Register(s.API)
 }
+func (s *Server) RegisterFeedRoutes(r FeedRoutes)               { r.Register(s.API) }
+func (s *Server) RegisterWalletRoutes(r WalletRoutes)           { r.Register(s.API) }
 func (s *Server) RegisterObservationRoutes(r ObservationRoutes) { r.Register(s.API) }
 func (s *Server) RegisterProfileRoutes(r ProfileRoutes)         { r.Register(s.API) }
+func (s *Server) RegisterReferenceRoutes(r ReferenceRoutes)     { r.Register(s.API) }
+func (s *Server) RegisterWatchlistRoutes(r WatchlistRoutes) {
+	if r.Logger == nil {
+		r.Logger = s.logger
+	}
+	r.Register(s.API)
+}
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.shutdownOnce.Do(func() { close(s.streamShutdown) })
@@ -157,9 +174,11 @@ func ExtractedAuth(ctx context.Context) AuthHeaders {
 	return v
 }
 
-func middleware(next http.Handler, cfg Config, limiter *RateLimiter, logger *slog.Logger) http.Handler {
+func middleware(mux *http.ServeMux, cfg Config, limiter *RateLimiter, logger *slog.Logger) http.Handler {
+	metrics := metricsOrNoop(cfg.Metrics)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
+		route := routePattern(mux, r)
 		status := http.StatusOK
 		rw := &statusWriter{ResponseWriter: w, status: &status}
 		id := strings.TrimSpace(r.Header.Get("X-Request-ID"))
@@ -180,9 +199,14 @@ func middleware(next http.Handler, cfg Config, limiter *RateLimiter, logger *slo
 				problem(rw, http.StatusInternalServerError, "internal server error", id)
 				logger.Error("panic recovered", "request_id", id)
 			}
+			metrics.ObserveRequest(route, r.Method, status, time.Since(started))
+			if reason, ok := rejectionReason(r.Method, status); ok {
+				metrics.WriteRejected(reason)
+			}
 			logger.Info("http request", "request_id", id, "method", r.Method, "path", r.URL.Path, "status", status, "duration_ms", time.Since(started).Milliseconds())
 		}()
 		if r.Method == http.MethodOptions {
+			route = routePreflight
 			if !cors(rw, cfg.AllowedOrigins, r) {
 				problem(rw, http.StatusForbidden, "origin not allowed", id)
 				return
@@ -193,6 +217,7 @@ func middleware(next http.Handler, cfg Config, limiter *RateLimiter, logger *slo
 		cors(rw, cfg.AllowedOrigins, r)
 		if !probePath(r.URL.Path) {
 			if allowed, wait := limiter.Allow(clientKey, time.Now()); !allowed {
+				route = routeRateLimited
 				rw.Header().Set("Retry-After", strconv.Itoa(max(1, int(wait.Round(time.Second)/time.Second))))
 				problem(rw, http.StatusTooManyRequests, "rate limit exceeded", id)
 				return
@@ -213,7 +238,7 @@ func middleware(next http.Handler, cfg Config, limiter *RateLimiter, logger *slo
 		}
 		ctx = context.WithValue(ctx, authHeadersKey, AuthHeaders{Authorization: r.Header.Get("Authorization"), IdentityToken: r.Header.Get("privy-id-token")})
 		r = r.WithContext(ctx)
-		next.ServeHTTP(rw, r)
+		mux.ServeHTTP(rw, r)
 	})
 }
 
@@ -247,7 +272,7 @@ func cors(w http.ResponseWriter, origins []string, r *http.Request) bool {
 		if allowed == origin && allowed != "*" {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
-			w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization,Content-Type,privy-id-token,If-Match,If-None-Match")
 			w.Header().Set("Access-Control-Expose-Headers", "ETag, X-Revision")
 			return true

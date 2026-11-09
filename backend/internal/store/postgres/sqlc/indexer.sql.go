@@ -91,6 +91,7 @@ func (q *Queries) ListTokenPhaseCounts(ctx context.Context, chainID int64) ([]Li
 const readOperationalHealth = `-- name: ReadOperationalHealth :one
 SELECT
     dirty.dirty_work,
+    (SELECT count(*) FROM position_dirty AS entry WHERE entry.chain_id = $1)::BIGINT AS position_dirty_work,
     COALESCE(reorg.reorg_id, 0)::BIGINT AS last_reorg_id,
     COALESCE(reorg.depth, 0)::BIGINT AS last_reorg_depth,
     reorg.detected_at AS last_reorg_at
@@ -110,10 +111,11 @@ type ReadOperationalHealthParams struct {
 }
 
 type ReadOperationalHealthRow struct {
-	DirtyWork      int64
-	LastReorgID    int64
-	LastReorgDepth int64
-	LastReorgAt    pgtype.Timestamptz
+	DirtyWork         int64
+	PositionDirtyWork int64
+	LastReorgID       int64
+	LastReorgDepth    int64
+	LastReorgAt       pgtype.Timestamptz
 }
 
 func (q *Queries) ReadOperationalHealth(ctx context.Context, arg ReadOperationalHealthParams) (ReadOperationalHealthRow, error) {
@@ -121,6 +123,7 @@ func (q *Queries) ReadOperationalHealth(ctx context.Context, arg ReadOperational
 	var i ReadOperationalHealthRow
 	err := row.Scan(
 		&i.DirtyWork,
+		&i.PositionDirtyWork,
 		&i.LastReorgID,
 		&i.LastReorgDepth,
 		&i.LastReorgAt,

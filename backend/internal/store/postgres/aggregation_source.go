@@ -2,9 +2,13 @@ package postgres
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/Contictus/launchtap/backend/internal/stats"
+	"github.com/Contictus/launchtap/backend/internal/store/postgres/sqlc"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type AggregationSource struct {
@@ -63,4 +67,36 @@ func (s AggregationSource) Complete(ctx context.Context, claim stats.Claim, work
 		return err
 	}()
 	return completed, err
+}
+
+// MarkExpiringWindow marks every token with a canonical trade or DEX swap in
+// [from, to) dirty so its rolling-window stats are recomputed.
+func (s AggregationSource) MarkExpiringWindow(ctx context.Context, chainID int64, from, to time.Time) (int64, error) {
+	marked, err := s.Adapter.queries.MarkTokensDirtyInWindow(ctx, sqlc.MarkTokensDirtyInWindowParams{
+		ChainID:    chainID,
+		WindowFrom: pgtype.Timestamptz{Time: from, Valid: true},
+		WindowTo:   pgtype.Timestamptz{Time: to, Valid: true},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("mark expiring window: %w", err)
+	}
+	return marked, nil
+}
+
+// MarkAllWithVolume marks every token with a non-zero 24h volume dirty.
+func (s AggregationSource) MarkAllWithVolume(ctx context.Context, chainID int64) (int64, error) {
+	marked, err := s.Adapter.queries.MarkTokensWithVolumeDirty(ctx, chainID)
+	if err != nil {
+		return 0, fmt.Errorf("mark tokens with volume dirty: %w", err)
+	}
+	return marked, nil
+}
+
+// DatabaseNow returns the database clock, which the stats recompute uses for its 24h window.
+func (s AggregationSource) DatabaseNow(ctx context.Context) (time.Time, error) {
+	now, err := s.Adapter.queries.DatabaseNow(ctx)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("read database clock: %w", err)
+	}
+	return now.Time, nil
 }

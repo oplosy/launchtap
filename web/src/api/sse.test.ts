@@ -23,6 +23,7 @@ function sourceHarness(order: string[]) {
     factory,
     sources,
     triggerError: () => currentError?.(),
+    open: () => listeners.get("open")?.(new Event("open")),
     emit: (name: string, data: unknown) =>
       listeners.get(name)?.(new MessageEvent(name, { data: JSON.stringify(data) })),
   };
@@ -208,6 +209,143 @@ describe("SSE invalidation", () => {
     harness.emit("token", { chain_id: 2, deployment_id: "other", token: "0x2" });
     await Promise.resolve();
     expect(invalidated).toHaveLength(1);
+    stream.stop();
+  });
+
+  it("dispatches trade, graduation, new_token, trade_burst and finality to listeners", () => {
+    const harness = sourceHarness([]);
+    const seen: string[] = [];
+    const invalidated: unknown[] = [];
+    const stream = new SseInvalidationStream({
+      url: "https://api.example/events",
+      eventSourceFactory: harness.factory,
+      queryClient: { invalidateQueries: async (v) => void invalidated.push(v) },
+      queryKeyForEvent: () => ["k"],
+      onEvent: (event) => seen.push(event.event),
+      refetchSnapshot: async () => undefined,
+    });
+    stream.start();
+    const base = { chain_id: 1, deployment_id: "local" };
+    for (const name of ["trade", "graduation", "new_token", "trade_burst", "finality"]) {
+      harness.emit(name, { ...base });
+    }
+    expect(seen).toEqual(["trade", "graduation", "new_token", "trade_burst", "finality"]);
+    expect(invalidated).toHaveLength(0);
+    stream.stop();
+  });
+
+  it("opens a single EventSource for multiple subscribers", () => {
+    const harness = sourceHarness([]);
+    const a: string[] = [];
+    const b: string[] = [];
+    const subscribers = new Set<(event: { event: string }) => void>();
+    subscribers.add((e) => a.push(e.event));
+    subscribers.add((e) => b.push(e.event));
+    const stream = new SseInvalidationStream({
+      url: "https://api.example/events",
+      eventSourceFactory: harness.factory,
+      queryClient: { invalidateQueries: async () => undefined },
+      onEvent: (event) => subscribers.forEach((s) => s(event)),
+      refetchSnapshot: async () => undefined,
+    });
+    stream.start();
+    harness.emit("trade", { chain_id: 1, deployment_id: "local" });
+    expect(harness.sources).toHaveLength(1);
+    expect(a).toEqual(["trade"]);
+    expect(b).toEqual(["trade"]);
+    stream.stop();
+  });
+
+  it("calls onReconnected after REST recovery reopens the source", async () => {
+    vi.useFakeTimers();
+    const order: string[] = [];
+    const harness = sourceHarness(order);
+    const stream = new SseInvalidationStream({
+      url: "https://api.example/events",
+      eventSourceFactory: harness.factory,
+      queryClient: { invalidateQueries: async () => undefined },
+      refetchSnapshot: async () => void order.push("rest"),
+      onReconnected: () => order.push("reconnected"),
+    });
+    stream.start();
+    harness.triggerError();
+    await vi.advanceTimersByTimeAsync(250);
+    expect(order).toEqual(["connect", "close", "rest", "connect"]);
+    harness.open();
+    expect(order).toEqual(["connect", "close", "rest", "connect", "reconnected"]);
+    stream.stop();
+  });
+
+  it("emits reconnected on the reopened source's open event, once, never on the first open", async () => {
+    vi.useFakeTimers();
+    const order: string[] = [];
+    const harness = sourceHarness(order);
+    let reconnected = 0;
+    const stream = new SseInvalidationStream({
+      url: "https://api.example/events",
+      eventSourceFactory: harness.factory,
+      queryClient: { invalidateQueries: async () => undefined },
+      refetchSnapshot: async () => undefined,
+      onReconnected: () => {
+        reconnected += 1;
+      },
+    });
+    stream.start();
+    harness.open();
+    expect(reconnected).toBe(0);
+    harness.triggerError();
+    await vi.advanceTimersByTimeAsync(250);
+    expect(harness.sources).toHaveLength(2);
+    expect(reconnected).toBe(0);
+    harness.open();
+    harness.open();
+    expect(reconnected).toBe(1);
+    stream.stop();
+  });
+
+  it("does not emit reconnected when the reopened source fails before opening", async () => {
+    vi.useFakeTimers();
+    const order: string[] = [];
+    const harness = sourceHarness(order);
+    let reconnected = 0;
+    const stream = new SseInvalidationStream({
+      url: "https://api.example/events",
+      eventSourceFactory: harness.factory,
+      queryClient: { invalidateQueries: async () => undefined },
+      refetchSnapshot: async () => undefined,
+      onReconnected: () => {
+        reconnected += 1;
+      },
+    });
+    stream.start();
+    harness.triggerError();
+    await vi.advanceTimersByTimeAsync(250);
+    harness.triggerError();
+    expect(reconnected).toBe(0);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(harness.sources).toHaveLength(3);
+    harness.open();
+    expect(reconnected).toBe(1);
+    stream.stop();
+  });
+
+  it("start({ reconnected: true }) announces the first open as a reconnection", () => {
+    const order: string[] = [];
+    const harness = sourceHarness(order);
+    let reconnected = 0;
+    const stream = new SseInvalidationStream({
+      url: "https://api.example/events",
+      eventSourceFactory: harness.factory,
+      queryClient: { invalidateQueries: async () => undefined },
+      refetchSnapshot: async () => undefined,
+      onReconnected: () => {
+        reconnected += 1;
+      },
+    });
+    stream.start({ reconnected: true });
+    expect(reconnected).toBe(0);
+    harness.open();
+    expect(reconnected).toBe(1);
     stream.stop();
   });
 });

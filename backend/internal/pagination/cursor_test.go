@@ -3,6 +3,7 @@ package pagination
 import (
 	"encoding/base64"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -68,5 +69,32 @@ func TestCursorSurvivesTipAdvanceButNotReorg(t *testing.T) {
 	failure := errors.New("database down")
 	if err := c.ValidateRequest("tokens", "newest", "", "next", later, func(Snapshot) (bool, error) { return false, failure }); !errors.Is(err, failure) {
 		t.Fatalf("canonical check error was not returned: %v", err)
+	}
+}
+
+func TestCursorSinceRoundTrip(t *testing.T) {
+	c := Cursor{Version: CurrentVersion, Snapshot: Snapshot{ChainID: 1, BlockNumber: 2}, Endpoint: "tokens", Sort: "newest", Direction: "next", Key: []string{"2"}, Since: "2026-11-04T10:00:00Z"}
+	encoded, err := Encode(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Decode(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Since != c.Since {
+		t.Fatalf("since=%q, want %q", got.Since, c.Since)
+	}
+	// A cursor minted before the field existed (or for age=all) carries no since key and still decodes.
+	old := base64.RawURLEncoding.EncodeToString([]byte(`{"version":1,"snapshot":{"chainId":1,"blockNumber":1,"blockHash":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},"endpoint":"tokens","sort":"newest","filters":"","direction":"next","key":["1"]}`))
+	decoded, err := Decode(old)
+	if err != nil || decoded.Since != "" {
+		t.Fatalf("old cursor: since=%q err=%v", decoded.Since, err)
+	}
+	plain := Cursor{Version: CurrentVersion, Snapshot: Snapshot{ChainID: 1, BlockNumber: 2}, Endpoint: "tokens", Sort: "newest", Direction: "next", Key: []string{"2"}}
+	enc, _ := Encode(plain)
+	raw, _ := base64.RawURLEncoding.DecodeString(enc)
+	if strings.Contains(string(raw), "since") {
+		t.Fatalf("empty since must be omitted: %s", raw)
 	}
 }

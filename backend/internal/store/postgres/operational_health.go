@@ -27,10 +27,11 @@ func (adapter *Adapter) ReadOperationalHealth(
 		return indexer.OperationalHealth{}, fmt.Errorf("list token phase counts: %w", err)
 	}
 	result := indexer.OperationalHealth{
-		DirtyWork:      row.DirtyWork,
-		LastReorgID:    row.LastReorgID,
-		LastReorgDepth: row.LastReorgDepth,
-		PhaseCounts:    make(map[string]int64, len(rows)),
+		DirtyWork:         row.DirtyWork,
+		PositionDirtyWork: row.PositionDirtyWork,
+		LastReorgID:       row.LastReorgID,
+		LastReorgDepth:    row.LastReorgDepth,
+		PhaseCounts:       make(map[string]int64, len(rows)),
 	}
 	if row.LastReorgAt.Valid {
 		result.LastReorgAt = row.LastReorgAt.Time

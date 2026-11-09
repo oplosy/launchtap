@@ -1,9 +1,14 @@
 package indexer
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"math/big"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +16,7 @@ import (
 	"github.com/Contictus/launchtap/backend/internal/ledger"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 type memoryUnit struct {
@@ -100,6 +106,16 @@ func (u *memoryUnit) FindCommonAncestor(_ context.Context, _ int64, candidates [
 func (u *memoryUnit) AffectedTokensAbove(_ context.Context, _ int64, _ int64) ([]common.Address, error) {
 	u.action("affected_tokens")
 	return []common.Address{common.HexToAddress("0x1001")}, nil
+}
+
+func (u *memoryUnit) AffectedPositionPairsAbove(context.Context, int64, int64) ([]PositionPair, error) {
+	u.action("affected_position_pairs")
+	return nil, nil
+}
+
+func (u *memoryUnit) MarkPositionsDirty(context.Context, int64, []PositionPair) error {
+	u.action("mark_positions_dirty")
+	return nil
 }
 
 func (u *memoryUnit) DeleteCanonicalAbove(_ context.Context, _ int64, ancestor int64) error {
@@ -457,7 +473,7 @@ func TestAcknowledgedDeepReorgUsesAtomicRecoveryAboveSafe(t *testing.T) {
 		t.Fatalf("atomic recovery transaction not recorded: %v", store.committedActions)
 	}
 	wantActions := []string{
-		"affected_tokens", "delete_canonical", "rebuild_token_projections", "delete_token_stats",
+		"affected_tokens", "affected_position_pairs", "delete_canonical", "mark_positions_dirty", "rebuild_token_projections", "delete_token_stats",
 		"recompute_token_stats", "recompute_protocol_aggregates", "write_state", "complete_reorg",
 	}
 	if len(recoveryActions) != len(wantActions) {
@@ -607,4 +623,187 @@ func newDeepReorgFixture(t *testing.T, searchDepth uint64, recoveryMode bool, co
 		t.Fatal(err)
 	}
 	return e, store, source, state, tip
+}
+
+type swapDiscovery struct {
+	source *fakeSource
+	pair   common.Address
+	hashes []common.Hash
+}
+
+func (d swapDiscovery) Discover(_ context.Context, _, _ uint64, e chain.Emitters) (chain.DiscoveryResult, error) {
+	e.Pairs[d.pair] = struct{}{}
+	topic := crypto.Keccak256Hash([]byte("Swap(address,uint256,uint256,uint256,uint256,address)"))
+	data := make([]byte, 128)
+	data[31] = 1
+	var logs []types.Log
+	for index, hash := range d.hashes {
+		header := d.source.headers[1]
+		logs = append(logs, types.Log{
+			Address: d.pair, Topics: []common.Hash{topic, common.BytesToHash(common.HexToAddress("0x01").Bytes()), common.BytesToHash(common.HexToAddress("0x02").Bytes())},
+			Data: data, BlockNumber: 1, BlockHash: header.Hash(), TxHash: hash, TxIndex: uint(index), Index: uint(index),
+		})
+	}
+	return chain.DiscoveryResult{Emitters: e, Logs: logs}, nil
+}
+
+type capturingRouter struct{ swaps []chain.PoolSwap }
+
+func (r *capturingRouter) Apply(_ context.Context, _ UnitOfWork, decoded []chain.DecodedLog, _ map[int64]ledger.IndexedBlock, _ []TokenIdentity) error {
+	for _, log := range decoded {
+		if swap, ok := log.Value.(chain.PoolSwap); ok {
+			r.swaps = append(r.swaps, swap)
+		}
+	}
+	return nil
+}
+
+type fakeSenders struct {
+	senders map[common.Hash]common.Address
+	err     error
+	calls   [][]common.Hash
+}
+
+func (s *fakeSenders) TransactionSenders(_ context.Context, hashes []common.Hash) (map[common.Hash]common.Address, error) {
+	s.calls = append(s.calls, hashes)
+	return s.senders, s.err
+}
+
+func newSwapEngine(t *testing.T, senders SenderSource, hashes ...common.Hash) (*Engine, *capturingRouter, *fakeSenders) {
+	t.Helper()
+	e, _, source := newTestEngine(t)
+	router := &capturingRouter{}
+	e.discovery = swapDiscovery{source: source, pair: common.HexToAddress("0xbeef"), hashes: hashes}
+	e.router = router
+	e.settings.Senders = senders
+	fake, _ := senders.(*fakeSenders)
+	return e, router, fake
+}
+
+func TestEngineAttachesPoolSwapSender(t *testing.T) {
+	sender := common.HexToAddress("0xaaaa")
+	txA, txB := common.HexToHash("0x01"), common.HexToHash("0x02")
+	fake := &fakeSenders{senders: map[common.Hash]common.Address{txA: sender}}
+	e, router, _ := newSwapEngine(t, fake, txA, txA, txB)
+	if _, err := e.Step(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.calls) != 1 || len(fake.calls[0]) != 2 {
+		t.Fatalf("sender calls = %v, want one call with 2 distinct hashes", fake.calls)
+	}
+	if len(router.swaps) != 3 || router.swaps[0].TxFrom == nil || *router.swaps[0].TxFrom != sender || router.swaps[1].TxFrom == nil || router.swaps[2].TxFrom != nil {
+		t.Fatalf("swaps = %+v", router.swaps)
+	}
+}
+
+func TestEngineContinuesWhenSenderFetchFails(t *testing.T) {
+	fake := &fakeSenders{err: errors.New("rpc down")}
+	e, router, _ := newSwapEngine(t, fake, common.HexToHash("0x01"))
+	if advanced, err := e.Step(t.Context()); err != nil || !advanced {
+		t.Fatalf("Step() = %t, %v", advanced, err)
+	}
+	if len(router.swaps) != 1 || router.swaps[0].TxFrom != nil {
+		t.Fatalf("swaps = %+v", router.swaps)
+	}
+}
+
+func TestEngineWithoutSenderSourceLeavesTxFromNil(t *testing.T) {
+	e, router, _ := newSwapEngine(t, nil, common.HexToHash("0x01"))
+	if _, err := e.Step(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(router.swaps) != 1 || router.swaps[0].TxFrom != nil {
+		t.Fatalf("swaps = %+v", router.swaps)
+	}
+}
+
+// captureDefaultLog swaps the default logger for the test. Callers must not be parallel.
+func captureDefaultLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buffer bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buffer, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return &buffer
+}
+
+func TestEngineCountsUnresolvedSenders(t *testing.T) {
+	logs := captureDefaultLog(t)
+	txA, txB, txC := common.HexToHash("0x01"), common.HexToHash("0x02"), common.HexToHash("0x03")
+	// txB errored or returned null: absent from the result. txA appears twice but is one tx.
+	fake := &fakeSenders{senders: map[common.Hash]common.Address{txA: common.HexToAddress("0xaaaa"), txC: common.HexToAddress("0xcccc")}}
+	e, _, _ := newSwapEngine(t, fake, txA, txA, txB, txC)
+	var reported []int
+	e.settings.OnSenderMisses = func(misses int) { reported = append(reported, misses) }
+	if _, err := e.Step(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(reported) != 1 || reported[0] != 1 {
+		t.Fatalf("OnSenderMisses calls = %v, want [1]", reported)
+	}
+	if got := strings.Count(logs.String(), "pool swap sender lookup missed"); got != 1 || !strings.Contains(logs.String(), "misses=1") {
+		t.Fatalf("log = %q, want one warning with misses=1", logs.String())
+	}
+}
+
+func TestEngineDoesNotReportWhenAllSendersResolve(t *testing.T) {
+	logs := captureDefaultLog(t)
+	txA := common.HexToHash("0x01")
+	fake := &fakeSenders{senders: map[common.Hash]common.Address{txA: common.HexToAddress("0xaaaa")}}
+	e, _, _ := newSwapEngine(t, fake, txA)
+	called := false
+	e.settings.OnSenderMisses = func(int) { called = true }
+	if _, err := e.Step(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if called || strings.Contains(logs.String(), "sender lookup") {
+		t.Fatalf("reported a miss with every sender resolved: called=%t log=%q", called, logs.String())
+	}
+}
+
+func TestEngineCountsFailedSenderCallAndRedactsURL(t *testing.T) {
+	logs := captureDefaultLog(t)
+	const rpcURL = "https://rpc.example/v2/SECRETKEY"
+	fake := &fakeSenders{err: fmt.Errorf("eth_getTransactionByHash: %w", &url.Error{Op: "Post", URL: rpcURL, Err: errors.New("connection reset")})}
+	e, _, _ := newSwapEngine(t, fake, common.HexToHash("0x01"), common.HexToHash("0x02"))
+	var reported []int
+	e.settings.OnSenderMisses = func(misses int) { reported = append(reported, misses) }
+	if advanced, err := e.Step(t.Context()); err != nil || !advanced {
+		t.Fatalf("Step() = %t, %v", advanced, err)
+	}
+	if len(reported) != 1 || reported[0] != 2 {
+		t.Fatalf("OnSenderMisses calls = %v, want [2]", reported)
+	}
+	out := logs.String()
+	if strings.Contains(out, "SECRETKEY") || strings.Contains(out, "rpc.example") || !strings.Contains(out, "connection reset") || !strings.Contains(out, "misses=2") {
+		t.Fatalf("log = %q, want a redacted warning with misses=2", out)
+	}
+}
+
+// A step whose write transaction fails is retried; the miss must be counted once, for the
+// committed attempt only.
+func TestEngineCountsSenderMissesOnlyAfterCommit(t *testing.T) {
+	logs := captureDefaultLog(t)
+	fake := &fakeSenders{senders: map[common.Hash]common.Address{}}
+	e, _, _ := newSwapEngine(t, fake, common.HexToHash("0x01"))
+	store := e.store.(*memoryStore)
+	var reported []int
+	e.settings.OnSenderMisses = func(misses int) { reported = append(reported, misses) }
+	store.unit.fail = true
+	if _, err := e.Step(t.Context()); err == nil {
+		t.Fatal("Step() succeeded with a failing write transaction")
+	}
+	if len(reported) != 0 || strings.Contains(logs.String(), "sender lookup missed") {
+		t.Fatalf("uncommitted step reported misses: calls=%v log=%q", reported, logs.String())
+	}
+	store.unit.fail = false
+	if advanced, err := e.Step(t.Context()); err != nil || !advanced {
+		t.Fatalf("retried Step() = %t, %v", advanced, err)
+	}
+	if len(reported) != 1 || reported[0] != 1 {
+		t.Fatalf("OnSenderMisses calls = %v, want [1] after the retried step commits", reported)
+	}
+	if got := strings.Count(logs.String(), "pool swap sender lookup missed"); got != 1 {
+		t.Fatalf("log = %q, want one warning", logs.String())
+	}
 }

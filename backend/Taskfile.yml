@@ -29,6 +29,11 @@ tasks:
     cmds:
       - go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run --build-tags=integration
 
+  vulncheck:
+    desc: Fail when reachable code calls a known-vulnerable Go module or stdlib symbol.
+    cmds:
+      - go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -tags=integration ./...
+
   fmt-check:
     desc: Fail when Go source is not gofmt-formatted.
     cmds:
@@ -95,6 +100,7 @@ tasks:
       - integration
       - lint
       - fmt-check
+      - vulncheck
       - sqlc-diff
       - curve-vectors-diff
       - event-abis-diff

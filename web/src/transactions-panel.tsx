@@ -40,6 +40,7 @@ import {
   transactionStateForScope,
   type ScopedTransactionSnapshot,
 } from "@/transaction-scope";
+import { TradeUsdHint, UsdLine } from "@/market/usd-line";
 import {
   Badge,
   Button,
@@ -1054,7 +1055,7 @@ function TradingPanelReady({
         </div>
         <Badge tone={token.phase === "graduated" ? "success" : "accent"}>{token.phase}</Badge>
       </div>
-      {chainId !== configuration.chainId ? (
+      {readiness.address && chainId !== configuration.chainId ? (
         <div className="transaction-warning" role="alert">
           Wrong network. Switch to {configuration.deployment?.name ?? "the reviewed network"} before
           signing.
@@ -1089,6 +1090,7 @@ function TradingPanelReady({
             placeholder="0.00"
             hint="Integer base units are used for signing; decimals are presentation only."
           />
+          {side === "buy" ? <TradeUsdHint ethInput={input} /> : <TradeUsdHint />}
           <Input
             label="Slippage tolerance (%)"
             value={slippage}
@@ -1111,15 +1113,18 @@ function TradingPanelReady({
               <span>
                 Estimated output{" "}
                 <strong className="mono">{formatBaseUnits(quote.output, 18, 6)}</strong>
+                {side === "sell" ? <UsdLine wei={quote.output} /> : null}
               </span>
               <span>
                 Fees <strong className="mono">{eth(quote.fee)}</strong>
+                <UsdLine wei={quote.fee} />
               </span>
               <span>
                 Minimum output{" "}
                 <strong className="mono">
                   {minimum === null ? "—" : formatBaseUnits(minimum, 18, 6)}
                 </strong>
+                {side === "sell" && minimum !== null ? <UsdLine wei={minimum} /> : null}
               </span>
               <small>
                 {quote.source === "backend"
@@ -1762,7 +1767,7 @@ function GraduatedSwapPanel({
   );
   return (
     <div className="graduated-swap">
-      {chainId !== configuration.chainId ? (
+      {readiness.address && chainId !== configuration.chainId ? (
         <div className="transaction-warning" role="alert">
           Wrong network. Switch to {configuration.deployment?.name} before signing.
           <Button size="sm" onClick={() => void readiness.switchNetwork()}>
@@ -1806,6 +1811,7 @@ function GraduatedSwapPanel({
             }}
             inputMode="decimal"
           />
+          {side === "buy" ? <TradeUsdHint ethInput={input} /> : <TradeUsdHint />}
           <Input
             label="Slippage tolerance (%)"
             value={slippage}
@@ -1822,12 +1828,14 @@ function GraduatedSwapPanel({
             <div className="quote-summary">
               <span>
                 Router output <strong className="mono">{formatBaseUnits(output, 18, 6)}</strong>
+                {side === "sell" ? <UsdLine wei={output} /> : null}
               </span>
               <span>
                 Minimum output{" "}
                 <strong className="mono">
                   {minimum === null ? "—" : formatBaseUnits(minimum, 18, 6)}
                 </strong>
+                {side === "sell" && minimum !== null ? <UsdLine wei={minimum} /> : null}
               </span>
             </div>
           ) : null}

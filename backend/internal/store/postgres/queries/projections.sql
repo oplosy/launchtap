@@ -127,6 +127,81 @@ INSERT INTO aggregation_dirty (chain_id, token_address, generation)
 SELECT token.chain_id, token.token_address, nextval('aggregation_dirty_generation_seq') FROM tokens AS token WHERE token.chain_id=$1 AND token.lp_pair=$2
 ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregation_dirty_generation_seq');
 
+-- name: MarkPositionDirty :exec
+-- Excluded wallets (R4): the zero address, the factory, and any token's curve or pair.
+INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
+SELECT sqlc.arg(chain_id)::bigint, sqlc.arg(wallet)::bytea, sqlc.arg(token_address)::bytea, nextval('position_dirty_generation_seq')
+WHERE sqlc.arg(wallet)::bytea <> decode(repeat('00', 20), 'hex')
+  AND sqlc.arg(wallet)::bytea <> sqlc.arg(factory)::bytea
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.curve_address = sqlc.arg(wallet)::bytea
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.lp_pair = sqlc.arg(wallet)::bytea
+  )
+ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq');
+
+-- name: MarkTransferPositionsDirty :exec
+INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
+SELECT sides.chain_id, sides.wallet, sides.token_address, nextval('position_dirty_generation_seq')
+FROM (
+    SELECT DISTINCT sqlc.arg(chain_id)::bigint AS chain_id, side.wallet, sqlc.arg(token_address)::bytea AS token_address
+    FROM (VALUES (sqlc.arg(from_address)::bytea), (sqlc.arg(to_address)::bytea)) AS side(wallet)
+    WHERE side.wallet <> decode(repeat('00', 20), 'hex')
+      AND side.wallet <> sqlc.arg(factory)::bytea
+      AND NOT EXISTS (
+        SELECT 1 FROM tokens AS excluded
+        WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.curve_address = side.wallet
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM tokens AS excluded
+        WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.lp_pair = side.wallet
+      )
+) AS sides
+ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq');
+
+-- name: MarkPoolSwapPositionDirty :exec
+-- A NULL tx_from (sender not yet known) is a no-op.
+INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
+SELECT token.chain_id, sqlc.arg(tx_from)::bytea, token.token_address, nextval('position_dirty_generation_seq')
+FROM tokens AS token
+WHERE token.chain_id = sqlc.arg(chain_id)::bigint AND token.lp_pair = sqlc.arg(pair)::bytea
+  AND sqlc.arg(tx_from)::bytea IS NOT NULL
+  AND sqlc.arg(tx_from)::bytea <> decode(repeat('00', 20), 'hex')
+  AND sqlc.arg(tx_from)::bytea <> sqlc.arg(factory)::bytea
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.curve_address = sqlc.arg(tx_from)::bytea
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.lp_pair = sqlc.arg(tx_from)::bytea
+  )
+ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq');
+
+-- name: ClearLaunchPositionDirty :exec
+-- The launch mint Transfer(0 -> curve) is ingested before the tokens row exists (the token
+-- constructor logs it before TokenLaunched), so the exclusion lookup could not see the curve.
+-- Drop the curve and pair marks once the row is written (R4).
+DELETE FROM position_dirty
+WHERE chain_id = sqlc.arg(chain_id)::bigint
+  AND token_address = sqlc.arg(token_address)::bytea
+  AND wallet IN (sqlc.arg(curve)::bytea, sqlc.arg(lp_pair)::bytea);
+
+-- name: MarkPositionPairsDirty :exec
+-- Reorg re-mark: pairs were already filtered at collection time, so no exclusion lookup here
+-- (the token row of a pair may no longer exist).
+INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
+SELECT sqlc.arg(chain_id)::bigint, pair.wallet, pair.token_address, nextval('position_dirty_generation_seq')
+FROM (
+    SELECT DISTINCT w.wallet, t.token_address
+    FROM unnest(sqlc.arg(wallets)::bytea[]) WITH ORDINALITY AS w(wallet, ord)
+    JOIN unnest(sqlc.arg(token_addresses)::bytea[]) WITH ORDINALITY AS t(token_address, ord) ON t.ord = w.ord
+) AS pair
+ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq');
+
 -- name: ClaimAggregationDirty :many
 WITH candidate AS (
     SELECT chain_id, token_address
@@ -155,6 +230,133 @@ WHERE chain_id = sqlc.arg(chain_id)
   AND claimed_generation = sqlc.arg(claimed_generation)
   AND claimed_by = sqlc.arg(worker_id);
 
+-- name: ClaimPositionDirty :many
+WITH candidate AS (
+    SELECT chain_id, wallet, token_address
+    FROM position_dirty
+    WHERE chain_id = sqlc.arg(chain_id)::bigint
+      AND (claimed_generation IS NULL
+       OR claimed_generation < generation
+       OR (claimed_at IS NOT NULL AND claimed_at < now() - interval '30 seconds'))
+    ORDER BY generation, chain_id, wallet, token_address
+    LIMIT sqlc.arg(batch_size)::integer
+    FOR UPDATE SKIP LOCKED
+)
+UPDATE position_dirty AS dirty
+SET claimed_generation = dirty.generation,
+    claimed_at = now(),
+    claimed_by = sqlc.arg(worker_id)
+FROM candidate
+WHERE dirty.chain_id = candidate.chain_id
+  AND dirty.wallet = candidate.wallet
+  AND dirty.token_address = candidate.token_address
+RETURNING dirty.chain_id, dirty.wallet, dirty.token_address, dirty.claimed_generation;
+
+-- name: CompletePositionDirty :execrows
+DELETE FROM position_dirty
+WHERE chain_id = sqlc.arg(chain_id)
+  AND wallet = sqlc.arg(wallet)
+  AND token_address = sqlc.arg(token_address)
+  AND generation = sqlc.arg(claimed_generation)
+  AND claimed_generation = sqlc.arg(claimed_generation)
+  AND claimed_by = sqlc.arg(worker_id);
+
+-- One leg per transaction that touched (wallet, token), ordered by (block, tx index) (R1):
+-- token_delta is the wallet's net transfers in the tx (a self-transfer nets to 0); ETH comes only
+-- from trades attributed to the wallet: curve trades by trader, pool swaps by tx_from on the
+-- token's own pair, valued on the pair's WETH side.
+-- name: ListPositionLegs :many
+WITH token AS (
+    SELECT t.lp_pair, t.token_is_token0
+    FROM tokens AS t
+    WHERE t.chain_id = sqlc.arg(chain_id)::bigint AND t.token_address = sqlc.arg(token_address)::bytea
+), transfer_legs AS (
+    SELECT moves.tx_hash, moves.block_number, moves.transaction_index, sum(moves.delta) AS token_delta
+    FROM (
+        SELECT tr.tx_hash, tr.block_number, tr.transaction_index, tr.value AS delta
+        FROM transfers AS tr
+        WHERE tr.chain_id = sqlc.arg(chain_id)::bigint AND tr.to_address = sqlc.arg(wallet)::bytea
+          AND tr.token_address = sqlc.arg(token_address)::bytea
+        UNION ALL
+        SELECT tr.tx_hash, tr.block_number, tr.transaction_index, -tr.value
+        FROM transfers AS tr
+        WHERE tr.chain_id = sqlc.arg(chain_id)::bigint AND tr.from_address = sqlc.arg(wallet)::bytea
+          AND tr.token_address = sqlc.arg(token_address)::bytea
+    ) AS moves
+    GROUP BY moves.tx_hash, moves.block_number, moves.transaction_index
+), trade_legs AS (
+    SELECT trade.tx_hash, trade.block_number, trade.transaction_index,
+        sum(CASE WHEN trade.is_buy THEN trade.eth_gross ELSE 0 END) AS eth_paid,
+        sum(CASE WHEN trade.is_buy THEN 0 ELSE trade.eth_gross - trade.protocol_fee - trade.creator_fee END) AS eth_received
+    FROM trades AS trade
+    WHERE trade.chain_id = sqlc.arg(chain_id)::bigint AND trade.trader = sqlc.arg(wallet)::bytea
+      AND trade.token_address = sqlc.arg(token_address)::bytea
+    GROUP BY trade.tx_hash, trade.block_number, trade.transaction_index
+), swap_legs AS (
+    SELECT swap.tx_hash, swap.block_number, swap.transaction_index,
+        sum(CASE WHEN token.token_is_token0 THEN swap.amount1_in ELSE swap.amount0_in END) AS eth_paid,
+        sum(CASE WHEN token.token_is_token0 THEN swap.amount1_out ELSE swap.amount0_out END) AS eth_received
+    FROM pool_swaps AS swap
+    JOIN token ON swap.pair_address = token.lp_pair
+    WHERE swap.chain_id = sqlc.arg(chain_id)::bigint AND swap.tx_from = sqlc.arg(wallet)::bytea
+    GROUP BY swap.tx_hash, swap.block_number, swap.transaction_index
+)
+SELECT
+    COALESCE(transfer_legs.block_number, trade_legs.block_number, swap_legs.block_number)::bigint AS leg_block_number,
+    COALESCE(transfer_legs.transaction_index, trade_legs.transaction_index, swap_legs.transaction_index)::integer AS leg_transaction_index,
+    COALESCE(transfer_legs.token_delta, 0)::numeric AS leg_token_delta,
+    (COALESCE(trade_legs.eth_paid, 0) + COALESCE(swap_legs.eth_paid, 0))::numeric AS leg_eth_paid,
+    (COALESCE(trade_legs.eth_received, 0) + COALESCE(swap_legs.eth_received, 0))::numeric AS leg_eth_received
+FROM transfer_legs
+FULL OUTER JOIN trade_legs ON trade_legs.tx_hash = transfer_legs.tx_hash
+FULL OUTER JOIN swap_legs ON swap_legs.tx_hash = COALESCE(transfer_legs.tx_hash, trade_legs.tx_hash)
+ORDER BY leg_block_number, leg_transaction_index;
+
+-- Serializes the wallet_totals recompute of one wallet across concurrent position computes, so
+-- each recompute reads every committed position of the wallet.
+-- name: LockWalletTotals :exec
+SELECT pg_advisory_xact_lock(hashtextextended('wallet_totals:' || sqlc.arg(chain_id)::bigint::text || ':' || encode(sqlc.arg(wallet)::bytea, 'hex'), 0));
+
+-- name: UpsertWalletPosition :exec
+INSERT INTO wallet_positions (
+    chain_id, wallet, token_address, balance, remaining_cost, realized_pnl, transferred_in,
+    eth_paid, eth_received, trade_count, first_block_number, last_block_number
+) VALUES (
+    sqlc.arg(chain_id), sqlc.arg(wallet), sqlc.arg(token_address), sqlc.arg(balance), sqlc.arg(remaining_cost),
+    sqlc.arg(realized_pnl), sqlc.arg(transferred_in), sqlc.arg(eth_paid), sqlc.arg(eth_received),
+    sqlc.arg(trade_count), sqlc.arg(first_block_number), sqlc.arg(last_block_number)
+)
+ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET
+    balance = EXCLUDED.balance, remaining_cost = EXCLUDED.remaining_cost, realized_pnl = EXCLUDED.realized_pnl,
+    transferred_in = EXCLUDED.transferred_in, eth_paid = EXCLUDED.eth_paid, eth_received = EXCLUDED.eth_received,
+    trade_count = EXCLUDED.trade_count, first_block_number = EXCLUDED.first_block_number,
+    last_block_number = EXCLUDED.last_block_number;
+
+-- name: DeleteWalletPosition :exec
+DELETE FROM wallet_positions WHERE chain_id = $1 AND wallet = $2 AND token_address = $3;
+
+-- Rebuilds one wallet's totals from its positions; the row is deleted when none remain.
+-- name: RecomputeWalletTotals :exec
+WITH aggregate AS (
+    SELECT p.chain_id, p.wallet, sum(p.realized_pnl) AS realized_pnl,
+        count(*) FILTER (WHERE p.trade_count > 0) AS tokens_traded,
+        count(*) FILTER (WHERE p.balance > 0) AS held_count,
+        min(p.first_block_number) AS first_block_number,
+        max(p.last_block_number) AS last_block_number
+    FROM wallet_positions AS p
+    WHERE p.chain_id = sqlc.arg(chain_id)::bigint AND p.wallet = sqlc.arg(wallet)::bytea
+    GROUP BY p.chain_id, p.wallet
+), removed AS (
+    DELETE FROM wallet_totals AS totals
+    WHERE totals.chain_id = sqlc.arg(chain_id)::bigint AND totals.wallet = sqlc.arg(wallet)::bytea
+      AND NOT EXISTS (SELECT 1 FROM aggregate)
+)
+INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
+SELECT chain_id, wallet, realized_pnl, tokens_traded, held_count, first_block_number, last_block_number FROM aggregate
+ON CONFLICT (chain_id, wallet) DO UPDATE SET
+    realized_pnl = EXCLUDED.realized_pnl, tokens_traded = EXCLUDED.tokens_traded, held_count = EXCLUDED.held_count,
+    first_block_number = EXCLUDED.first_block_number, last_block_number = EXCLUDED.last_block_number;
+
 -- name: RecomputeTokenStats :exec
 WITH clock AS (
     SELECT now() AS now_at
@@ -164,8 +366,11 @@ WITH clock AS (
         t.token_address,
         t.initial_virtual_eth * 1000000000000000000 / NULLIF(t.initial_virtual_token, 0) AS launch_price,
         t.launch_block_time,
-        COALESCE(reserve.eth_reserve * 1000000000000000000 / NULLIF(reserve.token_reserve, 0), 0) AS spot_price,
-        COALESCE(reserve.eth_reserve, 0) AS liquidity,
+        -- Before the first trade there is no reserve row; the curve still quotes from its
+        -- initial virtual reserves, matching GetTokenDetail and GetTokenQuoteState.
+        COALESCE(COALESCE(reserve.eth_reserve, t.initial_virtual_eth) * 1000000000000000000
+            / NULLIF(COALESCE(reserve.token_reserve, t.initial_virtual_token), 0), 0) AS spot_price,
+        COALESCE(reserve.eth_reserve, t.initial_virtual_eth, 0) AS liquidity,
         t.total_supply,
         t.curve_address,
         t.lp_pair
@@ -314,3 +519,127 @@ ON CONFLICT (chain_id) DO UPDATE SET
  launches_24h=EXCLUDED.launches_24h,launches_all_time=EXCLUDED.launches_all_time,
  trades_24h=EXCLUDED.trades_24h,trades_all_time=EXCLUDED.trades_all_time,
  graduations_24h=EXCLUDED.graduations_24h,graduations_all_time=EXCLUDED.graduations_all_time,updated_at=EXCLUDED.updated_at;
+
+-- Marks every token with a canonical trade or DEX swap in [window_from, window_to) dirty.
+-- name: MarkTokensDirtyInWindow :execrows
+INSERT INTO aggregation_dirty (chain_id, token_address, generation)
+SELECT touched.chain_id, touched.token_address, nextval('aggregation_dirty_generation_seq')
+FROM (
+    SELECT DISTINCT trade.chain_id, trade.token_address
+    FROM trades AS trade
+    JOIN indexed_blocks AS block
+      ON block.chain_id = trade.chain_id AND block.block_number = trade.block_number
+    WHERE trade.chain_id = sqlc.arg(chain_id)
+      AND trade.block_time >= sqlc.arg(window_from)::timestamptz
+      AND trade.block_time < sqlc.arg(window_to)::timestamptz
+    UNION
+    SELECT DISTINCT token.chain_id, token.token_address
+    FROM pool_swaps AS swap
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    JOIN tokens AS token
+      ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
+    WHERE swap.chain_id = sqlc.arg(chain_id)
+      AND swap.block_time >= sqlc.arg(window_from)::timestamptz
+      AND swap.block_time < sqlc.arg(window_to)::timestamptz
+) AS touched
+ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregation_dirty_generation_seq');
+
+-- Startup catch-up: marks every token still carrying a non-zero 24h volume dirty so expiries
+-- missed while the sweeper was down are recomputed.
+-- name: MarkTokensWithVolumeDirty :execrows
+INSERT INTO aggregation_dirty (chain_id, token_address, generation)
+SELECT token.chain_id, token.token_address, nextval('aggregation_dirty_generation_seq')
+FROM tokens AS token
+WHERE token.chain_id = sqlc.arg(chain_id)
+  AND token.sort_volume_24h_eth_wad > 0
+ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregation_dirty_generation_seq');
+
+-- The database clock is the one the stats recompute uses for its 24h window.
+-- name: DatabaseNow :one
+SELECT now()::timestamptz AS now;
+
+-- name: ListUnattributedPoolSwaps :many
+-- Backfill cursor: distinct transactions that still have a pool swap without a sender, in
+-- blocks at or below through_block, in (block_number, tx_hash) order, strictly after the keyset
+-- position (after_block, after_hash).
+SELECT tx_hash, block_number
+FROM pool_swaps
+WHERE chain_id = sqlc.arg(chain_id)::bigint
+  AND tx_from IS NULL
+  AND block_number <= sqlc.arg(through_block)::bigint
+  AND (block_number, tx_hash) > (sqlc.arg(after_block)::bigint, sqlc.arg(after_hash)::bytea)
+GROUP BY tx_hash, block_number
+ORDER BY block_number, tx_hash
+LIMIT sqlc.arg(row_limit)::int;
+
+-- name: CountUnattributedPoolSwaps :one
+-- Pool swaps still without a sender at or below through_block (the indexer's safe head); served
+-- by the partial index pool_swaps_tx_from_null_idx.
+SELECT count(*)::bigint AS pending
+FROM pool_swaps
+WHERE chain_id = sqlc.arg(chain_id)::bigint
+  AND tx_from IS NULL
+  AND block_number <= sqlc.arg(through_block)::bigint;
+
+-- name: SetPoolSwapTxFrom :many
+-- Fills the sender of every still-unattributed swap in one transaction and returns the pairs
+-- that need a position re-mark.
+UPDATE pool_swaps SET tx_from = sqlc.arg(tx_from)::bytea
+WHERE chain_id = sqlc.arg(chain_id)::bigint
+  AND tx_hash = sqlc.arg(tx_hash)::bytea
+  AND tx_from IS NULL
+RETURNING pair_address;
+
+-- name: ListSeedTokens :many
+-- Keyset page of the chain's launched tokens for the chunked position seed. Every ledger row
+-- (trades, transfers) references token_launches, so these pages cover the whole ledger.
+SELECT token_address
+FROM token_launches
+WHERE chain_id = sqlc.arg(chain_id)::bigint
+  AND token_address > sqlc.arg(after_token)::bytea
+ORDER BY token_address
+LIMIT sqlc.arg(row_limit)::int;
+
+-- name: SeedTokenPositionDirty :one
+-- One chunk of the seed for ledger history that predates the position queue: every distinct
+-- (wallet, token) pair of one token from curve trades by trader, transfers from/to, and
+-- attributed pool swaps on the token's own pair, with the R4 exclusions of
+-- ListPositionPairsAbove. Idempotent: a pair already queued only gets a new generation. With
+-- dry_run nothing is written; pair_count is the number of pairs either way and marked the number
+-- of rows inserted or re-generated.
+WITH pairs AS (
+    SELECT DISTINCT source.wallet, source.token_address FROM (
+        SELECT trade.trader AS wallet, trade.token_address FROM trades AS trade
+        WHERE trade.chain_id = sqlc.arg(chain_id)::bigint AND trade.token_address = sqlc.arg(token_address)::bytea
+        UNION
+        SELECT swap.tx_from, token.token_address FROM pool_swaps AS swap
+        JOIN tokens AS token ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
+        WHERE swap.chain_id = sqlc.arg(chain_id)::bigint AND swap.tx_from IS NOT NULL
+          AND token.token_address = sqlc.arg(token_address)::bytea
+        UNION
+        SELECT transfer.from_address, transfer.token_address FROM transfers AS transfer
+        WHERE transfer.chain_id = sqlc.arg(chain_id)::bigint AND transfer.token_address = sqlc.arg(token_address)::bytea
+        UNION
+        SELECT transfer.to_address, transfer.token_address FROM transfers AS transfer
+        WHERE transfer.chain_id = sqlc.arg(chain_id)::bigint AND transfer.token_address = sqlc.arg(token_address)::bytea
+    ) AS source
+    WHERE source.wallet <> decode(repeat('00', 20), 'hex')
+      AND source.wallet <> sqlc.arg(factory)::bytea
+      AND NOT EXISTS (
+        SELECT 1 FROM tokens AS excluded
+        WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.curve_address = source.wallet
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM tokens AS excluded
+        WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.lp_pair = source.wallet
+      )
+), marked AS (
+    INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
+    SELECT sqlc.arg(chain_id)::bigint, pairs.wallet, pairs.token_address, nextval('position_dirty_generation_seq')
+    FROM pairs
+    WHERE NOT sqlc.arg(dry_run)::boolean
+    ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq')
+    RETURNING 1
+)
+SELECT (SELECT count(*) FROM pairs)::bigint AS pair_count, (SELECT count(*) FROM marked)::bigint AS marked;

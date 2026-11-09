@@ -86,6 +86,10 @@ sql:
             go_type: {type: "Address"}
           - column: "*.holder_address"
             go_type: {type: "Address"}
+          - column: "*.wallet"
+            go_type: {type: "Address"}
+          - column: "pool_swaps.tx_from"
+            go_type: {type: "Address", pointer: true}
 
           # numeric(78,0) is also overridden per column name so the
           # numeric(38,18) USD enrichment columns remain pgtype.Numeric.
@@ -130,6 +134,14 @@ sql:
           - column: "*.amount"
             go_type: {type: "Uint256"}
           - column: "*.value"
+            go_type: {type: "Uint256"}
+          - column: "*.remaining_cost"
+            go_type: {type: "Uint256"}
+          - column: "*.transferred_in"
+            go_type: {type: "Uint256"}
+          - column: "*.eth_paid"
+            go_type: {type: "Uint256"}
+          - column: "*.eth_received"
             go_type: {type: "Uint256"}
           - column: "*.amount0"
             go_type: {type: "Uint256"}
@@ -184,4 +196,8 @@ sql:
           - column: "*.volume_eth_wad"
             go_type: {type: "Uint256"}
           - column: "*.volume_all_time_eth_wad"
+            go_type: {type: "Uint256"}
+          - column: "*.window_volume_eth_wad"
+            go_type: {type: "Uint256"}
+          - column: "*.remaining_eth_wad"
             go_type: {type: "Uint256"}

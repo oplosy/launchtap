@@ -73,7 +73,15 @@ export function filesUnder(directory, predicate) {
   return result;
 }
 
-const coreRoutes = ["/", "/graduated", "/create", "/analytics", "/docs", "/profile"];
+const coreRoutes = [
+  "/",
+  "/graduated",
+  "/create",
+  "/analytics",
+  "/docs",
+  "/profile",
+  "/leaderboard",
+];
 // Mirrors WALLET_ROUTES in app/providers.tsx.
 const walletRoutePattern = /^\/(?:(?:create|profile)(?:[/?]|$)|token\/)/;
 
@@ -111,7 +119,7 @@ export function validatePerformanceBudgetMatrix(matrix = budgetMatrix) {
         errors.push(`wallet route ${route} cannot use the read-only budget`);
     }
   }
-  if (seen.size !== 7) errors.push("performance budget matrix must list all seven core routes");
+  if (seen.size !== 8) errors.push("performance budget matrix must list all eight core routes");
   for (const route of coreRoutes)
     if (!seen.has(route)) errors.push(`performance budget is missing ${route}`);
   if (

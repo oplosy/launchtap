@@ -9,8 +9,14 @@ import { shortAddress } from "@/token/address";
  * Wallet state shared with the app shell. This module stays free of Privy and wagmi imports so
  * routes that do not sign can render without loading the wallet stack.
  */
+/** Lifecycle of the lazily loaded wallet stack as seen by consumers. */
+export type WalletStackState = "idle" | "loading" | "mounted" | "failed";
+
 export type WalletConnection = {
+  stack: WalletStackState;
   open: () => void;
+  /** Mounts the wallet stack without opening the picker. A no-op once mounted. */
+  prepare: () => void;
   disconnect: () => void;
   connected: boolean;
   pending: boolean;
@@ -20,6 +26,8 @@ export type WalletConnection = {
 
 export const fallbackConnection: WalletConnection = {
   open: () => undefined,
+  prepare: () => undefined,
+  stack: "idle",
   disconnect: () => undefined,
   connected: false,
   pending: false,

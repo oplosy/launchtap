@@ -7,6 +7,7 @@ export type ProblemCode =
   | "cursor_invalidated"
   | "invalid_cursor"
   | "revision_conflict"
+  | "watchlist_full"
   | "rate_limited"
   | "service_unavailable"
   | "unknown";
@@ -26,6 +27,7 @@ export class ApiProblem extends Error {
         cursor_invalidated: "This list changed. Refreshing from the latest snapshot.",
         invalid_cursor: "This page marker is invalid. Refresh the list.",
         revision_conflict: "This record changed. Review the latest version before saving.",
+        watchlist_full: "Your watchlist is full. Remove a token before adding another.",
         rate_limited: "Too many requests. Try again shortly.",
         service_unavailable: "The API is temporarily unavailable.",
         unknown: "The API request could not be completed.",
@@ -44,19 +46,21 @@ export function mapProblem(status: number, body: unknown): ApiProblem {
       ? "cursor_invalidated"
       : type === "invalid_cursor"
         ? "invalid_cursor"
-        : type === "revision_conflict" || status === 412
-          ? "revision_conflict"
-          : status === 400
-            ? "validation"
-            : status === 401
-              ? "authentication_required"
-              : status === 403
-                ? "forbidden"
-                : status === 429
-                  ? "rate_limited"
-                  : status >= 500
-                    ? "service_unavailable"
-                    : "unknown";
+        : type === "watchlist_full"
+          ? "watchlist_full"
+          : type === "revision_conflict" || status === 412
+            ? "revision_conflict"
+            : status === 400
+              ? "validation"
+              : status === 401
+                ? "authentication_required"
+                : status === 403
+                  ? "forbidden"
+                  : status === 429
+                    ? "rate_limited"
+                    : status >= 500
+                      ? "service_unavailable"
+                      : "unknown";
   return new ApiProblem(status, code, typeof model?.detail === "string" ? model.detail : null);
 }
 

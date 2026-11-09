@@ -14,6 +14,9 @@ the real public inputs. Keep `BACKEND_ENV_FILE` and `POSTGRES_PASSWORD_FILE` out
 checkout, mode `0600`; populate the former from `backend.env.example`. The backend
 Privy app ID must match the public app ID. Never place wallet keys in these files.
 The database password file contains only the password and an optional trailing newline.
+`COINGECKO_API_KEY` is a secret and belongs only in `BACKEND_ENV_FILE`, which Compose passes
+to the backend containers. Set it together with `ETH_USD_SOURCE=coingecko`; leave both empty
+to disable USD reference pricing. The backend rejects either one set without the other.
 The backend DSN uses that same password, percent-encoded. Local container database traffic
 uses the private Compose network; PostgreSQL has no published port.
 
@@ -55,6 +58,17 @@ Set external uptime and lag alerts with a named recipient; Docker health checks 
 do not deliver alerts. Confirm backup restore and record the manifest/commit/image IDs.
 The standard Caddy image supplies TLS and proxying, not a per-client rate-limit policy.
 Configure the approved edge rate limits before exposing transaction-capable production traffic.
+
+## Monitoring
+
+An opt-in Prometheus and Alertmanager stack starts with `docker compose --env-file .env --profile monitoring up -d`.
+Alert destination, access, retention and the alert table are in the "Monitoring" section of
+`docs/runbooks/production-readiness.md`, including the live feed metrics, the SSE per-client limit
+and the share-card caching notes.
+
+The web container needs `API_INTERNAL_BASE_URL` (Compose sets `http://api:8080`) for server-side
+share-card reads; `NEXT_PUBLIC_WEB_ORIGIN` must be the public HTTPS web origin because share links
+and canonical URLs use it.
 
 ## Backup and recovery
 

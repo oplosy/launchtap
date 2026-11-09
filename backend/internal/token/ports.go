@@ -20,6 +20,10 @@ type ListQuery struct {
 	Sort    string
 	Cursor  *pagination.Cursor
 	Limit   int
+	// Age is "all" (or empty), "24h" or "7d". Now is the request time used to derive the
+	// first-page cutoff; later pages reuse the cursor's pinned cutoff.
+	Age string
+	Now time.Time
 }
 
 type Summary struct {

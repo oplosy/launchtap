@@ -11,6 +11,7 @@ export default defineConfig({
       "scripts/validate-release.test.mjs",
       "scripts/container-preflight.test.mjs",
       "scripts/verify-release-command.test.mjs",
+      "scripts/audit-runtime.test.mjs",
     ],
   },
 });

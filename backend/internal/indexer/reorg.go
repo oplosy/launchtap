@@ -11,11 +11,16 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
+// PositionPair identifies one wallet position whose ledger inputs changed.
+type PositionPair struct{ Wallet, Token common.Address }
+
 type RecoveryUnit interface {
 	UnitOfWork
 	FindCommonAncestor(context.Context, int64, []common.Hash) (ledger.IndexedBlock, error)
 	AffectedTokensAbove(context.Context, int64, int64) ([]common.Address, error)
+	AffectedPositionPairsAbove(ctx context.Context, chainID, block int64) ([]PositionPair, error)
 	DeleteCanonicalAbove(context.Context, int64, int64) error
+	MarkPositionsDirty(ctx context.Context, chainID int64, pairs []PositionPair) error
 	RebuildTokenProjections(context.Context, int64, common.Address) error
 	DeleteTokenStats(context.Context, int64, common.Address) error
 	RecomputeTokenStats(context.Context, int64, common.Address) error
@@ -117,7 +122,14 @@ func (e *Engine) recoverReorg(ctx context.Context, state State, tip ledger.Index
 		if err != nil {
 			return err
 		}
+		pairs, err := recovery.AffectedPositionPairsAbove(ctx, e.settings.ChainID, ancestor.BlockNumber)
+		if err != nil {
+			return err
+		}
 		if err := recovery.DeleteCanonicalAbove(ctx, e.settings.ChainID, ancestor.BlockNumber); err != nil {
+			return err
+		}
+		if err := recovery.MarkPositionsDirty(ctx, e.settings.ChainID, pairs); err != nil {
 			return err
 		}
 		for _, token := range tokens {

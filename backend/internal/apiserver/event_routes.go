@@ -22,6 +22,7 @@ type EventRoutes struct {
 	// one window are delivered once. Zero uses the default window.
 	Coalesce time.Duration
 	shutdown <-chan struct{}
+	metrics  Metrics
 }
 
 const defaultEventCoalesce = 500 * time.Millisecond
@@ -58,6 +59,8 @@ type reorgEvent struct {
 func (r EventRoutes) Register(api huma.API) {
 	sse.Register(api, huma.Operation{OperationID: "events", Method: http.MethodGet, Path: "/events", Tags: []string{"events"}}, map[string]any{
 		"launch": launchEvent{}, "token": tokenEvent{}, "reorg": reorgEvent{},
+		"trade": tradeFeedItem{}, "graduation": graduationFeedEvent{}, "new_token": newTokenFeedEvent{},
+		"trade_burst": tradeBurstFeedEvent{}, "finality": finalityFeedEvent{},
 	}, r.stream)
 }
 
@@ -71,6 +74,10 @@ func (r EventRoutes) stream(ctx context.Context, input *eventInput, send sse.Sen
 		return
 	}
 	defer release()
+	if r.metrics != nil {
+		r.metrics.StreamOpened()
+		defer r.metrics.StreamClosed()
+	}
 	subscription, err := r.Hub.Subscribe()
 	if err != nil {
 		_ = send(sse.Message{Comment: "subscriber capacity reached", Retry: 3000})
@@ -142,6 +149,26 @@ func (r EventRoutes) stream(ctx context.Context, input *eventInput, send sse.Sen
 					return
 				}
 				if err := send(sse.Message{Data: r.payload(event)}); err != nil {
+					return
+				}
+			case "trade", "graduation", "new_token", "trade_burst", "finality":
+				// Feed events bypass hint coalescing. A ?token= stream gets only that token's trade and
+				// graduation, plus every trade_burst and finality; new_token is a global event.
+				switch event.Type {
+				case "new_token":
+					if tokenFilter != "" {
+						continue
+					}
+				case "trade", "graduation":
+					if tokenFilter != "" && strings.ToLower(event.Token) != tokenFilter {
+						continue
+					}
+				}
+				payload, ok := r.feedPayload(event)
+				if !ok {
+					continue
+				}
+				if err := send(sse.Message{Data: payload}); err != nil {
 					return
 				}
 			case "launch", "token":

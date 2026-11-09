@@ -24,6 +24,36 @@ SELECT DISTINCT affected.token_address FROM (
     ) AS pairs ON pairs.pair_address=token.lp_pair WHERE token.chain_id=$1
 ) AS affected ORDER BY token_address;
 
+-- name: ListPositionPairsAbove :many
+-- Run before DeleteCanonicalAbove: the rows (and a launched token's own row) are still present.
+-- Excluded wallets (R4) are dropped here because a deleted token's curve and pair are not
+-- resolvable afterwards.
+SELECT DISTINCT pairs.wallet, pairs.token_address FROM (
+    SELECT trade.trader AS wallet, trade.token_address FROM trades AS trade
+    WHERE trade.chain_id=sqlc.arg(chain_id) AND trade.block_number>sqlc.arg(block_number)
+    UNION ALL
+    SELECT swap.tx_from, token.token_address FROM pool_swaps AS swap
+    JOIN tokens AS token ON token.chain_id=swap.chain_id AND token.lp_pair=swap.pair_address
+    WHERE swap.chain_id=sqlc.arg(chain_id) AND swap.block_number>sqlc.arg(block_number) AND swap.tx_from IS NOT NULL
+    UNION ALL
+    SELECT transfer.from_address, transfer.token_address FROM transfers AS transfer
+    WHERE transfer.chain_id=sqlc.arg(chain_id) AND transfer.block_number>sqlc.arg(block_number)
+    UNION ALL
+    SELECT transfer.to_address, transfer.token_address FROM transfers AS transfer
+    WHERE transfer.chain_id=sqlc.arg(chain_id) AND transfer.block_number>sqlc.arg(block_number)
+) AS pairs
+WHERE pairs.wallet <> decode(repeat('00', 20), 'hex')
+  AND pairs.wallet <> sqlc.arg(factory)::bytea
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id=sqlc.arg(chain_id) AND excluded.curve_address=pairs.wallet
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id=sqlc.arg(chain_id) AND excluded.lp_pair=pairs.wallet
+  )
+ORDER BY pairs.wallet, pairs.token_address;
+
 -- name: DeleteTokenLaunchesAbove :execrows
 DELETE FROM token_launches WHERE chain_id=$1 AND block_number>$2;
 -- name: DeleteTradesAbove :execrows

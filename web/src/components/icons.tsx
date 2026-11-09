@@ -2,12 +2,16 @@
 
 import {
   ArrowSquareOut,
+  BellSimple,
   BookOpenText,
   ChartLineUp,
+  Check,
   Compass,
+  Copy,
   List,
   Plus,
   RocketLaunch,
+  ShareNetwork,
   ShieldCheck,
   Moon,
   Sun,
@@ -19,12 +23,16 @@ import {
 
 export {
   ArrowSquareOut,
+  BellSimple,
   BookOpenText,
   ChartLineUp,
+  Check,
   Compass,
+  Copy,
   List,
   Plus,
   RocketLaunch,
+  ShareNetwork,
   ShieldCheck,
   Moon,
   Sun,

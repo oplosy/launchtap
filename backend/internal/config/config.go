@@ -35,7 +35,17 @@ const (
 	maxAPISSEMaxPerClient          = uint64(1000)
 	minDatabaseMaxConns            = uint64(4)
 	maxDatabaseMaxConns            = uint64(500)
+	// The in-indexer sender backfill: 0 disables it; otherwise one pass per interval, each
+	// capped at a number of transactions.
+	defaultSenderBackfillInterval = time.Minute
+	minSenderBackfillInterval     = time.Second
+	maxSenderBackfillInterval     = 24 * time.Hour
+	defaultSenderBackfillMaxTxs   = uint64(500)
+	maxSenderBackfillMaxTxs       = uint64(10000)
 )
+
+// ETHUSDSourceCoinGecko selects the CoinGecko ETH/USD reference price source.
+const ETHUSDSourceCoinGecko = "coingecko"
 
 var (
 	ErrInvalid = errors.New("invalid configuration value")
@@ -70,6 +80,7 @@ type Config struct {
 	PrivyVerificationKey string   `env:"PRIVY_VERIFICATION_KEY"`
 	LogLevel             string   `env:"LOG_LEVEL"`
 	APIAddr              string   `env:"API_ADDR"`
+	APIMetricsAddr       string   `env:"API_METRICS_ADDR"`
 	APIAllowedOrigins    []string `env:"API_ALLOWED_ORIGINS"`
 	// APITrustedProxyCIDRs lists reverse proxies whose X-Forwarded-For entries identify the
 	// client for rate limiting. Empty means the TCP peer address is the client.
@@ -90,7 +101,16 @@ type Config struct {
 	RPCRetryBackoff            time.Duration `env:"RPC_RETRY_BACKOFF"`
 	IndexerWorkerID            string        `env:"INDEXER_WORKER_ID"`
 	IndexerConfirmations       *uint64       `env:"INDEXER_CONFIRMATIONS"`
-	ETHUSDSource               string        `env:"ETH_USD_SOURCE"`
+	// ETHUSDSource is empty (USD reference pricing disabled) or ETHUSDSourceCoinGecko.
+	ETHUSDSource string `env:"ETH_USD_SOURCE"`
+	// CoinGeckoAPIKey is a secret; it is required when ETHUSDSource is coingecko and
+	// rejected otherwise. It never appears in error text.
+	CoinGeckoAPIKey string `env:"COINGECKO_API_KEY"`
+	// IndexerSenderBackfillInterval is the period of the indexer's automatic pool swap sender
+	// backfill; 0 disables it.
+	IndexerSenderBackfillInterval time.Duration `env:"INDEXER_SENDER_BACKFILL_INTERVAL"`
+	// IndexerSenderBackfillMaxTxs caps the transactions one backfill pass looks up.
+	IndexerSenderBackfillMaxTxs uint64 `env:"INDEXER_SENDER_BACKFILL_MAX_TXS"`
 }
 
 // DatabaseConfig is the reduced configuration surface used by migration-only
@@ -150,6 +170,10 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	apiAddr, err := parseAPIAddr(values.apiAddr)
+	if err != nil {
+		return Config{}, err
+	}
+	apiMetricsAddr, err := parseAPIMetricsAddr(values.apiMetricsAddr, apiAddr)
 	if err != nil {
 		return Config{}, err
 	}
@@ -216,33 +240,52 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 
+	ethUSDSource, coinGeckoAPIKey, err := parseETHUSDSource(values.ethUSDSource, values.coinGeckoAPIKey)
+	if err != nil {
+		return Config{}, err
+	}
+	senderBackfillInterval, err := optionalDisableableDuration("INDEXER_SENDER_BACKFILL_INTERVAL", values.indexerSenderBackfillInterval,
+		defaultSenderBackfillInterval, minSenderBackfillInterval, maxSenderBackfillInterval)
+	if err != nil {
+		return Config{}, err
+	}
+	senderBackfillMaxTxs, err := optionalBoundedUint64("INDEXER_SENDER_BACKFILL_MAX_TXS", values.indexerSenderBackfillMaxTxs,
+		defaultSenderBackfillMaxTxs, 1, maxSenderBackfillMaxTxs)
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
-		ChainID:                    chainID,
-		DeploymentID:               values.deploymentID,
-		RPCURL:                     values.rpcURL,
-		DatabaseURL:                values.databaseURL,
-		PrivyAppID:                 values.privyAppID,
-		PrivyVerificationKey:       values.privyVerificationKey,
-		LogLevel:                   logLevel,
-		APIAddr:                    apiAddr,
-		APIAllowedOrigins:          apiOrigins,
-		APITrustedProxyCIDRs:       trustedProxies,
-		APIRateLimitPerMinute:      rateLimitPerMinute,
-		APIRateLimitBurst:          rateLimitBurst,
-		APISSEMaxPerClient:         sseMaxPerClient,
-		DatabaseMaxConns:           databaseMaxConns,
-		IndexerHealthAddr:          indexerHealthAddr,
-		IndexerChunkSize:           chunkSize,
-		IndexerReorgSearchDepth:    reorgSearchDepth,
-		IndexerReorgRecoveryMode:   reorgRecoveryMode,
-		IndexerLogAddressBatchSize: addressBatchSize,
-		IndexerPollInterval:        pollInterval,
-		RPCTimeout:                 rpcTimeout,
-		RPCMaxRetries:              rpcMaxRetries,
-		RPCRetryBackoff:            rpcRetryBackoff,
-		IndexerWorkerID:            values.indexerWorkerID,
-		IndexerConfirmations:       confirmations,
-		ETHUSDSource:               values.ethUSDSource,
+		ChainID:                       chainID,
+		DeploymentID:                  values.deploymentID,
+		RPCURL:                        values.rpcURL,
+		DatabaseURL:                   values.databaseURL,
+		PrivyAppID:                    values.privyAppID,
+		PrivyVerificationKey:          values.privyVerificationKey,
+		LogLevel:                      logLevel,
+		APIAddr:                       apiAddr,
+		APIMetricsAddr:                apiMetricsAddr,
+		APIAllowedOrigins:             apiOrigins,
+		APITrustedProxyCIDRs:          trustedProxies,
+		APIRateLimitPerMinute:         rateLimitPerMinute,
+		APIRateLimitBurst:             rateLimitBurst,
+		APISSEMaxPerClient:            sseMaxPerClient,
+		DatabaseMaxConns:              databaseMaxConns,
+		IndexerHealthAddr:             indexerHealthAddr,
+		IndexerChunkSize:              chunkSize,
+		IndexerReorgSearchDepth:       reorgSearchDepth,
+		IndexerReorgRecoveryMode:      reorgRecoveryMode,
+		IndexerLogAddressBatchSize:    addressBatchSize,
+		IndexerPollInterval:           pollInterval,
+		RPCTimeout:                    rpcTimeout,
+		RPCMaxRetries:                 rpcMaxRetries,
+		RPCRetryBackoff:               rpcRetryBackoff,
+		IndexerWorkerID:               values.indexerWorkerID,
+		IndexerConfirmations:          confirmations,
+		ETHUSDSource:                  ethUSDSource,
+		CoinGeckoAPIKey:               coinGeckoAPIKey,
+		IndexerSenderBackfillInterval: senderBackfillInterval,
+		IndexerSenderBackfillMaxTxs:   senderBackfillMaxTxs,
 	}, nil
 }
 
@@ -281,62 +324,87 @@ func (c Config) RequireIndexer() error {
 }
 
 type environmentValues struct {
-	chainID                    string
-	deploymentID               string
-	rpcURL                     string
-	databaseURL                string
-	privyAppID                 string
-	privyVerificationKey       string
-	logLevel                   string
-	apiAddr                    string
-	apiAllowedOrigins          string
-	apiTrustedProxyCIDRs       string
-	apiRateLimitPerMinute      string
-	apiRateLimitBurst          string
-	apiSSEMaxPerClient         string
-	databaseMaxConns           string
-	indexerHealthAddr          string
-	indexerChunkSize           string
-	indexerReorgSearchDepth    string
-	indexerReorgRecoveryMode   string
-	indexerLogAddressBatchSize string
-	indexerPollInterval        string
-	rpcTimeout                 string
-	rpcMaxRetries              string
-	rpcRetryBackoff            string
-	indexerWorkerID            string
-	indexerConfirmations       string
-	ethUSDSource               string
+	chainID                       string
+	deploymentID                  string
+	rpcURL                        string
+	databaseURL                   string
+	privyAppID                    string
+	privyVerificationKey          string
+	logLevel                      string
+	apiAddr                       string
+	apiMetricsAddr                string
+	apiAllowedOrigins             string
+	apiTrustedProxyCIDRs          string
+	apiRateLimitPerMinute         string
+	apiRateLimitBurst             string
+	apiSSEMaxPerClient            string
+	databaseMaxConns              string
+	indexerHealthAddr             string
+	indexerChunkSize              string
+	indexerReorgSearchDepth       string
+	indexerReorgRecoveryMode      string
+	indexerLogAddressBatchSize    string
+	indexerPollInterval           string
+	rpcTimeout                    string
+	rpcMaxRetries                 string
+	rpcRetryBackoff               string
+	indexerWorkerID               string
+	indexerConfirmations          string
+	ethUSDSource                  string
+	coinGeckoAPIKey               string
+	indexerSenderBackfillInterval string
+	indexerSenderBackfillMaxTxs   string
 }
 
 func readEnvironment(getenv func(string) string) environmentValues {
 	return environmentValues{
-		chainID:                    strings.TrimSpace(getenv("CHAIN_ID")),
-		deploymentID:               strings.TrimSpace(getenv("DEPLOYMENT_ID")),
-		rpcURL:                     strings.TrimSpace(getenv("RPC_URL")),
-		databaseURL:                strings.TrimSpace(getenv("DATABASE_URL")),
-		privyAppID:                 strings.TrimSpace(getenv("PRIVY_APP_ID")),
-		privyVerificationKey:       strings.TrimSpace(getenv("PRIVY_VERIFICATION_KEY")),
-		logLevel:                   strings.TrimSpace(getenv("LOG_LEVEL")),
-		apiAddr:                    strings.TrimSpace(getenv("API_ADDR")),
-		apiAllowedOrigins:          strings.TrimSpace(getenv("API_ALLOWED_ORIGINS")),
-		apiTrustedProxyCIDRs:       strings.TrimSpace(getenv("API_TRUSTED_PROXY_CIDRS")),
-		apiRateLimitPerMinute:      strings.TrimSpace(getenv("API_RATE_LIMIT_PER_MINUTE")),
-		apiRateLimitBurst:          strings.TrimSpace(getenv("API_RATE_LIMIT_BURST")),
-		apiSSEMaxPerClient:         strings.TrimSpace(getenv("API_SSE_MAX_PER_CLIENT")),
-		databaseMaxConns:           strings.TrimSpace(getenv("DATABASE_MAX_CONNS")),
-		indexerHealthAddr:          strings.TrimSpace(getenv("INDEXER_HEALTH_ADDR")),
-		indexerChunkSize:           strings.TrimSpace(getenv("INDEXER_CHUNK_SIZE")),
-		indexerReorgSearchDepth:    strings.TrimSpace(getenv("INDEXER_REORG_SEARCH_DEPTH")),
-		indexerReorgRecoveryMode:   strings.TrimSpace(getenv("INDEXER_REORG_RECOVERY_MODE")),
-		indexerLogAddressBatchSize: strings.TrimSpace(getenv("INDEXER_LOG_ADDRESS_BATCH_SIZE")),
-		indexerPollInterval:        strings.TrimSpace(getenv("INDEXER_POLL_INTERVAL")),
-		rpcTimeout:                 strings.TrimSpace(getenv("RPC_TIMEOUT")),
-		rpcMaxRetries:              strings.TrimSpace(getenv("RPC_MAX_RETRIES")),
-		rpcRetryBackoff:            strings.TrimSpace(getenv("RPC_RETRY_BACKOFF")),
-		indexerWorkerID:            strings.TrimSpace(getenv("INDEXER_WORKER_ID")),
-		indexerConfirmations:       strings.TrimSpace(getenv("INDEXER_CONFIRMATIONS")),
-		ethUSDSource:               strings.TrimSpace(getenv("ETH_USD_SOURCE")),
+		chainID:                       strings.TrimSpace(getenv("CHAIN_ID")),
+		deploymentID:                  strings.TrimSpace(getenv("DEPLOYMENT_ID")),
+		rpcURL:                        strings.TrimSpace(getenv("RPC_URL")),
+		databaseURL:                   strings.TrimSpace(getenv("DATABASE_URL")),
+		privyAppID:                    strings.TrimSpace(getenv("PRIVY_APP_ID")),
+		privyVerificationKey:          strings.TrimSpace(getenv("PRIVY_VERIFICATION_KEY")),
+		logLevel:                      strings.TrimSpace(getenv("LOG_LEVEL")),
+		apiAddr:                       strings.TrimSpace(getenv("API_ADDR")),
+		apiMetricsAddr:                strings.TrimSpace(getenv("API_METRICS_ADDR")),
+		apiAllowedOrigins:             strings.TrimSpace(getenv("API_ALLOWED_ORIGINS")),
+		apiTrustedProxyCIDRs:          strings.TrimSpace(getenv("API_TRUSTED_PROXY_CIDRS")),
+		apiRateLimitPerMinute:         strings.TrimSpace(getenv("API_RATE_LIMIT_PER_MINUTE")),
+		apiRateLimitBurst:             strings.TrimSpace(getenv("API_RATE_LIMIT_BURST")),
+		apiSSEMaxPerClient:            strings.TrimSpace(getenv("API_SSE_MAX_PER_CLIENT")),
+		databaseMaxConns:              strings.TrimSpace(getenv("DATABASE_MAX_CONNS")),
+		indexerHealthAddr:             strings.TrimSpace(getenv("INDEXER_HEALTH_ADDR")),
+		indexerChunkSize:              strings.TrimSpace(getenv("INDEXER_CHUNK_SIZE")),
+		indexerReorgSearchDepth:       strings.TrimSpace(getenv("INDEXER_REORG_SEARCH_DEPTH")),
+		indexerReorgRecoveryMode:      strings.TrimSpace(getenv("INDEXER_REORG_RECOVERY_MODE")),
+		indexerLogAddressBatchSize:    strings.TrimSpace(getenv("INDEXER_LOG_ADDRESS_BATCH_SIZE")),
+		indexerPollInterval:           strings.TrimSpace(getenv("INDEXER_POLL_INTERVAL")),
+		rpcTimeout:                    strings.TrimSpace(getenv("RPC_TIMEOUT")),
+		rpcMaxRetries:                 strings.TrimSpace(getenv("RPC_MAX_RETRIES")),
+		rpcRetryBackoff:               strings.TrimSpace(getenv("RPC_RETRY_BACKOFF")),
+		indexerWorkerID:               strings.TrimSpace(getenv("INDEXER_WORKER_ID")),
+		indexerConfirmations:          strings.TrimSpace(getenv("INDEXER_CONFIRMATIONS")),
+		ethUSDSource:                  strings.TrimSpace(getenv("ETH_USD_SOURCE")),
+		coinGeckoAPIKey:               strings.TrimSpace(getenv("COINGECKO_API_KEY")),
+		indexerSenderBackfillInterval: strings.TrimSpace(getenv("INDEXER_SENDER_BACKFILL_INTERVAL")),
+		indexerSenderBackfillMaxTxs:   strings.TrimSpace(getenv("INDEXER_SENDER_BACKFILL_MAX_TXS")),
+	}
+}
+
+func parseETHUSDSource(source, apiKey string) (string, string, error) {
+	switch source {
+	case "":
+		if apiKey != "" {
+			return "", "", &FieldError{Field: "COINGECKO_API_KEY", Err: ErrInvalid}
+		}
+		return "", "", nil
+	case ETHUSDSourceCoinGecko:
+		if apiKey == "" {
+			return "", "", &FieldError{Field: "COINGECKO_API_KEY", Err: ErrMissing}
+		}
+		return source, apiKey, nil
+	default:
+		return "", "", &FieldError{Field: "ETH_USD_SOURCE", Err: ErrInvalid}
 	}
 }
 
@@ -389,6 +457,18 @@ func optionalPositiveDuration(field, value string, defaultValue time.Duration) (
 	}
 	parsed, err := time.ParseDuration(value)
 	if err != nil || parsed <= 0 {
+		return 0, &FieldError{Field: field, Err: ErrInvalid}
+	}
+	return parsed, nil
+}
+
+// optionalDisableableDuration accepts 0 (disabled) or a duration within [minValue, maxValue].
+func optionalDisableableDuration(field, value string, defaultValue, minValue, maxValue time.Duration) (time.Duration, error) {
+	if value == "" {
+		return defaultValue, nil
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil || (parsed != 0 && (parsed < minValue || parsed > maxValue)) {
 		return 0, &FieldError{Field: field, Err: ErrInvalid}
 	}
 	return parsed, nil
@@ -478,6 +558,24 @@ func parseLogLevel(value string) (string, error) {
 
 func parseAPIAddr(value string) (string, error) {
 	return parseListenerAddr("API_ADDR", value, defaultAPIAddr)
+}
+
+// parseAPIMetricsAddr validates the optional metrics listener. Empty disables it;
+// a value equal to the API listener is rejected so metrics never share the
+// public port.
+func parseAPIMetricsAddr(value, apiAddr string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	addr, err := parseListenerAddr("API_METRICS_ADDR", value, "")
+	if err != nil {
+		return "", err
+	}
+	if addr == apiAddr {
+		return "", &FieldError{Field: "API_METRICS_ADDR", Err: ErrInvalid}
+	}
+
+	return addr, nil
 }
 
 func parseListenerAddr(field, value, defaultValue string) (string, error) {

@@ -44,6 +44,35 @@ export function formatCanonicalBaseUnits(value: string, maxFractionDigits = 6): 
   }
 }
 
+/**
+ * Execution price in wad (ETH per whole token, 18 decimals) from a trade's gross ETH and token
+ * amounts, as a canonical decimal string. Mirrors the `market_trades` view's
+ * `execution_price_wad` (backend migration 00004_chain_projections.sql):
+ * `trunc(eth_gross * 1e18 / NULLIF(token_amount, 0))`. Empty when there are no tokens (the view
+ * yields NULL) or an amount is not a canonical integer.
+ */
+export function executionPriceWad(ethWei: string, tokenUnits: string): string {
+  let eth: bigint;
+  let tokens: bigint;
+  try {
+    eth = parseCanonicalBaseUnits(ethWei);
+    tokens = parseCanonicalBaseUnits(tokenUnits);
+  } catch {
+    return "";
+  }
+  if (tokens === 0n) return "";
+  return ((eth * 10n ** 18n) / tokens).toString();
+}
+
+/** Token prices sit far below 1 ETH, so keep four significant digits instead of a fixed scale. */
+export function formatSignificantPrice(value: string): string | null {
+  const full = formatCanonicalBaseUnits(value, 18);
+  if (full === null) return null;
+  const leadingZeros = (full.split(".")[1] ?? "").search(/[1-9]/);
+  const digits = leadingZeros < 0 ? 6 : Math.min(18, Math.max(6, leadingZeros + 4));
+  return formatCanonicalBaseUnits(value, digits);
+}
+
 export function parseDecimal(value: string, decimals = 18): bigint {
   if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255 || !DECIMAL.test(value.trim()))
     throw new Error("Invalid decimal amount");
@@ -80,6 +109,33 @@ export function formatBaseUnits(
     .slice(0, maxFractionDigits)
     .replace(/0+$/, "");
   return fraction ? `${whole}.${fraction}` : whole.toString();
+}
+
+/**
+ * Exact USD value of a base-unit amount at a decimal USD price (e.g. ETH/USD).
+ * >= $1 shows 2 decimals with thousands separators; < $1 shows 4 significant
+ * digits. Half-up rounding on bigint math, never exponent notation.
+ */
+export function formatUsd(baseUnits: bigint, decimals: number, priceUsd: string): string {
+  if (baseUnits < 0n || !Number.isInteger(decimals) || decimals < 0 || decimals > 255)
+    throw new Error("Invalid USD amount");
+  const price = priceUsd.trim();
+  const priceDecimals = (price.split(".")[1] ?? "").length;
+  const numerator = baseUnits * parseDecimal(price, priceDecimals);
+  const denominator = 10n ** BigInt(decimals + priceDecimals);
+  if (numerator === 0n) return "$0.00";
+  const roundDiv = (n: bigint, d: bigint) => (2n * n + d) / (2n * d);
+  const twoDecimals = (cents: bigint) => {
+    const whole = (cents / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return `$${whole}.${(cents % 100n).toString().padStart(2, "0")}`;
+  };
+  if (numerator >= denominator) return twoDecimals(roundDiv(numerator * 100n, denominator));
+  let zeros = 0;
+  while (numerator * 10n ** BigInt(zeros + 1) < denominator) zeros++;
+  const fractionDigits = zeros + 4;
+  const scaled = roundDiv(numerator * 10n ** BigInt(fractionDigits), denominator);
+  if (scaled >= 10n ** BigInt(fractionDigits)) return "$1.00";
+  return `$0.${scaled.toString().padStart(fractionDigits, "0")}`;
 }
 
 export function formatDisplayAmount(value: bigint, decimals = 18, maxFractionDigits = 4): string {

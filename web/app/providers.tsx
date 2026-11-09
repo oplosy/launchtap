@@ -7,11 +7,15 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ComponentType,
   type PropsWithChildren,
 } from "react";
 import { publicConfiguration, type PublicConfiguration } from "@/config/public";
+import { LiveEventsProvider } from "@/live/live-events";
+import { NotificationIdentityBridge } from "@/live/notification-bridge";
+import { NotificationsProvider } from "@/live/notifications";
 import {
   WalletConnectionContext,
   fallbackConnection,
@@ -42,25 +46,48 @@ function walletStackAvailable(configuration: PublicConfiguration) {
  * receives a lightweight connection whose `open` loads the stack and opens the wallet picker.
  */
 export function Providers({ children }: PropsWithChildren) {
+  return (
+    <LiveEventsProvider>
+      <NotificationsProvider>
+        <WalletProviders>{children}</WalletProviders>
+      </NotificationsProvider>
+    </LiveEventsProvider>
+  );
+}
+
+function WalletProviders({ children }: PropsWithChildren) {
   const pathname = usePathname();
   const available = useMemo(() => walletStackAvailable(publicConfiguration()), []);
   const required = available && WALLET_ROUTES.some((route) => route.test(pathname));
   const [Stack, setStack] = useState<WalletStackComponent | null>(null);
   const [openOnMount, setOpenOnMount] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const startedRef = useRef(false);
 
   const requestStack = useCallback((open: boolean) => {
     if (open) setOpenOnMount(true);
+    startedRef.current = true;
     setLoading(true);
+    setFailed(false);
     void loadWalletStack()
       .then((module) => setStack(() => module.WalletStack))
-      .catch(() => setLoading(false));
+      .catch(() => {
+        startedRef.current = false;
+        setLoading(false);
+        setFailed(true);
+      });
   }, []);
+  // Stable identity: callers may depend on it without re-firing when loading state changes.
+  const prepareStack = useCallback(() => {
+    if (!startedRef.current) requestStack(false);
+  }, [requestStack]);
 
   useEffect(() => {
+    // A failed load is retried by an explicit user action, not by this effect.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (required && !Stack && !loading) requestStack(false);
-  }, [Stack, loading, required, requestStack]);
+    if (required && !Stack && !loading && !failed) requestStack(false);
+  }, [Stack, failed, loading, required, requestStack]);
 
   useEffect(() => {
     if (!available) return;
@@ -75,8 +102,15 @@ export function Providers({ children }: PropsWithChildren) {
   }, [available]);
 
   const lazyConnection = useMemo<WalletConnection>(
-    () => ({ ...fallbackConnection, available, pending: loading, open: () => requestStack(true) }),
-    [available, loading, requestStack],
+    () => ({
+      ...fallbackConnection,
+      available,
+      pending: loading,
+      open: () => requestStack(true),
+      prepare: prepareStack,
+      stack: failed ? "failed" : loading ? "loading" : "idle",
+    }),
+    [available, failed, loading, prepareStack, requestStack],
   );
   const status = useMemo(() => ({ required, ready: Stack !== null }), [Stack, required]);
 
@@ -84,7 +118,10 @@ export function Providers({ children }: PropsWithChildren) {
   if (Stack)
     return (
       <WalletStackStatus.Provider value={status}>
-        <Stack openOnMount={openOnMount}>{children}</Stack>
+        <Stack openOnMount={openOnMount}>
+          <NotificationIdentityBridge />
+          {children}
+        </Stack>
       </WalletStackStatus.Provider>
     );
   return (

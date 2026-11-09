@@ -19,6 +19,7 @@ WHERE t.chain_id = sqlc.arg(chain_id)
        OR encode(t.token_address, 'hex') = lower(CASE WHEN left(sqlc.arg(search)::text,2)='0x' THEN substr(sqlc.arg(search)::text,3) ELSE sqlc.arg(search)::text END))
   AND (sqlc.narg(after_block)::bigint IS NULL
        OR (t.launch_block_number, t.token_address) < (sqlc.narg(after_block)::bigint, sqlc.narg(after_address)::bytea))
+  AND (sqlc.narg(launched_after)::timestamptz IS NULL OR t.launch_block_time >= sqlc.narg(launched_after)::timestamptz)
 ORDER BY t.launch_block_number DESC, t.token_address DESC
 LIMIT sqlc.arg(page_size)::integer;
 
@@ -33,6 +34,7 @@ LEFT JOIN token_stats AS s ON s.chain_id = t.chain_id AND s.token_address = t.to
 WHERE t.chain_id = sqlc.arg(chain_id) AND t.phase = sqlc.arg(phase)
   AND (sqlc.arg(search)::text = '' OR lower(t.name) LIKE lower(sqlc.arg(search)::text) || '%' OR lower(t.symbol) LIKE lower(sqlc.arg(search)::text) || '%' OR encode(t.token_address, 'hex') = lower(CASE WHEN left(sqlc.arg(search)::text,2)='0x' THEN substr(sqlc.arg(search)::text,3) ELSE sqlc.arg(search)::text END))
   AND (sqlc.narg(after_block)::bigint IS NULL OR (t.launch_block_number, t.token_address) > (sqlc.narg(after_block)::bigint, sqlc.narg(after_address)::bytea))
+  AND (sqlc.narg(launched_after)::timestamptz IS NULL OR t.launch_block_time >= sqlc.narg(launched_after)::timestamptz)
 ORDER BY t.launch_block_number ASC, t.token_address ASC LIMIT sqlc.arg(page_size)::integer;
 
 -- Metric sorts walk tokens_phase_*_cursor_idx; the sort columns mirror token_stats (0 when
@@ -48,6 +50,7 @@ LEFT JOIN token_stats AS s ON s.chain_id = t.chain_id AND s.token_address = t.to
 WHERE t.chain_id = sqlc.arg(chain_id) AND t.phase = sqlc.arg(phase)
   AND (sqlc.arg(search)::text = '' OR lower(t.name) LIKE lower(sqlc.arg(search)::text) || '%' OR lower(t.symbol) LIKE lower(sqlc.arg(search)::text) || '%' OR encode(t.token_address, 'hex') = lower(CASE WHEN left(sqlc.arg(search)::text,2)='0x' THEN substr(sqlc.arg(search)::text,3) ELSE sqlc.arg(search)::text END))
   AND (sqlc.narg(after_metric)::numeric IS NULL OR (t.sort_market_cap_eth_wad, t.token_address) < (sqlc.narg(after_metric)::numeric, sqlc.narg(after_address)::bytea))
+  AND (sqlc.narg(launched_after)::timestamptz IS NULL OR t.launch_block_time >= sqlc.narg(launched_after)::timestamptz)
 ORDER BY t.sort_market_cap_eth_wad DESC, t.token_address DESC LIMIT sqlc.arg(page_size)::integer;
 
 -- name: ListTokenCardsVolume :many
@@ -61,6 +64,7 @@ LEFT JOIN token_stats AS s ON s.chain_id = t.chain_id AND s.token_address = t.to
 WHERE t.chain_id = sqlc.arg(chain_id) AND t.phase = sqlc.arg(phase)
   AND (sqlc.arg(search)::text = '' OR lower(t.name) LIKE lower(sqlc.arg(search)::text) || '%' OR lower(t.symbol) LIKE lower(sqlc.arg(search)::text) || '%' OR encode(t.token_address, 'hex') = lower(CASE WHEN left(sqlc.arg(search)::text,2)='0x' THEN substr(sqlc.arg(search)::text,3) ELSE sqlc.arg(search)::text END))
   AND (sqlc.narg(after_metric)::numeric IS NULL OR (t.sort_volume_24h_eth_wad, t.token_address) < (sqlc.narg(after_metric)::numeric, sqlc.narg(after_address)::bytea))
+  AND (sqlc.narg(launched_after)::timestamptz IS NULL OR t.launch_block_time >= sqlc.narg(launched_after)::timestamptz)
 ORDER BY t.sort_volume_24h_eth_wad DESC, t.token_address DESC LIMIT sqlc.arg(page_size)::integer;
 
 -- name: ListCandlesAggregated :many
@@ -209,4 +213,400 @@ WHERE chain_id = sqlc.arg(chain_id)
   AND day >= sqlc.arg(from_day)
   AND day <= sqlc.arg(to_day)
 ORDER BY day ASC
+LIMIT sqlc.arg(page_size)::integer;
+
+-- name: ListTrendingTokens :many
+WITH legs AS (
+    SELECT trade.token_address, trade.eth_gross AS volume, trade.block_time,
+           CASE WHEN trade.is_buy THEN trade.trader END AS buyer
+    FROM trades AS trade
+    JOIN indexed_blocks AS block
+      ON block.chain_id = trade.chain_id AND block.block_number = trade.block_number
+    WHERE trade.chain_id = sqlc.arg(chain_id)
+      AND trade.block_time >= sqlc.arg(window_start)::timestamptz
+    UNION ALL
+    SELECT token.token_address,
+           CASE WHEN token.token_is_token0 THEN swap.amount1_in + swap.amount1_out
+                ELSE swap.amount0_in + swap.amount0_out END AS volume,
+           swap.block_time,
+           CASE WHEN (CASE WHEN token.token_is_token0 THEN swap.amount0_out > 0 ELSE swap.amount1_out > 0 END)
+                THEN swap.to_address END AS buyer
+    FROM pool_swaps AS swap
+    JOIN tokens AS token
+      ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    WHERE swap.chain_id = sqlc.arg(chain_id)
+      AND swap.block_time >= sqlc.arg(window_start)::timestamptz
+), ranked AS (
+    SELECT token_address,
+           sum(volume)::numeric(78, 0) AS window_volume_eth_wad,
+           count(DISTINCT buyer)::BIGINT AS distinct_buyers,
+           max(block_time)::timestamptz AS last_trade_time
+    FROM legs
+    GROUP BY token_address
+    HAVING sum(volume) > 0 AND count(DISTINCT buyer) > 0
+)
+SELECT t.token_address, t.name, t.symbol, t.phase,
+       t.launch_block_number, t.launch_block_time, t.total_supply,
+       COALESCE(s.market_cap_eth_wad, 0::numeric) AS market_cap_eth_wad,
+       COALESCE(s.volume_24h_eth_wad, 0::numeric) AS volume_24h_eth_wad,
+       COALESCE(s.holder_count, 0)::BIGINT AS holder_count,
+       m.description, m.image_url, m.x_url, m.telegram_url,
+       t.launch_block_hash,
+       ranked.window_volume_eth_wad, ranked.distinct_buyers, ranked.last_trade_time
+FROM ranked
+JOIN tokens AS t
+  ON t.chain_id = sqlc.arg(chain_id) AND t.token_address = ranked.token_address
+LEFT JOIN token_metadata AS m
+  ON m.chain_id = t.chain_id AND m.token_address = t.token_address
+ AND m.launch_tx_hash = t.launch_tx_hash AND m.launch_log_index = t.launch_log_index
+LEFT JOIN token_stats AS s
+  ON s.chain_id = t.chain_id AND s.token_address = t.token_address
+ORDER BY ranked.window_volume_eth_wad * ranked.distinct_buyers DESC,
+         ranked.last_trade_time DESC, t.token_address
+LIMIT sqlc.arg(row_limit)::integer;
+
+-- name: GetKingOfTheHill :one
+WITH curve_tokens AS (
+    SELECT t.token_address, t.name, t.symbol, t.phase,
+           t.launch_block_number, t.launch_block_time, t.total_supply,
+           COALESCE(s.market_cap_eth_wad, 0::numeric) AS market_cap_eth_wad,
+           COALESCE(s.volume_24h_eth_wad, 0::numeric) AS volume_24h_eth_wad,
+           COALESCE(s.holder_count, 0)::BIGINT AS holder_count,
+           m.description, m.image_url, m.x_url, m.telegram_url,
+           t.launch_block_hash,
+           p.graduation_progress_bps,
+           GREATEST(t.graduation_eth - p.real_curve_eth, 0::numeric)::numeric(78, 0) AS remaining_eth_wad
+    FROM tokens AS t
+    LEFT JOIN token_reserves AS r USING (chain_id, token_address)
+    LEFT JOIN token_metadata AS m
+      ON m.chain_id = t.chain_id AND m.token_address = t.token_address
+     AND m.launch_tx_hash = t.launch_tx_hash AND m.launch_log_index = t.launch_log_index
+    LEFT JOIN token_stats AS s
+      ON s.chain_id = t.chain_id AND s.token_address = t.token_address
+    CROSS JOIN LATERAL (
+        SELECT GREATEST(COALESCE(r.eth_reserve, t.initial_virtual_eth) - t.initial_virtual_eth, 0::numeric)::numeric(78, 0) AS real_curve_eth,
+               CASE WHEN t.graduation_eth = 0 THEN 0
+                    ELSE LEAST(10000, floor(GREATEST(COALESCE(r.eth_reserve, t.initial_virtual_eth) - t.initial_virtual_eth, 0::numeric) * 10000 / t.graduation_eth))
+               END::integer AS graduation_progress_bps
+    ) AS p
+    WHERE t.chain_id = sqlc.arg(chain_id) AND t.phase = 'curve'
+)
+SELECT * FROM curve_tokens
+ORDER BY graduation_progress_bps DESC, launch_block_time DESC, token_address
+LIMIT 1;
+
+-- name: ListMarketTradesAfter :many
+WITH curve AS (
+    SELECT trade.token_address, trade.block_number, trade.block_time, trade.transaction_index,
+           trade.tx_hash, trade.log_index, 'curve'::TEXT AS source, trade.is_buy AS side_buy,
+           trade.trader, trade.eth_gross AS gross_eth_volume, trade.token_amount AS token_volume,
+           block.finality_status AS finality
+    FROM trades AS trade
+    JOIN indexed_blocks AS block
+      ON block.chain_id = trade.chain_id AND block.block_number = trade.block_number
+    WHERE trade.chain_id = sqlc.arg(chain_id)
+      AND (trade.block_number, trade.transaction_index, trade.log_index) >
+          (sqlc.arg(after_block)::bigint, sqlc.arg(after_transaction_index)::integer, sqlc.arg(after_log_index)::integer)
+    ORDER BY trade.block_number ASC, trade.transaction_index ASC, trade.log_index ASC
+    LIMIT sqlc.arg(page_size)::integer
+), dex AS (
+    -- Mirrors the pool branch of the market_trades view; ordered and limited per base table.
+    SELECT token.token_address, swap.block_number, swap.block_time, swap.transaction_index,
+           swap.tx_hash, swap.log_index, 'dex'::TEXT AS source,
+           CASE WHEN token.token_is_token0 THEN swap.amount0_out > 0 ELSE swap.amount1_out > 0 END AS side_buy,
+           swap.tx_from AS trader, legs.eth_volume AS gross_eth_volume, legs.token_volume,
+           block.finality_status AS finality
+    FROM pool_swaps AS swap
+    JOIN tokens AS token
+      ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    JOIN LATERAL (
+        SELECT
+            CASE WHEN token.token_is_token0 THEN swap.amount1_in + swap.amount1_out
+                 ELSE swap.amount0_in + swap.amount0_out END AS eth_volume,
+            CASE WHEN token.token_is_token0 THEN swap.amount0_in + swap.amount0_out
+                 ELSE swap.amount1_in + swap.amount1_out END AS token_volume
+        FROM pool_syncs AS sync
+        WHERE sync.chain_id = swap.chain_id
+          AND sync.pair_address = swap.pair_address
+          AND sync.tx_hash = swap.tx_hash
+          AND sync.log_index < swap.log_index
+        ORDER BY sync.log_index DESC
+        LIMIT 1
+    ) AS legs ON TRUE
+    WHERE swap.chain_id = sqlc.arg(chain_id)
+      AND (swap.block_number, swap.transaction_index, swap.log_index) >
+          (sqlc.arg(after_block)::bigint, sqlc.arg(after_transaction_index)::integer, sqlc.arg(after_log_index)::integer)
+    ORDER BY swap.block_number ASC, swap.transaction_index ASC, swap.log_index ASC
+    LIMIT sqlc.arg(page_size)::integer
+), page AS (
+    SELECT * FROM curve
+    UNION ALL
+    SELECT * FROM dex
+    ORDER BY block_number ASC, transaction_index ASC, log_index ASC
+    LIMIT sqlc.arg(page_size)::integer
+)
+SELECT p.token_address, l.name, l.symbol, p.source,
+       COALESCE(encode(p.trader, 'hex'), '')::text AS trader_hex,
+       p.side_buy, p.gross_eth_volume, p.token_volume, p.block_number, p.transaction_index,
+       p.tx_hash, p.log_index, p.block_time, p.finality
+FROM page AS p
+JOIN token_launches AS l ON l.chain_id = sqlc.arg(chain_id) AND l.token_address = p.token_address
+ORDER BY p.block_number ASC, p.transaction_index ASC, p.log_index ASC;
+
+-- name: ListRecentMarketTrades :many
+WITH curve AS (
+    SELECT trade.token_address, trade.block_number, trade.block_time, trade.transaction_index,
+           trade.tx_hash, trade.log_index, 'curve'::TEXT AS source, trade.is_buy AS side_buy,
+           trade.trader, trade.eth_gross AS gross_eth_volume, trade.token_amount AS token_volume,
+           block.finality_status AS finality
+    FROM trades AS trade
+    JOIN indexed_blocks AS block
+      ON block.chain_id = trade.chain_id AND block.block_number = trade.block_number
+    WHERE trade.chain_id = sqlc.arg(chain_id)
+    ORDER BY trade.block_number DESC, trade.transaction_index DESC, trade.log_index DESC
+    LIMIT sqlc.arg(page_size)::integer
+), dex AS (
+    -- Mirrors the pool branch of the market_trades view; ordered and limited per base table.
+    SELECT token.token_address, swap.block_number, swap.block_time, swap.transaction_index,
+           swap.tx_hash, swap.log_index, 'dex'::TEXT AS source,
+           CASE WHEN token.token_is_token0 THEN swap.amount0_out > 0 ELSE swap.amount1_out > 0 END AS side_buy,
+           swap.tx_from AS trader, legs.eth_volume AS gross_eth_volume, legs.token_volume,
+           block.finality_status AS finality
+    FROM pool_swaps AS swap
+    JOIN tokens AS token
+      ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    JOIN LATERAL (
+        SELECT
+            CASE WHEN token.token_is_token0 THEN swap.amount1_in + swap.amount1_out
+                 ELSE swap.amount0_in + swap.amount0_out END AS eth_volume,
+            CASE WHEN token.token_is_token0 THEN swap.amount0_in + swap.amount0_out
+                 ELSE swap.amount1_in + swap.amount1_out END AS token_volume
+        FROM pool_syncs AS sync
+        WHERE sync.chain_id = swap.chain_id
+          AND sync.pair_address = swap.pair_address
+          AND sync.tx_hash = swap.tx_hash
+          AND sync.log_index < swap.log_index
+        ORDER BY sync.log_index DESC
+        LIMIT 1
+    ) AS legs ON TRUE
+    WHERE swap.chain_id = sqlc.arg(chain_id)
+    ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+    LIMIT sqlc.arg(page_size)::integer
+), page AS (
+    SELECT * FROM curve
+    UNION ALL
+    SELECT * FROM dex
+    ORDER BY block_number DESC, transaction_index DESC, log_index DESC
+    LIMIT sqlc.arg(page_size)::integer
+)
+SELECT p.token_address, l.name, l.symbol, p.source,
+       COALESCE(encode(p.trader, 'hex'), '')::text AS trader_hex,
+       p.side_buy, p.gross_eth_volume, p.token_volume, p.block_number, p.transaction_index,
+       p.tx_hash, p.log_index, p.block_time, p.finality
+FROM page AS p
+JOIN token_launches AS l ON l.chain_id = sqlc.arg(chain_id) AND l.token_address = p.token_address
+ORDER BY p.block_number DESC, p.transaction_index DESC, p.log_index DESC;
+
+-- name: ListGraduationsAfter :many
+SELECT g.token_address, g.lp_pair, l.name, l.symbol, g.tx_hash, g.block_number, g.transaction_index, g.log_index
+FROM graduations AS g
+JOIN token_launches AS l ON l.chain_id = g.chain_id AND l.token_address = g.token_address
+WHERE g.chain_id = sqlc.arg(chain_id)
+  AND (g.block_number, g.transaction_index, g.log_index) >
+      (sqlc.arg(after_block)::bigint, sqlc.arg(after_transaction_index)::integer, sqlc.arg(after_log_index)::integer)
+ORDER BY g.block_number ASC, g.transaction_index ASC, g.log_index ASC
+LIMIT sqlc.arg(page_size)::integer;
+
+-- name: ListLaunchesAfter :many
+SELECT token_address, creator, name, symbol, tx_hash, block_number, transaction_index, log_index
+FROM token_launches
+WHERE chain_id = sqlc.arg(chain_id)
+  AND (block_number, transaction_index, log_index) >
+      (sqlc.arg(after_block)::bigint, sqlc.arg(after_transaction_index)::integer, sqlc.arg(after_log_index)::integer)
+ORDER BY block_number ASC, transaction_index ASC, log_index ASC
+LIMIT sqlc.arg(page_size)::integer;
+
+-- name: GetNewestFeedCursors :one
+WITH curve AS (
+    SELECT trade.token_address, trade.block_number, trade.block_time, trade.transaction_index,
+           trade.tx_hash, trade.log_index, 'curve'::TEXT AS source, trade.is_buy AS side_buy,
+           trade.trader, trade.eth_gross AS gross_eth_volume, trade.token_amount AS token_volume,
+           block.finality_status AS finality
+    FROM trades AS trade
+    JOIN indexed_blocks AS block
+      ON block.chain_id = trade.chain_id AND block.block_number = trade.block_number
+    WHERE trade.chain_id = sqlc.arg(chain_id)
+    ORDER BY trade.block_number DESC, trade.transaction_index DESC, trade.log_index DESC
+    LIMIT 1
+), dex AS (
+    -- Mirrors the pool branch of the market_trades view; ordered and limited per base table.
+    SELECT token.token_address, swap.block_number, swap.block_time, swap.transaction_index,
+           swap.tx_hash, swap.log_index, 'dex'::TEXT AS source,
+           CASE WHEN token.token_is_token0 THEN swap.amount0_out > 0 ELSE swap.amount1_out > 0 END AS side_buy,
+           swap.tx_from AS trader, legs.eth_volume AS gross_eth_volume, legs.token_volume,
+           block.finality_status AS finality
+    FROM pool_swaps AS swap
+    JOIN tokens AS token
+      ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    JOIN LATERAL (
+        SELECT
+            CASE WHEN token.token_is_token0 THEN swap.amount1_in + swap.amount1_out
+                 ELSE swap.amount0_in + swap.amount0_out END AS eth_volume,
+            CASE WHEN token.token_is_token0 THEN swap.amount0_in + swap.amount0_out
+                 ELSE swap.amount1_in + swap.amount1_out END AS token_volume
+        FROM pool_syncs AS sync
+        WHERE sync.chain_id = swap.chain_id
+          AND sync.pair_address = swap.pair_address
+          AND sync.tx_hash = swap.tx_hash
+          AND sync.log_index < swap.log_index
+        ORDER BY sync.log_index DESC
+        LIMIT 1
+    ) AS legs ON TRUE
+    WHERE swap.chain_id = sqlc.arg(chain_id)
+    ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+    LIMIT 1
+), page AS (
+    SELECT * FROM curve
+    UNION ALL
+    SELECT * FROM dex
+    ORDER BY block_number DESC, transaction_index DESC, log_index DESC
+    LIMIT 1
+)
+SELECT COALESCE(t.block_number, 0)::bigint AS trade_block,
+       COALESCE(t.transaction_index, 0)::integer AS trade_transaction_index,
+       COALESCE(t.log_index, 0)::integer AS trade_log_index,
+       COALESCE(g.block_number, 0)::bigint AS graduation_block,
+       COALESCE(g.transaction_index, 0)::integer AS graduation_transaction_index,
+       COALESCE(g.log_index, 0)::integer AS graduation_log_index,
+       COALESCE(l.block_number, 0)::bigint AS launch_block,
+       COALESCE(l.transaction_index, 0)::integer AS launch_transaction_index,
+       COALESCE(l.log_index, 0)::integer AS launch_log_index
+FROM (SELECT 1) AS base
+LEFT JOIN page AS t ON true
+LEFT JOIN LATERAL (
+    SELECT g.block_number, g.transaction_index, g.log_index FROM graduations AS g
+    WHERE g.chain_id = sqlc.arg(chain_id)
+    ORDER BY g.block_number DESC, g.transaction_index DESC, g.log_index DESC LIMIT 1
+) AS g ON true
+LEFT JOIN LATERAL (
+    SELECT l.block_number, l.transaction_index, l.log_index FROM token_launches AS l
+    WHERE l.chain_id = sqlc.arg(chain_id)
+    ORDER BY l.block_number DESC, l.transaction_index DESC, l.log_index DESC LIMIT 1
+) AS l ON true;
+
+-- name: GetSyncWatermarks :one
+SELECT COALESCE(safe_number, 0)::bigint AS safe_number, COALESCE(finalized_number, 0)::bigint AS finalized_number
+FROM sync_state
+WHERE chain_id = sqlc.arg(chain_id) AND deployment_id = sqlc.arg(deployment_id);
+
+-- Wallet page reads. A wallet with no activity has no wallet_totals row; the reader maps that to zeros.
+-- name: GetWalletTotals :one
+SELECT realized_pnl, tokens_traded, held_count, first_block_number, last_block_number
+FROM wallet_totals
+WHERE chain_id = sqlc.arg(chain_id) AND wallet = sqlc.arg(wallet);
+
+-- R5: attribution is chain-wide. Backed by the partial index pool_swaps_tx_from_null_idx.
+-- name: WalletAttributionComplete :one
+SELECT NOT EXISTS (
+    SELECT 1 FROM pool_swaps WHERE chain_id = sqlc.arg(chain_id) AND tx_from IS NULL
+) AS complete;
+
+-- name: CountWalletCreated :one
+SELECT count(*)::bigint FROM tokens
+WHERE chain_id = sqlc.arg(chain_id) AND creator = sqlc.arg(wallet);
+
+-- Single source of the read-time position value (also used by ListWalletOpenPositions):
+--   current_value = div(balance * eth_reserve, NULLIF(token_reserve, 0)), coalesced to 0
+-- div() is exact truncating division; a missing token_reserves row or a zero token_reserve gives 0.
+-- unrealized PnL = current_value - remaining_cost, computed by the reader.
+-- name: GetWalletValuation :one
+SELECT COALESCE(sum(valued.current_value), 0)::numeric AS portfolio_value,
+       COALESCE(sum(valued.remaining_cost), 0)::numeric AS open_cost
+FROM (
+    SELECT p.remaining_cost,
+           COALESCE(div(p.balance * r.eth_reserve, NULLIF(r.token_reserve, 0)), 0)::numeric AS current_value
+    FROM wallet_positions AS p
+    JOIN tokens AS t ON t.chain_id = p.chain_id AND t.token_address = p.token_address
+    LEFT JOIN token_reserves AS r ON r.chain_id = p.chain_id AND r.token_address = p.token_address
+    WHERE p.chain_id = sqlc.arg(chain_id) AND p.wallet = sqlc.arg(wallet) AND p.balance > 0
+) AS valued;
+
+-- Open positions in one page, largest value first. current_value is the single-source expression
+-- documented on GetWalletValuation; keep the two identical. Not keyset-paginated: the order is a live
+-- value, so the reader asks for MaxOpenPositions+1 rows and reports truncation.
+-- name: ListWalletOpenPositions :many
+SELECT valued.token_address, valued.name, valued.symbol, valued.phase, valued.balance, valued.remaining_cost,
+       valued.realized_pnl, valued.transferred_in, valued.trade_count, valued.last_block_number, valued.current_value
+FROM (
+    SELECT p.token_address, t.name, t.symbol, t.phase, p.balance, p.remaining_cost, p.realized_pnl,
+           p.transferred_in, p.trade_count, p.last_block_number,
+           COALESCE(div(p.balance * r.eth_reserve, NULLIF(r.token_reserve, 0)), 0)::numeric AS current_value
+    FROM wallet_positions AS p
+    JOIN tokens AS t ON t.chain_id = p.chain_id AND t.token_address = p.token_address
+    LEFT JOIN token_reserves AS r ON r.chain_id = p.chain_id AND r.token_address = p.token_address
+    WHERE p.chain_id = sqlc.arg(chain_id) AND p.wallet = sqlc.arg(wallet) AND p.balance > 0
+) AS valued
+ORDER BY valued.current_value DESC, valued.token_address
+LIMIT sqlc.arg(page_size)::integer;
+
+-- Closed positions (balance 0) carry no value, newest activity first.
+-- name: ListWalletClosedPositions :many
+SELECT p.token_address, t.name, t.symbol, t.phase, p.balance, p.remaining_cost, p.realized_pnl,
+       p.transferred_in, p.trade_count, p.last_block_number
+FROM wallet_positions AS p
+JOIN tokens AS t ON t.chain_id = p.chain_id AND t.token_address = p.token_address
+WHERE p.chain_id = sqlc.arg(chain_id) AND p.wallet = sqlc.arg(wallet) AND p.balance = 0
+  AND (sqlc.narg(after_block)::bigint IS NULL OR
+       p.last_block_number < sqlc.narg(after_block)::bigint OR
+       (p.last_block_number = sqlc.narg(after_block)::bigint AND p.token_address > sqlc.narg(after_address)::bytea))
+ORDER BY p.last_block_number DESC, p.token_address
+LIMIT sqlc.arg(page_size)::integer;
+
+-- name: ListWalletTrades :many
+SELECT m.token_address, t.name, t.symbol, m.source, m.side_buy, m.execution_price_wad, m.spot_price_wad,
+       m.gross_eth_volume, m.token_volume, m.block_number, m.transaction_index,
+       m.tx_hash, m.log_index, m.block_time, m.finality
+FROM market_trades AS m
+JOIN tokens AS t ON t.chain_id = m.chain_id AND t.token_address = m.token_address
+WHERE m.chain_id = sqlc.arg(chain_id)
+  AND m.trader = sqlc.arg(wallet)::bytea
+  AND (sqlc.narg(after_block)::bigint IS NULL OR
+       (m.block_number, m.transaction_index, m.log_index) <
+       (sqlc.narg(after_block)::bigint, sqlc.narg(after_transaction_index)::integer, sqlc.narg(after_log_index)::integer))
+ORDER BY m.block_number DESC, m.transaction_index DESC, m.log_index DESC
+LIMIT sqlc.arg(page_size)::integer;
+
+-- name: ListWalletCreated :many
+SELECT t.token_address, t.name, t.symbol, t.phase, t.launch_block_number,
+       COALESCE(s.market_cap_eth_wad, 0::numeric) AS market_cap_eth_wad
+FROM tokens AS t
+LEFT JOIN token_stats AS s ON s.chain_id = t.chain_id AND s.token_address = t.token_address
+WHERE t.chain_id = sqlc.arg(chain_id) AND t.creator = sqlc.arg(wallet)
+  AND (sqlc.narg(after_block)::bigint IS NULL OR
+       t.launch_block_number < sqlc.narg(after_block)::bigint OR
+       (t.launch_block_number = sqlc.narg(after_block)::bigint AND t.token_address < sqlc.narg(after_address)::bytea))
+ORDER BY t.launch_block_number DESC, t.token_address DESC
+LIMIT sqlc.arg(page_size)::integer;
+
+-- R4 at read time: the zero address and every curve or pair address are never ranked. The factory
+-- is never marked dirty, so it never has totals.
+-- name: ListLeaderboard :many
+-- Only wallets with a positive realized PnL rank; fewer than page_size rows is normal. Ties are
+-- broken by wallet address, so the order is deterministic.
+SELECT w.wallet, w.realized_pnl, w.tokens_traded
+FROM wallet_totals AS w
+WHERE w.chain_id = sqlc.arg(chain_id)
+  AND w.realized_pnl > 0
+  AND w.wallet <> decode(repeat('00', 20), 'hex')
+  AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.curve_address = w.wallet)
+  AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.lp_pair = w.wallet)
+ORDER BY w.realized_pnl DESC, w.wallet
 LIMIT sqlc.arg(page_size)::integer;

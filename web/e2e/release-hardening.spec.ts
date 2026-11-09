@@ -12,6 +12,72 @@ const routeBudgets: Array<{ route: string; routeClass: string; budget: RouteBudg
 const coreRoutes = routeBudgets.map(({ route }) => route);
 const populatedTokenAddress = "0x0000000000000000000000000000000000000001";
 
+// With the fixture build (the CI live-strip step sets dummy TASK6_ANVIL_* values) the
+// configuration is ready, so "/" renders the live strip from a mocked recent-trades list.
+const stripReady = Boolean(process.env.TASK6_ANVIL_API_URL);
+const FIXTURE_CHAIN_ID = 31337;
+const FIXTURE_DEPLOYMENT_ID = "task6-anvil";
+
+function recentTrades(count: number) {
+  return Array.from({ length: count }, (_, i) => {
+    const n = count - i;
+    return {
+      chain_id: FIXTURE_CHAIN_ID,
+      deployment_id: FIXTURE_DEPLOYMENT_ID,
+      token: `0x${n.toString(16).padStart(40, "0")}`,
+      name: i % 2 === 0 ? "🚀".repeat(64) : `Long token name ${"x".repeat(48)}`,
+      symbol: i % 3 === 0 ? "🚀".repeat(20) : "VERYLONGSYMBOL",
+      source: "curve",
+      trader: i % 4 === 0 ? null : `0x${n.toString(16).padStart(40, "a")}`,
+      side: i % 2 === 0 ? "buy" : "sell",
+      eth_volume: `${BigInt(n) * 10n ** 17n}`,
+      token_volume: `${BigInt(n) * 10n ** 18n}`,
+      block_number: 1000 + n,
+      transaction_index: 0,
+      tx_hash: `0x${n.toString(16).padStart(64, "0")}`,
+      log_index: 0,
+      time: new Date(Date.now() - i * 1000).toISOString(),
+      finality: i < 5 ? "observed" : "safe",
+    };
+  });
+}
+
+async function installLiveStripMocks(page: Page) {
+  await page.route("**/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    const snapshot = {
+      chain_id: FIXTURE_CHAIN_ID,
+      as_of_block: 1100,
+      as_of_block_hash: "0xabc",
+      finality: "safe",
+    };
+    if (url.pathname.endsWith("/events")) {
+      await route.fulfill({ status: 200, contentType: "text/event-stream", body: "" });
+    } else if (url.pathname.endsWith("/trades/recent")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ snapshot, items: recentTrades(50) }),
+      });
+    } else if (url.pathname.endsWith("/eth-usd")) {
+      await route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+    } else {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ snapshot, items: [], next_cursor: undefined }),
+      });
+    }
+  });
+}
+
+async function expectLiveStrip(page: Page, route: string) {
+  if (!stripReady || route !== "/") return;
+  const strip = page.getByRole("region", { name: "Live activity" });
+  await expect(strip, "live strip must be present for the budget").toBeVisible();
+  await expect(strip.locator("li")).toHaveCount(50);
+}
+
 test.beforeEach(async ({ page }, testInfo) => {
   // The project declares reducedMotion in playwright.config.ts; emulateMedia keeps
   // the preference effective on Playwright versions whose use-options type omits it.
@@ -129,10 +195,12 @@ test("core routes stay within versioned profile navigation and transfer budgets"
   }
   for (const { route, routeClass, budget } of routeBudgets) {
     await page.evaluate(() => performance.clearResourceTimings());
+    if (stripReady && route === "/") await installLiveStripMocks(page);
     if (route.includes("fixture=populated")) await installPopulatedTokenFixture(page);
     // Wait for load so every script the document requested is in the resource timeline.
     const response = await page.goto(route, { waitUntil: "load" });
     expect(response?.status(), route).toBe(200);
+    await expectLiveStrip(page, route);
     const metrics = await page.evaluate(() => {
       const navigation = performance.getEntriesByType("navigation")[0] as
         PerformanceNavigationTiming | undefined;
@@ -183,10 +251,24 @@ test("reduced motion covers core routes without clipping or animation dependence
 }, testInfo) => {
   test.skip(testInfo.project.name !== "reduced-motion", "Reduced-motion project only.");
   for (const route of coreRoutes) {
+    if (stripReady && route === "/") await installLiveStripMocks(page);
     if (route.includes("fixture=populated")) await installPopulatedTokenFixture(page);
     await page.goto(route, { waitUntil: "domcontentloaded" });
+    await expectLiveStrip(page, route);
     const result = await page.evaluate(() => {
       const visibleOverflow = [...document.querySelectorAll("body *")].some((element) => {
+        // The live strip is an intentional horizontal scroller; its off-screen items are reachable.
+        if (element.closest(".live-strip-track")) return false;
+        // Transparent glyphs inside an SVG (the landing story chart's not-yet-revealed labels) may
+        // sit past the SVG's box; they are invisible, so only those are exempt. A group (<g>)
+        // draws nothing itself and its box includes those transparent children, so it is skipped
+        // too: its visible children are each judged by their own box like every other element.
+        const svg = element.closest("svg");
+        if (svg && svg !== element) {
+          if (element instanceof SVGGElement) return false;
+          for (let node: Element | null = element; node && node !== svg; node = node.parentElement)
+            if (getComputedStyle(node).opacity === "0") return false;
+        }
         const box = element.getBoundingClientRect();
         return (
           box.width > 0 && box.height > 0 && (box.left < -1 || box.right > window.innerWidth + 1)
@@ -213,13 +295,25 @@ test("reduced motion covers core routes without clipping or animation dependence
 test("mobile footer remains reachable below the final page content", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "Mobile project only.");
   await page.goto("/create", { waitUntil: "domcontentloaded" });
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  // With a ready configuration the launch panel mounts after the wallet stack loads and grows
+  // the page; wait for it (and for the height to stop changing) before scrolling to the end.
+  if (stripReady) {
+    await expect(page.getByRole("region", { name: "Launch token" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Name" })).toBeVisible();
+  }
+  await page.waitForFunction(
+    () =>
+      new Promise<boolean>((resolve) => {
+        const before = document.documentElement.scrollHeight;
+        setTimeout(() => resolve(document.documentElement.scrollHeight === before), 250);
+      }),
+  );
   const geometry = await page.evaluate(() => {
+    // "instant": the app sets `scroll-behavior: smooth`, so a plain scrollTo would still be
+    // animating (scrollY near 0) when the footer is measured.
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
     const footer = document.querySelector(".app-footer")?.getBoundingClientRect();
-    return {
-      footerTop: footer?.top ?? 0,
-      footerBottom: footer?.bottom ?? 0,
-    };
+    return { footerTop: footer?.top ?? -1, footerBottom: footer?.bottom ?? Infinity };
   });
   expect(geometry.footerTop).toBeGreaterThanOrEqual(0);
   expect(geometry.footerBottom).toBeLessThanOrEqual(801);

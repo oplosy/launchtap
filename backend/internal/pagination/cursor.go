@@ -31,6 +31,9 @@ type Cursor struct {
 	Filters   string   `json:"filters"`
 	Direction string   `json:"direction"`
 	Key       []string `json:"key"`
+	// Since pins the age-filter cutoff (RFC 3339, UTC, second precision) chosen on the first
+	// page so later pages never recompute it. Empty when no age filter applies.
+	Since string `json:"since,omitempty"`
 }
 
 func Encode(c Cursor) (string, error) {

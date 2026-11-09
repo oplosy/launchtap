@@ -1969,6 +1969,7 @@ export type ReviewedDeployment = {
   deploymentId: string; chainId: number; name: string; enabled: boolean; factory: string | null;
   explorerBase: string | null; weth: string | null; uniswapV2Factory: string | null;
   uniswapV2Router02: string | null;
+  marketLinks: { dexscreenerChain?: string; geckoterminalNetwork?: string } | null;
 };
 
 export const reviewedDeployments: readonly ReviewedDeployment[] = [
@@ -1979,6 +1980,7 @@ export const reviewedDeployments: readonly ReviewedDeployment[] = [
     "enabled": false,
     "factory": null,
     "explorerBase": "https://robinhoodchain.blockscout.com",
+    "marketLinks": null,
     "weth": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
     "uniswapV2Factory": "0x8bcEaA40B9AcdfAedF85AdF4FF01F5Ad6517937f",
     "uniswapV2Router02": "0x89e5DB8B5aA49aA85AC63f691524311AEB649eba"
@@ -1990,6 +1992,7 @@ export const reviewedDeployments: readonly ReviewedDeployment[] = [
     "enabled": true,
     "factory": "0xedddb61a53226ffdc6ecf7c042b803e769168d55",
     "explorerBase": "https://explorer.testnet.chain.robinhood.com",
+    "marketLinks": null,
     "weth": "0xcc02c43352422cc5ce27d8f222302050aeecbd6f",
     "uniswapV2Factory": "0x76748a790c21335ac0a170504e362b8859c514f5",
     "uniswapV2Router02": null

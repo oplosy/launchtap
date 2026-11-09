@@ -175,6 +175,7 @@ for (const source of [
     enabled: source.enabled && Boolean(document.factory),
     factory: document.factory ?? null,
     explorerBase: document.explorerBase ?? null,
+    marketLinks: document.marketLinks ?? null,
     weth: document.weth ?? null,
     uniswapV2Factory: document.uniswapV2Factory ?? null,
     uniswapV2Router02: document.uniswapV2Router02 ?? null,
@@ -190,6 +191,7 @@ const generated =
   `  deploymentId: string; chainId: number; name: string; enabled: boolean; factory: string | null;\n` +
   `  explorerBase: string | null; weth: string | null; uniswapV2Factory: string | null;\n` +
   `  uniswapV2Router02: string | null;\n` +
+  `  marketLinks: { dexscreenerChain?: string; geckoterminalNetwork?: string } | null;\n` +
   `};\n\n` +
   `export const reviewedDeployments: readonly ReviewedDeployment[] = ${json(manifests)};\n`;
 

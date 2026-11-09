@@ -217,7 +217,7 @@ func typedEvent(name string, emitter common.Address, v map[string]any) (any, err
 	case "Burn":
 		return PoolBurn{emitter, addr(v, "sender"), integer(v, "amount0"), integer(v, "amount1"), addr(v, "to")}, nil
 	case "Swap":
-		return PoolSwap{emitter, addr(v, "sender"), integer(v, "amount0In"), integer(v, "amount1In"), integer(v, "amount0Out"), integer(v, "amount1Out"), addr(v, "to")}, nil
+		return PoolSwap{emitter, addr(v, "sender"), integer(v, "amount0In"), integer(v, "amount1In"), integer(v, "amount0Out"), integer(v, "amount1Out"), addr(v, "to"), nil}, nil
 	case "Sync":
 		return PoolSync{emitter, integer(v, "reserve0"), integer(v, "reserve1")}, nil
 	default:

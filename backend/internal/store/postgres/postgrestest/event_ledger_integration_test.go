@@ -26,7 +26,7 @@ var eventPayloadColumns = map[string][]string{
 	"transfers":                      {"token_address", "from_address", "to_address", "value"},
 	"pool_mints":                     {"pair_address", "sender", "amount0", "amount1"},
 	"pool_burns":                     {"pair_address", "sender", "amount0", "amount1", "to_address"},
-	"pool_swaps":                     {"pair_address", "sender", "amount0_in", "amount1_in", "amount0_out", "amount1_out", "to_address"},
+	"pool_swaps":                     {"pair_address", "sender", "amount0_in", "amount1_in", "amount0_out", "amount1_out", "to_address", "tx_from"},
 	"pool_syncs":                     {"pair_address", "reserve0", "reserve1"},
 	"launch_pause_events":            {"paused"},
 	"trading_pause_events":           {"paused"},

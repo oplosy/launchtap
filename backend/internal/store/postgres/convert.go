@@ -7,6 +7,7 @@ import (
 
 	"github.com/Contictus/launchtap/backend/internal/ledger"
 	"github.com/Contictus/launchtap/backend/internal/store/postgres/sqlc"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -191,7 +192,26 @@ func poolSwapParams(event ledger.PoolSwap) (sqlc.InsertPoolSwapParams, error) {
 			return sqlc.InsertPoolSwapParams{}, err
 		}
 	}
-	return sqlc.InsertPoolSwapParams{ChainID: b.ChainID, BlockNumber: b.BlockNumber, BlockHash: b.BlockHash, BlockTime: b.BlockTime, TransactionIndex: b.TransactionIndex, TxHash: b.TxHash, LogIndex: b.LogIndex, PairAddress: sqlc.Address(event.Pair), Sender: sqlc.Address(event.Sender), Amount0In: converted[0], Amount1In: converted[1], Amount0Out: converted[2], Amount1Out: converted[3], ToAddress: sqlc.Address(event.To)}, nil
+	return sqlc.InsertPoolSwapParams{ChainID: b.ChainID, BlockNumber: b.BlockNumber, BlockHash: b.BlockHash, BlockTime: b.BlockTime, TransactionIndex: b.TransactionIndex, TxHash: b.TxHash, LogIndex: b.LogIndex, PairAddress: sqlc.Address(event.Pair), Sender: sqlc.Address(event.Sender), Amount0In: converted[0], Amount1In: converted[1], Amount0Out: converted[2], Amount1Out: converted[3], ToAddress: sqlc.Address(event.To), TxFrom: txFromBytes(event.TxFrom)}, nil
+}
+
+// txFromBytes maps an unknown (nil) sender to SQL NULL.
+func txFromBytes(sender *common.Address) *sqlc.Address {
+	if sender == nil {
+		return nil
+	}
+	converted := sqlc.Address(*sender)
+	return &converted
+}
+
+// poolSwapMatchParams drops tx_from: the sender is enrichment, not part of event identity.
+func poolSwapMatchParams(arg sqlc.InsertPoolSwapParams) sqlc.PoolSwapMatchesEventParams {
+	return sqlc.PoolSwapMatchesEventParams{
+		ChainID: arg.ChainID, BlockNumber: arg.BlockNumber, BlockHash: arg.BlockHash, BlockTime: arg.BlockTime,
+		TransactionIndex: arg.TransactionIndex, TxHash: arg.TxHash, LogIndex: arg.LogIndex,
+		PairAddress: arg.PairAddress, Sender: arg.Sender, Amount0In: arg.Amount0In, Amount1In: arg.Amount1In,
+		Amount0Out: arg.Amount0Out, Amount1Out: arg.Amount1Out, ToAddress: arg.ToAddress,
+	}
 }
 func poolSyncParams(event ledger.PoolSync) (sqlc.InsertPoolSyncParams, error) {
 	b := eventParams(event.EventCoordinates)
@@ -232,4 +252,54 @@ func uint256(name string, value *big.Int) (sqlc.Uint256, error) {
 		return sqlc.Uint256{}, fmt.Errorf("%s: %w", name, err)
 	}
 	return result, nil
+}
+
+// maxSignedNumeric bounds the signed NUMERIC(79,0) columns (wallet realized PnL): |value| < 10^79.
+var maxSignedNumeric = new(big.Int).Exp(big.NewInt(10), big.NewInt(79), nil)
+
+// signedNumeric converts a signed integer for a NUMERIC(79,0) column. The Uint256 codec rejects
+// negatives, so signed columns stay pgtype.Numeric.
+func signedNumeric(name string, value *big.Int) (pgtype.Numeric, error) {
+	if value == nil {
+		return pgtype.Numeric{}, fmt.Errorf("%s: value is nil", name)
+	}
+	if new(big.Int).Abs(value).Cmp(maxSignedNumeric) >= 0 {
+		return pgtype.Numeric{}, fmt.Errorf("%s: value exceeds 79 decimal digits", name)
+	}
+	return pgtype.Numeric{Int: new(big.Int).Set(value), Valid: true}, nil
+}
+
+// signedBigInt converts a finite, integral, non-NULL numeric into a signed integer of at most 79
+// decimal digits.
+func signedBigInt(name string, numeric pgtype.Numeric) (*big.Int, error) {
+	if !numeric.Valid {
+		return nil, fmt.Errorf("%s: value is NULL", name)
+	}
+	if numeric.NaN || numeric.InfinityModifier != pgtype.Finite || numeric.Int == nil {
+		return nil, fmt.Errorf("%s: value is not finite", name)
+	}
+	value := new(big.Int).Set(numeric.Int)
+	if value.Sign() != 0 && numeric.Exp != 0 {
+		if numeric.Exp > 78 || numeric.Exp < -79 {
+			return nil, fmt.Errorf("%s: value out of range", name)
+		}
+		exponent := int64(numeric.Exp)
+		if exponent < 0 {
+			exponent = -exponent
+		}
+		power := new(big.Int).Exp(big.NewInt(10), big.NewInt(exponent), nil)
+		if numeric.Exp > 0 {
+			value.Mul(value, power)
+		} else {
+			remainder := new(big.Int)
+			value.QuoRem(value, power, remainder)
+			if remainder.Sign() != 0 {
+				return nil, fmt.Errorf("%s: value is fractional", name)
+			}
+		}
+	}
+	if new(big.Int).Abs(value).Cmp(maxSignedNumeric) >= 0 {
+		return nil, fmt.Errorf("%s: value exceeds 79 decimal digits", name)
+	}
+	return value, nil
 }

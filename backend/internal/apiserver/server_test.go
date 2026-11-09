@@ -44,7 +44,7 @@ func TestServerBoundaries(t *testing.T) {
 	if w.Code != http.StatusNoContent || w.Header().Get("Access-Control-Allow-Origin") != "https://app.example" {
 		t.Fatalf("preflight status=%d headers=%v", w.Code, w.Header())
 	}
-	if got := w.Header().Get("Access-Control-Allow-Methods"); got != "GET,POST,PUT,OPTIONS" {
+	if got := w.Header().Get("Access-Control-Allow-Methods"); got != "GET,POST,PUT,DELETE,OPTIONS" {
 		t.Fatalf("preflight methods=%q", got)
 	}
 	if got := w.Header().Get("Access-Control-Allow-Headers"); got != "Authorization,Content-Type,privy-id-token,If-Match,If-None-Match" {
@@ -224,5 +224,27 @@ func TestOpenAPIContractIncludesPlan3Endpoints(t *testing.T) {
 	}
 	if got := defaultError.Content["application/problem+json"].Schema.Ref; got != "#/components/schemas/ErrorModel" {
 		t.Errorf("default image GET error schema ref=%q want RFC problem ErrorModel", got)
+	}
+}
+
+func TestOpenAPIBurstTradersIsNotNullable(t *testing.T) {
+	generated, err := GenerateOpenAPI()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Components struct {
+			Schemas map[string]struct {
+				Properties map[string]struct {
+					Type json.RawMessage `json:"type"`
+				} `json:"properties"`
+			} `json:"schemas"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal(generated, &document); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(document.Components.Schemas["BurstItem"].Properties["traders"].Type); got != `"array"` {
+		t.Fatalf("BurstItem.traders type = %s, want \"array\"", got)
 	}
 }

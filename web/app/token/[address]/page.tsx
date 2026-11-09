@@ -1,6 +1,46 @@
+import type { Metadata } from "next";
+import { loadMetadataSummary } from "@/share/card-data";
+import { canonicalTokenUrl, publicWebOrigin } from "@/share/share-links";
 import { parseTokenAddress } from "@/token/address";
 import { TokenDetail } from "@/token/token-detail";
 import Link from "next/link";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ address: string }>;
+}): Promise<Metadata> {
+  const { address } = await params;
+  const parsed = parseTokenAddress(address);
+  if (!parsed) return { title: "Token not found" };
+  const origin = publicWebOrigin();
+  // One cached token read; metadata never downloads the image or reads the ETH/USD price.
+  const summary = await loadMetadataSummary(parsed);
+  const title = summary
+    ? summary.symbol
+      ? `$${summary.symbol} - ${summary.name}`
+      : summary.name
+    : "Token";
+  const description = summary
+    ? `${summary.name} on Launchpad: market cap ${summary.marketCapEth} ETH, ${
+        summary.phase === "graduated"
+          ? "graduated to a liquidity pool"
+          : "trading on its bonding curve"
+      }.`
+    : "A fixed-supply token on Launchpad.";
+  return {
+    title,
+    description,
+    ...(origin
+      ? {
+          metadataBase: new URL(origin),
+          alternates: { canonical: canonicalTokenUrl(origin, parsed) },
+        }
+      : {}),
+    openGraph: { title, description, type: "website", siteName: "Launchpad" },
+    twitter: { card: "summary_large_image", title, description },
+  };
+}
 
 export default async function TokenPage({
   params,

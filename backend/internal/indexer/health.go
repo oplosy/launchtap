@@ -19,22 +19,27 @@ type Health struct {
 	ObservedLag, SafeLag, FinalizedLag time.Duration
 	OwnershipHeld, RPCHealthy          bool
 	DirtyWork                          int64
+	PositionDirtyWork                  int64
 	LastReorgID                        int64
 	LastReorgDepth                     int64
 	LastReorgAt                        time.Time
 	PhaseCounts                        map[string]int64
 	LastError                          string
+	// ChainHead is the latest block number the RPC reported; zero until the first read.
+	ChainHead  int64
+	DatabaseUp bool
 }
 
 // OperationalHealth is the persisted portion of the runtime health snapshot.
 // It is deliberately neutral so a store adapter, not generated SQL types,
 // crosses the application boundary.
 type OperationalHealth struct {
-	DirtyWork      int64
-	LastReorgID    int64
-	LastReorgDepth int64
-	LastReorgAt    time.Time
-	PhaseCounts    map[string]int64
+	DirtyWork         int64
+	PositionDirtyWork int64
+	LastReorgID       int64
+	LastReorgDepth    int64
+	LastReorgAt       time.Time
+	PhaseCounts       map[string]int64
 }
 
 type HealthTracker struct {
@@ -65,6 +70,17 @@ func (h *HealthTracker) Committed(state State) {
 		snapshot.RPCHealthy = true
 		snapshot.LastError = ""
 	})
+}
+
+// ChainHead records the latest block number reported by the RPC.
+func (h *HealthTracker) ChainHead(number int64) {
+	h.Update(func(snapshot *Health) { snapshot.ChainHead = number })
+}
+
+// Database records whether the last operational database read succeeded. It does
+// not affect readiness.
+func (h *HealthTracker) Database(up bool) {
+	h.Update(func(snapshot *Health) { snapshot.DatabaseUp = up })
 }
 
 // Failed makes the endpoint not-ready. A subsequent committed state clears
@@ -115,6 +131,7 @@ func (h *HealthTracker) Snapshot() Health {
 func (h *HealthTracker) Operational(value OperationalHealth) {
 	h.Update(func(snapshot *Health) {
 		snapshot.DirtyWork = value.DirtyWork
+		snapshot.PositionDirtyWork = value.PositionDirtyWork
 		snapshot.LastReorgID = value.LastReorgID
 		snapshot.LastReorgDepth = value.LastReorgDepth
 		snapshot.LastReorgAt = value.LastReorgAt

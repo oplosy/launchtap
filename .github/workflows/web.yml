@@ -63,6 +63,8 @@ jobs:
         run: forge build --no-lint
       - name: Install web dependencies
         run: npm ci
+      - name: Audit runtime dependencies
+        run: npm run audit:runtime
       - name: Verify generated API and contract boundaries
         run: npm run web-api-diff && npm run web-contracts-diff
       - name: Run web static and unit gates
@@ -85,6 +87,8 @@ jobs:
           pwsh -NoProfile -Command '$script = Get-Content -Raw scripts/anvil-task6-gate.ps1; [void][scriptblock]::Create($script)'
       - name: Run browser gate
         run: npm run test:e2e
+      - name: Run live strip browser gate (ready configuration, mocked API)
+        run: npm run test:e2e:live
       - name: Run real Anvil transaction gate
         run: npm run test:anvil
       - name: Build web

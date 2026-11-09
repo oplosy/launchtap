@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/big"
 	"net/http"
+	"time"
 
 	"github.com/Contictus/launchtap/backend/internal/pagination"
 	"github.com/Contictus/launchtap/backend/internal/token"
@@ -15,21 +16,24 @@ const maxSearchBytes = 64
 type TokenRoutes struct {
 	Reader  token.Reader
 	ChainID int64
+	// Now supplies the request clock for the age filter; nil means time.Now.
+	Now func() time.Time
 }
 type tokenListInput struct {
 	Phase  string `query:"phase"`
 	Query  string `query:"q" maxLength:"64"`
 	Sort   string `query:"sort"`
+	Age    string `query:"age"`
 	Cursor string `query:"cursor"`
 	Limit  int    `query:"limit" minimum:"1" maximum:"100"`
 }
 type tokenListOutput struct{ Body tokenListBody }
 type tokenListBody struct {
-	Items      []tokenDTO  `json:"items"`
+	Items      []TokenDTO  `json:"items"`
 	NextCursor string      `json:"next_cursor,omitempty"`
 	Snapshot   snapshotDTO `json:"snapshot"`
 }
-type tokenDTO struct {
+type TokenDTO struct {
 	Address      string `json:"address"`
 	Name         string `json:"name"`
 	Symbol       string `json:"symbol"`
@@ -71,6 +75,16 @@ func (r TokenRoutes) list(ctx context.Context, in *tokenListInput) (*tokenListOu
 	if in.Sort != "newest" && in.Sort != "oldest" && in.Sort != "market_cap" && in.Sort != "volume_24h" {
 		return nil, apiProblem(http.StatusBadRequest, "invalid_sort", "Unsupported token sort")
 	}
+	if in.Age == "" {
+		in.Age = "all"
+	}
+	if in.Age != "all" && in.Age != "24h" && in.Age != "7d" {
+		return nil, apiProblem(http.StatusBadRequest, "invalid_age", "Unsupported age filter")
+	}
+	now := time.Now
+	if r.Now != nil {
+		now = r.Now
+	}
 	var cur *pagination.Cursor
 	var err error
 	if in.Cursor != "" {
@@ -80,15 +94,18 @@ func (r TokenRoutes) list(ctx context.Context, in *tokenListInput) (*tokenListOu
 		}
 		cur = &c
 	}
-	p, err := r.Reader.List(ctx, token.ListQuery{ChainID: r.ChainID, Phase: in.Phase, Search: in.Query, Sort: in.Sort, Cursor: cur, Limit: limit})
+	p, err := r.Reader.List(ctx, token.ListQuery{ChainID: r.ChainID, Phase: in.Phase, Search: in.Query, Sort: in.Sort, Cursor: cur, Limit: limit, Age: in.Age, Now: now().UTC()})
 	if err != nil {
 		return nil, mapReadError(ctx, err)
 	}
-	out := tokenListOutput{Body: tokenListBody{Items: make([]tokenDTO, 0, len(p.Items)), NextCursor: p.NextCursor, Snapshot: snapDTO(p.Snapshot, p.Finality)}}
+	out := tokenListOutput{Body: tokenListBody{Items: make([]TokenDTO, 0, len(p.Items)), NextCursor: p.NextCursor, Snapshot: snapDTO(p.Snapshot, p.Finality)}}
 	for _, v := range p.Items {
-		out.Body.Items = append(out.Body.Items, tokenDTO{Address: v.Address.Hex(), Name: v.Name, Symbol: v.Symbol, Phase: v.Phase, LaunchTime: v.LaunchTime.UTC().Format("2006-01-02T15:04:05.000000Z"), LaunchBlock: v.LaunchBlock, TotalSupply: decimal(v.TotalSupply), MarketCapETH: decimal(v.MarketCapETH), Volume24hETH: decimal(v.Volume24hETH), HolderCount: v.HolderCount})
+		out.Body.Items = append(out.Body.Items, toTokenDTO(v))
 	}
 	return &out, nil
+}
+func toTokenDTO(v token.Summary) TokenDTO {
+	return TokenDTO{Address: v.Address.Hex(), Name: v.Name, Symbol: v.Symbol, Phase: v.Phase, LaunchTime: v.LaunchTime.UTC().Format("2006-01-02T15:04:05.000000Z"), LaunchBlock: v.LaunchBlock, TotalSupply: decimal(v.TotalSupply), MarketCapETH: decimal(v.MarketCapETH), Volume24hETH: decimal(v.Volume24hETH), HolderCount: v.HolderCount}
 }
 func decimal(v *big.Int) string {
 	if v == nil {

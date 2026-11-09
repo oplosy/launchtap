@@ -11,7 +11,17 @@ export type TradesResponse = components["schemas"]["TradesBody"];
 export type HoldersResponse = components["schemas"]["HoldersBody"];
 export type QuoteResponse = components["schemas"]["QuoteBody"];
 export type CanonicalTransactionResponse = components["schemas"]["CanonicalObservationBody"];
+export type EthUsdReference = components["schemas"]["EthUsdBody"];
+export type RecentTradesResponse = components["schemas"]["RecentTradesBody"];
+export type TokenHighlights = components["schemas"]["HighlightsBody"];
+export type WatchlistResponse = components["schemas"]["WatchlistBody"];
+export type WalletResponse = components["schemas"]["WalletDTO"];
+export type WalletPositionsResponse = components["schemas"]["WalletPositionsBody"];
+export type WalletTradesResponse = components["schemas"]["WalletTradesBody"];
+export type WalletCreatedResponse = components["schemas"]["WalletCreatedBody"];
+export type LeaderboardResponse = components["schemas"]["LeaderboardBody"];
 export type TokenListQuery = {
+  age?: "all" | "24h" | "7d";
   phase?: string;
   q?: string;
   sort?: string;
@@ -85,6 +95,24 @@ export class ApiClient {
       throw mapProblem(response.status, body);
     }
     return (await response.json()) as T;
+  }
+
+  private async requestNoContent(path: string, init: RequestInit, auth: AuthHeaders) {
+    const url = new URL(path, this.options.baseUrl);
+    const headers = new Headers(init.headers);
+    headers.set("Accept", "application/json");
+    if (auth.accessToken) headers.set("Authorization", `Bearer ${auth.accessToken}`);
+    if (auth.identityToken) headers.set("privy-id-token", auth.identityToken);
+    const response = await this.fetchImpl(url, { ...init, headers });
+    if (!response.ok) {
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        body = undefined;
+      }
+      throw mapProblem(response.status, body);
+    }
   }
 
   private async requestWithResponse<T>(path: string, init: RequestInit, auth?: AuthHeaders) {
@@ -184,6 +212,38 @@ export class ApiClient {
     return this.request<ProfileResponse>("/v1/profile", { signal }, auth);
   }
 
+  getEthUsd(signal?: AbortSignal) {
+    return this.request<EthUsdReference>("/v1/reference/eth-usd", { signal });
+  }
+
+  listRecentTrades(limit = 50, signal?: AbortSignal) {
+    return this.request<RecentTradesResponse>(`/v1/trades/recent?limit=${limit}`, { signal });
+  }
+
+  getHighlights(signal?: AbortSignal) {
+    return this.request<TokenHighlights>("/v1/tokens/highlights", { signal });
+  }
+
+  getWatchlist(auth: AuthHeaders, signal?: AbortSignal) {
+    return this.request<WatchlistResponse>("/v1/me/watchlist", { signal }, auth);
+  }
+
+  addWatchlist(address: string, auth: AuthHeaders, signal?: AbortSignal) {
+    return this.requestNoContent(
+      `/v1/me/watchlist/${encodeURIComponent(address)}`,
+      { method: "PUT", signal },
+      auth,
+    );
+  }
+
+  removeWatchlist(address: string, auth: AuthHeaders, signal?: AbortSignal) {
+    return this.requestNoContent(
+      `/v1/me/watchlist/${encodeURIComponent(address)}`,
+      { method: "DELETE", signal },
+      auth,
+    );
+  }
+
   getToken(address: string, signal?: AbortSignal) {
     return this.request<TokenDetailResponse>(`/v1/tokens/${encodeURIComponent(address)}`, {
       signal,
@@ -243,6 +303,55 @@ export class ApiClient {
     );
   }
 
+  getWallet(address: string, signal?: AbortSignal) {
+    return this.request<WalletResponse>(`/v1/wallets/${encodeURIComponent(address)}`, { signal });
+  }
+
+  /** Open positions (`closed` false) come in one response and take no cursor. */
+  listWalletPositions(
+    address: string,
+    options: { closed?: boolean; cursor?: string; limit?: number } = {},
+    signal?: AbortSignal,
+  ) {
+    return this.getWalletCollection<WalletPositionsResponse>(address, "positions", options, signal);
+  }
+
+  listWalletTrades(
+    address: string,
+    options: { cursor?: string; limit?: number } = {},
+    signal?: AbortSignal,
+  ) {
+    return this.getWalletCollection<WalletTradesResponse>(address, "trades", options, signal);
+  }
+
+  listWalletCreated(
+    address: string,
+    options: { cursor?: string; limit?: number } = {},
+    signal?: AbortSignal,
+  ) {
+    return this.getWalletCollection<WalletCreatedResponse>(address, "created", options, signal);
+  }
+
+  getLeaderboard(limit = 100, signal?: AbortSignal) {
+    return this.request<LeaderboardResponse>(`/v1/leaderboard?limit=${limit}`, { signal });
+  }
+
+  private getWalletCollection<T>(
+    address: string,
+    resource: "positions" | "trades" | "created",
+    options: { closed?: boolean; cursor?: string; limit?: number },
+    signal?: AbortSignal,
+  ) {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(options)) {
+      if (value !== undefined && value !== "") query.set(key, String(value));
+    }
+    return this.request<T>(
+      `/v1/wallets/${encodeURIComponent(address)}/${resource}${query.size ? `?${query}` : ""}`,
+      { signal },
+    );
+  }
+
   getTokens(options: TokenListQuery = {}, signal?: AbortSignal) {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(options)) {
@@ -280,4 +389,34 @@ export function getProtocolDaily(
 
 export function getTokens(baseUrl: string, options: TokenListQuery = {}, signal?: AbortSignal) {
   return new ApiClient({ baseUrl }).getTokens(options, signal);
+}
+
+export function getEthUsd(baseUrl: string, signal?: AbortSignal) {
+  return new ApiClient({ baseUrl }).getEthUsd(signal);
+}
+
+export function getHighlights(baseUrl: string, signal?: AbortSignal) {
+  return new ApiClient({ baseUrl }).getHighlights(signal);
+}
+
+export function getWatchlist(baseUrl: string, auth: AuthHeaders, signal?: AbortSignal) {
+  return new ApiClient({ baseUrl }).getWatchlist(auth, signal);
+}
+
+export function addWatchlist(
+  baseUrl: string,
+  address: string,
+  auth: AuthHeaders,
+  signal?: AbortSignal,
+) {
+  return new ApiClient({ baseUrl }).addWatchlist(address, auth, signal);
+}
+
+export function removeWatchlist(
+  baseUrl: string,
+  address: string,
+  auth: AuthHeaders,
+  signal?: AbortSignal,
+) {
+  return new ApiClient({ baseUrl }).removeWatchlist(address, auth, signal);
 }

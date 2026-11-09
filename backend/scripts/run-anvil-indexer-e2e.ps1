@@ -122,9 +122,11 @@ try {
     $env:ANVIL_INDEXER_RPC_URL = $rpcURL
     $env:ANVIL_INDEXER_FACTORY = $factory
     $env:ANVIL_INDEXER_START_BLOCK = [string]$manifest.startBlock
+    $env:ANVIL_INDEXER_ROUTER = [string]$manifest.uniswapV2Router02
+    $env:ANVIL_INDEXER_WETH = [string]$manifest.weth
     Push-Location $backendRoot
     try {
-        go test -tags=integration -race -run '^TestAnvilIndexerEndToEnd$' ./internal/indexer/...
+        go test -tags=integration -race -run '^(TestAnvilIndexerEndToEnd|TestAnvilPoolSwapSenderAndReorg)$' ./internal/indexer/...
         if ($LASTEXITCODE -ne 0) { Fail "Go indexer test failed" }
     }
     finally { Pop-Location }
@@ -133,6 +135,8 @@ finally {
     Remove-Item Env:ANVIL_INDEXER_RPC_URL -ErrorAction SilentlyContinue
     Remove-Item Env:ANVIL_INDEXER_FACTORY -ErrorAction SilentlyContinue
     Remove-Item Env:ANVIL_INDEXER_START_BLOCK -ErrorAction SilentlyContinue
+    Remove-Item Env:ANVIL_INDEXER_ROUTER -ErrorAction SilentlyContinue
+    Remove-Item Env:ANVIL_INDEXER_WETH -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath $manifestPath) { Remove-Item -LiteralPath $manifestPath -Force }
     if ($null -ne $anvilProcess) {
         if (-not $anvilProcess.HasExited) { $anvilProcess.Kill(); $anvilProcess.WaitForExit() }

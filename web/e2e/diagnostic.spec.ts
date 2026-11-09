@@ -34,15 +34,15 @@ test("legacy graduated route redirects to the consolidated explore view", async 
 test("discovery filters restore through browser history", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Volume", exact: true }).click();
-  await expect(page).toHaveURL(/\/\?sort=volume_24h$/);
+  await expect(page).toHaveURL(/\/\?view=volume$/);
   await page.goBack();
-  await expect(page).toHaveURL(/127\.0\.0\.1:3000\/$/);
-  await expect(page.getByRole("button", { name: "Newest", exact: true })).toHaveAttribute(
+  await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
+  await expect(page.getByRole("button", { name: "Trending", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
   await page.goForward();
-  await expect(page).toHaveURL(/\/\?sort=volume_24h$/);
+  await expect(page).toHaveURL(/\/\?view=volume$/);
   await expect(page.getByRole("button", { name: "Volume", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true",

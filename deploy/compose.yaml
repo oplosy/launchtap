@@ -1,5 +1,8 @@
 name: launchpad
 
+# One value for both services: the preflight validates exactly what the web container receives.
+x-api-internal-base-url: &api-internal-base-url http://api:8080
+
 x-backend: &backend
   image: launchpad-backend:${RELEASE_TAG:?Set RELEASE_TAG to the reviewed commit}
   build:
@@ -48,7 +51,9 @@ services:
         NEXT_PUBLIC_API_BASE_URL: https://${API_DOMAIN:?Set API_DOMAIN}
         NEXT_PUBLIC_RPC_URL: ${NEXT_PUBLIC_RPC_URL:?Set the public HTTPS RPC URL}
         NEXT_PUBLIC_WEB_ORIGIN: https://${WEB_DOMAIN:?Set WEB_DOMAIN}
-    environment: *public-env
+    environment:
+      <<: *public-env
+      API_INTERNAL_BASE_URL: *api-internal-base-url
     command: [node, scripts/container-preflight.mjs]
     read_only: true
     cap_drop: [ALL]
@@ -68,6 +73,8 @@ services:
     environment:
       <<: *backend-env
       API_ADDR: :8080
+      # Metrics listen on a separate port that is never published and never proxied.
+      API_METRICS_ADDR: :8082
       # The API port is never published; only the proxy on the private compose network
       # reaches it, so its X-Forwarded-For entry identifies the client for rate limiting.
       API_TRUSTED_PROXY_CIDRS: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
@@ -100,6 +107,8 @@ services:
 
   web:
     image: launchpad-web:${RELEASE_TAG:?Set RELEASE_TAG to the reviewed commit}
+    environment:
+      API_INTERNAL_BASE_URL: *api-internal-base-url
     depends_on:
       preflight: { condition: service_completed_successfully }
     read_only: true
@@ -133,11 +142,67 @@ services:
     restart: unless-stopped
     logging: *logging
 
+  # Opt-in: docker compose --profile monitoring up -d
+  prometheus:
+    image: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
+    profiles: [monitoring]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=2GB
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    # Operators reach the UI locally; it is never exposed by the proxy.
+    ports: ["127.0.0.1:9090:9090"]
+    depends_on:
+      # started, not healthy: monitoring must come up while the indexer is unhealthy.
+      api: { condition: service_started }
+      indexer: { condition: service_started }
+      alertmanager: { condition: service_healthy }
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:9090/-/healthy]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    logging: *logging
+
+  alertmanager:
+    image: prom/alertmanager:v0.34.1@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
+    profiles: [monitoring]
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    secrets: [alertmanager_webhook_url]
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:9093/-/healthy]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    logging: *logging
+
 secrets:
   postgres_password:
     file: ${POSTGRES_PASSWORD_FILE:?Set POSTGRES_PASSWORD_FILE to an external secret file}
+  alertmanager_webhook_url:
+    file: ${ALERTMANAGER_WEBHOOK_URL_FILE:-./monitoring/webhook-url.example}
 
 volumes:
   postgres_data:
+  prometheus_data:
+  alertmanager_data:
   caddy_data:
   caddy_config:

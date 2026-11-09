@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 
 const tokenAddress = "0x0000000000000000000000000000000000000001";
@@ -42,7 +43,7 @@ async function installFixture(page: Page) {
     },
   ];
   let candleItems = initialCandles;
-  await page.route("http://127.0.0.1:3000/v1/**", async (route) => {
+  await page.route("**/v1/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith("/events")) {
       await route.fulfill({ status: 200, contentType: "text/event-stream", body: "" });
@@ -256,4 +257,98 @@ test("populated token detail renders controls, pages, and responsive captures", 
     path: path.resolve(process.cwd(), "../.impeccable/review/task5-token-mobile.png"),
     fullPage: true,
   });
+});
+
+function pngSize(body: Buffer) {
+  // PNG signature (8 bytes) + IHDR length/type (8 bytes), then width and height as uint32 BE.
+  expect(body.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+  return { width: body.readUInt32BE(16), height: body.readUInt32BE(20) };
+}
+
+test("GET /token/<known>/opengraph-image returns 200 image/png 1200x630", async ({ request }) => {
+  const response = await request.get(`/token/${tokenAddress}/opengraph-image`);
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toContain("image/png");
+  expect(pngSize(await response.body())).toEqual({ width: 1200, height: 630 });
+});
+
+test("unknown token returns 200 generic card", async ({ request }) => {
+  for (const [address, cacheControl] of [
+    // The API answered 404 (maybe a token seconds after launch): cached downstream only briefly.
+    ["0x00000000000000000000000000000000000000ff", "public, s-maxage=30"],
+    // An invalid address is a stable answer: the normal lifetime.
+    ["not-an-address", "public, s-maxage=300, stale-while-revalidate=300"],
+  ]) {
+    const response = await request.get(`/token/${address}/opengraph-image`);
+    expect(response.status()).toBe(200);
+    expect(response.headers()["content-type"]).toContain("image/png");
+    expect(response.headers()["cache-control"]).toBe(cacheControl);
+    expect(pngSize(await response.body())).toEqual({ width: 1200, height: 630 });
+  }
+});
+
+test("token page has og:image, twitter:card and a token title", async ({ request }) => {
+  const response = await request.get(`/token/${tokenAddress}`);
+  expect(response.status()).toBe(200);
+  const html = await response.text();
+  expect(html).toMatch(/<title>\$FIX - Fixture Route \| Launchpad<\/title>/);
+  expect(html).toMatch(/<meta property="og:image" content="[^"]*\/opengraph-image[^"]*"/);
+  expect(html).toContain('<meta name="twitter:card" content="summary_large_image"/>');
+  expect(html).toMatch(/<meta name="twitter:image" content="[^"]*\/twitter-image[^"]*"/);
+  expect(html).toMatch(/<link rel="canonical" href="[^"]*\/token\/0x0{39}1"/);
+});
+
+const mockApi = "http://127.0.0.1:3418";
+const addressWithTail = (tail: string) => `0x${"1".repeat(36)}${tail}`;
+
+test("emoji, CJK and all-emoji names still render a 1200x630 card", async ({ request }) => {
+  for (const tail of ["0002", "0003", "0004"]) {
+    const response = await request.get(`/token/${addressWithTail(tail)}/opengraph-image`);
+    expect(response.status()).toBe(200);
+    expect(response.headers()["content-type"]).toContain("image/png");
+    expect(pngSize(await response.body())).toEqual({ width: 1200, height: 630 });
+  }
+});
+
+for (const route of ["opengraph-image", "twitter-image"]) {
+  test(`${route} is cached for 300s and reads the API once per window`, async ({ request }) => {
+    const address = `0x${randomBytes(20).toString("hex")}`;
+    const first = await request.get(`/token/${address}/${route}`);
+    const second = await request.get(`/token/${address}/${route}`);
+    expect(first.status()).toBe(200);
+    expect(second.status()).toBe(200);
+    const cacheControl = first.headers()["cache-control"] ?? "";
+    expect(cacheControl).toContain("public");
+    expect(cacheControl).toContain("s-maxage=300");
+    const counts = (await (await request.get(`${mockApi}/__calls`)).json()) as Record<
+      string,
+      number
+    >;
+    expect(counts[`/v1/tokens/${address}`]).toBe(1);
+    expect(counts[`/v1/tokens/${address}/image`]).toBe(1);
+  });
+}
+
+test("token page metadata does not download the image or read the price", async ({ request }) => {
+  // A fresh address per run: the Next data cache outlives the server in .next/cache.
+  const address = `0x${randomBytes(20).toString("hex")}`;
+  const response = await request.get(`/token/${address}`);
+  expect(response.status()).toBe(200);
+  // Metadata streams after the shell for browser user agents; read the whole body first.
+  expect(await response.text()).toContain(`Token ${address.slice(-4)}`);
+  const counts = (await (await request.get(`${mockApi}/__calls`)).json()) as Record<string, number>;
+  expect(counts[`/v1/tokens/${address}`]).toBeGreaterThanOrEqual(1);
+  expect(counts[`/v1/tokens/${address}/image`]).toBeUndefined();
+});
+
+test("token page offers Share on X and Copy link", async ({ page }) => {
+  await installFixture(page);
+  await page.goto(`/token/${tokenAddress}?fixture=populated`);
+  const share = page.getByRole("link", { name: "Share on X" });
+  await expect(share).toBeVisible();
+  const href = new URL((await share.getAttribute("href")) ?? "");
+  expect(href.origin + href.pathname).toBe("https://x.com/intent/post");
+  expect(href.searchParams.get("text")).toBe("$FIX on Launchpad");
+  expect(href.searchParams.get("url")).toContain(`/token/${tokenAddress}`);
+  await expect(page.getByRole("button", { name: "Copy link" })).toBeVisible();
 });

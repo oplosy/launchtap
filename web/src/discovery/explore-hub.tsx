@@ -1,20 +1,26 @@
 import { Suspense } from "react";
+import { Hero } from "@/landing/hero";
+import { LaunchStory } from "@/landing/launch-story";
+import { LiveStrip } from "@/live/live-strip";
+import { WatchlistToaster } from "@/watchlist/star-button";
 import { TokenDiscovery } from "./token-discovery";
 
 export function ExploreHub() {
   return (
     <div className="page-stack explore-hub">
-      <section className="explore-intro" aria-labelledby="explore-title">
-        <h1 id="explore-title">Explore launches.</h1>
+      <Hero />
+      <LaunchStory />
+      <section className="explore-intro" id="launches" aria-labelledby="explore-title">
+        <h2 id="explore-title">Explore launches.</h2>
         <p>Search graduated tokens, then follow active launches moving toward liquidity.</p>
       </section>
+      <LiveStrip />
       <Suspense fallback={<ExploreFallback label="Loading graduated tokens…" />}>
         <TokenDiscovery
           defaultPhase="graduated"
           fixedPhase="graduated"
           showHero={false}
           showSearch
-          showSortControls={false}
           title="Graduated"
           summary="Tokens that cleared the graduation threshold."
         />
@@ -25,11 +31,12 @@ export function ExploreHub() {
           fixedPhase="curve"
           showHero={false}
           showSearch={false}
-          showSortControls
+          showViews
           title="Explore"
           summary="New launches and tokens still moving toward graduation."
         />
       </Suspense>
+      <WatchlistToaster />
     </div>
   );
 }

@@ -1,0 +1,14 @@
+[
+  {
+    "id": "GHSA-mrhx-c7xc-m3w5",
+    "package": "zod",
+    "reason": "zod 3.x arrives only through the Privy 2 / WalletConnect / Reown wallet SDKs and runs in the visitor's browser, so the worst case is that visitor's own tab exhausting memory; no server parses untrusted input with it. The only fixed line is zod 4, which those SDKs do not support. Removed by the Privy 3 upgrade tracked in backlog.md.",
+    "reviewBy": "2027-02-01"
+  },
+  {
+    "id": "GHSA-qr28-fpjm-wq7f",
+    "package": "decode-uri-component",
+    "reason": "decode-uri-component 0.2.x arrives only through query-string in the WalletConnect SDK and runs in the visitor's browser, so the worst case is a slow tab for that visitor. The fixed 0.5.1 release is ESM-only and cannot be forced under the CommonJS query-string 7 without breaking it. Removed by the Privy 3 upgrade tracked in backlog.md.",
+    "reviewBy": "2027-02-01"
+  }
+]

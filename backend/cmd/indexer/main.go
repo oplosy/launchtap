@@ -15,8 +15,10 @@ import (
 	"github.com/Contictus/launchtap/backend/internal/chain"
 	"github.com/Contictus/launchtap/backend/internal/config"
 	"github.com/Contictus/launchtap/backend/internal/indexer"
+	"github.com/Contictus/launchtap/backend/internal/metrics"
 	"github.com/Contictus/launchtap/backend/internal/stats"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
+	"github.com/Contictus/launchtap/backend/internal/swapbackfill"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -44,7 +46,10 @@ func run() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	source, err := chain.Dial(ctx, c.RPCURL, chain.RPCConfig{Timeout: c.RPCTimeout, MaxRetries: c.RPCMaxRetries, RetryBackoff: c.RPCRetryBackoff})
+	health := new(indexer.HealthTracker)
+	metricsRegistry := metrics.NewRegistry(metrics.ComponentIndexer)
+	indexerMetrics := metrics.NewIndexer(metricsRegistry, health.Snapshot)
+	source, err := chain.Dial(ctx, c.RPCURL, chain.RPCConfig{Timeout: c.RPCTimeout, MaxRetries: c.RPCMaxRetries, RetryBackoff: c.RPCRetryBackoff, Observer: indexerMetrics})
 	if err != nil {
 		return err
 	}
@@ -72,13 +77,13 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	store := storepostgres.IndexerStore{Pool: pool, Beginner: owner.Beginner(), Owner: owner, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID}
+	store := storepostgres.IndexerStore{Pool: pool, Beginner: owner.Beginner(), Owner: owner, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, Factory: deployment.Factory, OnNotify: indexerMetrics.Notified}
 	router := indexer.LedgerRouter{ChainID: int64(c.ChainID)}
-	health := new(indexer.HealthTracker)
 	health.Set(indexer.Health{ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, OwnershipHeld: true, RPCHealthy: true})
 	healthStore := storepostgres.NewAdapter(pool)
 	refreshOperationalHealth := func() {
 		snapshot, err := healthStore.ReadOperationalHealth(ctx, int64(c.ChainID), c.DeploymentID)
+		health.Database(err == nil)
 		if err != nil {
 			health.Failed(err)
 			slog.Warn("operational health refresh failed", "error", err)
@@ -91,7 +96,8 @@ func run() error {
 		ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, Factory: deployment.Factory,
 		StartBlock: int64(deployment.StartBlock), ChunkSize: int64(c.IndexerChunkSize), PollInterval: c.IndexerPollInterval,
 		ReorgSearchDepth: c.IndexerReorgSearchDepth, ReorgRecoveryMode: c.IndexerReorgRecoveryMode,
-		OnCommitted: health.Committed, OnFailure: health.Failed,
+		OnCommitted: health.Committed, OnFailure: health.Failed, OnHeads: health.ChainHead,
+		Senders: source, OnSenderMisses: indexerMetrics.SenderLookupMissed,
 	}, store, source, discovery, decoder, router)
 	if err != nil {
 		return err
@@ -116,8 +122,16 @@ func run() error {
 			}
 		}
 	}()
+	// One market_dirty NOTIFY must wake both aggregation workers, so the listener feeds a fan-out
+	// instead of a single receiver channel.
 	wake := make(chan struct{}, 1)
-	healthServer := &http.Server{Addr: c.IndexerHealthAddr, Handler: indexer.HealthHandler(health)}
+	positionWake := make(chan struct{}, 1)
+	notified := make(chan struct{}, 1)
+	go fanOutWake(ctx, notified, wake, positionWake)
+	healthMux := http.NewServeMux()
+	healthMux.Handle("/healthz", indexer.HealthHandler(health))
+	healthMux.Handle("/metrics", metrics.Handler(metricsRegistry))
+	healthServer := &http.Server{Addr: c.IndexerHealthAddr, Handler: healthMux}
 	go func() {
 		if err := healthServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Warn("health server stopped", "error", err)
@@ -129,23 +143,67 @@ func run() error {
 		defer cancel()
 		_ = healthServer.Shutdown(shutdownCtx)
 	}()
-	aggregation := stats.Worker{Source: storepostgres.AggregationSource{Adapter: storepostgres.NewAdapter(pool), ChainID: int64(c.ChainID)}, WorkerID: c.IndexerWorkerID, PollInterval: stats.DefaultDirtyPollInterval, BatchSize: 32, Wake: wake, OnError: func(claim stats.Claim, err error) {
+	aggregation := stats.Worker{Source: storepostgres.AggregationSource{Adapter: storepostgres.NewAdapter(pool), ChainID: int64(c.ChainID)}, WorkerID: c.IndexerWorkerID, PollInterval: stats.DefaultDirtyPollInterval, BatchSize: 32, Wake: wake, OnComputed: indexerMetrics.Recomputed, OnError: func(claim stats.Claim, err error) {
 		health.Failed(err)
 		slog.Error("aggregation compute failed", "chain_id", claim.ChainID, "token", fmt.Sprintf("%x", claim.Token), "error", err)
 	}}
 	go func() {
-		if err := storepostgres.ListenMarketDirty(ctx, pool, wake); err != nil && !errors.Is(err, context.Canceled) {
+		if err := storepostgres.ListenMarketDirty(ctx, pool, notified); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Warn("market dirty listener stopped", "error", err)
 		}
 	}()
-	aggregationErrors := make(chan error, 1)
+	sweeper := stats.WindowSweeper{Source: storepostgres.AggregationSource{Adapter: storepostgres.NewAdapter(pool), ChainID: int64(c.ChainID)}, ChainID: int64(c.ChainID), Interval: stats.DefaultSweepInterval, Window: stats.DefaultSweepWindow, Overlap: stats.DefaultSweepOverlap,
+		Wake: func() {
+			select {
+			case wake <- struct{}{}:
+			default:
+			}
+		},
+		OnError: func(err error) { slog.Error("volume window sweep failed", "chain_id", c.ChainID, "error", err) }}
 	go func() {
-		if err := aggregation.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			health.Failed(err)
-			aggregationErrors <- err
-			stop()
+		if err := sweeper.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn("volume window sweeper stopped", "error", err)
 		}
 	}()
+	positions := stats.Worker{Source: storepostgres.PositionSource{Adapter: storepostgres.NewAdapter(pool), ChainID: int64(c.ChainID)}, WorkerID: c.IndexerWorkerID + "-positions", PollInterval: stats.DefaultDirtyPollInterval, BatchSize: 64, DrainFullBatches: true, Wake: positionWake, OnError: func(claim stats.Claim, err error) {
+		indexerMetrics.PositionFailed()
+		slog.Error("position compute failed", "chain_id", claim.ChainID, "error", err)
+	}}
+	// Retries sender lookups that missed during ingest, only up to the committed safe head. It
+	// uses the shared pool (never the ownership connection) and never stops ingest.
+	backfillStore := swapbackfill.PostgresStore{Pool: pool, ChainID: int64(c.ChainID), Factory: deployment.Factory, DeploymentID: c.DeploymentID}
+	senderBackfill := swapbackfill.Scheduler{
+		Deps: swapbackfill.Deps{
+			Store:   backfillStore,
+			Senders: source,
+			Log:     slog.Default(),
+			Sleep:   swapbackfill.RateSleeper(swapbackfill.DefaultRate),
+		},
+		Interval: c.IndexerSenderBackfillInterval, Batch: swapbackfill.DefaultBatch, MaxTransactions: int(c.IndexerSenderBackfillMaxTxs),
+		SafeBlock: backfillStore.SafeBlock, Backlog: backfillStore.CountUnattributed, OnBacklog: indexerMetrics.SenderBackfillPending,
+		OnFilled: indexerMetrics.SenderBackfillFilled, OnError: indexerMetrics.SenderBackfillFailed,
+		Secrets: []string{c.RPCURL, c.DatabaseURL},
+	}
+	// Joined on return, before the deferred pool.Close, so no pass uses a closed pool.
+	senderBackfillDone := make(chan struct{})
+	go func() {
+		defer close(senderBackfillDone)
+		_ = senderBackfill.Run(ctx)
+	}()
+	defer func() {
+		stop()
+		<-senderBackfillDone
+	}()
+	aggregationErrors := make(chan error, 2)
+	for _, worker := range []stats.Worker{aggregation, positions} {
+		go func() {
+			if err := worker.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				health.Failed(err)
+				aggregationErrors <- err
+				stop()
+			}
+		}()
+	}
 	slog.Info("indexer started", "chain_id", c.ChainID, "deployment_id", c.DeploymentID, "start_block", deployment.StartBlock,
 		"reorg_search_depth", c.IndexerReorgSearchDepth, "reorg_recovery_mode", c.IndexerReorgRecoveryMode, "started_at", time.Now().UTC())
 	runErr := engine.Run(ctx)
@@ -183,4 +241,22 @@ func loadDeploymentRegistry() (*deployments.Registry, error) {
 		return deployments.LoadEmbeddedWithManifest(manifest)
 	}
 	return deployments.LoadEmbedded()
+}
+
+// fanOutWake forwards each wake signal from in to every out channel without blocking: a full
+// channel already holds a pending wake.
+func fanOutWake(ctx context.Context, in <-chan struct{}, outs ...chan<- struct{}) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-in:
+			for _, out := range outs {
+				select {
+				case out <- struct{}{}:
+				default:
+				}
+			}
+		}
+	}
 }

@@ -429,6 +429,68 @@ func (q *Queries) FindCommonAncestor(ctx context.Context, arg FindCommonAncestor
 	return i, err
 }
 
+const listPositionPairsAbove = `-- name: ListPositionPairsAbove :many
+SELECT DISTINCT pairs.wallet, pairs.token_address FROM (
+    SELECT trade.trader AS wallet, trade.token_address FROM trades AS trade
+    WHERE trade.chain_id=$1 AND trade.block_number>$2
+    UNION ALL
+    SELECT swap.tx_from, token.token_address FROM pool_swaps AS swap
+    JOIN tokens AS token ON token.chain_id=swap.chain_id AND token.lp_pair=swap.pair_address
+    WHERE swap.chain_id=$1 AND swap.block_number>$2 AND swap.tx_from IS NOT NULL
+    UNION ALL
+    SELECT transfer.from_address, transfer.token_address FROM transfers AS transfer
+    WHERE transfer.chain_id=$1 AND transfer.block_number>$2
+    UNION ALL
+    SELECT transfer.to_address, transfer.token_address FROM transfers AS transfer
+    WHERE transfer.chain_id=$1 AND transfer.block_number>$2
+) AS pairs
+WHERE pairs.wallet <> decode(repeat('00', 20), 'hex')
+  AND pairs.wallet <> $3::bytea
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id=$1 AND excluded.curve_address=pairs.wallet
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id=$1 AND excluded.lp_pair=pairs.wallet
+  )
+ORDER BY pairs.wallet, pairs.token_address
+`
+
+type ListPositionPairsAboveParams struct {
+	ChainID     int64
+	BlockNumber int64
+	Factory     []byte
+}
+
+type ListPositionPairsAboveRow struct {
+	Wallet       Address
+	TokenAddress Address
+}
+
+// Run before DeleteCanonicalAbove: the rows (and a launched token's own row) are still present.
+// Excluded wallets (R4) are dropped here because a deleted token's curve and pair are not
+// resolvable afterwards.
+func (q *Queries) ListPositionPairsAbove(ctx context.Context, arg ListPositionPairsAboveParams) ([]ListPositionPairsAboveRow, error) {
+	rows, err := q.db.Query(ctx, listPositionPairsAbove, arg.ChainID, arg.BlockNumber, arg.Factory)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPositionPairsAboveRow{}
+	for rows.Next() {
+		var i ListPositionPairsAboveRow
+		if err := rows.Scan(&i.Wallet, &i.TokenAddress); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const recordIndexerReorg = `-- name: RecordIndexerReorg :one
 INSERT INTO indexer_reorgs (
  chain_id, deployment_id, detected_tip_number, detected_tip_hash,

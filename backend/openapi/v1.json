@@ -1,6 +1,42 @@
 {
   "components": {
     "schemas": {
+      "BurstItem": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "description": "Trades of this token folded into the window.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "max_eth_wei": {
+            "description": "Largest gross ETH amount among the folded trades, decimal wei string (same as a trade's eth_volume). \"0\" means none or unknown: no folded trade carried an amount.",
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "traders": {
+            "description": "Distinct non-null traders of the folded trades, lowercase hex, first-seen order, at most 32. Always an array, possibly empty.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "traders_truncated": {
+            "description": "True when more distinct traders were folded than traders lists.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "token",
+          "count",
+          "max_eth_wei",
+          "traders",
+          "traders_truncated"
+        ],
+        "type": "object"
+      },
       "CandleBody": {
         "additionalProperties": false,
         "properties": {
@@ -254,6 +290,130 @@
         },
         "type": "object"
       },
+      "EthUsdBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/EthUsdBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "attribution_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fetched_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "price": {
+            "description": "ETH/USD decimal string; null when disabled, missing or stale.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider_updated_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "price",
+          "provider_updated_at",
+          "fetched_at",
+          "source",
+          "attribution_url"
+        ],
+        "type": "object"
+      },
+      "FinalityFeedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deployment_id": {
+            "type": "string"
+          },
+          "finalized_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "safe_block": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chain_id",
+          "deployment_id",
+          "safe_block",
+          "finalized_block"
+        ],
+        "type": "object"
+      },
+      "GraduationFeedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "block_number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deployment_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pair": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "tx_hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_id",
+          "deployment_id",
+          "token",
+          "name",
+          "symbol",
+          "pair",
+          "tx_hash",
+          "block_number"
+        ],
+        "type": "object"
+      },
       "HealthResponse": {
         "additionalProperties": false,
         "properties": {
@@ -272,6 +432,60 @@
         },
         "required": [
           "status"
+        ],
+        "type": "object"
+      },
+      "HighlightsBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/HighlightsBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "as_of": {
+            "type": "string"
+          },
+          "finality": {
+            "type": "string"
+          },
+          "king_of_the_hill": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/KingDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          },
+          "trending": {
+            "items": {
+              "$ref": "#/components/schemas/TrendingDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "window_start": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "trending",
+          "king_of_the_hill",
+          "window_start",
+          "as_of",
+          "finality",
+          "snapshot"
         ],
         "type": "object"
       },
@@ -330,6 +544,65 @@
         ],
         "type": "object"
       },
+      "KingDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "graduation_progress_bps": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "holder_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "launch_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "launch_time": {
+            "type": "string"
+          },
+          "market_cap_eth": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "remaining_eth": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "total_supply": {
+            "type": "string"
+          },
+          "volume_24h_eth": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "graduation_progress_bps",
+          "remaining_eth",
+          "address",
+          "name",
+          "symbol",
+          "phase",
+          "launch_time",
+          "launch_block",
+          "total_supply",
+          "market_cap_eth",
+          "volume_24h_eth",
+          "holder_count"
+        ],
+        "type": "object"
+      },
       "LaunchEvent": {
         "additionalProperties": false,
         "properties": {
@@ -355,6 +628,63 @@
           "chain_id",
           "deployment_id",
           "token"
+        ],
+        "type": "object"
+      },
+      "LeaderboardBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/LeaderboardBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LeaderboardItemDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          }
+        },
+        "required": [
+          "snapshot",
+          "items"
+        ],
+        "type": "object"
+      },
+      "LeaderboardItemDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "rank": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "realized_pnl_wei": {
+            "type": "string"
+          },
+          "tokens_traded": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rank",
+          "address",
+          "realized_pnl_wei",
+          "tokens_traded"
         ],
         "type": "object"
       },
@@ -413,6 +743,48 @@
         },
         "required": [
           "revision"
+        ],
+        "type": "object"
+      },
+      "NewTokenFeedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "block_number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "creator": {
+            "type": "string"
+          },
+          "deployment_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "tx_hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_id",
+          "deployment_id",
+          "token",
+          "creator",
+          "name",
+          "symbol",
+          "tx_hash",
+          "block_number"
         ],
         "type": "object"
       },
@@ -705,6 +1077,37 @@
         "required": [
           "side",
           "amount"
+        ],
+        "type": "object"
+      },
+      "RecentTradesBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/RecentTradesBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TradeFeedItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          }
+        },
+        "required": [
+          "snapshot",
+          "items"
         ],
         "type": "object"
       },
@@ -1084,6 +1487,46 @@
         ],
         "type": "object"
       },
+      "TradeBurstFeedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deployment_id": {
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BurstItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "launches": {
+            "description": "new_token events folded into this window.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "window_end": {
+            "type": "string"
+          },
+          "window_start": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_id",
+          "deployment_id",
+          "window_start",
+          "window_end",
+          "items"
+        ],
+        "type": "object"
+      },
       "TradeDTO": {
         "additionalProperties": false,
         "properties": {
@@ -1150,6 +1593,85 @@
         ],
         "type": "object"
       },
+      "TradeFeedItem": {
+        "additionalProperties": false,
+        "properties": {
+          "block_number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deployment_id": {
+            "type": "string"
+          },
+          "eth_volume": {
+            "type": "string"
+          },
+          "finality": {
+            "type": "string"
+          },
+          "log_index": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "side": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "time": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "token_volume": {
+            "type": "string"
+          },
+          "trader": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "transaction_index": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "tx_hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_id",
+          "deployment_id",
+          "token",
+          "name",
+          "symbol",
+          "source",
+          "trader",
+          "side",
+          "eth_volume",
+          "token_volume",
+          "block_number",
+          "transaction_index",
+          "tx_hash",
+          "log_index",
+          "time",
+          "finality"
+        ],
+        "type": "object"
+      },
       "TradesBody": {
         "additionalProperties": false,
         "properties": {
@@ -1181,6 +1703,474 @@
         "required": [
           "snapshot",
           "items"
+        ],
+        "type": "object"
+      },
+      "TrendingDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "distinct_buyers": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "holder_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "launch_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "launch_time": {
+            "type": "string"
+          },
+          "market_cap_eth": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "total_supply": {
+            "type": "string"
+          },
+          "volume_24h_eth": {
+            "type": "string"
+          },
+          "window_volume_eth": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "window_volume_eth",
+          "distinct_buyers",
+          "address",
+          "name",
+          "symbol",
+          "phase",
+          "launch_time",
+          "launch_block",
+          "total_supply",
+          "market_cap_eth",
+          "volume_24h_eth",
+          "holder_count"
+        ],
+        "type": "object"
+      },
+      "WalletCreatedBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/WalletCreatedBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WalletCreatedDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          }
+        },
+        "required": [
+          "snapshot",
+          "items"
+        ],
+        "type": "object"
+      },
+      "WalletCreatedDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "launch_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "market_cap_wei": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "name",
+          "symbol",
+          "phase",
+          "market_cap_wei",
+          "launch_block"
+        ],
+        "type": "object"
+      },
+      "WalletDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/WalletDTO.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "attribution_complete": {
+            "type": "boolean"
+          },
+          "created_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "first_block": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "held_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_block": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "portfolio_value_wei": {
+            "type": "string"
+          },
+          "realized_pnl_wei": {
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          },
+          "tokens_traded": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "unrealized_pnl_wei": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot",
+          "address",
+          "realized_pnl_wei",
+          "unrealized_pnl_wei",
+          "portfolio_value_wei",
+          "held_count",
+          "created_count",
+          "tokens_traded",
+          "first_block",
+          "last_block",
+          "attribution_complete"
+        ],
+        "type": "object"
+      },
+      "WalletPositionDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "average_cost_wad": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "balance": {
+            "type": "string"
+          },
+          "current_value_wei": {
+            "type": "string"
+          },
+          "last_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "realized_pnl_wei": {
+            "type": "string"
+          },
+          "remaining_cost_wei": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "trade_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "transferred_in": {
+            "type": "string"
+          },
+          "unrealized_pnl_wei": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "name",
+          "symbol",
+          "phase",
+          "balance",
+          "average_cost_wad",
+          "remaining_cost_wei",
+          "realized_pnl_wei",
+          "current_value_wei",
+          "unrealized_pnl_wei",
+          "transferred_in",
+          "trade_count",
+          "last_block"
+        ],
+        "type": "object"
+      },
+      "WalletPositionsBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/WalletPositionsBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WalletPositionDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          },
+          "truncated": {
+            "description": "Open mode only: true when the wallet has more open positions than the 500 returned.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "snapshot",
+          "items",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "WalletTradeDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "block_number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "eth_volume": {
+            "type": "string"
+          },
+          "execution_price": {
+            "type": "string"
+          },
+          "finality": {
+            "type": "string"
+          },
+          "log_index": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "side": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "spot_price": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "time": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "token_volume": {
+            "type": "string"
+          },
+          "trader": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "transaction_index": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "tx_hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "name",
+          "symbol",
+          "source",
+          "trader",
+          "side",
+          "execution_price",
+          "spot_price",
+          "eth_volume",
+          "token_volume",
+          "block_number",
+          "transaction_index",
+          "tx_hash",
+          "log_index",
+          "time",
+          "finality"
+        ],
+        "type": "object"
+      },
+      "WalletTradesBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/WalletTradesBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WalletTradeDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          }
+        },
+        "required": [
+          "snapshot",
+          "items"
+        ],
+        "type": "object"
+      },
+      "WatchlistBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/WatchlistBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WatchlistEntryDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "WatchlistEntryDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "added_at": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "token": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TokenDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "address",
+          "added_at",
+          "token"
         ],
         "type": "object"
       }
@@ -1226,6 +2216,58 @@
                       {
                         "properties": {
                           "data": {
+                            "$ref": "#/components/schemas/FinalityFeedEvent"
+                          },
+                          "event": {
+                            "const": "finality",
+                            "description": "The event name.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "The event ID.",
+                            "type": "integer"
+                          },
+                          "retry": {
+                            "description": "The retry time in milliseconds.",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "data",
+                          "event"
+                        ],
+                        "title": "Event finality",
+                        "type": "object"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "$ref": "#/components/schemas/GraduationFeedEvent"
+                          },
+                          "event": {
+                            "const": "graduation",
+                            "description": "The event name.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "The event ID.",
+                            "type": "integer"
+                          },
+                          "retry": {
+                            "description": "The retry time in milliseconds.",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "data",
+                          "event"
+                        ],
+                        "title": "Event graduation",
+                        "type": "object"
+                      },
+                      {
+                        "properties": {
+                          "data": {
                             "$ref": "#/components/schemas/LaunchEvent"
                           },
                           "event": {
@@ -1247,6 +2289,32 @@
                           "event"
                         ],
                         "title": "Event launch",
+                        "type": "object"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "$ref": "#/components/schemas/NewTokenFeedEvent"
+                          },
+                          "event": {
+                            "const": "new_token",
+                            "description": "The event name.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "The event ID.",
+                            "type": "integer"
+                          },
+                          "retry": {
+                            "description": "The retry time in milliseconds.",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "data",
+                          "event"
+                        ],
+                        "title": "Event new_token",
                         "type": "object"
                       },
                       {
@@ -1299,6 +2367,58 @@
                           "event"
                         ],
                         "title": "Event token",
+                        "type": "object"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "$ref": "#/components/schemas/TradeFeedItem"
+                          },
+                          "event": {
+                            "const": "trade",
+                            "description": "The event name.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "The event ID.",
+                            "type": "integer"
+                          },
+                          "retry": {
+                            "description": "The retry time in milliseconds.",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "data",
+                          "event"
+                        ],
+                        "title": "Event trade",
+                        "type": "object"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "$ref": "#/components/schemas/TradeBurstFeedEvent"
+                          },
+                          "event": {
+                            "const": "trade_burst",
+                            "description": "The event name.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "The event ID.",
+                            "type": "integer"
+                          },
+                          "retry": {
+                            "description": "The retry time in milliseconds.",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "data",
+                          "event"
+                        ],
+                        "title": "Event trade_burst",
                         "type": "object"
                       }
                     ]
@@ -1353,6 +2473,190 @@
         },
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/leaderboard": {
+      "get": {
+        "operationId": "getLeaderboard",
+        "parameters": [
+          {
+            "description": "Maximum number of wallets, 1-100. Only wallets with a positive realized PnL are ranked, so fewer may be returned.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "description": "Maximum number of wallets, 1-100. Only wallets with a positive realized PnL are ranked, so fewer may be returned.",
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaderboardBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/me/watchlist": {
+      "get": {
+        "operationId": "listWatchlist",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchlistBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "watchlist"
+        ]
+      }
+    },
+    "/me/watchlist/{address}": {
+      "delete": {
+        "operationId": "removeWatchlistEntry",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "watchlist"
+        ]
+      },
+      "put": {
+        "operationId": "addWatchlistEntry",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "watchlist"
         ]
       }
     },
@@ -1431,6 +2735,43 @@
         },
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/reference/eth-usd": {
+      "get": {
+        "operationId": "getEthUsdReference",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EthUsdBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "reference"
         ]
       }
     },
@@ -1555,6 +2896,14 @@
           {
             "explode": false,
             "in": "query",
+            "name": "age",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
             "name": "cursor",
             "schema": {
               "type": "string"
@@ -1578,6 +2927,36 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TokenListBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "tokens"
+        ]
+      }
+    },
+    "/tokens/highlights": {
+      "get": {
+        "operationId": "getTokenHighlights",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HighlightsBody"
                 }
               }
             },
@@ -2246,6 +3625,51 @@
         ]
       }
     },
+    "/trades/recent": {
+      "get": {
+        "operationId": "listRecentTrades",
+        "parameters": [
+          {
+            "description": "Number of trades, 1-100; defaults to 50.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "Number of trades, 1-100; defaults to 50.",
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecentTradesBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "market"
+        ]
+      }
+    },
     "/transactions/{tx_hash}": {
       "get": {
         "operationId": "getCanonicalTransaction",
@@ -2283,6 +3707,244 @@
         },
         "tags": [
           "transactions"
+        ]
+      }
+    },
+    "/wallets/{address}": {
+      "get": {
+        "operationId": "getWallet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletDTO"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "wallets"
+        ]
+      }
+    },
+    "/wallets/{address}/created": {
+      "get": {
+        "operationId": "listWalletCreated",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size, 1-100.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "Page size, 1-100.",
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletCreatedBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "wallets"
+        ]
+      }
+    },
+    "/wallets/{address}/positions": {
+      "get": {
+        "operationId": "listWalletPositions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Closed mode only; supplying it with closed=false is rejected with 422.",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "Closed mode only; supplying it with closed=false is rejected with 422.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "List closed positions (balance 0) newest first, paginated. When false (default), all open positions are returned in one response ordered by current value, capped at 500 (see truncated).",
+            "explode": false,
+            "in": "query",
+            "name": "closed",
+            "schema": {
+              "description": "List closed positions (balance 0) newest first, paginated. When false (default), all open positions are returned in one response ordered by current value, capped at 500 (see truncated).",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Page size, 1-100. Applies to closed mode only; open mode returns one capped page.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "Page size, 1-100. Applies to closed mode only; open mode returns one capped page.",
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletPositionsBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "wallets"
+        ]
+      }
+    },
+    "/wallets/{address}/trades": {
+      "get": {
+        "operationId": "listWalletTrades",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size, 1-100.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "Page size, 1-100.",
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletTradesBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "wallets"
         ]
       }
     }

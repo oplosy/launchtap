@@ -1,0 +1,9 @@
+route:
+  receiver: webhook
+  group_by: [alertname]
+  repeat_interval: 4h
+
+receivers:
+  - name: webhook
+    webhook_configs:
+      - url_file: /run/secrets/alertmanager_webhook_url

@@ -34,7 +34,7 @@ const page = (
   snapshot: snapshot(block),
 });
 
-const state = { q: "", phase: "curve" as const, sort: "newest" as const };
+const state = { q: "", phase: "curve" as const, sort: "newest" as const, age: "all" as const };
 
 describe("token discovery append recovery", () => {
   it("discards the cursor chain after cursor invalidation and refetches page one once", async () => {

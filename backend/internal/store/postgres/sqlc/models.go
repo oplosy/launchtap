@@ -211,6 +211,7 @@ type PoolSwap struct {
 	Amount0Out       Uint256
 	Amount1Out       Uint256
 	ToAddress        Address
+	TxFrom           *Address
 }
 
 type PoolSync struct {
@@ -224,6 +225,16 @@ type PoolSync struct {
 	PairAddress      Address
 	Reserve0         Uint256
 	Reserve1         Uint256
+}
+
+type PositionDirty struct {
+	ChainID           int64
+	Wallet            Address
+	TokenAddress      Address
+	Generation        int64
+	ClaimedGeneration pgtype.Int8
+	ClaimedAt         pgtype.Timestamptz
+	ClaimedBy         pgtype.Text
 }
 
 type ProtocolDaily struct {
@@ -472,4 +483,37 @@ type Transfer struct {
 	FromAddress      Address
 	ToAddress        Address
 	Value            Uint256
+}
+
+type WalletPosition struct {
+	ChainID          int64
+	Wallet           Address
+	TokenAddress     Address
+	Balance          Uint256
+	RemainingCost    Uint256
+	RealizedPnl      pgtype.Numeric
+	TransferredIn    Uint256
+	EthPaid          Uint256
+	EthReceived      Uint256
+	TradeCount       int64
+	FirstBlockNumber int64
+	LastBlockNumber  int64
+}
+
+type WalletTotal struct {
+	ChainID          int64
+	Wallet           Address
+	RealizedPnl      pgtype.Numeric
+	TokensTraded     int64
+	HeldCount        int64
+	FirstBlockNumber int64
+	LastBlockNumber  int64
+}
+
+type WatchlistEntry struct {
+	ChainID      int64
+	DeploymentID string
+	PrivyDid     string
+	TokenAddress Address
+	CreatedAt    pgtype.Timestamptz
 }

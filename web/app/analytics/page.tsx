@@ -67,6 +67,9 @@ export default function AnalyticsPage() {
             Protocol activity across launches, trades, volume, and graduations. ETH-native values
             are shown without USD enrichment.
           </p>
+          <Link className="ui-button ui-button-secondary ui-button-md" href="/leaderboard">
+            View the leaderboard
+          </Link>
         </div>
       </section>
       {error ? (
@@ -135,6 +138,7 @@ export default function AnalyticsPage() {
               </div>
               <span className="mono">{daily.items?.length ?? 0} days · ETH only</span>
             </div>
+            {daily.items?.length ? <VolumeChart items={daily.items} /> : null}
             {daily.items?.length ? (
               <div className="analytics-table" role="table">
                 <div className="analytics-row analytics-heading" role="row">
@@ -176,12 +180,52 @@ export default function AnalyticsPage() {
   );
 }
 
+type DailyItem = NonNullable<ProtocolDailyResponse["items"]>[number];
+
+/** Bar heights are BigInt ratios against the busiest day; the table below stays the data source. */
+function VolumeChart({ items }: { items: DailyItem[] }) {
+  const ordered = [...items].sort((a, b) => a.day.localeCompare(b.day));
+  const volumes = ordered.map((item) => {
+    try {
+      return BigInt(item.volume_eth);
+    } catch {
+      return 0n;
+    }
+  });
+  const max = volumes.reduce((top, value) => (value > top ? value : top), 0n);
+  return (
+    <div className="volume-chart" aria-hidden="true">
+      {ordered.map((item, index) => {
+        const height = max === 0n ? 0 : Number(((volumes[index] ?? 0n) * 1000n) / max) / 10;
+        return (
+          <div
+            className="volume-bar"
+            key={item.day}
+            data-tip={`${item.day} · ${eth(item.volume_eth)}`}
+            style={{ "--h": `${height}%`, "--i": index } as React.CSSProperties}
+          >
+            <span />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <section className="workspace-panel metric-panel">
       <dl>
         <dt>{label}</dt>
-        <dd className="mono">{value}</dd>
+        <dd className="metric-value">
+          <span className="sr-only">{value}</span>
+          {/* Characters roll in one by one; the string is never parsed back into a number. */}
+          {[...value].map((char, index) => (
+            <span key={index} aria-hidden="true" style={{ "--i": index } as React.CSSProperties}>
+              {char}
+            </span>
+          ))}
+        </dd>
       </dl>
     </section>
   );

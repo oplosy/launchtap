@@ -31,6 +31,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/leaderboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getLeaderboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/watchlist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listWatchlist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/watchlist/{address}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["addWatchlistEntry"];
+        post?: never;
+        delete: operations["removeWatchlistEntry"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/profile": {
         parameters: {
             query?: never;
@@ -55,6 +103,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["readyz"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reference/eth-usd": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getEthUsdReference"];
         put?: never;
         post?: never;
         delete?: never;
@@ -103,6 +167,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["listTokens"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tokens/highlights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getTokenHighlights"];
         put?: never;
         post?: never;
         delete?: never;
@@ -223,6 +303,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/trades/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listRecentTrades"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/transactions/{tx_hash}": {
         parameters: {
             query?: never;
@@ -239,10 +335,88 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/wallets/{address}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getWallet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wallets/{address}/created": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listWalletCreated"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wallets/{address}/positions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listWalletPositions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wallets/{address}/trades": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listWalletTrades"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        BurstItem: {
+            /**
+             * Format: int64
+             * @description Trades of this token folded into the window.
+             */
+            count: number;
+            /** @description Largest gross ETH amount among the folded trades, decimal wei string (same as a trade's eth_volume). "0" means none or unknown: no folded trade carried an amount. */
+            max_eth_wei: string;
+            token: string;
+            /** @description Distinct non-null traders of the folded trades, lowercase hex, first-seen order, at most 32. Always an array, possibly empty. */
+            traders: string[];
+            /** @description True when more distinct traders were folded than traders lists. */
+            traders_truncated: boolean;
+        };
         CandleBody: {
             /**
              * Format: uri
@@ -342,6 +516,43 @@ export interface components {
              */
             type: string;
         };
+        EthUsdBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/EthUsdBody.json
+             */
+            readonly $schema?: string;
+            attribution_url: string | null;
+            /** Format: date-time */
+            fetched_at: string | null;
+            /** @description ETH/USD decimal string; null when disabled, missing or stale. */
+            price: string | null;
+            /** Format: date-time */
+            provider_updated_at: string | null;
+            source: string | null;
+        };
+        FinalityFeedEvent: {
+            /** Format: int64 */
+            chain_id: number;
+            deployment_id: string;
+            /** Format: int64 */
+            finalized_block: number;
+            /** Format: int64 */
+            safe_block: number;
+        };
+        GraduationFeedEvent: {
+            /** Format: int64 */
+            block_number: number;
+            /** Format: int64 */
+            chain_id: number;
+            deployment_id: string;
+            name: string;
+            pair: string;
+            symbol: string;
+            token: string;
+            tx_hash: string;
+        };
         HealthResponse: {
             /**
              * Format: uri
@@ -350,6 +561,20 @@ export interface components {
              */
             readonly $schema?: string;
             status: string;
+        };
+        HighlightsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/HighlightsBody.json
+             */
+            readonly $schema?: string;
+            as_of: string;
+            finality: string;
+            king_of_the_hill: components["schemas"]["KingDTO"] | null;
+            snapshot: components["schemas"]["SnapshotDTO"];
+            trending: components["schemas"]["TrendingDTO"][] | null;
+            window_start: string;
         };
         HolderDTO: {
             address: string;
@@ -368,6 +593,23 @@ export interface components {
             next_cursor?: string;
             snapshot: components["schemas"]["SnapshotDTO"];
         };
+        KingDTO: {
+            address: string;
+            /** Format: int32 */
+            graduation_progress_bps: number;
+            /** Format: int64 */
+            holder_count: number;
+            /** Format: int64 */
+            launch_block: number;
+            launch_time: string;
+            market_cap_eth: string;
+            name: string;
+            phase: string;
+            remaining_eth: string;
+            symbol: string;
+            total_supply: string;
+            volume_24h_eth: string;
+        };
         LaunchEvent: {
             /** Format: int64 */
             as_of_block?: number;
@@ -376,6 +618,24 @@ export interface components {
             chain_id: number;
             deployment_id: string;
             token: string;
+        };
+        LeaderboardBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/LeaderboardBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["LeaderboardItemDTO"][] | null;
+            snapshot: components["schemas"]["SnapshotDTO"];
+        };
+        LeaderboardItemDTO: {
+            address: string;
+            /** Format: int64 */
+            rank: number;
+            realized_pnl_wei: string;
+            /** Format: int64 */
+            tokens_traded: number;
         };
         MetadataBody: {
             /**
@@ -401,6 +661,18 @@ export interface components {
             revision: number;
             telegram_url?: string;
             x_url?: string;
+        };
+        NewTokenFeedEvent: {
+            /** Format: int64 */
+            block_number: number;
+            /** Format: int64 */
+            chain_id: number;
+            creator: string;
+            deployment_id: string;
+            name: string;
+            symbol: string;
+            token: string;
+            tx_hash: string;
         };
         ProfileActionDTO: {
             creator_fees: string;
@@ -498,6 +770,16 @@ export interface components {
             amount: string;
             /** @enum {string} */
             side: "buy" | "sell";
+        };
+        RecentTradesBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/RecentTradesBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["TradeFeedItem"][] | null;
+            snapshot: components["schemas"]["SnapshotDTO"];
         };
         ReorgEvent: {
             /** Format: int64 */
@@ -616,6 +898,19 @@ export interface components {
             next_cursor?: string;
             snapshot: components["schemas"]["SnapshotDTO"];
         };
+        TradeBurstFeedEvent: {
+            /** Format: int64 */
+            chain_id: number;
+            deployment_id: string;
+            items: components["schemas"]["BurstItem"][] | null;
+            /**
+             * Format: int64
+             * @description new_token events folded into this window.
+             */
+            launches?: number;
+            window_end: string;
+            window_start: string;
+        };
         TradeDTO: {
             /** Format: int64 */
             block_number: number;
@@ -634,6 +929,28 @@ export interface components {
             transaction_index: number;
             tx_hash: string;
         };
+        TradeFeedItem: {
+            /** Format: int64 */
+            block_number: number;
+            /** Format: int64 */
+            chain_id: number;
+            deployment_id: string;
+            eth_volume: string;
+            finality: string;
+            /** Format: int32 */
+            log_index: number;
+            name: string;
+            side: string;
+            source: string;
+            symbol: string;
+            time: string;
+            token: string;
+            token_volume: string;
+            trader: string | null;
+            /** Format: int32 */
+            transaction_index: number;
+            tx_hash: string;
+        };
         TradesBody: {
             /**
              * Format: uri
@@ -644,6 +961,143 @@ export interface components {
             items: components["schemas"]["TradeDTO"][] | null;
             next_cursor?: string;
             snapshot: components["schemas"]["SnapshotDTO"];
+        };
+        TrendingDTO: {
+            address: string;
+            /** Format: int64 */
+            distinct_buyers: number;
+            /** Format: int64 */
+            holder_count: number;
+            /** Format: int64 */
+            launch_block: number;
+            launch_time: string;
+            market_cap_eth: string;
+            name: string;
+            phase: string;
+            symbol: string;
+            total_supply: string;
+            volume_24h_eth: string;
+            window_volume_eth: string;
+        };
+        WalletCreatedBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/WalletCreatedBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["WalletCreatedDTO"][] | null;
+            next_cursor?: string;
+            snapshot: components["schemas"]["SnapshotDTO"];
+        };
+        WalletCreatedDTO: {
+            /** Format: int64 */
+            launch_block: number;
+            market_cap_wei: string;
+            name: string;
+            phase: string;
+            symbol: string;
+            token: string;
+        };
+        WalletDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/WalletDTO.json
+             */
+            readonly $schema?: string;
+            address: string;
+            attribution_complete: boolean;
+            /** Format: int64 */
+            created_count: number;
+            /** Format: int64 */
+            first_block: number | null;
+            /** Format: int64 */
+            held_count: number;
+            /** Format: int64 */
+            last_block: number | null;
+            portfolio_value_wei: string;
+            realized_pnl_wei: string;
+            snapshot: components["schemas"]["SnapshotDTO"];
+            /** Format: int64 */
+            tokens_traded: number;
+            unrealized_pnl_wei: string;
+        };
+        WalletPositionDTO: {
+            average_cost_wad: string | null;
+            balance: string;
+            current_value_wei: string;
+            /** Format: int64 */
+            last_block: number;
+            name: string;
+            phase: string;
+            realized_pnl_wei: string;
+            remaining_cost_wei: string;
+            symbol: string;
+            token: string;
+            /** Format: int64 */
+            trade_count: number;
+            transferred_in: string;
+            unrealized_pnl_wei: string;
+        };
+        WalletPositionsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/WalletPositionsBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["WalletPositionDTO"][] | null;
+            next_cursor?: string;
+            snapshot: components["schemas"]["SnapshotDTO"];
+            /** @description Open mode only: true when the wallet has more open positions than the 500 returned. */
+            truncated: boolean;
+        };
+        WalletTradeDTO: {
+            /** Format: int64 */
+            block_number: number;
+            eth_volume: string;
+            execution_price: string;
+            finality: string;
+            /** Format: int32 */
+            log_index: number;
+            name: string;
+            side: string;
+            source: string;
+            spot_price: string;
+            symbol: string;
+            time: string;
+            token: string;
+            token_volume: string;
+            trader: string | null;
+            /** Format: int32 */
+            transaction_index: number;
+            tx_hash: string;
+        };
+        WalletTradesBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/WalletTradesBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["WalletTradeDTO"][] | null;
+            next_cursor?: string;
+            snapshot: components["schemas"]["SnapshotDTO"];
+        };
+        WatchlistBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/WatchlistBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["WatchlistEntryDTO"][] | null;
+        };
+        WatchlistEntryDTO: {
+            added_at: string;
+            address: string;
+            token: components["schemas"]["TokenDTO"] | null;
         };
     };
     responses: never;
@@ -675,12 +1129,45 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": ({
+                        data: components["schemas"]["FinalityFeedEvent"];
+                        /**
+                         * @description The event name.
+                         * @constant
+                         */
+                        event: "finality";
+                        /** @description The event ID. */
+                        id?: number;
+                        /** @description The retry time in milliseconds. */
+                        retry?: number;
+                    } | {
+                        data: components["schemas"]["GraduationFeedEvent"];
+                        /**
+                         * @description The event name.
+                         * @constant
+                         */
+                        event: "graduation";
+                        /** @description The event ID. */
+                        id?: number;
+                        /** @description The retry time in milliseconds. */
+                        retry?: number;
+                    } | {
                         data: components["schemas"]["LaunchEvent"];
                         /**
                          * @description The event name.
                          * @constant
                          */
                         event: "launch";
+                        /** @description The event ID. */
+                        id?: number;
+                        /** @description The retry time in milliseconds. */
+                        retry?: number;
+                    } | {
+                        data: components["schemas"]["NewTokenFeedEvent"];
+                        /**
+                         * @description The event name.
+                         * @constant
+                         */
+                        event: "new_token";
                         /** @description The event ID. */
                         id?: number;
                         /** @description The retry time in milliseconds. */
@@ -703,6 +1190,28 @@ export interface operations {
                          * @constant
                          */
                         event: "token";
+                        /** @description The event ID. */
+                        id?: number;
+                        /** @description The retry time in milliseconds. */
+                        retry?: number;
+                    } | {
+                        data: components["schemas"]["TradeFeedItem"];
+                        /**
+                         * @description The event name.
+                         * @constant
+                         */
+                        event: "trade";
+                        /** @description The event ID. */
+                        id?: number;
+                        /** @description The retry time in milliseconds. */
+                        retry?: number;
+                    } | {
+                        data: components["schemas"]["TradeBurstFeedEvent"];
+                        /**
+                         * @description The event name.
+                         * @constant
+                         */
+                        event: "trade_burst";
                         /** @description The event ID. */
                         id?: number;
                         /** @description The retry time in milliseconds. */
@@ -738,6 +1247,134 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getLeaderboard: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of wallets, 1-100. Only wallets with a positive realized PnL are ranked, so fewer may be returned. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaderboardBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    listWatchlist: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    addWatchlistEntry: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    removeWatchlistEntry: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {
@@ -798,6 +1435,36 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getEthUsdReference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EthUsdBody"];
                 };
             };
             /** @description Error */
@@ -879,6 +1546,7 @@ export interface operations {
                 phase?: string;
                 q?: string;
                 sort?: string;
+                age?: string;
                 cursor?: string;
                 limit?: number;
             };
@@ -895,6 +1563,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenListBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getTokenHighlights: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HighlightsBody"];
                 };
             };
             /** @description Error */
@@ -1250,6 +1947,38 @@ export interface operations {
             };
         };
     };
+    listRecentTrades: {
+        parameters: {
+            query?: {
+                /** @description Number of trades, 1-100; defaults to 50. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecentTradesBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     getCanonicalTransaction: {
         parameters: {
             query?: never;
@@ -1268,6 +1997,145 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CanonicalObservationBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getWallet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    listWalletCreated: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                /** @description Page size, 1-100. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletCreatedBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    listWalletPositions: {
+        parameters: {
+            query?: {
+                /** @description Closed mode only; supplying it with closed=false is rejected with 422. */
+                cursor?: string;
+                /** @description List closed positions (balance 0) newest first, paginated. When false (default), all open positions are returned in one response ordered by current value, capped at 500 (see truncated). */
+                closed?: boolean;
+                /** @description Page size, 1-100. Applies to closed mode only; open mode returns one capped page. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletPositionsBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    listWalletTrades: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                /** @description Page size, 1-100. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletTradesBody"];
                 };
             };
             /** @description Error */

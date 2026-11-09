@@ -1,0 +1,233 @@
+/* Live trade strip (Explore) and live rows on the token page. */
+.live-strip {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-block: 1px solid var(--line);
+  padding: 10px 0;
+  min-width: 0;
+}
+.live-strip-label {
+  flex: none;
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.live-strip-track {
+  position: relative; /* contains the absolutely positioned .sr-only labels */
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.live-strip-item {
+  flex: none;
+}
+.live-strip-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  color: var(--text);
+  font-size: 13px;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.live-strip-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+a.live-strip-part:hover,
+a.live-strip-trader-link:hover {
+  text-decoration: underline;
+}
+/* Token image at the strip's text scale; same rounded-square shape as .token-image. */
+.live-strip-image-box {
+  display: inline-flex;
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+.live-strip-image {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+.live-strip-image .ui-image-fallback-letter {
+  font-size: 11px;
+}
+.live-strip-ticker {
+  max-width: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.live-strip-arrow[data-side="buy"] {
+  color: var(--accent-text);
+}
+.live-strip-arrow[data-side="sell"] {
+  color: var(--danger);
+}
+.live-strip-badge {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 0 8px;
+  color: var(--text-soft);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.live-strip-eth .usd-line {
+  display: inline;
+  margin-left: 6px;
+}
+.live-strip-trader,
+.live-strip-time {
+  color: var(--text-faint);
+}
+/* Observed (not yet safe) items read as provisional until finality. */
+.live-strip-item[data-pending] .live-strip-link,
+.history-row[data-pending] {
+  opacity: 0.65;
+  border-style: dashed;
+}
+.history-row[data-pending] {
+  border-style: solid;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .live-strip-item:first-child {
+    animation: live-strip-in 240ms ease-out;
+  }
+}
+@keyframes live-strip-in {
+  from {
+    transform: translateX(-12px);
+  }
+  to {
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-strip-item,
+  .live-strip-item:first-child {
+    animation: none;
+  }
+  .live-strip-track {
+    overflow-x: auto;
+  }
+}
+
+/* In-app notifications: navbar bell, its menu and the toast region. */
+.notify-bell {
+  position: relative;
+}
+.notify-bell-button {
+  position: relative;
+}
+.notify-bell-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  border-radius: 8px;
+  padding: 0 4px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+.notify-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  width: min(320px, calc(100vw - 32px));
+  max-height: 360px;
+  overflow-y: auto;
+  border-radius: var(--radius-md);
+  padding: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+}
+.notify-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.notify-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  font-size: 13px;
+}
+.notify-item a {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notify-item a:hover {
+  text-decoration: underline;
+}
+.notify-time {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.notify-empty {
+  margin: 0;
+  padding: 12px 8px;
+  color: var(--text-soft);
+  font-size: 13px;
+}
+.notify-toasts {
+  position: fixed;
+  right: var(--gutter);
+  bottom: 16px;
+  z-index: 60;
+  display: grid;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+}
+.notify-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--radius-md);
+  padding: 8px 8px 8px 14px;
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-pop);
+  font-size: 13px;
+}
+.notify-toast-text {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notify-toast-close {
+  width: 28px;
+  height: 28px;
+}

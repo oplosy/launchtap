@@ -7,6 +7,8 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -219,4 +221,187 @@ func fakeRPCServer(t *testing.T, respond func(rpcRequest) any) *httptest.Server 
 
 func testHeader(number int64) *types.Header {
 	return &types.Header{ParentHash: common.HexToHash("0x01"), UncleHash: types.EmptyUncleHash, Root: common.HexToHash("0x02"), TxHash: types.EmptyTxsHash, ReceiptHash: types.EmptyReceiptsHash, Difficulty: big.NewInt(1), Number: big.NewInt(number), GasLimit: 30_000_000, Time: uint64(number), Extra: []byte{}, MixDigest: common.HexToHash("0x03")}
+}
+
+type recordedRPC struct{ method, outcome string }
+
+type recordingObserver struct {
+	mu    sync.Mutex
+	calls []recordedRPC
+}
+
+func (o *recordingObserver) ObserveRPC(method, outcome string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.calls = append(o.calls, recordedRPC{method, outcome})
+}
+
+func (o *recordingObserver) take() []recordedRPC {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	calls := o.calls
+	o.calls = nil
+	return calls
+}
+
+func TestRPCObserverClassifiesOutcomes(t *testing.T) {
+	t.Parallel()
+	var slow atomic.Bool
+	var failing atomic.Bool
+	release := make(chan struct{})
+	server := fakeRPCServer(t, func(request rpcRequest) any {
+		if slow.Load() {
+			<-release // never answers within the short client's budget
+		}
+		if failing.Load() {
+			return rpcFailure{Code: -32602, Message: "invalid params"}
+		}
+		return testHeader(7)
+	})
+	defer server.Close()
+	defer close(release) // runs before server.Close so Close never waits on a blocked handler
+
+	observer := &recordingObserver{}
+	// The ok and error phases get a generous budget so a slow CI machine cannot turn them
+	// into timeouts; only the timeout phases use the short client.
+	client, err := Dial(context.Background(), server.URL, RPCConfig{Timeout: 5 * time.Second, RetryBackoff: time.Millisecond, Observer: observer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	short, err := Dial(context.Background(), server.URL, RPCConfig{Timeout: 50 * time.Millisecond, RetryBackoff: time.Millisecond, Observer: observer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer short.Close()
+	retried, err := Dial(context.Background(), server.URL, RPCConfig{Timeout: 50 * time.Millisecond, MaxRetries: 2, RetryBackoff: time.Millisecond, Observer: observer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer retried.Close()
+
+	if _, err := client.HeaderByNumber(context.Background(), 7); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := observer.take(), []recordedRPC{{"eth_getBlockByNumber", "ok"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("success observations = %v, want %v", got, want)
+	}
+
+	failing.Store(true)
+	if _, err := client.HeaderByNumber(context.Background(), 7); err == nil {
+		t.Fatal("expected rpc error")
+	}
+	if got, want := observer.take(), []recordedRPC{{"eth_getBlockByNumber", "error"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("error observations = %v, want %v", got, want)
+	}
+	failing.Store(false)
+
+	slow.Store(true)
+	if _, err := short.HeaderByNumber(context.Background(), 7); err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if got, want := observer.take(), []recordedRPC{{"eth_getBlockByNumber", "timeout"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("timeout observations = %v, want %v", got, want)
+	}
+
+	// A retried timeout is one logical call: reported once, after the last attempt.
+	if _, err := retried.HeaderByNumber(context.Background(), 7); err == nil {
+		t.Fatal("expected timeout error after retries")
+	}
+	if got, want := observer.take(), []recordedRPC{{"eth_getBlockByNumber", "timeout"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("retried timeout observations = %v, want %v", got, want)
+	}
+
+	// Shutdown cancellation is not an RPC failure and is not observed.
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := client.HeaderByNumber(canceled, 7); err == nil {
+		t.Fatal("expected cancellation error")
+	}
+	if got := observer.take(); len(got) != 0 {
+		t.Fatalf("canceled call observations = %v, want none", got)
+	}
+}
+
+func TestRPCObserverCountsBatchOnce(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var calls []rpcRequest
+		if err := json.NewDecoder(request.Body).Decode(&calls); err != nil {
+			t.Errorf("decode batch: %v", err)
+			return
+		}
+		responses := make([]map[string]any, len(calls))
+		for index, call := range calls {
+			responses[index] = map[string]any{"jsonrpc": "2.0", "id": call.ID, "result": testHeader(int64(index))}
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(responses)
+	}))
+	defer server.Close()
+	observer := &recordingObserver{}
+	client, err := Dial(context.Background(), server.URL, RPCConfig{Timeout: time.Second, RetryBackoff: time.Millisecond, Observer: observer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if _, err := client.HeadersByNumbers(context.Background(), []uint64{1, 2, 3}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := observer.take(), []recordedRPC{{"eth_getBlockByNumber", "ok"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("batch observations = %v, want %v", got, want)
+	}
+}
+
+func TestTransactionSendersBatchesAndSkipsMissing(t *testing.T) {
+	t.Parallel()
+	var batches atomic.Int32
+	hashes := make([]common.Hash, 150)
+	for index := range hashes {
+		hashes[index] = common.BigToHash(big.NewInt(int64(index + 1)))
+	}
+	missing := hashes[7]
+	sender := common.HexToAddress("0x00000000000000000000000000000000000000aa")
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var calls []rpcRequest
+		if err := json.NewDecoder(request.Body).Decode(&calls); err != nil {
+			t.Errorf("batch request was not a JSON array: %v", err)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		batches.Add(1)
+		if len(calls) > 100 {
+			t.Errorf("batch size = %d, want <= 100", len(calls))
+		}
+		responses := make([]map[string]any, 0, len(calls))
+		for _, call := range calls {
+			var hash common.Hash
+			if call.Method != "eth_getTransactionByHash" || json.Unmarshal(call.Params[0], &hash) != nil {
+				t.Errorf("unexpected batch element %+v", call)
+			}
+			response := map[string]any{"jsonrpc": "2.0", "id": call.ID, "result": map[string]any{"hash": hash.Hex(), "from": sender.Hex()}}
+			if hash == missing {
+				response["result"] = nil
+			}
+			responses = append(responses, response)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(responses)
+	}))
+	defer server.Close()
+	client, err := Dial(context.Background(), server.URL, RPCConfig{Timeout: time.Second, RetryBackoff: time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	senders, err := client.TransactionSenders(context.Background(), hashes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(senders) != 149 || batches.Load() != 2 {
+		t.Fatalf("senders = %d, batches = %d; want 149, 2", len(senders), batches.Load())
+	}
+	if _, ok := senders[missing]; ok || senders[hashes[0]] != sender {
+		t.Fatalf("missing hash present or sender wrong: %v", senders[hashes[0]])
+	}
 }

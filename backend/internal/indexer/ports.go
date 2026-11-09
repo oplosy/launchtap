@@ -44,6 +44,12 @@ type Source interface {
 type Discovery interface {
 	Discover(context.Context, uint64, uint64, chain.Emitters) (chain.DiscoveryResult, error)
 }
+
+// SenderSource resolves transaction senders by hash. A hash it cannot resolve is absent from
+// the result.
+type SenderSource interface {
+	TransactionSenders(context.Context, []common.Hash) (map[common.Hash]common.Address, error)
+}
 type Router interface {
 	Apply(context.Context, UnitOfWork, []chain.DecodedLog, map[int64]ledger.IndexedBlock, []TokenIdentity) error
 }
@@ -59,6 +65,15 @@ type Settings struct {
 	ReorgRecoveryMode bool
 	OnCommitted       func(State)
 	OnFailure         func(error)
+	// OnHeads receives the latest block number after each successful heads read.
+	OnHeads func(latest int64)
+	// Senders is optional. When set, the engine attaches the transaction sender to every pool
+	// swap before the write transaction; when nil, PoolSwap.TxFrom stays nil.
+	Senders SenderSource
+	// OnSenderMisses receives, once per committed chunk, the number of pool swap transactions
+	// whose sender could not be resolved (stored with a nil TxFrom). A chunk whose write
+	// transaction fails reports nothing, so a retried step never double-counts.
+	OnSenderMisses func(misses int)
 }
 
 type ReorgRecord struct {
