@@ -389,3 +389,31 @@ test("the wallet page does not load the wallet stack", async ({ page }) => {
   expect(connectionRequests).toEqual([]);
   await fresh.close();
 });
+
+test("the wallet share card is a 1200x630 PNG and the page contacts only the app and the API", async ({
+  page,
+  request,
+}) => {
+  const state: State = { attributionComplete: true, calls: {} };
+  await installApi(page, state);
+  const hosts = new Set<string>();
+  page.on("request", (req) => {
+    const url = new URL(req.url());
+    if (url.protocol === "http:" || url.protocol === "https:") hosts.add(url.host);
+  });
+  await page.goto(`/wallet/${WALLET}`);
+  await expect(page.getByRole("region", { name: "Wallet totals" })).toBeVisible();
+  const apiHost = new URL(process.env.TASK6_ANVIL_API_URL ?? "").host;
+  const appHost = new URL(page.url()).host;
+  expect([...hosts].filter((host) => host !== appHost && host !== apiHost)).toEqual([]);
+
+  // Rendered by the Next server: the mocked page.route API is unreachable from it, so this is the
+  // generic fallback card, which must still be a valid 1200x630 PNG.
+  const response = await request.get(`/wallet/${WALLET}/opengraph-image`);
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toContain("image/png");
+  const bytes = await response.body();
+  expect(bytes.subarray(1, 4).toString("ascii")).toBe("PNG");
+  expect(bytes.readUInt32BE(16)).toBe(1200);
+  expect(bytes.readUInt32BE(20)).toBe(630);
+});
