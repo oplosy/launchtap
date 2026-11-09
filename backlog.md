@@ -54,6 +54,8 @@
   `x402`, which pulls wagmi 2 → WalletConnect 2.21.1 → `decode-uri-component` 0.2.2, and zod 3
   still arrives through `x402`, Reown and `abitype`; wagmi 3 changes nothing. Details:
   `docs/audits/runtime-advisory-review-2026-11-06.md`. The upgrade was not done.
+  **Re-checked 2026-11-09:** the newest release, `@privy-io/react-auth` 3.51.3, still depends
+  on `x402` ^0.7.1, which requires wagmi ^2.15.6 and zod ^3.24.2, so both highs remain.
 - **Resume (next step):** Before 2027-02-01, re-run the trial install from that document with
   the then-current Privy release. Upgrade only once `npm audit --omit=dev` on the trial tree no
   longer reports the two highs; otherwise renew the allowlist entries with a fresh impact review.
@@ -87,73 +89,6 @@
      workflow through `workflow_dispatch`.
 - **Pitfalls / notes:** Existing clones cannot be fixed. Do not commit the RPC URL, keys, or a
   predicted implementation address before its deployment receipt exists.
-
-### P0-B follow-ups: live feed minors deferred in review
-
-- **Date:** 2026-11-06
-- **Reason:** scope decision (minor findings from the P0-B task and final reviews)
-- **Where it stopped:** P0-B is done (see Done). These were judged minor and deferred.
-- **Related files:** `backend/internal/feed/tail.go`, `backend/cmd/api/main.go`,
-  `web/src/live/`, `web/src/token/token-detail.tsx`, `web/e2e/`,
-  `web/scripts/run-e2e-live-strip.mjs`, `.gitattributes`
-- **Resume (next step):** pick from this list, highest first:
-  1. Backend tail: rewind to the safe block when the Postgres LISTEN connection reconnects (a
-     lost `reorg` hint means no rewind); rate-limit or batch `new_token`/`graduation` like
-     trades (a launch-heavy block can evict subscribers with the 64-event buffer); publish
-     launches/trades/graduations in global chain order; guard `Tail.Start` against a second
-     call; a reorg hint before `Newest` succeeds replays history.
-  2. Notifications: large-trade and own-trade notifications are lost when trades fold into
-     `trade_burst`. (Own pool trades now notify: P0-C1 attributes the pool trader from
-     `tx_from`; a swap whose sender lookup missed still has a null trader until backfilled.)
-  3. Web: emit the `reconnected` signal on the EventSource `open` event, not right after
-     `connect()`, to close the last small recovery gap (`web/src/api/sse.ts` ~131); catch the
-     harmless abort rejection when a reconnect reload cancels a reorg refresh on the token page;
-     show the token image in the strip (spec item); live token-page rows show "—" prices
-     until the next REST refresh; `generateMetadata` can block up to 3 s on a slow API; a
-     generic share card served during an API outage stays cached up to 300 s.
-  4. Tests/tooling: `.gitattributes` `eol=lf` for `backend/openapi/v1.json` (local CRLF makes
-     `check-openapi` report stale); live e2e excludes "mobile footer" (fix: wait for the
-     `/create` panel to settle) and Windows `shell: true` splits `--grep-invert`; release-hardening
-     SVG clipping exemption is broader than needed (skip opacity-0 elements instead); no e2e for
-     bell focus-out or the browser reorg flow.
-  5. Ops: 5+ tabs from one client exceed `API_SSE_MAX_PER_CLIENT` (default 4) because the stream
-     is app-wide; document share-card render cost per distinct address in the runbook.
-- **Pitfalls / notes:** keep amounts as decimal strings / `*big.Int`; the web unit tests run in
-  node only (no DOM), so put logic in pure `.ts` modules.
-
-### P0-C1 follow-ups: wallet/PnL minors deferred in review
-
-- **Date:** 2026-11-09
-- **Reason:** scope decision (minor findings from the P0-C1 task and final reviews)
-- **Where it stopped:** P0-C1 is done (see Done). These were judged minor or architectural and
-  deferred.
-- **Related files:** `backend/internal/indexer/engine.go`, `backend/cmd/indexer/main.go`,
-  `backend/internal/store/postgres/position_source.go`, `backend/queries/`,
-  `web/app/leaderboard/page.tsx`, `web/src/portfolio/`, `web/app/wallet/[address]/`,
-  `web/src/live/holdings.ts`, `web/scripts/anvil-task6-gate.ps1`
-- **Resume (next step):** pick from this list, highest first:
-  1. Sender attribution: misses are counted (`launchpad_indexer_sender_lookup_misses_total`)
-     but not retried. Run `swapbackfill.Run` periodically inside the indexer for blocks below
-     the safe head (architectural: record it in the system-design canvas). The miss counter is
-     incremented before the step commits, so a retried step double-counts.
-  2. Position worker throughput: one batch of 64 every 5 s drains a large backlog slowly (the
-     `-seed-positions` upgrade step creates one); each claim sorts the whole `position_dirty`
-     queue by generation with no index; `-seed-positions` is a single statement over the whole
-     ledger.
-  3. Leaderboard: fills with zero-PnL transfer-only wallets when fewer than 100 have positive
-     PnL; `loadLeaderboard` swallows errors so ISR caches "unavailable" for 60 s.
-  4. Wallet page: a live refetch can run before the position worker recomputes (new trade shown
-     with old PnL); a live refetch resets paged lists to page 1 and does not cancel an in-flight
-     "load more"; add `key={parsed}` on `<WalletView>`; direct phosphor imports vs the
-     `./icons` barrel.
-  5. Holdings: new buys between refresh triggers are not watched until the next trigger; the
-     provider's refresh wiring has no test beyond `holdingsRefreshReason` (no DOM test library).
-  6. Share card: a positions failure degrades the whole wallet card to generic; the generic card
-     is cached 300 s on an API blip; the wallet-kind card render is not exercised by a test.
-  7. Tests/tooling: stale "14 checks" comment in `web/scripts/anvil-task6-gate.ps1` (now 22);
-     loose `toContainText("0 ETH")` and end-unanchored PnL regex in `task6-anvil.spec.ts`.
-- **Pitfalls / notes:** amounts stay decimal strings / `*big.Int`; `internal/position` and
-  `internal/redact` are stdlib-only.
 
 ### Production release, governance, and audit inputs
 
@@ -199,6 +134,34 @@
 
 ## Done
 
+### P0-B and P0-C1 follow-ups: live feed, wallet/PnL review minors
+
+- **Date:** 2026-11-09
+- **Commits:** `a8b286e` and earlier back to `51ea316` (backend: sender retry, position worker
+  throughput, leaderboard filter), `42b249a..e7aaf1d` (feed tail), `d76f7b1..8c7b236` (web), on
+  `dev`, plus this backlog update.
+- **What closed:**
+  - Indexer retries missed pool-swap senders itself (resume cursor below the safe head) with
+    `launchpad_indexer_sender_backfill_{filled_total,pending}` metrics; miss counter counted after
+    commit.
+  - Position worker drains full batches; migration 00019 indexes the claim; `-seed-positions`
+    runs per token. Leaderboard lists only wallets with positive realized PnL.
+  - Feed tail: rewind to the safe block on LISTEN reconnect without re-publishing delivered rows;
+    launches share the per-second budget; graduations are never folded; events publish in chain
+    order; `Start` guard; pre-start reorg hints dropped; bursts carry `max_eth_wei`, `traders`.
+  - Web: burst large/own-trade notifications with replay dedupe; `reconnected` on `open`; tabs
+    hidden 60 s release their SSE stream; strip token images; live row prices; 1 s metadata
+    bound; leaderboard error boundary with `retry`; wallet page delayed refetch, kept pages,
+    load-more abort; holdings refresh on own trade seen; share cards fall back to `[]` symbols
+    and cache API-failure cards 30 s downstream; e2e/tooling fixes and `.gitattributes`.
+- **Gate evidence:** backend build, unit/race, integration, sqlc/openapi/migration checks; web
+  vitest (353), lint, typecheck, `test:e2e:live` (63 passed, 9 skipped), `test:anvil` (22 passed).
+  Only the known Windows CRLF false positives failed locally.
+- **Known residuals (accepted, not tracked):** the feed drain has no per-drain upper block bound
+  (documented in `drainMerged`); the replay identity key omits the block number; burst/replay
+  dedupe uses window and amount heuristics, so an equal-amount new trade can lose its alert;
+  Next keeps a generic share card 300 s in-process even when downstream caches use 30 s.
+
 ### P0-C1: public wallet page, PnL and leaderboard
 
 - **Date:** 2026-11-09
@@ -213,7 +176,7 @@
 - **Upgrade step:** on a database with history, run the sender backfill and then
   `backfill-swap-sender -seed-positions` (runbook "Backfill pool swap senders (P0-C1)").
 - **Next sub-project:** P0-C2 (comments).
-- **Open follow-ups:** see the Active item "P0-C1 follow-ups".
+- **Follow-ups:** closed 2026-11-09 (see "P0-B and P0-C1 follow-ups").
 
 ### P0-B: live trade feed, in-app notifications and share cards
 
@@ -230,7 +193,7 @@
 - **Sub-project C scope note:** notifications matching on wallet holdings (needs a public
   wallet-holdings read), the profile/wallet share card, public wallet page and PnL move to
   sub-project C. P0-B notifications cover watched tokens and the signed-in wallet's own trades.
-- **Open follow-ups:** see the Active item "P0-B follow-ups".
+- **Follow-ups:** closed 2026-11-09 (see "P0-B and P0-C1 follow-ups").
 
 ### Observability: metrics and alerting
 
