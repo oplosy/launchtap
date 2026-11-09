@@ -50,7 +50,7 @@ func TestServerBoundaries(t *testing.T) {
 	if got := w.Header().Get("Access-Control-Allow-Headers"); got != "Authorization,Content-Type,privy-id-token,If-Match,If-None-Match" {
 		t.Fatalf("preflight headers=%q", got)
 	}
-	if got := w.Header().Get("Access-Control-Expose-Headers"); got != "ETag, X-Revision" {
+	if got := w.Header().Get("Access-Control-Expose-Headers"); got != "ETag, X-Revision, Retry-After" {
 		t.Fatalf("preflight exposed headers=%q", got)
 	}
 	if strings.Contains(logs.String(), "secret") {

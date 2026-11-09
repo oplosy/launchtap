@@ -113,7 +113,7 @@ func TestMetadataAndImageHTTPContracts(t *testing.T) {
 	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/png" || response.Header().Get("Content-Length") != strconv.Itoa(len(png)) || response.Header().Get("X-Content-Type-Options") != "nosniff" || response.Header().Get("X-Revision") != "0" || response.Header().Get("Cache-Control") != imageCacheControl || !bytes.Equal(response.Body.Bytes(), png) {
 		t.Fatalf("image read status=%d headers=%v body=%x", response.Code, response.Header(), response.Body.Bytes())
 	}
-	if response.Header().Get("Access-Control-Expose-Headers") != "ETag, X-Revision" {
+	if response.Header().Get("Access-Control-Expose-Headers") != "ETag, X-Revision, Retry-After" {
 		t.Fatalf("allowed-origin image response does not expose validators: %v", response.Header())
 	}
 	etag := response.Header().Get("ETag")

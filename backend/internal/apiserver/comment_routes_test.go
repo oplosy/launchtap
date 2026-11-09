@@ -324,3 +324,52 @@ func TestCommentRoutesUnavailableWithoutDeps(t *testing.T) {
 		t.Fatalf("status=%d", w.Code)
 	}
 }
+
+func TestCommentListErrorsAreNotCached(t *testing.T) {
+	tokenPath := "/v1/tokens/" + commentTokenHex + "/comments"
+	cases := map[string]struct {
+		mutate func(*commentStoreStub)
+		path   string
+	}{
+		"unknown token":        {func(s *commentStoreStub) { s.listErr = social.ErrUnknownToken }, tokenPath},
+		"invalid store cursor": {func(s *commentStoreStub) { s.listErr = social.ErrInvalidCursor }, tokenPath + "?cursor=zz"},
+		"invalid limit":        {nil, tokenPath + "?limit=0"},
+		"internal error":       {func(s *commentStoreStub) { s.listErr = errors.New("boom") }, tokenPath},
+	}
+	for name, c := range cases {
+		store := &commentStoreStub{}
+		if c.mutate != nil {
+			c.mutate(store)
+		}
+		w := serveComment(newCommentServer(store, nil), commentRequest("GET", c.path, "", false))
+		if w.Code < 400 {
+			t.Fatalf("%s: status=%d", name, w.Code)
+		}
+		if got := w.Header().Get("Cache-Control"); strings.Contains(got, "public") || strings.Contains(got, "max-age") {
+			t.Fatalf("%s: error response Cache-Control = %q", name, got)
+		}
+	}
+}
+
+func TestCommentRoutesRejectVerifierFailureWith401(t *testing.T) {
+	store := &commentStoreStub{}
+	server := New(DefaultConfig(), ReadyFunc(func(context.Context) error { return nil }), nil)
+	server.RegisterCommentRoutes(CommentRoutes{
+		Verifier: profileVerifierStub{err: errors.New("token expired")},
+		Store:    store, ChainID: 46630, DeploymentID: "dep-1",
+	})
+	tokenPath := "/v1/tokens/" + commentTokenHex + "/comments"
+	for name, r := range map[string]*http.Request{
+		"eligibility": commentRequest("GET", tokenPath+"/eligibility", "", true),
+		"post":        commentRequest("POST", tokenPath, postBody, true),
+		"report":      commentRequest("PUT", "/v1/comments/7/report", `{"reason":"spam"}`, true),
+	} {
+		w := serveComment(server, r)
+		if w.Code != 401 || problemCode(t, w) != "authentication_failed" {
+			t.Fatalf("%s: status=%d body=%s", name, w.Code, w.Body.String())
+		}
+	}
+	if len(store.actors) != 0 || len(store.bodies) != 0 {
+		t.Fatal("store reached after verifier rejection")
+	}
+}

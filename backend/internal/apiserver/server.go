@@ -280,7 +280,7 @@ func cors(w http.ResponseWriter, origins []string, r *http.Request) bool {
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization,Content-Type,privy-id-token,If-Match,If-None-Match")
-			w.Header().Set("Access-Control-Expose-Headers", "ETag, X-Revision")
+			w.Header().Set("Access-Control-Expose-Headers", "ETag, X-Revision, Retry-After")
 			return true
 		}
 	}
