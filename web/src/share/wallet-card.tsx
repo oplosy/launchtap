@@ -6,18 +6,12 @@ import { ImageResponse } from "next/og";
 import { formatDisplayAmount } from "@/amounts";
 import { formatSignedEth } from "@/portfolio/wallet-model";
 import { shortAddress } from "@/token/address";
-import { CARD_REVALIDATE_SECONDS } from "./card-data";
+import { shareCardCacheControl } from "./card-data";
 import type { WalletCardData } from "./wallet-card-data";
 
 export const WALLET_CARD_SIZE = { width: 1200, height: 630 };
 export const WALLET_CARD_CONTENT_TYPE = "image/png";
-/**
- * Downstream (CDN) lifetime of a generic card served because the API failed, so a recovered API
- * shows up within half a minute. Next's own in-process ISR cache still keeps the route's 300 s
- * `revalidate`: a route handler cannot shorten it per response, so this header only bounds caches
- * in front of the web server.
- */
-export const GENERIC_FAILURE_MAX_AGE_SECONDS = 30;
+export { GENERIC_FAILURE_MAX_AGE_SECONDS } from "./card-data";
 
 const palette = {
   bg: "#0a0a0b",
@@ -130,11 +124,10 @@ export async function renderWalletCard(card: WalletCardData): Promise<Response> 
   // ImageResponse renders lazily; buffer it so a render failure falls back to the generic card
   // instead of a broken stream.
   const bytes = await response.arrayBuffer();
-  const cacheControl =
-    card.kind === "generic" && card.apiFailure
-      ? `public, s-maxage=${GENERIC_FAILURE_MAX_AGE_SECONDS}`
-      : `public, s-maxage=${CARD_REVALIDATE_SECONDS}, stale-while-revalidate=${CARD_REVALIDATE_SECONDS}`;
   return new Response(bytes, {
-    headers: { "Content-Type": WALLET_CARD_CONTENT_TYPE, "Cache-Control": cacheControl },
+    headers: {
+      "Content-Type": WALLET_CARD_CONTENT_TYPE,
+      "Cache-Control": shareCardCacheControl(card),
+    },
   });
 }

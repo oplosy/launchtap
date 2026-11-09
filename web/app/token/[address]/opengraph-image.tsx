@@ -1,5 +1,5 @@
 import { ImageResponse } from "next/og";
-import { CARD_REVALIDATE_SECONDS, loadCardData, type CardData } from "@/share/card-data";
+import { loadCardData, shareCardCacheControl, type CardData } from "@/share/card-data";
 
 export const alt = "Token on Launchpad";
 export const size = { width: 1200, height: 630 };
@@ -189,7 +189,8 @@ async function render(card: CardData) {
   return new Response(bytes, {
     headers: {
       "Content-Type": contentType,
-      "Cache-Control": `public, s-maxage=${CARD_REVALIDATE_SECONDS}, stale-while-revalidate=${CARD_REVALIDATE_SECONDS}`,
+      // Short downstream lifetime for a generic card caused by an API failure.
+      "Cache-Control": shareCardCacheControl(card),
     },
   });
 }

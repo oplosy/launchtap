@@ -21,7 +21,12 @@ export type CardData =
       phase: "bonding" | "graduated";
       progressBps: number;
     }
-  | { kind: "generic" };
+  /**
+   * `apiFailure`: the API failed, answered malformed data, or did not know the token yet (a 404 can
+   * be a token seconds after launch) — as opposed to an invalid address, a stable answer. The card
+   * route then sends a short downstream cache lifetime.
+   */
+  | { kind: "generic"; apiFailure?: true };
 
 export const FETCH_TIMEOUT_MS = 3000;
 /**
@@ -38,6 +43,20 @@ type Fetcher = typeof fetch;
 
 /** Seconds the upstream API reads (and the rendered card) may be reused. */
 export const CARD_REVALIDATE_SECONDS = 300;
+/**
+ * Downstream (CDN) lifetime of a generic card served because the API failed, so a recovered API
+ * shows up within half a minute. Next's own in-process ISR cache still keeps a card route's 300 s
+ * `revalidate`: a route handler cannot shorten it per response, so this only bounds caches in
+ * front of the web server.
+ */
+export const GENERIC_FAILURE_MAX_AGE_SECONDS = 30;
+
+/** `Cache-Control` for a share-card response (token and wallet cards). */
+export function shareCardCacheControl(card: { kind: string; apiFailure?: true }): string {
+  return card.kind === "generic" && card.apiFailure
+    ? `public, s-maxage=${GENERIC_FAILURE_MAX_AGE_SECONDS}`
+    : `public, s-maxage=${CARD_REVALIDATE_SECONDS}, stale-while-revalidate=${CARD_REVALIDATE_SECONDS}`;
+}
 const NEXT_CACHE = { next: { revalidate: CARD_REVALIDATE_SECONDS } } as const;
 
 /**
@@ -257,6 +276,6 @@ export async function loadCardData(
     };
   } catch (cause) {
     console.error("share card: falling back to the generic card", cause);
-    return { kind: "generic" };
+    return { kind: "generic", apiFailure: true };
   }
 }

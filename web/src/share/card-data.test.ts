@@ -3,7 +3,9 @@ import {
   cleanText,
   loadCardData,
   FETCH_TIMEOUT_MS,
+  GENERIC_FAILURE_MAX_AGE_SECONDS,
   loadMetadataSummary,
+  shareCardCacheControl,
   MAX_IMAGE_BYTES,
   METADATA_FETCH_TIMEOUT_MS,
   MAX_NAME_LENGTH,
@@ -58,14 +60,28 @@ describe("loadCardData", () => {
     expect(calls).toEqual([]);
   });
 
-  it("returns generic when the API fails", async () => {
+  it("returns generic, marked as an API failure, when the API fails", async () => {
+    const failed = { kind: "generic", apiFailure: true };
     const { fetcher } = fakeFetch({ token: () => new Response("boom", { status: 500 }) });
-    expect(await loadCardData(ADDRESS, fetcher, BASE)).toEqual({ kind: "generic" });
+    expect(await loadCardData(ADDRESS, fetcher, BASE)).toEqual(failed);
     expect(console.error).toHaveBeenCalled();
     const throwing = vi.fn(async () => {
       throw new Error("network down");
     }) as unknown as typeof fetch;
-    expect(await loadCardData(ADDRESS, throwing, BASE)).toEqual({ kind: "generic" });
+    expect(await loadCardData(ADDRESS, throwing, BASE)).toEqual(failed);
+    // A 404 too: a token seconds after launch is not indexed yet.
+    const missing = fakeFetch({ token: () => new Response("x", { status: 404 }) });
+    expect(await loadCardData(ADDRESS, missing.fetcher, BASE)).toEqual(failed);
+  });
+
+  it("caches a card normally, and a generic card from an API failure for 30 s", () => {
+    expect(GENERIC_FAILURE_MAX_AGE_SECONDS).toBe(30);
+    expect(shareCardCacheControl({ kind: "generic", apiFailure: true })).toBe(
+      "public, s-maxage=30",
+    );
+    const normal = "public, s-maxage=300, stale-while-revalidate=300";
+    expect(shareCardCacheControl({ kind: "generic" })).toBe(normal);
+    expect(shareCardCacheControl({ kind: "token" })).toBe(normal);
   });
 
   it("formats amounts from decimal strings and keeps USD null when unavailable", async () => {
