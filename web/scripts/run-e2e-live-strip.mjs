@@ -3,6 +3,7 @@
 // page.route, so no Anvil node, network or secret is involved. The fail-closed e2e step
 // (`npm run test:e2e`) is unchanged and keeps running without these values.
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 
 const env = {
   ...process.env,
@@ -17,20 +18,25 @@ const env = {
   NEXT_PUBLIC_LOCAL_DEV: "1",
 };
 
+// Run the Playwright CLI through this Node binary, without a shell: with `shell: true` on Windows
+// cmd.exe re-splits the joined argument string, so a multi-word value (a --grep pattern) would
+// break apart. No shell means every argument reaches Playwright exactly as written.
+const playwrightCli = createRequire(import.meta.url).resolve("@playwright/test/cli");
 const result = spawnSync(
-  process.platform === "win32" ? "npx.cmd" : "npx",
+  process.execPath,
   [
-    "playwright",
+    playwrightCli,
     "test",
     "live-strip",
     "wallet-page",
     "notifications",
     "release-hardening",
-    // The /create footer check is a fail-closed-configuration check (ready config lays /create out differently).
-    "--grep-invert",
-    "mobile footer",
     ...process.argv.slice(2),
   ],
-  { stdio: "inherit", env, shell: process.platform === "win32" },
+  { stdio: "inherit", env },
 );
+if (result.error) {
+  console.error(`Playwright failed to start: ${result.error.message}`);
+  process.exit(1);
+}
 process.exit(result.status ?? 1);

@@ -148,6 +148,31 @@ test("own trade reaching safe finality toasts and lists, with keyboard-accessibl
   await expect(bell).toBeFocused();
 });
 
+test("the bell panel closes when focus leaves it", async ({ page }) => {
+  const release = await installApi(page);
+  await installWallet(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Connect wallet" }).last().click();
+  const dialog = page.getByRole("dialog", { name: "Choose a wallet" });
+  await dialog.getByRole("button", { name: "Browser wallet" }).click();
+  const bell = page.getByRole("button", { name: /^Notifications/ });
+  await expect(bell).toBeVisible();
+  release();
+  await expect(bell).toHaveAccessibleName(/1 unread/);
+
+  await bell.click();
+  const panel = page.getByRole("region", { name: "Notifications" });
+  await expect(panel).toBeVisible();
+  // Tabbing into the panel keeps it open: focus is still inside the bell.
+  await page.keyboard.press("Tab");
+  await expect(panel.getByRole("link")).toBeFocused();
+  await expect(panel).toBeVisible();
+  // Moving focus elsewhere (keyboard or programmatic) closes it.
+  await page.getByRole("link", { name: "Open home" }).focus();
+  await expect(panel).toHaveCount(0);
+  await expect(bell).toHaveAttribute("aria-expanded", "false");
+});
+
 test("a connected wallet is notified of a held token's graduation without a watchlist entry", async ({
   page,
 }) => {

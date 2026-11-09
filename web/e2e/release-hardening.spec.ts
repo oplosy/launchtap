@@ -259,10 +259,17 @@ test("reduced motion covers core routes without clipping or animation dependence
       const visibleOverflow = [...document.querySelectorAll("body *")].some((element) => {
         // The live strip is an intentional horizontal scroller; its off-screen items are reachable.
         if (element.closest(".live-strip-track")) return false;
-        // Glyphs inside an SVG may extend past the SVG's own box (hydrated landing story chart);
-        // judge such elements by their owning SVG, which is the element that lays out.
-        const owner = element.closest("svg");
-        const box = (owner ?? element).getBoundingClientRect();
+        // Transparent glyphs inside an SVG (the landing story chart's not-yet-revealed labels) may
+        // sit past the SVG's box; they are invisible, so only those are exempt. A group (<g>)
+        // draws nothing itself and its box includes those transparent children, so it is skipped
+        // too: its visible children are each judged by their own box like every other element.
+        const svg = element.closest("svg");
+        if (svg && svg !== element) {
+          if (element instanceof SVGGElement) return false;
+          for (let node: Element | null = element; node && node !== svg; node = node.parentElement)
+            if (getComputedStyle(node).opacity === "0") return false;
+        }
+        const box = element.getBoundingClientRect();
         return (
           box.width > 0 && box.height > 0 && (box.left < -1 || box.right > window.innerWidth + 1)
         );
@@ -288,13 +295,25 @@ test("reduced motion covers core routes without clipping or animation dependence
 test("mobile footer remains reachable below the final page content", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "Mobile project only.");
   await page.goto("/create", { waitUntil: "domcontentloaded" });
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  // With a ready configuration the launch panel mounts after the wallet stack loads and grows
+  // the page; wait for it (and for the height to stop changing) before scrolling to the end.
+  if (stripReady) {
+    await expect(page.getByRole("region", { name: "Launch token" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Name" })).toBeVisible();
+  }
+  await page.waitForFunction(
+    () =>
+      new Promise<boolean>((resolve) => {
+        const before = document.documentElement.scrollHeight;
+        setTimeout(() => resolve(document.documentElement.scrollHeight === before), 250);
+      }),
+  );
   const geometry = await page.evaluate(() => {
+    // "instant": the app sets `scroll-behavior: smooth`, so a plain scrollTo would still be
+    // animating (scrollY near 0) when the footer is measured.
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
     const footer = document.querySelector(".app-footer")?.getBoundingClientRect();
-    return {
-      footerTop: footer?.top ?? 0,
-      footerBottom: footer?.bottom ?? 0,
-    };
+    return { footerTop: footer?.top ?? -1, footerBottom: footer?.bottom ?? Infinity };
   });
   expect(geometry.footerTop).toBeGreaterThanOrEqual(0);
   expect(geometry.footerBottom).toBeLessThanOrEqual(801);
