@@ -145,6 +145,9 @@ export function createLiveController(options: {
           parked = false;
           // `reconnected` is emitted when the new source opens (SseInvalidationStream).
           open(true);
+          // The tab may have been hidden again while the refill ran (that event saw `parked` and
+          // armed nothing): arm the close timer now so the new stream does not stay open.
+          if (isHidden() && !hiddenTimer) hiddenTimer = setTimeout(park, hiddenCloseMs);
         } finally {
           if (restartAbort === abort) restartAbort = null;
         }

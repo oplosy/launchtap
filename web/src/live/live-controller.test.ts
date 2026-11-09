@@ -241,6 +241,35 @@ describe("live controller", () => {
       expect(h2.sources).toHaveLength(1);
     });
 
+    it("closes again when the tab is hidden while the visible-restart refill is in flight", async () => {
+      vi.useFakeTimers();
+      const setVisibility = stubDocument("visible");
+      const h = harness();
+      const c = createLiveController({ url, eventSourceFactory: h.factory, hiddenCloseMs: 1_000 });
+      let release: () => void = () => undefined;
+      let recoveries = 0;
+      c.addRecovery(async () => {
+        recoveries += 1;
+        await new Promise<void>((resolve) => (release = resolve));
+      });
+      const stop = c.start();
+      setVisibility("hidden");
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(h.sources[0]?.closed).toBe(true);
+      setVisibility("visible");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(recoveries).toBe(1);
+      // Hidden again before the refill finishes, then the refill completes and the stream opens.
+      setVisibility("hidden");
+      release();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.sources).toHaveLength(2);
+      expect(h.sources[1]?.closed).toBe(false);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(h.sources[1]?.closed).toBe(true);
+      stop();
+    });
+
     it("cancels the slow retry while parked and resumes on visible", async () => {
       vi.useFakeTimers();
       const setVisibility = stubDocument("visible");
