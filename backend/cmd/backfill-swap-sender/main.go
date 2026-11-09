@@ -8,11 +8,11 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"os/signal"
 	"syscall"
@@ -29,6 +29,7 @@ const (
 	defaultRate  = 5
 	defaultBatch = 50
 	maxBatch     = 100
+	minRate      = 0.001
 )
 
 type flags struct {
@@ -42,7 +43,7 @@ func main() {
 	err := execute(ctx, os.Args[1:], os.Getenv)
 	stop()
 	if err != nil {
-		slog.Error("backfill-swap-sender failed", "error", err)
+		slog.Error("backfill-swap-sender failed", "error", redactError(err, os.Getenv("RPC_URL"), os.Getenv("DATABASE_URL")))
 		os.Exit(1)
 	}
 }
@@ -105,8 +106,8 @@ func parseFlags(args []string) (flags, error) {
 	if set.NArg() != 0 {
 		return flags{}, fmt.Errorf("unexpected arguments: %v", set.Args())
 	}
-	if !(f.Rate > 0) {
-		return flags{}, errors.New("-rate must be greater than 0")
+	if math.IsNaN(f.Rate) || math.IsInf(f.Rate, 0) || f.Rate < minRate {
+		return flags{}, fmt.Errorf("-rate must be a finite number of at least %g", minRate)
 	}
 	if f.Batch < 1 || f.Batch > maxBatch {
 		return flags{}, fmt.Errorf("-batch must be between 1 and %d", maxBatch)
