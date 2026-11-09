@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ApiEvent, LiveEvent, TradeFeedItem } from "@/api/types";
-import { holdingsRefreshReason, loadHoldings, mergeWatched } from "./holdings";
+import {
+  applyHoldingsResult,
+  holdingsRefreshReason,
+  loadHoldings,
+  loadHoldingsResult,
+  mergeWatched,
+} from "./holdings";
 import { createRuleState, evaluate } from "./notification-rules";
 
 const TOKEN = "0x00000000000000000000000000000000000000Aa";
@@ -147,5 +153,38 @@ describe("loadHoldings", () => {
         init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
       })) as unknown as typeof fetch;
     expect(await loadHoldings(WALLET, hanging, BASE_URL, 10)).toEqual([]);
+  });
+});
+
+describe("loadHoldingsResult", () => {
+  const reply = (body: unknown, status = 200) =>
+    (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+
+  it("returns the list on success and null on every failure", async () => {
+    expect(
+      await loadHoldingsResult(WALLET, reply({ items: [{ token: TOKEN }] }), BASE_URL),
+    ).toEqual([TOKEN.toLowerCase()]);
+    expect(await loadHoldingsResult(WALLET, reply({ items: [] }), BASE_URL)).toEqual([]);
+    expect(await loadHoldingsResult(WALLET, reply({}, 500), BASE_URL)).toBeNull();
+    expect(await loadHoldingsResult(WALLET, reply({ items: "x" }), BASE_URL)).toBeNull();
+    const failing = (async () => {
+      throw new Error("offline");
+    }) as unknown as typeof fetch;
+    expect(await loadHoldingsResult(WALLET, failing, BASE_URL)).toBeNull();
+    const hanging = ((_: unknown, init?: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+      })) as unknown as typeof fetch;
+    expect(await loadHoldingsResult(WALLET, hanging, BASE_URL, 10)).toBeNull();
+  });
+});
+
+describe("applyHoldingsResult", () => {
+  it("keeps the previous holdings when a refresh failed", () => {
+    const held = [TOKEN.toLowerCase()];
+    const afterOk = applyHoldingsResult([], held);
+    expect(afterOk).toEqual(held);
+    expect(applyHoldingsResult(afterOk, null)).toBe(afterOk);
+    expect(applyHoldingsResult(afterOk, [])).toEqual([]);
   });
 });

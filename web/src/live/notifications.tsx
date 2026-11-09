@@ -17,7 +17,12 @@ import type { LiveEvent } from "@/api/types";
 import { BellSimple, X } from "@/components/icons";
 import { publicConfiguration } from "@/config/public";
 import { parseTokenAddress } from "@/token/address";
-import { holdingsRefreshReason, loadHoldings, mergeWatched } from "./holdings";
+import {
+  applyHoldingsResult,
+  holdingsRefreshReason,
+  loadHoldingsResult,
+  mergeWatched,
+} from "./holdings";
 import { useLiveEvents } from "./live-events";
 import { isEventInScope } from "./live-strip-model";
 import {
@@ -75,10 +80,11 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
   const refreshHoldings = useCallback((wallet: string | undefined) => {
     const generation = ++holdingsGeneration.current;
     if (!wallet) return;
-    void loadHoldings(wallet).then((tokens) => {
+    void loadHoldingsResult(wallet).then((tokens) => {
       // A newer refresh, or another identity, has superseded this answer.
       if (generation !== holdingsGeneration.current) return;
-      holdingsRef.current = tokens;
+      // A failed refresh keeps the previous set.
+      holdingsRef.current = applyHoldingsResult(holdingsRef.current, tokens);
     });
   }, []);
 
