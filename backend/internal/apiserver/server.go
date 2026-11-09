@@ -152,6 +152,12 @@ func (s *Server) RegisterWatchlistRoutes(r WatchlistRoutes) {
 	}
 	r.Register(s.API)
 }
+func (s *Server) RegisterCommentRoutes(r CommentRoutes) {
+	if r.Logger == nil {
+		r.Logger = s.logger
+	}
+	r.Register(s.API)
+}
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.shutdownOnce.Do(func() { close(s.streamShutdown) })

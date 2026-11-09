@@ -665,7 +665,7 @@ func TestHiddenCommentCountsTowardRateLimit(t *testing.T) {
 	// A hidden comment posted just now still blocks the 15 s interval.
 	insertSocialComment(t, ctx, database.DB, token.Bytes(), "did:a", socialHolder.Bytes(), "hidden", true)
 	_, err := store.Post(ctx, socialActor("did:a", socialHolder), token, socialHolder, "next")
-	rateLimited(t, err)
+	_ = rateLimited(t, err)
 
 	// Thirty hidden comments within the hour still fill the hourly cap.
 	mustExecSocial(t, ctx, database.DB, `
@@ -673,7 +673,7 @@ func TestHiddenCommentCountsTowardRateLimit(t *testing.T) {
 		SELECT $1, $2, $3, 'did:b', $4, 'holder', 'seed ' || g, now() - interval '20 minutes', now(), 'test'
 		FROM generate_series(1, 30) AS g`, socialChainID, socialDep, token.Bytes(), socialHolder.Bytes())
 	_, err = store.Post(ctx, socialActor("did:b", socialHolder), token, socialHolder, "31st")
-	rateLimited(t, err)
+	_ = rateLimited(t, err)
 }
 
 func TestReportCommentOfReorgedTokenIsNotFound(t *testing.T) {

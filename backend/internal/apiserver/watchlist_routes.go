@@ -62,13 +62,9 @@ func (r WatchlistRoutes) owner(ctx context.Context, in WatchlistAuthInput) (watc
 	if r.Store == nil || r.Verifier == nil {
 		return watchlist.Owner{}, huma.Error503ServiceUnavailable("watchlist unavailable")
 	}
-	access, err := privyauth.ParseBearer(in.Authorization)
+	principal, err := authenticatePrivy(ctx, r.Verifier, in)
 	if err != nil {
-		return watchlist.Owner{}, apiProblem(http.StatusUnauthorized, "authentication_failed", "Authentication failed")
-	}
-	principal, err := r.Verifier.Verify(ctx, access, in.IdentityToken)
-	if err != nil || principal.PrivyDID == "" || len(principal.PrivyDID) > maxPrivyDIDBytes {
-		return watchlist.Owner{}, apiProblem(http.StatusUnauthorized, "authentication_failed", "Authentication failed")
+		return watchlist.Owner{}, err
 	}
 	return watchlist.Owner{ChainID: r.ChainID, DeploymentID: r.DeploymentID, PrivyDID: principal.PrivyDID}, nil
 }

@@ -22,6 +22,7 @@ func GenerateOpenAPI() ([]byte, error) {
 	s.RegisterFeedRoutes(FeedRoutes{})
 	s.RegisterWalletRoutes(WalletRoutes{})
 	s.RegisterWatchlistRoutes(WatchlistRoutes{})
+	s.RegisterCommentRoutes(CommentRoutes{})
 	b, err := json.MarshalIndent(s.API.OpenAPI(), "", "  ")
 	if err != nil {
 		return nil, err

@@ -1,4 +1,20 @@
 export interface paths {
+    "/comments/{id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["reportComment"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events": {
         parameters: {
             query?: never;
@@ -183,6 +199,38 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getTokenHighlights"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tokens/{address}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listTokenComments"];
+        put?: never;
+        post: operations["postTokenComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tokens/{address}/comments/eligibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCommentEligibility"];
         put?: never;
         post?: never;
         delete?: never;
@@ -469,6 +517,56 @@ export interface components {
             snapshot: components["schemas"]["SnapshotDTO"];
             tx_hash: string;
         };
+        CommentAuthorDTO: {
+            /** @enum {string} */
+            role: "creator" | "holder";
+            /** @description Lowercase username, or null when the author has none or is not public. */
+            username: string | null;
+            /** @description Checksummed posting wallet, or null when the author shows a username only. */
+            wallet: string | null;
+        };
+        CommentDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/CommentDTO.json
+             */
+            readonly $schema?: string;
+            author: components["schemas"]["CommentAuthorDTO"];
+            body: string;
+            created_at: string;
+            /** @description Decimal string. */
+            id: string;
+            token: string;
+        };
+        CommentListBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/CommentListBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            comment_count: number;
+            items: components["schemas"]["CommentDTO"][] | null;
+            next_cursor?: string;
+        };
+        EligibilityBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/EligibilityBody.json
+             */
+            readonly $schema?: string;
+            banned: boolean;
+            eligible_wallets: components["schemas"]["EligibleWalletDTO"][] | null;
+            username: string | null;
+        };
+        EligibleWalletDTO: {
+            address: string;
+            /** @enum {string} */
+            role: "creator" | "holder";
+        };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
             location?: string;
@@ -674,6 +772,18 @@ export interface components {
             token: string;
             tx_hash: string;
         };
+        PostCommentInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/PostCommentInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Comment text, at most 500 code points after normalization. */
+            body: string;
+            /** @description Linked wallet that posts; must be the token creator or a holder. */
+            wallet: string;
+        };
         ProfileActionDTO: {
             creator_fees: string;
             curve: string;
@@ -790,6 +900,16 @@ export interface components {
             /** Format: int64 */
             common_ancestor: number;
             deployment_id: string;
+        };
+        ReportCommentInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/ReportCommentInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description One of spam, scam, abuse, other. */
+            reason: string;
         };
         RevisionBody: {
             /**
@@ -1108,6 +1228,42 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    reportComment: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportCommentInputBody"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     events: {
         parameters: {
             query?: {
@@ -1592,6 +1748,114 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HighlightsBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    listTokenComments: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                /** @description Number of comments, 1-50; defaults to 20. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentListBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    postTokenComment: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PostCommentInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getCommentEligibility: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EligibilityBody"];
                 };
             };
             /** @description Error */
