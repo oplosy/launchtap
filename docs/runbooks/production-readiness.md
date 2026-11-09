@@ -282,8 +282,10 @@ When upgrading such a database:
 
    It queues every distinct `(wallet, token)` from curve trades (by trader), transfers (both
    sides) and attributed pool swaps, excluding the zero address, the factory and every curve and
-   pair. It is one database statement, needs no RPC, and is safe to rerun (a queued pair only
-   gets a new generation). It logs `pairs` and `marked`.
+   pair. It walks the chain's tokens and runs one bounded database statement per token, each
+   committed on its own, so a large ledger never becomes one long transaction; it needs no RPC
+   and is safe to rerun or to resume after an interruption (a queued pair only gets a new
+   generation). It logs `tokens`, `pairs` and `marked`.
 4. Watch `launchpad_aggregation_position_dirty_backlog` drain to 0; wallet pages and the
    leaderboard are complete after that. A fresh database (indexed from the start with this
    feature) needs no seed.

@@ -591,6 +591,43 @@ func (q *Queries) ListPositionLegs(ctx context.Context, arg ListPositionLegsPara
 	return items, nil
 }
 
+const listSeedTokens = `-- name: ListSeedTokens :many
+SELECT token_address
+FROM token_launches
+WHERE chain_id = $1::bigint
+  AND token_address > $2::bytea
+ORDER BY token_address
+LIMIT $3::int
+`
+
+type ListSeedTokensParams struct {
+	ChainID    int64
+	AfterToken []byte
+	RowLimit   int32
+}
+
+// Keyset page of the chain's launched tokens for the chunked position seed. Every ledger row
+// (trades, transfers) references token_launches, so these pages cover the whole ledger.
+func (q *Queries) ListSeedTokens(ctx context.Context, arg ListSeedTokensParams) ([]Address, error) {
+	rows, err := q.db.Query(ctx, listSeedTokens, arg.ChainID, arg.AfterToken, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Address{}
+	for rows.Next() {
+		var token_address Address
+		if err := rows.Scan(&token_address); err != nil {
+			return nil, err
+		}
+		items = append(items, token_address)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUnattributedPoolSwaps = `-- name: ListUnattributedPoolSwaps :many
 SELECT tx_hash, block_number
 FROM pool_swaps
@@ -1115,24 +1152,25 @@ func (q *Queries) RecomputeWalletTotals(ctx context.Context, arg RecomputeWallet
 	return err
 }
 
-const seedPositionDirty = `-- name: SeedPositionDirty :one
+const seedTokenPositionDirty = `-- name: SeedTokenPositionDirty :one
 WITH pairs AS (
     SELECT DISTINCT source.wallet, source.token_address FROM (
         SELECT trade.trader AS wallet, trade.token_address FROM trades AS trade
-        WHERE trade.chain_id = $1::bigint
+        WHERE trade.chain_id = $1::bigint AND trade.token_address = $2::bytea
         UNION
         SELECT swap.tx_from, token.token_address FROM pool_swaps AS swap
         JOIN tokens AS token ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
         WHERE swap.chain_id = $1::bigint AND swap.tx_from IS NOT NULL
+          AND token.token_address = $2::bytea
         UNION
         SELECT transfer.from_address, transfer.token_address FROM transfers AS transfer
-        WHERE transfer.chain_id = $1::bigint
+        WHERE transfer.chain_id = $1::bigint AND transfer.token_address = $2::bytea
         UNION
         SELECT transfer.to_address, transfer.token_address FROM transfers AS transfer
-        WHERE transfer.chain_id = $1::bigint
+        WHERE transfer.chain_id = $1::bigint AND transfer.token_address = $2::bytea
     ) AS source
     WHERE source.wallet <> decode(repeat('00', 20), 'hex')
-      AND source.wallet <> $2::bytea
+      AND source.wallet <> $3::bytea
       AND NOT EXISTS (
         SELECT 1 FROM tokens AS excluded
         WHERE excluded.chain_id = $1::bigint AND excluded.curve_address = source.wallet
@@ -1145,32 +1183,39 @@ WITH pairs AS (
     INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
     SELECT $1::bigint, pairs.wallet, pairs.token_address, nextval('position_dirty_generation_seq')
     FROM pairs
-    WHERE NOT $3::boolean
+    WHERE NOT $4::boolean
     ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq')
     RETURNING 1
 )
 SELECT (SELECT count(*) FROM pairs)::bigint AS pair_count, (SELECT count(*) FROM marked)::bigint AS marked
 `
 
-type SeedPositionDirtyParams struct {
-	ChainID int64
-	Factory []byte
-	DryRun  bool
+type SeedTokenPositionDirtyParams struct {
+	ChainID      int64
+	TokenAddress []byte
+	Factory      []byte
+	DryRun       bool
 }
 
-type SeedPositionDirtyRow struct {
+type SeedTokenPositionDirtyRow struct {
 	PairCount int64
 	Marked    int64
 }
 
-// One-off seed for ledger history that predates the position queue: every distinct
-// (wallet, token) pair from curve trades by trader, transfers from/to, and attributed pool swaps
-// on the token's own pair, with the R4 exclusions of ListPositionPairsAbove. Idempotent: a pair
-// already queued only gets a new generation. With dry_run nothing is written; pair_count is the
-// number of pairs either way and marked the number of rows inserted or re-generated.
-func (q *Queries) SeedPositionDirty(ctx context.Context, arg SeedPositionDirtyParams) (SeedPositionDirtyRow, error) {
-	row := q.db.QueryRow(ctx, seedPositionDirty, arg.ChainID, arg.Factory, arg.DryRun)
-	var i SeedPositionDirtyRow
+// One chunk of the seed for ledger history that predates the position queue: every distinct
+// (wallet, token) pair of one token from curve trades by trader, transfers from/to, and
+// attributed pool swaps on the token's own pair, with the R4 exclusions of
+// ListPositionPairsAbove. Idempotent: a pair already queued only gets a new generation. With
+// dry_run nothing is written; pair_count is the number of pairs either way and marked the number
+// of rows inserted or re-generated.
+func (q *Queries) SeedTokenPositionDirty(ctx context.Context, arg SeedTokenPositionDirtyParams) (SeedTokenPositionDirtyRow, error) {
+	row := q.db.QueryRow(ctx, seedTokenPositionDirty,
+		arg.ChainID,
+		arg.TokenAddress,
+		arg.Factory,
+		arg.DryRun,
+	)
+	var i SeedTokenPositionDirtyRow
 	err := row.Scan(&i.PairCount, &i.Marked)
 	return i, err
 }

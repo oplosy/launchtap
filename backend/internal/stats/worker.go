@@ -38,6 +38,11 @@ type Worker struct {
 	OnError      func(Claim, error)
 	// OnComputed receives the number of claims completed per drain.
 	OnComputed func(count int)
+	// DrainFullBatches makes the worker claim again at once while a claim returns a full batch,
+	// until the queue returns a short one, instead of waiting for the next wake or poll. Each
+	// claim still leases its rows (a failed claim is not re-claimed until its lease lapses), so
+	// the loop always ends; it stops early when ctx is cancelled.
+	DrainFullBatches bool
 }
 
 func (w Worker) Run(ctx context.Context) error {
@@ -52,8 +57,17 @@ func (w Worker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
-		if err := w.drain(ctx, batch); err != nil {
-			return err
+		for {
+			claimed, err := w.drain(ctx, batch)
+			if err != nil {
+				return err
+			}
+			if !w.DrainFullBatches || claimed < int(batch) {
+				break
+			}
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -63,10 +77,12 @@ func (w Worker) Run(ctx context.Context) error {
 		}
 	}
 }
-func (w Worker) drain(ctx context.Context, batch int32) error {
+
+// drain claims and processes one batch and returns the number of claims it received.
+func (w Worker) drain(ctx context.Context, batch int32) (int, error) {
 	claims, err := w.Source.Claim(ctx, w.WorkerID, batch)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	completed := 0
 	defer func() {
@@ -77,7 +93,7 @@ func (w Worker) drain(ctx context.Context, batch int32) error {
 	if batchComputer, ok := w.Source.(BatchComputer); ok {
 		batchErrors := batchComputer.ComputeBatch(ctx, claims)
 		if len(batchErrors) != len(claims) {
-			return fmt.Errorf("batch compute returned %d results for %d claims", len(batchErrors), len(claims))
+			return len(claims), fmt.Errorf("batch compute returned %d results for %d claims", len(batchErrors), len(claims))
 		}
 		for i, claim := range claims {
 			if err := batchErrors[i]; err != nil {
@@ -87,11 +103,11 @@ func (w Worker) drain(ctx context.Context, batch int32) error {
 				continue
 			}
 			if _, err := w.Source.Complete(ctx, claim, w.WorkerID); err != nil {
-				return err
+				return len(claims), err
 			}
 			completed++
 		}
-		return nil
+		return len(claims), nil
 	}
 	for _, claim := range claims {
 		if err := w.Source.Compute(ctx, claim); err != nil {
@@ -101,9 +117,9 @@ func (w Worker) drain(ctx context.Context, batch int32) error {
 			continue
 		}
 		if _, err := w.Source.Complete(ctx, claim, w.WorkerID); err != nil {
-			return err
+			return len(claims), err
 		}
 		completed++
 	}
-	return nil
+	return len(claims), nil
 }

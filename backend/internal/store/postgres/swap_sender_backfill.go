@@ -54,18 +54,50 @@ func (adapter *Adapter) AttributeSwapSender(ctx context.Context, chainID int64, 
 
 // PositionSeed counts what SeedPositionDirty found and wrote.
 type PositionSeed struct {
+	Tokens int64 // token chunks processed (one statement each)
 	Pairs  int64 // distinct (wallet, token) pairs in the ledger after the R4 exclusions
 	Marked int64 // position_dirty rows inserted or re-generated (0 in dry-run mode)
 }
 
+// seedTokenPage is how many token addresses one keyset page of the seed reads.
+const seedTokenPage = 500
+
 // SeedPositionDirty marks every (wallet, token) pair of the chain's existing ledger history
 // dirty (curve trades by trader, transfers from/to, attributed pool swaps), excluding the zero
-// address, the adapter's factory and every curve and pair (R4). It is one set-based statement
-// and idempotent; with dryRun it only counts.
+// address, the adapter's factory and every curve and pair (R4). It walks the chain's tokens with
+// a keyset cursor and runs one bounded statement per token, each committed on its own; it is
+// idempotent, so an interrupted run is simply rerun. With dryRun it only counts.
 func (adapter *Adapter) SeedPositionDirty(ctx context.Context, chainID int64, dryRun bool) (PositionSeed, error) {
-	row, err := adapter.queries.SeedPositionDirty(ctx, sqlc.SeedPositionDirtyParams{ChainID: chainID, Factory: adapter.factory[:], DryRun: dryRun})
-	if err != nil {
-		return PositionSeed{}, fmt.Errorf("seed position dirty: %w", err)
+	return adapter.SeedPositionDirtyPaged(ctx, chainID, dryRun, seedTokenPage)
+}
+
+// SeedPositionDirtyPaged is SeedPositionDirty with an explicit token page size.
+func (adapter *Adapter) SeedPositionDirtyPaged(ctx context.Context, chainID int64, dryRun bool, pageSize int32) (PositionSeed, error) {
+	if pageSize <= 0 {
+		return PositionSeed{}, fmt.Errorf("seed position dirty: page size %d must be positive", pageSize)
 	}
-	return PositionSeed{Pairs: row.PairCount, Marked: row.Marked}, nil
+	var seed PositionSeed
+	after := []byte{}
+	for {
+		tokens, err := adapter.queries.ListSeedTokens(ctx, sqlc.ListSeedTokensParams{ChainID: chainID, AfterToken: after, RowLimit: pageSize})
+		if err != nil {
+			return seed, fmt.Errorf("list seed tokens: %w", err)
+		}
+		for _, token := range tokens {
+			row, err := adapter.queries.SeedTokenPositionDirty(ctx, sqlc.SeedTokenPositionDirtyParams{
+				ChainID: chainID, TokenAddress: token[:], Factory: adapter.factory[:], DryRun: dryRun,
+			})
+			if err != nil {
+				return seed, fmt.Errorf("seed position dirty for token %x: %w", token[:], err)
+			}
+			seed.Tokens++
+			seed.Pairs += row.PairCount
+			seed.Marked += row.Marked
+		}
+		if len(tokens) < int(pageSize) {
+			return seed, nil
+		}
+		last := tokens[len(tokens)-1]
+		after = last[:]
+	}
 }

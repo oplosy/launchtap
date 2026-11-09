@@ -582,26 +582,38 @@ WHERE chain_id = sqlc.arg(chain_id)::bigint
   AND tx_from IS NULL
 RETURNING pair_address;
 
--- name: SeedPositionDirty :one
--- One-off seed for ledger history that predates the position queue: every distinct
--- (wallet, token) pair from curve trades by trader, transfers from/to, and attributed pool swaps
--- on the token's own pair, with the R4 exclusions of ListPositionPairsAbove. Idempotent: a pair
--- already queued only gets a new generation. With dry_run nothing is written; pair_count is the
--- number of pairs either way and marked the number of rows inserted or re-generated.
+-- name: ListSeedTokens :many
+-- Keyset page of the chain's launched tokens for the chunked position seed. Every ledger row
+-- (trades, transfers) references token_launches, so these pages cover the whole ledger.
+SELECT token_address
+FROM token_launches
+WHERE chain_id = sqlc.arg(chain_id)::bigint
+  AND token_address > sqlc.arg(after_token)::bytea
+ORDER BY token_address
+LIMIT sqlc.arg(row_limit)::int;
+
+-- name: SeedTokenPositionDirty :one
+-- One chunk of the seed for ledger history that predates the position queue: every distinct
+-- (wallet, token) pair of one token from curve trades by trader, transfers from/to, and
+-- attributed pool swaps on the token's own pair, with the R4 exclusions of
+-- ListPositionPairsAbove. Idempotent: a pair already queued only gets a new generation. With
+-- dry_run nothing is written; pair_count is the number of pairs either way and marked the number
+-- of rows inserted or re-generated.
 WITH pairs AS (
     SELECT DISTINCT source.wallet, source.token_address FROM (
         SELECT trade.trader AS wallet, trade.token_address FROM trades AS trade
-        WHERE trade.chain_id = sqlc.arg(chain_id)::bigint
+        WHERE trade.chain_id = sqlc.arg(chain_id)::bigint AND trade.token_address = sqlc.arg(token_address)::bytea
         UNION
         SELECT swap.tx_from, token.token_address FROM pool_swaps AS swap
         JOIN tokens AS token ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
         WHERE swap.chain_id = sqlc.arg(chain_id)::bigint AND swap.tx_from IS NOT NULL
+          AND token.token_address = sqlc.arg(token_address)::bytea
         UNION
         SELECT transfer.from_address, transfer.token_address FROM transfers AS transfer
-        WHERE transfer.chain_id = sqlc.arg(chain_id)::bigint
+        WHERE transfer.chain_id = sqlc.arg(chain_id)::bigint AND transfer.token_address = sqlc.arg(token_address)::bytea
         UNION
         SELECT transfer.to_address, transfer.token_address FROM transfers AS transfer
-        WHERE transfer.chain_id = sqlc.arg(chain_id)::bigint
+        WHERE transfer.chain_id = sqlc.arg(chain_id)::bigint AND transfer.token_address = sqlc.arg(token_address)::bytea
     ) AS source
     WHERE source.wallet <> decode(repeat('00', 20), 'hex')
       AND source.wallet <> sqlc.arg(factory)::bytea

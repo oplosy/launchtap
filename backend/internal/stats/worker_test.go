@@ -153,7 +153,7 @@ func TestWorkerReportsComputedCount(t *testing.T) {
 	source := &countingSource{claims: claims, failAt: 1}
 	var reported []int
 	worker := Worker{Source: source, WorkerID: "count-test", OnComputed: func(count int) { reported = append(reported, count) }}
-	if err := worker.drain(context.Background(), 32); err != nil {
+	if _, err := worker.drain(context.Background(), 32); err != nil {
 		t.Fatal(err)
 	}
 	if len(reported) != 1 || reported[0] != 2 {

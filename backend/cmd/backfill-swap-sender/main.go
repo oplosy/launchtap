@@ -125,8 +125,8 @@ func parseFlags(args []string) (flags, error) {
 	return f, nil
 }
 
-// seedPositions queues every existing ledger (wallet, token) pair in one set-based statement
-// (excluding the zero address, the factory and every curve and pair). It is idempotent.
+// seedPositions queues every existing ledger (wallet, token) pair with one bounded statement per
+// token (excluding the zero address, the factory and every curve and pair). It is idempotent.
 func seedPositions(ctx context.Context, databaseURL string, chainID int64, factory common.Address, dryRun bool) error {
 	pool, err := storepostgres.OpenPool(ctx, databaseURL, storepostgres.PoolOptions{MaxConns: 2})
 	if err != nil {
@@ -137,7 +137,7 @@ func seedPositions(ctx context.Context, databaseURL string, chainID int64, facto
 	if err != nil {
 		return err
 	}
-	slog.Info("position seed finished", "dry_run", dryRun, "pairs", seed.Pairs, "marked", seed.Marked)
+	slog.Info("position seed finished", "dry_run", dryRun, "tokens", seed.Tokens, "pairs", seed.Pairs, "marked", seed.Marked)
 	return nil
 }
 

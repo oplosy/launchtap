@@ -313,3 +313,48 @@ func TestPositionExclusionLookupsUseIndexes(t *testing.T) {
 		t.Log(plan)
 	}
 }
+
+// The position worker's claim filters position_dirty by chain and orders by generation; an index
+// must serve both, so a claim never sorts the whole queue.
+func TestPositionDirtyClaimUsesIndexWithoutSort(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	f := newWalletSchemaFixture(t, ctx)
+	tx, err := f.database.DB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	// An empty test table always looks cheapest to scan and sort; disabling those plans asks
+	// whether an index can return the rows already in claim order.
+	for _, setting := range []string{`SET LOCAL enable_seqscan = off`, `SET LOCAL enable_bitmapscan = off`, `SET LOCAL enable_sort = off`} {
+		if _, err := tx.ExecContext(ctx, setting); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The candidate CTE of ClaimPositionDirty (queries/projections.sql), verbatim.
+	rows, err := tx.QueryContext(ctx, `EXPLAIN SELECT chain_id, wallet, token_address
+    FROM position_dirty
+    WHERE chain_id = 48200::bigint
+      AND (claimed_generation IS NULL
+       OR claimed_generation < generation
+       OR (claimed_at IS NOT NULL AND claimed_at < now() - interval '30 seconds'))
+    ORDER BY generation, chain_id, wallet, token_address
+    LIMIT 64
+    FOR UPDATE SKIP LOCKED`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plan string
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			t.Fatal(err)
+		}
+		plan += line + "\n"
+	}
+	_ = rows.Close()
+	if !strings.Contains(plan, "position_dirty_claim_idx") || strings.Contains(plan, "Sort") || strings.Contains(plan, "Seq Scan") {
+		t.Fatalf("claim plan does not use position_dirty_claim_idx without a sort:\n%s", plan)
+	}
+}

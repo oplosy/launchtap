@@ -165,7 +165,7 @@ func run() error {
 			slog.Warn("volume window sweeper stopped", "error", err)
 		}
 	}()
-	positions := stats.Worker{Source: storepostgres.PositionSource{Adapter: storepostgres.NewAdapter(pool), ChainID: int64(c.ChainID)}, WorkerID: c.IndexerWorkerID + "-positions", PollInterval: stats.DefaultDirtyPollInterval, BatchSize: 64, Wake: positionWake, OnError: func(claim stats.Claim, err error) {
+	positions := stats.Worker{Source: storepostgres.PositionSource{Adapter: storepostgres.NewAdapter(pool), ChainID: int64(c.ChainID)}, WorkerID: c.IndexerWorkerID + "-positions", PollInterval: stats.DefaultDirtyPollInterval, BatchSize: 64, DrainFullBatches: true, Wake: positionWake, OnError: func(claim stats.Claim, err error) {
 		indexerMetrics.PositionFailed()
 		slog.Error("position compute failed", "chain_id", claim.ChainID, "error", err)
 	}}

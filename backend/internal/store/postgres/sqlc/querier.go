@@ -129,6 +129,9 @@ type Querier interface {
 	ListProfileActions(ctx context.Context, arg ListProfileActionsParams) ([]ListProfileActionsRow, error)
 	ListProtocolDaily(ctx context.Context, arg ListProtocolDailyParams) ([]ListProtocolDailyRow, error)
 	ListRecentMarketTrades(ctx context.Context, arg ListRecentMarketTradesParams) ([]ListRecentMarketTradesRow, error)
+	// Keyset page of the chain's launched tokens for the chunked position seed. Every ledger row
+	// (trades, transfers) references token_launches, so these pages cover the whole ledger.
+	ListSeedTokens(ctx context.Context, arg ListSeedTokensParams) ([]Address, error)
 	ListStoredCandles(ctx context.Context, arg ListStoredCandlesParams) ([]ListStoredCandlesRow, error)
 	// Metric sorts walk tokens_phase_*_cursor_idx; the sort columns mirror token_stats (0 when
 	// no stats row exists) through triggers, see migration 00014.
@@ -199,12 +202,13 @@ type Querier interface {
 	RefundCreditMatchesEvent(ctx context.Context, arg RefundCreditMatchesEventParams) (pgtype.Bool, error)
 	ReplaceTokenImage(ctx context.Context, arg ReplaceTokenImageParams) (int64, error)
 	ReplaceTokenMetadata(ctx context.Context, arg ReplaceTokenMetadataParams) (int64, error)
-	// One-off seed for ledger history that predates the position queue: every distinct
-	// (wallet, token) pair from curve trades by trader, transfers from/to, and attributed pool swaps
-	// on the token's own pair, with the R4 exclusions of ListPositionPairsAbove. Idempotent: a pair
-	// already queued only gets a new generation. With dry_run nothing is written; pair_count is the
-	// number of pairs either way and marked the number of rows inserted or re-generated.
-	SeedPositionDirty(ctx context.Context, arg SeedPositionDirtyParams) (SeedPositionDirtyRow, error)
+	// One chunk of the seed for ledger history that predates the position queue: every distinct
+	// (wallet, token) pair of one token from curve trades by trader, transfers from/to, and
+	// attributed pool swaps on the token's own pair, with the R4 exclusions of
+	// ListPositionPairsAbove. Idempotent: a pair already queued only gets a new generation. With
+	// dry_run nothing is written; pair_count is the number of pairs either way and marked the number
+	// of rows inserted or re-generated.
+	SeedTokenPositionDirty(ctx context.Context, arg SeedTokenPositionDirtyParams) (SeedTokenPositionDirtyRow, error)
 	// Fills the sender of every still-unattributed swap in one transaction and returns the pairs
 	// that need a position re-mark.
 	SetPoolSwapTxFrom(ctx context.Context, arg SetPoolSwapTxFromParams) ([]Address, error)
