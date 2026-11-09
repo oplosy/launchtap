@@ -205,10 +205,127 @@ func minDuration(a, b time.Duration) time.Duration {
 func (t *Tail) drain(ctx context.Context) {
 	t.applyRewind(ctx)
 	t.closeWindowIfDue()
-	t.drainLaunches(ctx)
-	t.drainTrades(ctx)
-	t.drainGraduations(ctx)
+	t.drainMerged(ctx)
 	t.closeWindowIfDue()
+}
+
+// feedItem is one row read by the tail, with its chain position.
+type feedItem struct {
+	at    Cursor
+	event realtime.Event
+}
+
+// feedStream pages one table after its cursor. buf holds rows read but not yet published; more is true
+// while the last page was full, so rows beyond buf may still be unread.
+type feedStream struct {
+	op      string
+	cursor  *Cursor
+	read    func(context.Context, Cursor) ([]feedItem, error)
+	buf     []feedItem
+	fetched bool
+	more    bool
+}
+
+// drainMerged publishes launches, trades and graduations merged in (block, tx_index, log_index) order.
+// An item is published only when every other stream has either a buffered row at or after it or no
+// unread rows, so it never overtakes a row of another stream. A read error stops the drain with every
+// cursor at its last published row; the next hint or tick retries. Ties (impossible for distinct logs)
+// fall back to launch, trade, graduation.
+func (t *Tail) drainMerged(ctx context.Context) {
+	streams := []*feedStream{
+		{op: "launches", cursor: &t.launch, read: t.readLaunches},
+		{op: "trades", cursor: &t.trade, read: t.readTrades},
+		{op: "graduations", cursor: &t.grad, read: t.readGraduations},
+	}
+	for ctx.Err() == nil {
+		for _, s := range streams {
+			if len(s.buf) > 0 || (s.fetched && !s.more) {
+				continue
+			}
+			rows, err := s.read(ctx, *s.cursor)
+			if err != nil {
+				t.readFailed(ctx, s.op, err)
+				return
+			}
+			s.buf, s.fetched, s.more = rows, true, len(rows) >= t.Limit
+		}
+		var next *feedStream
+		for _, s := range streams {
+			if len(s.buf) > 0 && (next == nil || cursorLess(s.buf[0].at, next.buf[0].at)) {
+				next = s
+			}
+		}
+		if next == nil {
+			return
+		}
+		item := next.buf[0]
+		next.buf = next.buf[1:]
+		t.emit(item.event)
+		*next.cursor = item.at
+	}
+}
+
+func (t *Tail) readLaunches(ctx context.Context, after Cursor) ([]feedItem, error) {
+	rows, err := t.Reader.LaunchesAfter(ctx, t.ChainID, after, t.Limit)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]feedItem, len(rows))
+	for i := range rows {
+		row := rows[i]
+		items[i] = feedItem{Cursor{row.Block, row.TxIndex, row.LogIndex}, realtime.Event{Type: "new_token", Token: row.Token.Hex(), Launch: &row}}
+	}
+	return items, nil
+}
+
+func (t *Tail) readTrades(ctx context.Context, after Cursor) ([]feedItem, error) {
+	rows, err := t.Reader.TradesAfter(ctx, t.ChainID, after, t.Limit)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]feedItem, len(rows))
+	for i := range rows {
+		row := rows[i]
+		items[i] = feedItem{Cursor{row.Block, row.TxIndex, row.LogIndex}, realtime.Event{Type: "trade", Token: row.Token.Hex(), Trade: &row}}
+	}
+	return items, nil
+}
+
+func (t *Tail) readGraduations(ctx context.Context, after Cursor) ([]feedItem, error) {
+	rows, err := t.Reader.GraduationsAfter(ctx, t.ChainID, after, t.Limit)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]feedItem, len(rows))
+	for i := range rows {
+		row := rows[i]
+		items[i] = feedItem{Cursor{row.Block, row.TxIndex, row.LogIndex}, realtime.Event{Type: "graduation", Token: row.Token.Hex(), Graduation: &row}}
+	}
+	return items, nil
+}
+
+// emit publishes one feed event; trades beyond the per-window budget are folded into the window's burst.
+func (t *Tail) emit(event realtime.Event) {
+	if event.Trade == nil {
+		t.publish(event)
+		return
+	}
+	row := event.Trade
+	now := t.Now()
+	t.closeWindowIfDue()
+	if t.windowStart.IsZero() {
+		t.windowStart, t.windowCount = now, 0
+	}
+	if t.windowCount < t.PerSecond {
+		t.windowCount++
+		t.publish(event)
+		t.Observer.Lag(now.Sub(row.Time))
+		return
+	}
+	if t.overflow == nil {
+		t.overflow = make(map[string]int)
+	}
+	t.overflow[row.Token.Hex()]++
 }
 
 func (t *Tail) applyRewind(ctx context.Context) {
@@ -257,75 +374,6 @@ func (t *Tail) publish(event realtime.Event) {
 	event.DeploymentID = t.DeploymentID
 	t.Hub.Publish(event)
 	t.Observer.Published(event.Type)
-}
-
-// Reader errors keep the cursor; the next hint or tick retries.
-func (t *Tail) drainLaunches(ctx context.Context) {
-	for ctx.Err() == nil {
-		rows, err := t.Reader.LaunchesAfter(ctx, t.ChainID, t.launch, t.Limit)
-		if err != nil {
-			t.readFailed(ctx, "launches", err)
-			return
-		}
-		for i := range rows {
-			row := rows[i]
-			t.publish(realtime.Event{Type: "new_token", Token: row.Token.Hex(), Launch: &row})
-			t.launch = Cursor{Block: row.Block, TxIndex: row.TxIndex, LogIndex: row.LogIndex}
-		}
-		if len(rows) < t.Limit {
-			return
-		}
-	}
-}
-
-func (t *Tail) drainGraduations(ctx context.Context) {
-	for ctx.Err() == nil {
-		rows, err := t.Reader.GraduationsAfter(ctx, t.ChainID, t.grad, t.Limit)
-		if err != nil {
-			t.readFailed(ctx, "graduations", err)
-			return
-		}
-		for i := range rows {
-			row := rows[i]
-			t.publish(realtime.Event{Type: "graduation", Token: row.Token.Hex(), Graduation: &row})
-			t.grad = Cursor{Block: row.Block, TxIndex: row.TxIndex, LogIndex: row.LogIndex}
-		}
-		if len(rows) < t.Limit {
-			return
-		}
-	}
-}
-
-func (t *Tail) drainTrades(ctx context.Context) {
-	for ctx.Err() == nil {
-		rows, err := t.Reader.TradesAfter(ctx, t.ChainID, t.trade, t.Limit)
-		if err != nil {
-			t.readFailed(ctx, "trades", err)
-			return
-		}
-		for i := range rows {
-			row := rows[i]
-			now := t.Now()
-			t.closeWindowIfDue()
-			if t.windowStart.IsZero() {
-				t.windowStart, t.windowCount = now, 0
-			}
-			if t.windowCount < t.PerSecond {
-				t.windowCount++
-				t.publish(realtime.Event{Type: "trade", Token: row.Token.Hex(), Trade: &row})
-				t.Observer.Lag(now.Sub(row.Time))
-			} else {
-				if t.overflow == nil {
-					t.overflow = make(map[string]int)
-				}
-				t.overflow[row.Token.Hex()]++
-			}
-			t.trade = Cursor{Block: row.Block, TxIndex: row.TxIndex, LogIndex: row.LogIndex}
-		}
-		if len(rows) < t.Limit {
-			return
-		}
-	}
 }
 
 // closeWindowIfDue ends the current 1-second window and emits one trade_burst if trades overflowed it.

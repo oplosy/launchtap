@@ -607,3 +607,61 @@ func TestTailReconnectedWithoutSafeBlockKeepsCursor(t *testing.T) {
 		t.Fatalf("unknown safe block rewound to genesis: %v", rec.types())
 	}
 }
+
+func eventCursor(e realtime.Event) Cursor {
+	switch {
+	case e.Trade != nil:
+		return Cursor{e.Trade.Block, e.Trade.TxIndex, e.Trade.LogIndex}
+	case e.Launch != nil:
+		return Cursor{e.Launch.Block, e.Launch.TxIndex, e.Launch.LogIndex}
+	case e.Graduation != nil:
+		return Cursor{e.Graduation.Block, e.Graduation.TxIndex, e.Graduation.LogIndex}
+	}
+	return Cursor{}
+}
+
+func TestTailPublishesInGlobalChainOrderAcrossPages(t *testing.T) {
+	reader := &fakeReader{}
+	rec := newRecorder()
+	tail := newTail(reader, rec, &clock{t: time.Unix(100, 0)})
+	tail.Limit = 2 // every stream needs more than one page
+	tail.PerSecond = 100
+	stop := startTail(t, tail)
+	defer stop()
+	launch := func(block int64, tx, log int32) Launch {
+		return Launch{Token: common.Address{byte(block)}, Name: "L", Symbol: "L", Block: block, TxIndex: tx, LogIndex: log}
+	}
+	grad := func(block int64, tx, log int32) Graduation {
+		return Graduation{Token: common.Address{byte(block)}, Name: "G", Symbol: "G", Block: block, TxIndex: tx, LogIndex: log}
+	}
+	reader.update(func(f *fakeReader) {
+		f.launches = []Launch{launch(1, 0, 0), launch(3, 0, 0), launch(3, 2, 0), launch(5, 0, 0)}
+		f.trades = []Trade{trade(1, 1, 0, 1), trade(2, 0, 0, 1), trade(2, 0, 1, 1), trade(3, 0, 1, 1), trade(4, 0, 0, 1)}
+		// The graduation shares a transaction with the trade that caused it and follows it by log index.
+		f.grads = []Graduation{grad(2, 0, 2), grad(4, 0, 1), grad(4, 1, 0)}
+	})
+	tail.Hint(tokenHint)
+	rec.waitCount(t, 12)
+	quiet()
+	got := rec.snapshot()
+	if len(got) != 12 {
+		t.Fatalf("got %d events: %v", len(got), rec.types())
+	}
+	for i := 1; i < len(got); i++ {
+		if !cursorLess(eventCursor(got[i-1]), eventCursor(got[i])) {
+			t.Fatalf("event %d (%s %v) published before %s %v; order %v", i-1, got[i-1].Type, eventCursor(got[i-1]), got[i].Type, eventCursor(got[i]), rec.types())
+		}
+	}
+	// Cursors stay correct: a later row of each stream is published exactly once.
+	reader.update(func(f *fakeReader) {
+		f.launches = append(f.launches, launch(6, 0, 0))
+		f.trades = append(f.trades, trade(6, 1, 0, 1))
+		f.grads = append(f.grads, grad(6, 2, 0))
+	})
+	tail.Hint(tokenHint)
+	rec.waitCount(t, 15)
+	quiet()
+	if got := rec.snapshot(); len(got) != 15 || got[12].Type != "new_token" || got[13].Type != "trade" || got[14].Type != "graduation" {
+		t.Fatalf("unexpected tail %v", rec.types())
+	}
+}
