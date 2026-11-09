@@ -329,6 +329,51 @@ backfill exits zero), independent of the `position_dirty` queue. Wallet PnL is c
 the position worker has also drained the queue (`launchpad_aggregation_position_dirty_backlog`
 back to 0).
 
+## Moderating comments
+
+Comment moderation is an operator CLI, `backend/cmd/moderate`. It writes straight to PostgreSQL;
+there is no HTTP admin endpoint. **The `DATABASE_URL` credential is the access control**: whoever
+holds it can moderate, so run the CLI only from a host or tunnel that already has database
+access and never put the URL in a ticket, chat or shell history (export it from the secret
+store for the session). Reports are only filed by authenticated users and trigger nothing
+automatically.
+
+Every command takes the deployment scope and the operator name that is written to the audit log:
+
+```sh
+cd backend
+export DATABASE_URL=...   # from the secret store, not typed inline
+go run ./cmd/moderate <command> -chain-id N -deployment-id ID -operator NAME [flags]
+```
+
+| Command | Flags | Effect |
+| --- | --- | --- |
+| `reports` | `-limit` (default 50) | Open reports grouped by comment, newest report first: comment id, token, report count, reasons, author DID, posting wallet, body (control characters escaped). |
+| `hide` | `-comment ID -reason TEXT` | Hides the comment and resolves its open reports as `actioned`. |
+| `unhide` | `-comment ID -reason TEXT` | Shows the comment again. |
+| `ban` | `-did DID` or `-comment ID`, `-reason TEXT` | Bans the author: all their comments and their username disappear from public reads; their open reports resolve as `actioned`. `-comment` bans the comment's author. |
+| `unban` | `-did DID -reason TEXT` | Lifts the ban; comments and username return. |
+| `resolve` | `-comment ID -resolution dismissed\|actioned -reason TEXT` | Closes the comment's open reports without hiding it. |
+
+`-operator` is 1-64 bytes and `-reason` is 1-500 bytes. Every mutation runs in one transaction,
+appends a `moderation_actions` row, and sends one `comment` refresh hint per affected token so
+open token pages update. An unknown comment or DID exits non-zero and writes nothing. Reasons
+and the audit log are never public.
+
+Example session:
+
+```sh
+go run ./cmd/moderate reports -chain-id 46630 -deployment-id prod-1 -operator alice
+# comment=412  token=0x...  reports=3  reasons=scam,spam  author_did="did:privy:..."  body="buy now ..."
+go run ./cmd/moderate hide -chain-id 46630 -deployment-id prod-1 -operator alice -comment 412 -reason "scam link"
+# hid comment 412
+go run ./cmd/moderate ban -chain-id 46630 -deployment-id prod-1 -operator alice -comment 412 -reason "repeat scam links"
+# banned author; 2 token(s) affected: 0x...,0x...
+```
+
+Review history with `SELECT created_at, action, operator, comment_id, reason FROM
+moderation_actions ORDER BY id DESC;`.
+
 ## Audit evidence checklist
 
 The audit packet must identify the exact commit and contain the Solidity source/artifact

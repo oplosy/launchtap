@@ -26,4 +26,7 @@ const (
 	// DefaultPageSize and MaxPageSize bound comment pages.
 	DefaultPageSize = 20
 	MaxPageSize     = 50
+	// MaxOperatorBytes and MaxModerationReasonBytes bound the free text of a moderation action.
+	MaxOperatorBytes         = 64
+	MaxModerationReasonBytes = 500
 )

@@ -20,3 +20,22 @@ type CommentStore interface {
 	// ErrOwnComment or *RateLimitedError.
 	Report(ctx context.Context, a Actor, commentID int64, reason ReportReason) error
 }
+
+// Moderator is the operator-side port. Every method is one transaction that also appends a
+// moderation_actions row and sends one `comment` notification per affected token. A missing
+// comment or user returns ErrNotFound and writes nothing. operator and reason must satisfy
+// ValidateModerationText.
+type Moderator interface {
+	// OpenReports lists comments with open reports, newest open report first.
+	OpenReports(ctx context.Context, s Scope, limit int) ([]ReportSummary, error)
+	// Hide hides the comment and resolves its open reports as actioned.
+	Hide(ctx context.Context, s Scope, commentID int64, operator, reason string) error
+	Unhide(ctx context.Context, s Scope, commentID int64, operator, reason string) error
+	// Ban bans the DID (creating its user row) and resolves open reports on all its comments as
+	// actioned. It returns the tokens the DID has commented on.
+	Ban(ctx context.Context, s Scope, did string, operator, reason string) ([]common.Address, error)
+	BanCommentAuthor(ctx context.Context, s Scope, commentID int64, operator, reason string) ([]common.Address, error)
+	Unban(ctx context.Context, s Scope, did string, operator, reason string) ([]common.Address, error)
+	// Resolve closes the comment's open reports and returns how many it closed.
+	Resolve(ctx context.Context, s Scope, commentID int64, r Resolution, operator, reason string) (int64, error)
+}
