@@ -70,9 +70,9 @@ type burstItem struct {
 }
 
 // tradeBurstFeedEvent summarizes the feed events of one 1-second window beyond the per-process budget
-// shared by trade, new_token and graduation events. items counts the folded trades per token; launches
-// and graduations count folded new_token and graduation events (absent when zero), so a client refetches
-// the token lists instead of receiving each event.
+// shared by trade, new_token and graduation events. items describes the folded trades per token; launches
+// counts folded new_token events (absent when zero), so a client refetches the token list instead of
+// receiving each event. Graduations are never folded: they are always published individually.
 type tradeBurstFeedEvent struct {
 	ChainID      int64       `json:"chain_id"`
 	DeploymentID string      `json:"deployment_id"`
@@ -80,7 +80,6 @@ type tradeBurstFeedEvent struct {
 	WindowEnd    string      `json:"window_end"`
 	Items        []burstItem `json:"items"`
 	Launches     int         `json:"launches,omitempty" doc:"new_token events folded into this window."`
-	Graduations  int         `json:"graduations,omitempty" doc:"graduation events folded into this window."`
 }
 
 type finalityFeedEvent struct {
@@ -133,7 +132,7 @@ func (r EventRoutes) feedPayload(event realtime.Event) (payload any, ok bool) {
 		return tradeBurstFeedEvent{
 			ChainID: event.ChainID, DeploymentID: scope, WindowStart: event.BurstStart.UTC().Format(time.RFC3339Nano),
 			WindowEnd: event.BurstEnd.UTC().Format(time.RFC3339Nano), Items: items,
-			Launches: event.BurstLaunches, Graduations: event.BurstGraduations,
+			Launches: event.BurstLaunches,
 		}, true
 	case "finality":
 		return finalityFeedEvent{ChainID: event.ChainID, DeploymentID: scope, SafeBlock: event.SafeBlock, FinalizedBlock: event.FinalizedBlock}, true

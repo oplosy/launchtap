@@ -902,11 +902,6 @@ export interface components {
             /** Format: int64 */
             chain_id: number;
             deployment_id: string;
-            /**
-             * Format: int64
-             * @description graduation events folded into this window.
-             */
-            graduations?: number;
             items: components["schemas"]["BurstItem"][] | null;
             /**
              * Format: int64

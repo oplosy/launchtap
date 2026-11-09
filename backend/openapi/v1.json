@@ -1500,11 +1500,6 @@
           "deployment_id": {
             "type": "string"
           },
-          "graduations": {
-            "description": "graduation events folded into this window.",
-            "format": "int64",
-            "type": "integer"
-          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/BurstItem"

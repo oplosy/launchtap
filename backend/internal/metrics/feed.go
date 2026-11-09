@@ -27,7 +27,7 @@ func newFeedInstruments() feedInstruments {
 		}, []string{"type"}),
 		bursts: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "launchpad_api_feed_bursts_total",
-			Help: "Trade windows rolled up into a trade_burst event.",
+			Help: "Feed windows (trade, new_token) whose overflow was rolled into a trade_burst event.",
 		}),
 		lag: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "launchpad_api_feed_tail_lag_seconds",

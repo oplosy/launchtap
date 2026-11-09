@@ -55,7 +55,7 @@ type Tail struct {
 	Logger         *slog.Logger // nil uses slog.Default()
 	Now            func() time.Time
 	Limit          int           // rows per read, default 200
-	PerSecond      int           // trade, new_token and graduation events per 1-second window, default 20
+	PerSecond      int           // trade, new_token and graduation events per 1-second window, default 20; graduations are never folded
 	WatermarkEvery time.Duration // finality poll interval, default 5s
 
 	once    sync.Once
@@ -74,7 +74,6 @@ type Tail struct {
 	windowCount         int
 	overflow            map[string]*realtime.BurstCount // folded trades per token
 	overflowLaunches    int
-	overflowGraduations int
 }
 
 func (t *Tail) init() {
@@ -313,12 +312,18 @@ func (t *Tail) readGraduations(ctx context.Context, after Cursor) ([]feedItem, e
 }
 
 // emit publishes one feed event. Trades, launches and graduations share one budget per 1-second window;
-// events beyond it are folded into the window's trade_burst.
+// trades and launches beyond it are folded into the window's trade_burst. A graduation is never folded:
+// it is the rarest and most valuable notification, so it is always published and only uses up budget.
 func (t *Tail) emit(event realtime.Event) {
 	now := t.Now()
 	t.closeWindowIfDue()
 	if t.windowStart.IsZero() {
 		t.windowStart, t.windowCount = now, 0
+	}
+	if event.Type == "graduation" {
+		t.windowCount++
+		t.publish(event)
+		return
 	}
 	if t.windowCount < t.PerSecond {
 		t.windowCount++
@@ -333,8 +338,6 @@ func (t *Tail) emit(event realtime.Event) {
 		t.foldTrade(event.Trade)
 	case "new_token":
 		t.overflowLaunches++
-	case "graduation":
-		t.overflowGraduations++
 	}
 }
 
@@ -368,7 +371,7 @@ func (t *Tail) foldTrade(row *Trade) {
 }
 
 func (t *Tail) overflowPending() bool {
-	return len(t.overflow) > 0 || t.overflowLaunches > 0 || t.overflowGraduations > 0
+	return len(t.overflow) > 0 || t.overflowLaunches > 0
 }
 
 func (t *Tail) applyRewind(ctx context.Context) {
@@ -431,16 +434,15 @@ func (t *Tail) closeWindowIfDue() {
 		}
 		sort.Slice(counts, func(i, j int) bool { return counts[i].Token < counts[j].Token })
 		t.publish(realtime.Event{
-			Type:             "trade_burst",
-			Burst:            counts,
-			BurstStart:       t.windowStart,
-			BurstEnd:         t.windowStart.Add(burstWindow),
-			BurstLaunches:    t.overflowLaunches,
-			BurstGraduations: t.overflowGraduations,
+			Type:          "trade_burst",
+			Burst:         counts,
+			BurstStart:    t.windowStart,
+			BurstEnd:      t.windowStart.Add(burstWindow),
+			BurstLaunches: t.overflowLaunches,
 		})
 		t.Observer.Burst()
 	}
-	t.overflow, t.overflowLaunches, t.overflowGraduations = nil, 0, 0
+	t.overflow, t.overflowLaunches = nil, 0
 	t.windowStart, t.windowCount = time.Time{}, 0
 }
 

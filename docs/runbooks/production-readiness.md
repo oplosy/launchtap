@@ -165,7 +165,7 @@ describe it:
 | Metric | Meaning |
 |--------|---------|
 | `launchpad_api_feed_events_published_total{type}` | feed events handed to the hub, by event type |
-| `launchpad_api_feed_bursts_total` | feed bursts: more than 20 trade, new_token and graduation events/s in one API process, the overflow becomes one `trade_burst` event |
+| `launchpad_api_feed_bursts_total` | feed bursts: more than 20 trade, new_token and graduation events/s in one API process, the trade and new_token overflow becomes one `trade_burst` event (graduations are never folded) |
 | `launchpad_api_feed_tail_lag_seconds` | seconds since the block time of the newest published trade |
 | `launchpad_api_feed_read_errors_total{op}` | feed database read failures; `op` is `newest`, `trades`, `graduations`, `launches` or `watermarks` |
 

@@ -57,8 +57,9 @@ The product must feel live and be shareable, like competing launchpads. Success 
   at or below those blocks.
 - **Rate limit:** at most 20 feed events (`trade`, `new_token` and `graduation` share one budget)
   per second per process are published individually; beyond that the tail publishes one
-  `trade_burst` summary event for the window (trade count per token, plus folded launch and
-  graduation totals), so a bot storm or a launch-heavy block cannot flood every stream. Mirrors the
+  `trade_burst` summary event for the window (trades per token, plus a folded launch total), so a
+  bot storm or a launch-heavy block cannot flood every stream. A `graduation` is never folded: it
+  is always published individually and only uses up budget. Mirrors the
   existing per-stream hint coalescing. Within each read the tail publishes the three tables merged
   in `(block, tx_index, log_index)` order.
 
@@ -77,9 +78,8 @@ New SSE event types beside `launch`, `token`, `reorg`:
   traders, traders_truncated}]` (folded trades per token: the largest gross ETH amount as a wei
   string, and the distinct non-null traders as lowercase hex in first-seen order, at most 32 with
   `traders_truncated` set beyond that, so large-trade and own-trade notifications survive the
-  fold), and `launches` / `graduations`: the number of folded `new_token` and
-  `graduation` events in the window, omitted when zero. Additive totals, not per token: a client
-  refetches the token lists instead.
+  fold), and `launches`: the number of folded `new_token` events in the window, omitted
+  when zero. An additive total, not per token: a client refetches the token list instead.
 - `finality`: chain, deployment, `safe_block`, `finalized_block`. Sent to every stream, including
   `?token=` streams.
 

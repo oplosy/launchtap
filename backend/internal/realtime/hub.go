@@ -31,11 +31,10 @@ type Event struct {
 	Burst      []BurstCount `json:"burst,omitempty"`
 	BurstStart time.Time    `json:"burst_start,omitempty"`
 	BurstEnd   time.Time    `json:"burst_end,omitempty"`
-	// BurstLaunches and BurstGraduations count new_token and graduation events folded into a trade_burst.
-	BurstLaunches    int   `json:"burst_launches,omitempty"`
-	BurstGraduations int   `json:"burst_graduations,omitempty"`
-	SafeBlock        int64 `json:"safe_block,omitempty"`
-	FinalizedBlock   int64 `json:"finalized_block,omitempty"`
+	// BurstLaunches counts new_token events folded into a trade_burst (graduations are never folded).
+	BurstLaunches  int   `json:"burst_launches,omitempty"`
+	SafeBlock      int64 `json:"safe_block,omitempty"`
+	FinalizedBlock int64 `json:"finalized_block,omitempty"`
 }
 
 // BurstCount describes the trades of one token that were rolled into a trade_burst event: how many,
