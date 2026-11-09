@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LiveEvent } from "@/api/types";
 import {
   WALLET_REFETCH_COALESCE_MS,
+  WALLET_REFETCH_FOLLOW_UP_MS,
   createCoalescer,
+  createLiveRefetch,
+  reloadLoadedPages,
   formatSignedEth,
   isWalletTrade,
   pnlTone,
@@ -118,5 +121,120 @@ describe("createCoalescer", () => {
     coalescer.cancel();
     vi.advanceTimersByTime(1000);
     expect(run).not.toHaveBeenCalled();
+  });
+});
+
+describe("createLiveRefetch", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("refetches after the coalesce window and once more 3 s later", () => {
+    expect(WALLET_REFETCH_FOLLOW_UP_MS).toBe(3_000);
+    const run = vi.fn();
+    const refetch = createLiveRefetch(run);
+    refetch.trigger();
+    refetch.trigger();
+    vi.advanceTimersByTime(WALLET_REFETCH_COALESCE_MS - 1);
+    expect(run).toHaveBeenCalledTimes(0);
+    vi.advanceTimersByTime(1);
+    expect(run).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(WALLET_REFETCH_FOLLOW_UP_MS - 1);
+    expect(run).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1);
+    expect(run).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(60_000);
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a single delayed refetch when triggers keep arriving", () => {
+    const run = vi.fn();
+    const refetch = createLiveRefetch(run);
+    refetch.trigger();
+    vi.advanceTimersByTime(500); // immediate run #1, follow-up due at 3500
+    vi.advanceTimersByTime(1_000);
+    refetch.trigger();
+    vi.advanceTimersByTime(500); // immediate run #2 at 2000, follow-up moves to 5000
+    expect(run).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(1_500); // 3500: the old follow-up no longer fires
+    expect(run).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(1_500); // 5000
+    expect(run).toHaveBeenCalledTimes(3);
+    vi.advanceTimersByTime(60_000);
+    expect(run).toHaveBeenCalledTimes(3);
+  });
+
+  it("cancel drops both the pending and the delayed refetch", () => {
+    const run = vi.fn();
+    const refetch = createLiveRefetch(run);
+    refetch.trigger();
+    refetch.cancel();
+    vi.advanceTimersByTime(10_000);
+    expect(run).not.toHaveBeenCalled();
+    refetch.trigger();
+    vi.advanceTimersByTime(500);
+    refetch.cancel();
+    vi.advanceTimersByTime(10_000);
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("reloadLoadedPages", () => {
+  const rows = Array.from({ length: 60 }, (_, i) => ({ id: `r${i}` }));
+  function pager(pageSize: number) {
+    const cursors: Array<string | undefined> = [];
+    const fetchPage = vi.fn(async (cursor: string | undefined) => {
+      cursors.push(cursor);
+      const start = cursor ? Number(cursor) : 0;
+      const items = rows.slice(start, start + pageSize);
+      const end = start + items.length;
+      return { items, next_cursor: end < rows.length ? String(end) : undefined };
+    });
+    return { fetchPage, cursors };
+  }
+  const identity = (row: { id: string }) => row.id;
+
+  it("re-requests as many pages as were loaded, keeping their rows", async () => {
+    const { fetchPage, cursors } = pager(25);
+    const page = await reloadLoadedPages(fetchPage, identity, 50, new AbortController().signal);
+    expect(cursors).toEqual([undefined, "25"]);
+    expect(page.items.map(identity)).toEqual(rows.slice(0, 50).map(identity));
+    expect(page.next).toBe("50");
+  });
+
+  it("loads only page one when nothing more was loaded", async () => {
+    const { fetchPage, cursors } = pager(25);
+    const page = await reloadLoadedPages(fetchPage, identity, 0, new AbortController().signal);
+    expect(cursors).toEqual([undefined]);
+    expect(page.items).toHaveLength(25);
+    expect(page.next).toBe("25");
+  });
+
+  it("stops at the end of the list and drops repeated rows", async () => {
+    const fetchPage = vi.fn(async (cursor: string | undefined) =>
+      cursor
+        ? { items: [{ id: "b" }, { id: "c" }], next_cursor: undefined }
+        : { items: [{ id: "a" }, { id: "b" }], next_cursor: "x" },
+    );
+    const page = await reloadLoadedPages(fetchPage, identity, 100, new AbortController().signal);
+    expect(page.items.map(identity)).toEqual(["a", "b", "c"]);
+    expect(page.next).toBeNull();
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops when a page adds no new rows instead of looping on its cursor", async () => {
+    const fetchPage = vi.fn(async () => ({ items: [{ id: "a" }], next_cursor: "same" }));
+    const page = await reloadLoadedPages(fetchPage, identity, 100, new AbortController().signal);
+    expect(page.items.map(identity)).toEqual(["a"]);
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops following cursors once aborted", async () => {
+    const controller = new AbortController();
+    const fetchPage = vi.fn(async () => {
+      controller.abort();
+      return { items: [{ id: "a" }], next_cursor: "x" };
+    });
+    await expect(reloadLoadedPages(fetchPage, identity, 100, controller.signal)).rejects.toThrow();
+    expect(fetchPage).toHaveBeenCalledTimes(1);
   });
 });

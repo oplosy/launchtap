@@ -21,7 +21,12 @@ const TOKEN_OPEN = "0x0000000000000000000000000000000000000001";
 const TOKEN_CLOSED = "0x0000000000000000000000000000000000000002";
 const ETH = 10n ** 18n;
 
-type State = { attributionComplete: boolean; calls: Record<string, number> };
+type State = {
+  attributionComplete: boolean;
+  calls: Record<string, number>;
+  /** Serve the trades list as two cursor pages (and record the cursors requested). */
+  pagedTrades?: string[];
+};
 
 function position(token: string, symbol: string, over: Record<string, unknown> = {}) {
   return {
@@ -125,8 +130,16 @@ async function installApi(page: Page, state: State) {
           : [position(TOKEN_OPEN, "OPEN", { transferred_in: (ETH / 2n).toString() })],
       });
     }
-    if (path === `/wallets/${WALLET}/trades`)
+    if (path === `/wallets/${WALLET}/trades`) {
+      if (state.pagedTrades) {
+        const cursor = url.searchParams.get("cursor");
+        state.pagedTrades.push(cursor ?? "");
+        return cursor === "p2"
+          ? json({ snapshot, items: [walletTrade(2), walletTrade(1)] })
+          : json({ snapshot, items: [walletTrade(4), walletTrade(3)], next_cursor: "p2" });
+      }
       return json({ snapshot, items: [walletTrade(2), walletTrade(1)] });
+    }
     if (path === `/wallets/${WALLET}/created`)
       return json({
         snapshot,
@@ -257,9 +270,35 @@ test("a burst of live trades for this wallet causes exactly one overview refetch
     ] as const,
   );
   await expect.poll(() => state.calls[overview]).toBe(2);
-  // Well past the 500 ms coalescing window: still exactly one extra fetch.
+  // Well past the 500 ms coalescing window: still exactly one extra fetch so far.
   await page.waitForTimeout(1500);
   expect(state.calls[overview]).toBe(2);
+  // Then exactly one delayed refetch (3 s after the first), for the recomputed positions.
+  await expect.poll(() => state.calls[overview], { timeout: 5_000 }).toBe(3);
+  await page.waitForTimeout(4_000);
+  expect(state.calls[overview]).toBe(3);
+});
+
+test("a live refetch keeps loaded trade pages", async ({ page }) => {
+  const state: State = { attributionComplete: true, calls: {}, pagedTrades: [] };
+  await installApi(page, state);
+  await installFakeEventSource(page);
+  await page.goto(`/wallet/${WALLET}`);
+  await page.getByRole("tab", { name: "Trades" }).click();
+  const rows = page.getByRole("table", { name: "Wallet trades" }).getByRole("row");
+  await expect(rows).toHaveCount(3);
+  await page.getByRole("button", { name: "Load more" }).click();
+  await expect(rows).toHaveCount(5);
+  state.pagedTrades = [];
+  await page.evaluate(
+    (trade) => {
+      (window as never as { __sseEmit: (t: string, d: unknown) => void }).__sseEmit("trade", trade);
+    },
+    sseTrade(WALLET, 8),
+  );
+  // The refetch re-requests both loaded pages instead of collapsing to page one.
+  await expect.poll(() => state.pagedTrades).toEqual(["", "p2"]);
+  await expect(rows).toHaveCount(5);
 });
 
 test("a trade for another wallet does not refetch", async ({ page }) => {

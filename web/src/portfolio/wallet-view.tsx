@@ -4,7 +4,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Copy, ShareNetwork } from "@phosphor-icons/react";
 import {
   ApiClient,
   type WalletCreatedResponse,
@@ -24,6 +23,7 @@ import {
   Tabs,
   UnavailableState,
 } from "@/components/primitives";
+import { Check, Copy, ShareNetwork } from "@/components/icons";
 import { publicConfiguration } from "@/config/public";
 import { isEventInScope, liveRefreshKind } from "@/live/live-strip-model";
 import { useLiveEvents } from "@/live/live-events";
@@ -31,12 +31,12 @@ import { UsdLine } from "@/market/usd-line";
 import { publicWebOrigin } from "@/share/share-links";
 import { shortAddress } from "@/token/address";
 import {
-  WALLET_REFETCH_COALESCE_MS,
-  createCoalescer,
+  createLiveRefetch,
   formatSignedEth,
   isWalletTrade,
   pnlTone,
   pnlUsd,
+  reloadLoadedPages,
   walletPath,
 } from "./wallet-model";
 
@@ -82,8 +82,9 @@ type ListState<T> = {
 };
 
 /**
- * Cursor-paged list that loads once `enabled`, and reloads page one (keeping the rows on screen)
- * whenever `version` changes. Rows already shown are not repeated when a page overlaps.
+ * Cursor-paged list that loads once `enabled`, and whenever `version` changes reloads as many rows
+ * as are already on screen (page by page), so a live refetch does not collapse "load more" pages.
+ * A reload aborts an in-flight "load more". Rows already shown are not repeated when pages overlap.
  */
 function usePagedList<T>(
   enabled: boolean,
@@ -99,24 +100,25 @@ function usePagedList<T>(
   });
   const fetchRef = useRef(fetchPage);
   const identityRef = useRef(identity);
+  const loadedRef = useRef(0);
+  const moreAbortRef = useRef<AbortController | null>(null);
   useEffect(() => {
     fetchRef.current = fetchPage;
     identityRef.current = identity;
+    loadedRef.current = state.items.length;
   });
+  useEffect(() => () => moreAbortRef.current?.abort(), []);
   useEffect(() => {
     if (!enabled) return;
+    // The reload supersedes a "load more" still in flight; its rows would come from older data.
+    moreAbortRef.current?.abort();
+    moreAbortRef.current = null;
     const controller = new AbortController();
     setState((current) => ({ ...current, loading: true, error: null }));
-    fetchRef
-      .current(undefined, controller.signal)
+    reloadLoadedPages(fetchRef.current, identityRef.current, loadedRef.current, controller.signal)
       .then((page) => {
         if (controller.signal.aborted) return;
-        setState({
-          items: page.items ?? [],
-          next: page.next_cursor ?? null,
-          loading: false,
-          error: null,
-        });
+        setState({ items: page.items, next: page.next, loading: false, error: null });
       })
       .catch((cause: unknown) => {
         if (controller.signal.aborted) return;
@@ -131,10 +133,14 @@ function usePagedList<T>(
   const next = state.next;
   const more = useCallback(() => {
     if (!next) return;
+    moreAbortRef.current?.abort();
+    const controller = new AbortController();
+    moreAbortRef.current = controller;
     setState((current) => ({ ...current, loading: true, error: null }));
     fetchRef
-      .current(next, new AbortController().signal)
-      .then((page) =>
+      .current(next, controller.signal)
+      .then((page) => {
+        if (controller.signal.aborted) return;
         setState((current) => {
           const seen = new Set(current.items.map(identityRef.current));
           const fresh = (page.items ?? []).filter((item) => !seen.has(identityRef.current(item)));
@@ -144,15 +150,19 @@ function usePagedList<T>(
             loading: false,
             error: null,
           };
-        }),
-      )
-      .catch((cause: unknown) =>
+        });
+      })
+      .catch((cause: unknown) => {
+        if (controller.signal.aborted) return;
         setState((current) => ({
           ...current,
           loading: false,
           error: cause instanceof Error ? cause : new Error("Request failed"),
-        })),
-      );
+        }));
+      })
+      .finally(() => {
+        if (moreAbortRef.current === controller) moreAbortRef.current = null;
+      });
   }, [next]);
   return { ...state, more };
 }
@@ -173,11 +183,9 @@ export function WalletView({ address }: { address: string }) {
   const [tab, setTab] = useState("holdings");
   const [showClosed, setShowClosed] = useState(false);
 
-  // One shared stream; bursts of this wallet's trades collapse into a single refetch.
-  const coalescer = useMemo(
-    () => createCoalescer(WALLET_REFETCH_COALESCE_MS, () => setVersion((value) => value + 1)),
-    [],
-  );
+  // One shared stream; bursts of this wallet's trades collapse into a single refetch, followed by
+  // one delayed refetch for figures the position worker recomputes after the event.
+  const coalescer = useMemo(() => createLiveRefetch(() => setVersion((value) => value + 1)), []);
   useEffect(() => () => coalescer.cancel(), [coalescer]);
   useLiveEvents((event: LiveEvent) => {
     const scope = { chainId, deploymentId };

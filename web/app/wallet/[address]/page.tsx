@@ -34,5 +34,7 @@ export async function generateMetadata({
 export default async function WalletPage({ params }: { params: Promise<{ address: string }> }) {
   const parsed = parseTokenAddress((await params).address);
   if (!parsed) notFound();
-  return <WalletView address={parsed} />;
+  // Keyed by address: navigating between wallets remounts the view, so no state (tab, paged
+  // rows, pending refetches) carries over from the previous wallet.
+  return <WalletView key={parsed} address={parsed} />;
 }

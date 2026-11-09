@@ -61,3 +61,75 @@ export function createCoalescer(ms: number, run: () => void) {
     },
   };
 }
+
+/**
+ * Delay of the one extra refetch after a live trigger. The live event can arrive before the
+ * indexer's position worker has recomputed the wallet, so the first refetch may still read the
+ * old figures; this second one picks up the recomputed ones.
+ */
+export const WALLET_REFETCH_FOLLOW_UP_MS = 3_000;
+
+/**
+ * Live-trigger refetch policy: a burst of triggers joins one run after `coalesceMs` (the existing
+ * coalescer), and every such run schedules a single follow-up run `followUpMs` later; a newer run
+ * replaces a pending follow-up rather than adding another. `cancel` drops both (unmount).
+ */
+export function createLiveRefetch(
+  run: () => void,
+  coalesceMs: number = WALLET_REFETCH_COALESCE_MS,
+  followUpMs: number = WALLET_REFETCH_FOLLOW_UP_MS,
+) {
+  let followUp: ReturnType<typeof setTimeout> | null = null;
+  const clearFollowUp = () => {
+    if (followUp !== null) clearTimeout(followUp);
+    followUp = null;
+  };
+  const coalescer = createCoalescer(coalesceMs, () => {
+    run();
+    clearFollowUp();
+    followUp = setTimeout(() => {
+      followUp = null;
+      run();
+    }, followUpMs);
+  });
+  return {
+    trigger: () => coalescer.trigger(),
+    cancel() {
+      coalescer.cancel();
+      clearFollowUp();
+    },
+  };
+}
+
+export type CursorPage<T> = { items: T[] | null; next_cursor?: string };
+
+/**
+ * Reloads a cursor-paged list from page one up to at least `loadedCount` rows (the rows already on
+ * screen), following cursors one page at a time so each request stays within the API page limit.
+ * Rows repeated across overlapping pages are dropped. Rejects when `signal` aborts.
+ */
+export async function reloadLoadedPages<T>(
+  fetchPage: (cursor: string | undefined, signal: AbortSignal) => Promise<CursorPage<T>>,
+  identity: (item: T) => string,
+  loadedCount: number,
+  signal: AbortSignal,
+): Promise<{ items: T[]; next: string | null }> {
+  const items: T[] = [];
+  const seen = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const page = await fetchPage(cursor, signal);
+    signal.throwIfAborted();
+    const before = items.length;
+    for (const item of page.items ?? []) {
+      const key = identity(item);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      items.push(item);
+    }
+    cursor = page.next_cursor || undefined;
+    // A page that adds nothing new cannot make progress; stop rather than loop on its cursor.
+    if (items.length === before) break;
+  } while (cursor && items.length < loadedCount);
+  return { items, next: cursor ?? null };
+}
