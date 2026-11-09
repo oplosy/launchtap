@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EventSourceLike } from "@/api/sse";
 import type { LiveEvent } from "@/api/types";
-import { createLiveController } from "./live-controller";
+import { createLiveController, HIDDEN_CLOSE_MS } from "./live-controller";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -151,5 +151,111 @@ describe("live controller", () => {
     doc.dispatchEvent(new Event("visibilitychange"));
     await vi.advanceTimersByTimeAsync(0);
     expect(h.sources.length).toBe(afterExhaust);
+  });
+
+  describe("hidden tab", () => {
+    function stubDocument(state: "visible" | "hidden") {
+      const doc = new EventTarget() as EventTarget & { visibilityState: string };
+      doc.visibilityState = state;
+      vi.stubGlobal("document", doc);
+      return (next: "visible" | "hidden") => {
+        doc.visibilityState = next;
+        doc.dispatchEvent(new Event("visibilitychange"));
+      };
+    }
+
+    it("closes the stream after 60 s hidden and reopens it through recovery when visible", async () => {
+      vi.useFakeTimers();
+      const setVisibility = stubDocument("visible");
+      const h = harness();
+      const c = createLiveController({ url, eventSourceFactory: h.factory });
+      const events: string[] = [];
+      let recoveries = 0;
+      c.subscribe((e) => events.push(e.event));
+      c.addRecovery(async () => {
+        recoveries += 1;
+      });
+      const stop = c.start();
+      expect(HIDDEN_CLOSE_MS).toBe(60_000);
+      setVisibility("hidden");
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(h.sources[0]?.closed).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(h.sources[0]?.closed).toBe(true);
+      expect(h.sources).toHaveLength(1);
+      // Stays closed while hidden: no slow retries in the background.
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(h.sources).toHaveLength(1);
+
+      setVisibility("visible");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(recoveries).toBe(1);
+      expect(h.sources).toHaveLength(2);
+      expect(events).toEqual([]);
+      h.open();
+      expect(events).toEqual(["reconnected"]);
+      stop();
+    });
+
+    it("keeps the stream when the tab comes back within 60 s", async () => {
+      vi.useFakeTimers();
+      const setVisibility = stubDocument("visible");
+      const h = harness();
+      const c = createLiveController({ url, eventSourceFactory: h.factory });
+      let recoveries = 0;
+      c.addRecovery(async () => {
+        recoveries += 1;
+      });
+      const stop = c.start();
+      setVisibility("hidden");
+      await vi.advanceTimersByTimeAsync(30_000);
+      setVisibility("visible");
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(h.sources).toHaveLength(1);
+      expect(h.sources[0]?.closed).toBe(false);
+      expect(recoveries).toBe(0);
+      stop();
+    });
+
+    it("starts the close timer when the tab starts hidden; stop cancels it", async () => {
+      vi.useFakeTimers();
+      stubDocument("hidden");
+      const h = harness();
+      const c = createLiveController({ url, eventSourceFactory: h.factory, hiddenCloseMs: 1_000 });
+      const stop = c.start();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(h.sources[0]?.closed).toBe(true);
+      stop();
+
+      const h2 = harness();
+      const c2 = createLiveController({
+        url,
+        eventSourceFactory: h2.factory,
+        hiddenCloseMs: 1_000,
+      });
+      const stop2 = c2.start();
+      stop2();
+      const closedByStop = h2.sources[0]?.closed;
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(closedByStop).toBe(true);
+      expect(h2.sources).toHaveLength(1);
+    });
+
+    it("cancels the slow retry while parked and resumes on visible", async () => {
+      vi.useFakeTimers();
+      const setVisibility = stubDocument("visible");
+      const h = harness();
+      const c = createLiveController({ url, eventSourceFactory: h.factory, slowRetryMs: 30_000 });
+      const stop = c.start();
+      await exhaust(h);
+      const before = h.sources.length;
+      setVisibility("hidden");
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(h.sources.length).toBe(before);
+      setVisibility("visible");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.sources.length).toBe(before + 1);
+      stop();
+    });
   });
 });

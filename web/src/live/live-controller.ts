@@ -5,6 +5,11 @@ export type LiveListener = (event: LiveEvent) => void;
 export type LiveRecover = (signal?: AbortSignal) => Promise<void>;
 
 export const SLOW_RETRY_MS = 30_000;
+/**
+ * A tab hidden this long closes its stream, so background tabs do not hold one of the client's
+ * `API_SSE_MAX_PER_CLIENT` connections; it reopens through recovery when the tab is visible.
+ */
+export const HIDDEN_CLOSE_MS = 60_000;
 
 export type LiveController = {
   subscribe: (listener: LiveListener) => () => void;
@@ -16,16 +21,20 @@ export type LiveController = {
 /**
  * Framework-free core of the shared live stream: one SseInvalidationStream, a subscriber fan-out
  * and the long-lived recovery policy. After the stream's own retry budget is exhausted it keeps
- * retrying every SLOW_RETRY_MS and immediately when the tab becomes visible again.
+ * retrying every SLOW_RETRY_MS and immediately when the tab becomes visible again. A tab hidden
+ * for HIDDEN_CLOSE_MS closes ("parks") its stream; becoming visible reopens it through the same
+ * recovery path (REST refill, reopen, `reconnected` once the new source opens).
  */
 export function createLiveController(options: {
   url: string;
   eventSourceFactory?: EventSourceFactory;
   slowRetryMs?: number;
+  hiddenCloseMs?: number;
 }): LiveController {
   const listeners = new Set<LiveListener>();
   const recoveries = new Set<LiveRecover>();
   const slowRetryMs = options.slowRetryMs ?? SLOW_RETRY_MS;
+  const hiddenCloseMs = options.hiddenCloseMs ?? HIDDEN_CLOSE_MS;
 
   const emit = (event: LiveEvent) => {
     for (const listener of [...listeners]) {
@@ -64,6 +73,9 @@ export function createLiveController(options: {
     start: () => {
       let disposed = false;
       let exhausted = false;
+      // Closed because the tab stayed hidden; reopened (via restart) when it is visible again.
+      let parked = false;
+      let hiddenTimer: ReturnType<typeof setTimeout> | null = null;
       let stopStream: (() => void) | null = null;
       let slowTimer: ReturnType<typeof setTimeout> | null = null;
       let restartAbort: AbortController | null = null;
@@ -71,6 +83,24 @@ export function createLiveController(options: {
       const clearSlowTimer = () => {
         if (slowTimer) clearTimeout(slowTimer);
         slowTimer = null;
+      };
+
+      const hasDocument = typeof document !== "undefined";
+      const isHidden = () => hasDocument && document.visibilityState === "hidden";
+
+      const clearHiddenTimer = () => {
+        if (hiddenTimer) clearTimeout(hiddenTimer);
+        hiddenTimer = null;
+      };
+
+      const park = () => {
+        clearHiddenTimer();
+        if (disposed) return;
+        parked = true;
+        clearSlowTimer();
+        restartAbort?.abort();
+        stopStream?.();
+        stopStream = null;
       };
 
       const scheduleSlowRetry = () => {
@@ -96,8 +126,13 @@ export function createLiveController(options: {
       };
 
       const restart = async () => {
-        if (disposed || !exhausted || restartAbort) return;
+        if (disposed || !(exhausted || parked) || restartAbort) return;
         clearSlowTimer();
+        // A hidden tab does not retry in the background; becoming visible restarts it.
+        if (isHidden()) {
+          park();
+          return;
+        }
         const abort = new AbortController();
         restartAbort = abort;
         try {
@@ -105,8 +140,9 @@ export function createLiveController(options: {
           stopStream = null;
           // Events were missed while the stream was down: refill REST state first.
           await runRecoveries(abort.signal);
-          if (disposed) return;
+          if (disposed || abort.signal.aborted) return;
           exhausted = false;
+          parked = false;
           // `reconnected` is emitted when the new source opens (SseInvalidationStream).
           open(true);
         } finally {
@@ -115,15 +151,21 @@ export function createLiveController(options: {
       };
 
       const onVisibility = () => {
+        if (document.visibilityState === "hidden") {
+          if (!hiddenTimer && !parked) hiddenTimer = setTimeout(park, hiddenCloseMs);
+          return;
+        }
+        clearHiddenTimer();
         if (document.visibilityState === "visible") void restart();
       };
-      const hasDocument = typeof document !== "undefined";
       if (hasDocument) document.addEventListener("visibilitychange", onVisibility);
 
       open();
+      if (isHidden()) hiddenTimer = setTimeout(park, hiddenCloseMs);
       return () => {
         disposed = true;
         clearSlowTimer();
+        clearHiddenTimer();
         restartAbort?.abort();
         if (hasDocument) document.removeEventListener("visibilitychange", onVisibility);
         stopStream?.();

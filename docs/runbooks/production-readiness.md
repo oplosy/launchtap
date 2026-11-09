@@ -174,7 +174,11 @@ describe it:
   slow clients or an event storm, not at the database.
 - The web app opens one shared SSE stream per browser tab on every route. Five or more tabs from
   one client address exceed `API_SSE_MAX_PER_CLIENT` (default 4); the extra tabs fall back to
-  slow retries. Raise the limit only if shared NATs make this common.
+  slow retries. To keep background tabs from holding those slots, a tab that stays hidden for
+  60 s closes its stream (and does no slow retries while hidden); when it becomes visible again it
+  refills from REST, reopens the stream and refetches once the new connection opens, through the
+  same path as any reconnect. So the cap is only hit by more than four tabs *visible* (or hidden
+  for under a minute) at once. Raise the limit only if shared NATs make this common.
 - Web server-side reads (share-card metadata and images) use the private `API_INTERNAL_BASE_URL`
   (Compose: `http://api:8080`, http or https only). It is required when
   `NEXT_PUBLIC_API_BASE_URL` is a loopback address, and the container preflight rejects the
@@ -185,6 +189,12 @@ describe it:
   after launch, can stay cached up to 300 s, plus any downstream stale-while-revalidate window.
   Card text shows only characters the bundled font covers (emoji and CJK are stripped; the card
   falls back to `$SYMBOL`), so the renderer never contacts a third party.
+- Share-card render cost: one server-side render (a token card reads the token, its image and the
+  ETH/USD reference; a wallet card reads the wallet overview and its open positions) per distinct
+  token or wallet address per 300 s revalidation window, per web process; repeat unfurls inside the window are served from the
+  cache. The card routes are public and use no API key, so the cost scales with the number of
+  distinct addresses requested, which a crawler can drive up; rate-limit the card routes at the
+  edge if that becomes visible in API load.
 - Notifications are in-app and session-only (watched tokens and the signed-in wallet's own
   trades). They exist only where the wallet stack is loaded (token, create and profile routes,
   then for the rest of the tab). Matching on wallet holdings is sub-project C.
