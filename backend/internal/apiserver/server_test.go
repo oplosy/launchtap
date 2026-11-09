@@ -226,3 +226,25 @@ func TestOpenAPIContractIncludesPlan3Endpoints(t *testing.T) {
 		t.Errorf("default image GET error schema ref=%q want RFC problem ErrorModel", got)
 	}
 }
+
+func TestOpenAPIBurstTradersIsNotNullable(t *testing.T) {
+	generated, err := GenerateOpenAPI()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Components struct {
+			Schemas map[string]struct {
+				Properties map[string]struct {
+					Type json.RawMessage `json:"type"`
+				} `json:"properties"`
+			} `json:"schemas"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal(generated, &document); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(document.Components.Schemas["BurstItem"].Properties["traders"].Type); got != `"array"` {
+		t.Fatalf("BurstItem.traders type = %s, want \"array\"", got)
+	}
+}

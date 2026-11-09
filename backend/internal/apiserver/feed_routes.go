@@ -64,8 +64,8 @@ type newTokenFeedEvent struct {
 type burstItem struct {
 	Token            string   `json:"token"`
 	Count            int      `json:"count" doc:"Trades of this token folded into the window."`
-	MaxETHWei        string   `json:"max_eth_wei" doc:"Largest gross ETH amount among the folded trades, decimal wei string (same as a trade's eth_volume); \"0\" when unknown."`
-	Traders          []string `json:"traders" doc:"Distinct non-null traders of the folded trades, lowercase hex, first-seen order, at most 32."`
+	MaxETHWei        string   `json:"max_eth_wei" doc:"Largest gross ETH amount among the folded trades, decimal wei string (same as a trade's eth_volume). \"0\" means none or unknown: no folded trade carried an amount."`
+	Traders          []string `json:"traders" nullable:"false" doc:"Distinct non-null traders of the folded trades, lowercase hex, first-seen order, at most 32. Always an array, possibly empty."`
 	TradersTruncated bool     `json:"traders_truncated" doc:"True when more distinct traders were folded than traders lists."`
 }
 

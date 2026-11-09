@@ -260,6 +260,12 @@ type feedStream struct {
 // unread rows, so it never overtakes a row of another stream. A read error stops the drain with every
 // cursor at its last published row; the next hint or tick retries. Ties (impossible for distinct logs)
 // fall back to launch, trade, graduation.
+//
+// The drain has no upper block bound: a stream that returned a short page is not reread, so rows the
+// indexer commits mid-drain can be published after newer rows of another stream (only across that new
+// block). Bounding every read by the head read at drain start would need an upper-bound parameter on
+// the three single-sourced feed queries, the Reader port and an extra read per drain, so it is left out;
+// the misordering is limited to rows committed while one drain runs.
 func (t *Tail) drainMerged(ctx context.Context) {
 	streams := []*feedStream{
 		{op: "launches", cursor: &t.launch, read: t.readLaunches},

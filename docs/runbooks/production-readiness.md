@@ -167,7 +167,7 @@ describe it:
 | `launchpad_api_feed_events_published_total{type}` | feed events handed to the hub, by event type |
 | `launchpad_api_feed_bursts_total` | feed bursts: more than 20 trade, new_token and graduation events/s in one API process, the trade and new_token overflow becomes one `trade_burst` event (graduations are never folded) |
 | `launchpad_api_feed_tail_lag_seconds` | seconds since the block time of the newest published trade |
-| `launchpad_api_feed_read_errors_total{op}` | feed database read failures; `op` is `newest`, `trades`, `graduations`, `launches` or `watermarks` |
+| `launchpad_api_feed_read_errors_total{op}` | feed database read failures; `op` is `newest`, `trades`, `graduations`, `launches` or `watermarks`. A persistent failure on one of `trades`, `graduations` or `launches` stalls the whole live feed, because the three are published merged in chain order |
 
 - Each SSE subscriber has a buffer of 64 events. A subscriber that falls behind is evicted and
   reconnects, then refills from `GET /v1/trades/recent`. Frequent client reconnects point at

@@ -40,12 +40,13 @@ type Event struct {
 // BurstCount describes the trades of one token that were rolled into a trade_burst event: how many,
 // the largest gross ETH amount among them (wei), and their distinct non-null traders as lowercase hex
 // in first-seen order, capped with TradersTruncated set when more were folded.
+// It is never marshalled directly: the API maps it to its SSE DTO.
 type BurstCount struct {
-	Token            string   `json:"token"`
-	Count            int      `json:"count"`
-	MaxETH           *big.Int `json:"max_eth_wei,omitempty"`
-	Traders          []string `json:"traders,omitempty"`
-	TradersTruncated bool     `json:"traders_truncated,omitempty"`
+	Token            string
+	Count            int
+	MaxETH           *big.Int // nil when no folded trade carried an amount
+	Traders          []string
+	TradersTruncated bool
 }
 
 type Trade struct {

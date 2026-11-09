@@ -76,7 +76,7 @@ New SSE event types beside `launch`, `token`, `reorg`:
   name.)
 - `trade_burst`: chain, deployment, window start and end, `items: [{token, count, max_eth_wei,
   traders, traders_truncated}]` (folded trades per token: the largest gross ETH amount as a wei
-  string, and the distinct non-null traders as lowercase hex in first-seen order, at most 32 with
+  string, `"0"` when no folded trade carried an amount, and the distinct non-null traders as lowercase hex in first-seen order, at most 32 with
   `traders_truncated` set beyond that, so large-trade and own-trade notifications survive the
   fold), and `launches`: the number of folded `new_token` events in the window, omitted
   when zero. An additive total, not per token: a client refetches the token list instead.
