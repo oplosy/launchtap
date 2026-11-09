@@ -189,6 +189,38 @@ describe it:
   trades). They exist only where the wallet stack is loaded (token, create and profile routes,
   then for the rest of the tab). Matching on wallet holdings is sub-project C.
 
+### Backfill pool swap senders (P0-C1)
+
+Wallet positions attribute a pool swap to the transaction sender (`pool_swaps.tx_from`). The
+indexer stores `NULL` when the sender lookup fails, and swaps ingested before this feature have
+`NULL` too. Fill them with the one-off command, run from `backend/` with the indexer's
+environment (`DATABASE_URL`, `RPC_URL`, `CHAIN_ID`, `DEPLOYMENT_ID`):
+
+```bash
+go run ./cmd/backfill-swap-sender -dry-run   # fetch and log senders, write nothing
+go run ./cmd/backfill-swap-sender            # fill and mark positions dirty
+```
+
+| Flag | Default | Meaning |
+|------|---------|---------|
+| `-rate` | `5` | RPC requests per second (one request per batch) |
+| `-batch` | `50` | transaction hashes per RPC call, 1 to 100 |
+| `-dry-run` | off | fetch and log what would change, write nothing |
+
+- The command is resumable: `tx_from IS NULL` is the cursor, so a rerun touches only what is
+  still missing. Each batch is one database transaction that fills the senders and marks the
+  affected `(sender, token)` positions dirty; the indexer's position worker then recomputes them.
+- A transaction the RPC cannot resolve is logged and skipped for that run, and the command exits
+  non-zero after finishing. Rerun later (or against a better RPC) to retry the skipped ones.
+- Sender fetch failures during normal ingestion never stop the indexer; they only leave `NULL`.
+
+Reading `attribution_complete`: `GET /v1/wallets/{address}` returns `attribution_complete`,
+chain-wide. It is `true` only when no pool swap on the chain has `tx_from IS NULL`. While it is
+`false`, DEX trades may be missing from every wallet's PnL and trade lists. Check progress with
+`SELECT count(*) FROM pool_swaps WHERE chain_id = <chain> AND tx_from IS NULL;`. When the backfill
+exits zero and the count is 0, `attribution_complete` turns `true` once the position worker has
+drained `position_dirty`.
+
 ## Audit evidence checklist
 
 The audit packet must identify the exact commit and contain the Solidity source/artifact

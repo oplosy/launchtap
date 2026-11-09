@@ -558,3 +558,24 @@ ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregat
 -- The database clock is the one the stats recompute uses for its 24h window.
 -- name: DatabaseNow :one
 SELECT now()::timestamptz AS now;
+
+-- name: ListUnattributedPoolSwaps :many
+-- Backfill cursor: distinct transactions that still have a pool swap without a sender, in
+-- (block_number, tx_hash) order, strictly after the keyset position (after_block, after_hash).
+SELECT tx_hash, block_number
+FROM pool_swaps
+WHERE chain_id = sqlc.arg(chain_id)::bigint
+  AND tx_from IS NULL
+  AND (block_number, tx_hash) > (sqlc.arg(after_block)::bigint, sqlc.arg(after_hash)::bytea)
+GROUP BY tx_hash, block_number
+ORDER BY block_number, tx_hash
+LIMIT sqlc.arg(row_limit)::int;
+
+-- name: SetPoolSwapTxFrom :many
+-- Fills the sender of every still-unattributed swap in one transaction and returns the pairs
+-- that need a position re-mark.
+UPDATE pool_swaps SET tx_from = sqlc.arg(tx_from)::bytea
+WHERE chain_id = sqlc.arg(chain_id)::bigint
+  AND tx_hash = sqlc.arg(tx_hash)::bytea
+  AND tx_from IS NULL
+RETURNING pair_address;

@@ -1,0 +1,172 @@
+// Package swapbackfill fills pool_swaps.tx_from for swaps whose sender lookup failed (or that
+// predate sender attribution) and marks the affected wallet positions for recompute.
+//
+// It is resumable: tx_from IS NULL is the cursor, so a rerun only touches what is still missing.
+package swapbackfill
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"sort"
+
+	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// ErrSkipped marks a run that finished but left unresolved transactions without a sender.
+var ErrSkipped = errors.New("some transactions could not be resolved")
+
+// Options are the per-run settings; the request rate is the caller's Sleep.
+type Options struct {
+	Batch  int
+	DryRun bool
+}
+
+// SwapTx is one transaction that still has a pool swap without a known sender.
+type SwapTx struct {
+	Hash  common.Hash
+	Block int64
+}
+
+// Store is the database side of the backfill.
+type Store interface {
+	// List returns up to limit distinct NULL-sender transactions strictly after the cursor.
+	List(ctx context.Context, afterBlock int64, afterHash common.Hash, limit int) ([]SwapTx, error)
+	// Attribute fills the senders and marks the affected positions dirty in one transaction.
+	// It returns the number of swap rows updated.
+	Attribute(ctx context.Context, senders map[common.Hash]common.Address) (int, error)
+}
+
+// SenderSource resolves transaction senders; unresolved hashes are absent from the result.
+type SenderSource interface {
+	TransactionSenders(ctx context.Context, hashes []common.Hash) (map[common.Hash]common.Address, error)
+}
+
+// Deps are the collaborators of one run.
+type Deps struct {
+	Store   Store
+	Senders SenderSource
+	Log     *slog.Logger
+	// Sleep waits out the per-request rate interval; it returns early with the context error.
+	Sleep func(context.Context) error
+}
+
+// Summary counts what one run did.
+type Summary struct {
+	Listed      int
+	Updated     int // swap rows written
+	WouldUpdate int // transactions resolved in dry-run mode
+	Skipped     int
+}
+
+// Run walks the NULL-sender transactions with a (block, hash) keyset cursor, so an unresolved
+// transaction is passed over once and a single run always terminates, in dry-run mode too. It
+// returns ErrSkipped (wrapped) after finishing if any transaction could not be resolved.
+func Run(ctx context.Context, d Deps, o Options) (Summary, error) {
+	var result Summary
+	var afterBlock int64 = -1
+	var afterHash common.Hash
+	for {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
+		batch, err := d.Store.List(ctx, afterBlock, afterHash, o.Batch)
+		if err != nil {
+			return result, err
+		}
+		if len(batch) == 0 {
+			break
+		}
+		last := batch[len(batch)-1]
+		afterBlock, afterHash = last.Block, last.Hash
+		result.Listed += len(batch)
+
+		hashes := make([]common.Hash, len(batch))
+		for index, row := range batch {
+			hashes[index] = row.Hash
+		}
+		senders, err := d.Senders.TransactionSenders(ctx, hashes)
+		if err != nil {
+			return result, fmt.Errorf("fetch transaction senders: %w", err)
+		}
+		resolved := make(map[common.Hash]common.Address, len(senders))
+		for _, row := range batch {
+			sender, ok := senders[row.Hash]
+			if !ok {
+				result.Skipped++
+				d.Log.Warn("transaction sender unresolved, skipped", "tx_hash", row.Hash.Hex(), "block_number", row.Block)
+				continue
+			}
+			resolved[row.Hash] = sender
+		}
+		if o.DryRun {
+			result.WouldUpdate += len(resolved)
+			for _, row := range batch {
+				if sender, ok := resolved[row.Hash]; ok {
+					d.Log.Info("dry run: would set sender", "tx_hash", row.Hash.Hex(), "sender", sender.Hex())
+				}
+			}
+		} else if len(resolved) > 0 {
+			updated, err := d.Store.Attribute(ctx, resolved)
+			if err != nil {
+				return result, err
+			}
+			result.Updated += updated
+			d.Log.Info("batch attributed", "transactions", len(resolved), "swaps_updated", updated, "block_number", last.Block)
+		}
+		if err := d.Sleep(ctx); err != nil {
+			return result, err
+		}
+	}
+	if result.Skipped > 0 {
+		return result, fmt.Errorf("%w: %d skipped, their swaps keep tx_from NULL", ErrSkipped, result.Skipped)
+	}
+	return result, nil
+}
+
+// PostgresStore is the PostgreSQL Store for one chain.
+type PostgresStore struct {
+	Pool    *pgxpool.Pool
+	ChainID int64
+	// Factory is excluded from position marking (R4).
+	Factory common.Address
+}
+
+func (s PostgresStore) List(ctx context.Context, afterBlock int64, afterHash common.Hash, limit int) ([]SwapTx, error) {
+	rows, err := storepostgres.NewAdapter(s.Pool).ListUnattributedSwapTxs(ctx, s.ChainID, afterBlock, afterHash, int32(limit))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SwapTx, len(rows))
+	for index, row := range rows {
+		out[index] = SwapTx{Hash: row.TxHash, Block: row.BlockNumber}
+	}
+	return out, nil
+}
+
+func (s PostgresStore) Attribute(ctx context.Context, senders map[common.Hash]common.Address) (int, error) {
+	hashes := make([]common.Hash, 0, len(senders))
+	for hash := range senders {
+		hashes = append(hashes, hash)
+	}
+	sort.Slice(hashes, func(i, j int) bool { return string(hashes[i][:]) < string(hashes[j][:]) })
+	updated := 0
+	err := storepostgres.WithinTx(ctx, s.Pool, func(ctx context.Context, adapter *storepostgres.Adapter) error {
+		adapter = adapter.WithFactory(s.Factory)
+		for _, hash := range hashes {
+			n, err := adapter.AttributeSwapSender(ctx, s.ChainID, hash, senders[hash])
+			if err != nil {
+				return err
+			}
+			updated += n
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return updated, nil
+}

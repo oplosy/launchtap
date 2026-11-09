@@ -591,6 +591,56 @@ func (q *Queries) ListPositionLegs(ctx context.Context, arg ListPositionLegsPara
 	return items, nil
 }
 
+const listUnattributedPoolSwaps = `-- name: ListUnattributedPoolSwaps :many
+SELECT tx_hash, block_number
+FROM pool_swaps
+WHERE chain_id = $1::bigint
+  AND tx_from IS NULL
+  AND (block_number, tx_hash) > ($2::bigint, $3::bytea)
+GROUP BY tx_hash, block_number
+ORDER BY block_number, tx_hash
+LIMIT $4::int
+`
+
+type ListUnattributedPoolSwapsParams struct {
+	ChainID    int64
+	AfterBlock int64
+	AfterHash  []byte
+	RowLimit   int32
+}
+
+type ListUnattributedPoolSwapsRow struct {
+	TxHash      Hash
+	BlockNumber int64
+}
+
+// Backfill cursor: distinct transactions that still have a pool swap without a sender, in
+// (block_number, tx_hash) order, strictly after the keyset position (after_block, after_hash).
+func (q *Queries) ListUnattributedPoolSwaps(ctx context.Context, arg ListUnattributedPoolSwapsParams) ([]ListUnattributedPoolSwapsRow, error) {
+	rows, err := q.db.Query(ctx, listUnattributedPoolSwaps,
+		arg.ChainID,
+		arg.AfterBlock,
+		arg.AfterHash,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUnattributedPoolSwapsRow{}
+	for rows.Next() {
+		var i ListUnattributedPoolSwapsRow
+		if err := rows.Scan(&i.TxHash, &i.BlockNumber); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockWalletTotals = `-- name: LockWalletTotals :exec
 SELECT pg_advisory_xact_lock(hashtextextended('wallet_totals:' || $1::bigint::text || ':' || encode($2::bytea, 'hex'), 0))
 `
@@ -1059,6 +1109,42 @@ type RecomputeWalletTotalsParams struct {
 func (q *Queries) RecomputeWalletTotals(ctx context.Context, arg RecomputeWalletTotalsParams) error {
 	_, err := q.db.Exec(ctx, recomputeWalletTotals, arg.ChainID, arg.Wallet)
 	return err
+}
+
+const setPoolSwapTxFrom = `-- name: SetPoolSwapTxFrom :many
+UPDATE pool_swaps SET tx_from = $1::bytea
+WHERE chain_id = $2::bigint
+  AND tx_hash = $3::bytea
+  AND tx_from IS NULL
+RETURNING pair_address
+`
+
+type SetPoolSwapTxFromParams struct {
+	TxFrom  []byte
+	ChainID int64
+	TxHash  []byte
+}
+
+// Fills the sender of every still-unattributed swap in one transaction and returns the pairs
+// that need a position re-mark.
+func (q *Queries) SetPoolSwapTxFrom(ctx context.Context, arg SetPoolSwapTxFromParams) ([]Address, error) {
+	rows, err := q.db.Query(ctx, setPoolSwapTxFrom, arg.TxFrom, arg.ChainID, arg.TxHash)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Address{}
+	for rows.Next() {
+		var pair_address Address
+		if err := rows.Scan(&pair_address); err != nil {
+			return nil, err
+		}
+		items = append(items, pair_address)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const upsertWalletPosition = `-- name: UpsertWalletPosition :exec

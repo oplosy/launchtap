@@ -129,6 +129,9 @@ type Querier interface {
 	ListTokenIdentities(ctx context.Context, chainID int64) ([]ListTokenIdentitiesRow, error)
 	ListTokenPhaseCounts(ctx context.Context, chainID int64) ([]ListTokenPhaseCountsRow, error)
 	ListTrendingTokens(ctx context.Context, arg ListTrendingTokensParams) ([]ListTrendingTokensRow, error)
+	// Backfill cursor: distinct transactions that still have a pool swap without a sender, in
+	// (block_number, tx_hash) order, strictly after the keyset position (after_block, after_hash).
+	ListUnattributedPoolSwaps(ctx context.Context, arg ListUnattributedPoolSwapsParams) ([]ListUnattributedPoolSwapsRow, error)
 	// Token columns are NULL when the token row is gone (no FK); the casts keep sqlc from
 	// applying the non-nullable Address/Uint256/Hash overrides to them.
 	ListWatchlist(ctx context.Context, arg ListWatchlistParams) ([]ListWatchlistRow, error)
@@ -176,6 +179,9 @@ type Querier interface {
 	RefundCreditMatchesEvent(ctx context.Context, arg RefundCreditMatchesEventParams) (pgtype.Bool, error)
 	ReplaceTokenImage(ctx context.Context, arg ReplaceTokenImageParams) (int64, error)
 	ReplaceTokenMetadata(ctx context.Context, arg ReplaceTokenMetadataParams) (int64, error)
+	// Fills the sender of every still-unattributed swap in one transaction and returns the pairs
+	// that need a position re-mark.
+	SetPoolSwapTxFrom(ctx context.Context, arg SetPoolSwapTxFromParams) ([]Address, error)
 	TokenExists(ctx context.Context, arg TokenExistsParams) (bool, error)
 	TokenLaunchMatchesEvent(ctx context.Context, arg TokenLaunchMatchesEventParams) (pgtype.Bool, error)
 	TradeMatchesEvent(ctx context.Context, arg TradeMatchesEventParams) (pgtype.Bool, error)
