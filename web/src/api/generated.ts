@@ -1248,7 +1248,7 @@ export interface operations {
     getLeaderboard: {
         parameters: {
             query?: {
-                /** @description Number of wallets, 1-100. */
+                /** @description Maximum number of wallets, 1-100. Only wallets with a positive realized PnL are ranked, so fewer may be returned. */
                 limit?: number;
             };
             header?: never;

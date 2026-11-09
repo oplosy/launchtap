@@ -748,6 +748,7 @@ const listLeaderboard = `-- name: ListLeaderboard :many
 SELECT w.wallet, w.realized_pnl, w.tokens_traded
 FROM wallet_totals AS w
 WHERE w.chain_id = $1
+  AND w.realized_pnl > 0
   AND w.wallet <> decode(repeat('00', 20), 'hex')
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.curve_address = w.wallet)
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.lp_pair = w.wallet)
@@ -768,6 +769,8 @@ type ListLeaderboardRow struct {
 
 // R4 at read time: the zero address and every curve or pair address are never ranked. The factory
 // is never marked dirty, so it never has totals.
+// Only wallets with a positive realized PnL rank; fewer than page_size rows is normal. Ties are
+// broken by wallet address, so the order is deterministic.
 func (q *Queries) ListLeaderboard(ctx context.Context, arg ListLeaderboardParams) ([]ListLeaderboardRow, error) {
 	rows, err := q.db.Query(ctx, listLeaderboard, arg.ChainID, arg.PageSize)
 	if err != nil {

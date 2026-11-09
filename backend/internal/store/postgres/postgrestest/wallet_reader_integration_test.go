@@ -378,6 +378,8 @@ func TestLeaderboardRanksAndExcludesProtocol(t *testing.T) {
 	f.seedWallets() // W = -300, W2 = 4
 	f.totals(0xb1, 500, 2, 0)
 	f.totals(0xb2, 500, 1, 0)
+	// A transfer-only holder has a zero realized PnL and is not a leaderboard entry.
+	f.totals(0xb3, 0, 1, 1)
 	// Protocol-owned addresses with huge totals must never rank: pair of A, curve of A, curve of B, zero address.
 	f.totals(0x31, 9999, 1, 0)
 	f.totals(0x41, 8888, 1, 0)
@@ -392,7 +394,7 @@ func TestLeaderboardRanksAndExcludesProtocol(t *testing.T) {
 	want := []struct {
 		addr byte
 		pnl  int64
-	}{{0xb1, 500}, {0xb2, 500}, {walletW2, 4}, {walletW, -300}}
+	}{{0xb1, 500}, {0xb2, 500}, {walletW2, 4}} // only realized PnL > 0: not 0xb3 (0) nor W (-300)
 	if len(page.Items) != len(want) {
 		t.Fatalf("items = %+v", page.Items)
 	}

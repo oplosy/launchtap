@@ -2457,13 +2457,13 @@
         "operationId": "getLeaderboard",
         "parameters": [
           {
-            "description": "Number of wallets, 1-100.",
+            "description": "Maximum number of wallets, 1-100. Only wallets with a positive realized PnL are ranked, so fewer may be returned.",
             "explode": false,
             "in": "query",
             "name": "limit",
             "schema": {
               "default": 100,
-              "description": "Number of wallets, 1-100.",
+              "description": "Maximum number of wallets, 1-100. Only wallets with a positive realized PnL are ranked, so fewer may be returned.",
               "format": "int64",
               "maximum": 100,
               "minimum": 1,

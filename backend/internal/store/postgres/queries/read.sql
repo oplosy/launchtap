@@ -599,9 +599,12 @@ LIMIT sqlc.arg(page_size)::integer;
 -- R4 at read time: the zero address and every curve or pair address are never ranked. The factory
 -- is never marked dirty, so it never has totals.
 -- name: ListLeaderboard :many
+-- Only wallets with a positive realized PnL rank; fewer than page_size rows is normal. Ties are
+-- broken by wallet address, so the order is deterministic.
 SELECT w.wallet, w.realized_pnl, w.tokens_traded
 FROM wallet_totals AS w
 WHERE w.chain_id = sqlc.arg(chain_id)
+  AND w.realized_pnl > 0
   AND w.wallet <> decode(repeat('00', 20), 'hex')
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.curve_address = w.wallet)
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.lp_pair = w.wallet)

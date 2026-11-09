@@ -299,7 +299,8 @@ func (r WalletReader) ListCreated(ctx context.Context, q wallet.CreatedQuery) (w
 	return out, err
 }
 
-// Leaderboard ranks wallets by realized PnL, excluding the zero address and every curve and pair address.
+// Leaderboard ranks wallets with a positive realized PnL (highest first, ties by address),
+// excluding the zero address and every curve and pair address. It may return fewer than limit.
 func (r WalletReader) Leaderboard(ctx context.Context, chainID int64, limit int) (wallet.LeaderboardPage, error) {
 	if err := checkWalletLimit(limit); err != nil {
 		return wallet.LeaderboardPage{}, err

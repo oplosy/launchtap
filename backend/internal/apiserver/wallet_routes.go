@@ -42,7 +42,7 @@ type walletPositionsInput struct {
 }
 
 type leaderboardInput struct {
-	Limit int `query:"limit" minimum:"1" maximum:"100" default:"100" doc:"Number of wallets, 1-100."`
+	Limit int `query:"limit" minimum:"1" maximum:"100" default:"100" doc:"Maximum number of wallets, 1-100. Only wallets with a positive realized PnL are ranked, so fewer may be returned."`
 }
 
 // walletDTO amounts are wei decimal strings; the PnL fields are signed.

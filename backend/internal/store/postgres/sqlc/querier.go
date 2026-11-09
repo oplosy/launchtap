@@ -114,6 +114,8 @@ type Querier interface {
 	ListLaunchesAfter(ctx context.Context, arg ListLaunchesAfterParams) ([]ListLaunchesAfterRow, error)
 	// R4 at read time: the zero address and every curve or pair address are never ranked. The factory
 	// is never marked dirty, so it never has totals.
+	// Only wallets with a positive realized PnL rank; fewer than page_size rows is normal. Ties are
+	// broken by wallet address, so the order is deterministic.
 	ListLeaderboard(ctx context.Context, arg ListLeaderboardParams) ([]ListLeaderboardRow, error)
 	ListMarketTrades(ctx context.Context, arg ListMarketTradesParams) ([]ListMarketTradesRow, error)
 	ListMarketTradesAfter(ctx context.Context, arg ListMarketTradesAfterParams) ([]ListMarketTradesAfterRow, error)
