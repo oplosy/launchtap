@@ -1,9 +1,14 @@
 package indexer
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"math/big"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -709,5 +714,68 @@ func TestEngineWithoutSenderSourceLeavesTxFromNil(t *testing.T) {
 	}
 	if len(router.swaps) != 1 || router.swaps[0].TxFrom != nil {
 		t.Fatalf("swaps = %+v", router.swaps)
+	}
+}
+
+// captureDefaultLog swaps the default logger for the test. Callers must not be parallel.
+func captureDefaultLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buffer bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buffer, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return &buffer
+}
+
+func TestEngineCountsUnresolvedSenders(t *testing.T) {
+	logs := captureDefaultLog(t)
+	txA, txB, txC := common.HexToHash("0x01"), common.HexToHash("0x02"), common.HexToHash("0x03")
+	// txB errored or returned null: absent from the result. txA appears twice but is one tx.
+	fake := &fakeSenders{senders: map[common.Hash]common.Address{txA: common.HexToAddress("0xaaaa"), txC: common.HexToAddress("0xcccc")}}
+	e, _, _ := newSwapEngine(t, fake, txA, txA, txB, txC)
+	var reported []int
+	e.settings.OnSenderMisses = func(misses int) { reported = append(reported, misses) }
+	if _, err := e.Step(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(reported) != 1 || reported[0] != 1 {
+		t.Fatalf("OnSenderMisses calls = %v, want [1]", reported)
+	}
+	if got := strings.Count(logs.String(), "pool swap sender lookup missed"); got != 1 || !strings.Contains(logs.String(), "misses=1") {
+		t.Fatalf("log = %q, want one warning with misses=1", logs.String())
+	}
+}
+
+func TestEngineDoesNotReportWhenAllSendersResolve(t *testing.T) {
+	logs := captureDefaultLog(t)
+	txA := common.HexToHash("0x01")
+	fake := &fakeSenders{senders: map[common.Hash]common.Address{txA: common.HexToAddress("0xaaaa")}}
+	e, _, _ := newSwapEngine(t, fake, txA)
+	called := false
+	e.settings.OnSenderMisses = func(int) { called = true }
+	if _, err := e.Step(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if called || strings.Contains(logs.String(), "sender lookup") {
+		t.Fatalf("reported a miss with every sender resolved: called=%t log=%q", called, logs.String())
+	}
+}
+
+func TestEngineCountsFailedSenderCallAndRedactsURL(t *testing.T) {
+	logs := captureDefaultLog(t)
+	const rpcURL = "https://rpc.example/v2/SECRETKEY"
+	fake := &fakeSenders{err: fmt.Errorf("eth_getTransactionByHash: %w", &url.Error{Op: "Post", URL: rpcURL, Err: errors.New("connection reset")})}
+	e, _, _ := newSwapEngine(t, fake, common.HexToHash("0x01"), common.HexToHash("0x02"))
+	var reported []int
+	e.settings.OnSenderMisses = func(misses int) { reported = append(reported, misses) }
+	if advanced, err := e.Step(t.Context()); err != nil || !advanced {
+		t.Fatalf("Step() = %t, %v", advanced, err)
+	}
+	if len(reported) != 1 || reported[0] != 2 {
+		t.Fatalf("OnSenderMisses calls = %v, want [2]", reported)
+	}
+	out := logs.String()
+	if strings.Contains(out, "SECRETKEY") || strings.Contains(out, "rpc.example") || !strings.Contains(out, "connection reset") || !strings.Contains(out, "misses=2") {
+		t.Fatalf("log = %q, want a redacted warning with misses=2", out)
 	}
 }

@@ -192,13 +192,14 @@ describe it:
 ### Wallet positions (P0-C1)
 
 The indexer's second stats worker recomputes wallet positions (cost basis and realized PnL)
-from the `position_dirty` queue. Two indexer metrics (on its health port `:8081`, `/metrics`)
+from the `position_dirty` queue. Three indexer metrics (on its health port `:8081`, `/metrics`)
 describe it; no address is ever a label:
 
 | Metric | Meaning |
 |--------|---------|
 | `launchpad_aggregation_position_failures_total` | position recomputations that failed; the pair stays dirty and is retried |
 | `launchpad_aggregation_position_dirty_backlog` | pending `position_dirty` rows for the chain |
+| `launchpad_indexer_sender_lookup_misses_total` | pool swap transactions stored with `tx_from = NULL` because the sender lookup failed, errored for that hash, or returned `null` |
 
 - No alert rule ships for these. Suggested policy for the monitoring owner: warn when
   `launchpad_aggregation_position_dirty_backlog > 500` for 15 minutes, or when
@@ -207,6 +208,13 @@ describe it; no address is ever a label:
   drains on its own.
 - A growing backlog or rising failures mean wallet PnL and the leaderboard are stale, not wrong.
   Check the indexer log for `position compute failed`.
+- Sender misses are not retried by the indexer. Each one leaves a swap with `tx_from = NULL`,
+  which turns `attribution_complete` false for every wallet on the chain until it is filled.
+  Suggested alert: `increase(launchpad_indexer_sender_lookup_misses_total[15m]) > 0`. When it
+  fires, check the indexer log for `pool swap sender lookup missed` (one warning per batch, with
+  the miss count) and run `cmd/backfill-swap-sender` (see "Backfill pool swap senders (P0-C1)"
+  below) once the RPC is healthy. A lagging load-balanced node returning `null` for a
+  just-mined transaction is the usual cause; the backfill resolves those later.
 - After a backfill or an outage, the backlog should return to 0. See "Backfill pool swap senders
   (P0-C1)" below for the `cmd/backfill-swap-sender` command and `attribution_complete`.
 
@@ -238,9 +246,11 @@ go run ./cmd/backfill-swap-sender            # fill and mark positions dirty
 Reading `attribution_complete`: `GET /v1/wallets/{address}` returns `attribution_complete`,
 chain-wide. It is `true` only when no pool swap on the chain has `tx_from IS NULL`. While it is
 `false`, DEX trades may be missing from every wallet's PnL and trade lists. Check progress with
-`SELECT count(*) FROM pool_swaps WHERE chain_id = <chain> AND tx_from IS NULL;`. When the backfill
-exits zero and the count is 0, `attribution_complete` turns `true` once the position worker has
-drained `position_dirty`.
+`SELECT count(*) FROM pool_swaps WHERE chain_id = <chain> AND tx_from IS NULL;`.
+`attribution_complete` depends only on that count: it is `true` as soon as the count is 0 (the
+backfill exits zero), independent of the `position_dirty` queue. Wallet PnL is current only once
+the position worker has also drained the queue (`launchpad_aggregation_position_dirty_backlog`
+back to 0).
 
 ## Audit evidence checklist
 

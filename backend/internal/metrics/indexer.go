@@ -14,6 +14,7 @@ type Indexer struct {
 	recomputed   prometheus.Counter
 	notification *prometheus.CounterVec
 	positionFail prometheus.Counter
+	senderMiss   prometheus.Counter
 }
 
 var (
@@ -42,8 +43,12 @@ func NewIndexer(reg prometheus.Registerer, snapshot func() indexer.Health) *Inde
 			Name: "launchpad_aggregation_position_failures_total",
 			Help: "Wallet position recomputations that failed and stay dirty for retry.",
 		}),
+		senderMiss: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "launchpad_indexer_sender_lookup_misses_total",
+			Help: "Pool swap transactions stored without a sender (tx_from NULL) because the lookup failed or returned nothing.",
+		}),
 	}
-	reg.MustRegister(m.rpc, m.recomputed, m.notification, m.positionFail)
+	reg.MustRegister(m.rpc, m.recomputed, m.notification, m.positionFail, m.senderMiss)
 	reg.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "launchpad_aggregation_position_dirty_backlog",
 		Help: "Pending wallet position recomputations (position_dirty rows for the chain).",
@@ -102,6 +107,13 @@ func (m *Indexer) Recomputed(count int) {
 // PositionFailed counts one failed wallet position recomputation.
 func (m *Indexer) PositionFailed() {
 	m.positionFail.Inc()
+}
+
+// SenderLookupMissed counts pool swap transactions whose sender could not be resolved.
+func (m *Indexer) SenderLookupMissed(count int) {
+	if count > 0 {
+		m.senderMiss.Add(float64(count))
+	}
 }
 
 // Notified counts one NOTIFY outcome. Unknown channels are ignored.

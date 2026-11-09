@@ -10,6 +10,7 @@ import (
 
 	"github.com/Contictus/launchtap/backend/internal/chain"
 	"github.com/Contictus/launchtap/backend/internal/ledger"
+	"github.com/Contictus/launchtap/backend/internal/redact"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -59,7 +60,9 @@ func New(settings Settings, store Store, source Source, discovery Discovery, dec
 
 // attachSenders sets PoolSwap.TxFrom from one batched sender lookup. A failed lookup is
 // logged and ignored: ingestion never stops for enrichment, the swaps are written with a nil
-// sender and backfilled later.
+// sender and backfilled later. Every transaction left without a sender (a failed call, an
+// errored element or a null result) is counted once per batch through OnSenderMisses and one
+// warning, so the gap is observable before attribution_complete reports it.
 func (e *Engine) attachSenders(ctx context.Context, decoded []chain.DecodedLog) {
 	if e.settings.Senders == nil {
 		return
@@ -80,9 +83,16 @@ func (e *Engine) attachSenders(ctx context.Context, decoded []chain.DecodedLog) 
 	}
 	senders, err := e.settings.Senders.TransactionSenders(ctx, hashes)
 	if err != nil {
-		slog.Warn("pool swap sender lookup failed", "chain_id", e.settings.ChainID, "count", len(hashes), "error", err)
+		e.reportSenderMisses(len(hashes), len(hashes), err)
 		return
 	}
+	misses := 0
+	for _, hash := range hashes {
+		if _, found := senders[hash]; !found {
+			misses++
+		}
+	}
+	e.reportSenderMisses(misses, len(hashes), nil)
 	for index, log := range decoded {
 		swap, ok := log.Value.(chain.PoolSwap)
 		if !ok {
@@ -93,6 +103,22 @@ func (e *Engine) attachSenders(ctx context.Context, decoded []chain.DecodedLog) 
 			decoded[index].Value = swap
 		}
 	}
+}
+
+// reportSenderMisses logs one warning and feeds the miss counter for a batch with unresolved
+// senders. The error is redacted: an RPC *url.Error carries the provider URL and its API key.
+func (e *Engine) reportSenderMisses(misses, total int, err error) {
+	if misses == 0 {
+		return
+	}
+	if e.settings.OnSenderMisses != nil {
+		e.settings.OnSenderMisses(misses)
+	}
+	attrs := []any{"chain_id", e.settings.ChainID, "transactions", total, "misses", misses}
+	if err != nil {
+		attrs = append(attrs, "error", redact.Error(err))
+	}
+	slog.Warn("pool swap sender lookup missed; swaps stored without tx_from, run cmd/backfill-swap-sender", attrs...)
 }
 
 // Step commits at most one block-aligned chunk. RPC snapshots are checked against

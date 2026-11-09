@@ -21,6 +21,7 @@ import (
 	"github.com/Contictus/launchtap/backend/deployments"
 	"github.com/Contictus/launchtap/backend/internal/chain"
 	"github.com/Contictus/launchtap/backend/internal/config"
+	"github.com/Contictus/launchtap/backend/internal/redact"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/Contictus/launchtap/backend/internal/swapbackfill"
 )
@@ -43,7 +44,7 @@ func main() {
 	err := execute(ctx, os.Args[1:], os.Getenv)
 	stop()
 	if err != nil {
-		slog.Error("backfill-swap-sender failed", "error", redactError(err, os.Getenv("RPC_URL"), os.Getenv("DATABASE_URL")))
+		slog.Error("backfill-swap-sender failed", "error", redact.Error(err, os.Getenv("RPC_URL"), os.Getenv("DATABASE_URL")))
 		os.Exit(1)
 	}
 }

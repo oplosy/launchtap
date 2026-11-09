@@ -98,11 +98,17 @@ func TestPositionMetricsRegistered(t *testing.T) {
 	m := NewIndexer(reg, tracker.Snapshot)
 	m.PositionFailed()
 	m.PositionFailed()
+	m.SenderLookupMissed(3)
+	m.SenderLookupMissed(0)
+	m.SenderLookupMissed(-1)
 
 	if got := seriesValue(t, reg, "launchpad_aggregation_position_failures_total", map[string]string{}); got != 2 {
 		t.Errorf("launchpad_aggregation_position_failures_total = %v, want 2", got)
 	}
 	if got := seriesValue(t, reg, "launchpad_aggregation_position_dirty_backlog", map[string]string{}); got != 7 {
 		t.Errorf("launchpad_aggregation_position_dirty_backlog = %v, want 7", got)
+	}
+	if got := seriesValue(t, reg, "launchpad_indexer_sender_lookup_misses_total", map[string]string{}); got != 3 {
+		t.Errorf("launchpad_indexer_sender_lookup_misses_total = %v, want 3", got)
 	}
 }
