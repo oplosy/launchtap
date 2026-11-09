@@ -58,6 +58,7 @@ type walletDTO struct {
 	FirstBlock          *int64      `json:"first_block"`
 	LastBlock           *int64      `json:"last_block"`
 	AttributionComplete bool        `json:"attribution_complete"`
+	Username            *string     `json:"username" nullable:"true" doc:"Username published on this wallet, or null."`
 }
 
 type walletOutput struct{ Body walletDTO }
@@ -134,10 +135,11 @@ type walletCreatedBody struct {
 type walletCreatedOutput struct{ Body walletCreatedBody }
 
 type leaderboardItemDTO struct {
-	Rank           int    `json:"rank"`
-	Address        string `json:"address"`
-	RealizedPnLWei string `json:"realized_pnl_wei"`
-	TokensTraded   int64  `json:"tokens_traded"`
+	Rank           int     `json:"rank"`
+	Address        string  `json:"address"`
+	RealizedPnLWei string  `json:"realized_pnl_wei"`
+	TokensTraded   int64   `json:"tokens_traded"`
+	Username       *string `json:"username" nullable:"true" doc:"Username published on this wallet, or null."`
 }
 
 type leaderboardBody struct {
@@ -192,6 +194,7 @@ func (r WalletRoutes) get(ctx context.Context, in *walletInput) (*walletOutput, 
 		UnrealizedPnLWei: decimal(v.UnrealizedPnL), PortfolioValueWei: decimal(v.PortfolioValue),
 		HeldCount: v.HeldCount, CreatedCount: v.CreatedCount, TokensTraded: v.TokensTraded,
 		FirstBlock: v.FirstBlock, LastBlock: v.LastBlock, AttributionComplete: v.AttributionComplete,
+		Username: v.Username,
 	}}, nil
 }
 
@@ -288,7 +291,7 @@ func (r WalletRoutes) leaderboard(ctx context.Context, in *leaderboardInput) (*l
 	}
 	body := leaderboardBody{Snapshot: stampDTO(page.Stamp), Items: make([]leaderboardItemDTO, 0, len(page.Items))}
 	for _, v := range page.Items {
-		body.Items = append(body.Items, leaderboardItemDTO{Rank: v.Rank, Address: v.Address.Hex(), RealizedPnLWei: decimal(v.RealizedPnL), TokensTraded: v.TokensTraded})
+		body.Items = append(body.Items, leaderboardItemDTO{Rank: v.Rank, Address: v.Address.Hex(), RealizedPnLWei: decimal(v.RealizedPnL), TokensTraded: v.TokensTraded, Username: v.Username})
 	}
 	return &leaderboardOutput{Body: body}, nil
 }

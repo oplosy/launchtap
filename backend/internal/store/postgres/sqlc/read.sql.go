@@ -490,6 +490,27 @@ func (q *Queries) GetWalletTotals(ctx context.Context, arg GetWalletTotalsParams
 	return i, err
 }
 
+const getWalletUsername = `-- name: GetWalletUsername :one
+SELECT username::text AS username
+FROM public_wallet_usernames
+WHERE chain_id = $1 AND deployment_id = $2 AND wallet = $3
+`
+
+type GetWalletUsernameParams struct {
+	ChainID      int64
+	DeploymentID string
+	Wallet       Address
+}
+
+// The only username a wallet read may show: from public_wallet_usernames (published wallet of an
+// unbanned user with a username).
+func (q *Queries) GetWalletUsername(ctx context.Context, arg GetWalletUsernameParams) (string, error) {
+	row := q.db.QueryRow(ctx, getWalletUsername, arg.ChainID, arg.DeploymentID, arg.Wallet)
+	var username string
+	err := row.Scan(&username)
+	return username, err
+}
+
 const getWalletValuation = `-- name: GetWalletValuation :one
 SELECT COALESCE(sum(valued.current_value), 0)::numeric AS portfolio_value,
        COALESCE(sum(valued.remaining_cost), 0)::numeric AS open_cost
@@ -745,26 +766,30 @@ func (q *Queries) ListLaunchesAfter(ctx context.Context, arg ListLaunchesAfterPa
 }
 
 const listLeaderboard = `-- name: ListLeaderboard :many
-SELECT w.wallet, w.realized_pnl, w.tokens_traded
+SELECT w.wallet, w.realized_pnl, w.tokens_traded, pu.username
 FROM wallet_totals AS w
-WHERE w.chain_id = $1
+LEFT JOIN public_wallet_usernames AS pu
+  ON pu.chain_id = w.chain_id AND pu.deployment_id = $1::text AND pu.wallet = w.wallet
+WHERE w.chain_id = $2
   AND w.realized_pnl > 0
   AND w.wallet <> decode(repeat('00', 20), 'hex')
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.curve_address = w.wallet)
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.lp_pair = w.wallet)
 ORDER BY w.realized_pnl DESC, w.wallet
-LIMIT $2::integer
+LIMIT $3::integer
 `
 
 type ListLeaderboardParams struct {
-	ChainID  int64
-	PageSize int32
+	DeploymentID string
+	ChainID      int64
+	PageSize     int32
 }
 
 type ListLeaderboardRow struct {
 	Wallet       Address
 	RealizedPnl  pgtype.Numeric
 	TokensTraded int64
+	Username     pgtype.Text
 }
 
 // R4 at read time: the zero address and every curve or pair address are never ranked. The factory
@@ -772,7 +797,7 @@ type ListLeaderboardRow struct {
 // Only wallets with a positive realized PnL rank; fewer than page_size rows is normal. Ties are
 // broken by wallet address, so the order is deterministic.
 func (q *Queries) ListLeaderboard(ctx context.Context, arg ListLeaderboardParams) ([]ListLeaderboardRow, error) {
-	rows, err := q.db.Query(ctx, listLeaderboard, arg.ChainID, arg.PageSize)
+	rows, err := q.db.Query(ctx, listLeaderboard, arg.DeploymentID, arg.ChainID, arg.PageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -780,7 +805,12 @@ func (q *Queries) ListLeaderboard(ctx context.Context, arg ListLeaderboardParams
 	items := []ListLeaderboardRow{}
 	for rows.Next() {
 		var i ListLeaderboardRow
-		if err := rows.Scan(&i.Wallet, &i.RealizedPnl, &i.TokensTraded); err != nil {
+		if err := rows.Scan(
+			&i.Wallet,
+			&i.RealizedPnl,
+			&i.TokensTraded,
+			&i.Username,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

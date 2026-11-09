@@ -72,6 +72,14 @@ func (r WalletReader) GetWallet(ctx context.Context, chainID int64, address comm
 		if out.CreatedCount, err = a.queries.CountWalletCreated(ctx, sqlc.CountWalletCreatedParams{ChainID: chainID, Wallet: sqlc.Address(address)}); err != nil {
 			return err
 		}
+		name, err := a.queries.GetWalletUsername(ctx, sqlc.GetWalletUsernameParams{ChainID: chainID, DeploymentID: r.DeploymentID, Wallet: sqlc.Address(address)})
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+		case err != nil:
+			return err
+		default:
+			out.Username = &name
+		}
 		out.AttributionComplete, err = a.queries.WalletAttributionComplete(ctx, chainID)
 		return err
 	})
@@ -307,7 +315,7 @@ func (r WalletReader) Leaderboard(ctx context.Context, chainID int64, limit int)
 	}
 	var out wallet.LeaderboardPage
 	err := withReadSnapshotBeginner(ctx, r.Pool, chainID, r.DeploymentID, func(ctx context.Context, a *Adapter, s ReadSnapshot) error {
-		rows, err := a.queries.ListLeaderboard(ctx, sqlc.ListLeaderboardParams{ChainID: chainID, PageSize: int32(limit)})
+		rows, err := a.queries.ListLeaderboard(ctx, sqlc.ListLeaderboardParams{DeploymentID: r.DeploymentID, ChainID: chainID, PageSize: int32(limit)})
 		if err != nil {
 			return err
 		}
@@ -318,7 +326,12 @@ func (r WalletReader) Leaderboard(ctx context.Context, chainID int64, limit int)
 			if err != nil {
 				return err
 			}
-			out.Items = append(out.Items, wallet.Ranked{Rank: i + 1, Address: common.Address(row.Wallet), RealizedPnL: realized, TokensTraded: row.TokensTraded})
+			ranked := wallet.Ranked{Rank: i + 1, Address: common.Address(row.Wallet), RealizedPnL: realized, TokensTraded: row.TokensTraded}
+			if row.Username.Valid {
+				name := row.Username.String
+				ranked.Username = &name
+			}
+			out.Items = append(out.Items, ranked)
 		}
 		return nil
 	})

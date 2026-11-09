@@ -39,3 +39,16 @@ type Moderator interface {
 	// Resolve closes the comment's open reports and returns how many it closed.
 	Resolve(ctx context.Context, s Scope, commentID int64, r Resolution, operator, reason string) (int64, error)
 }
+
+// ProfileStore is the persistence port of usernames and published wallets.
+type ProfileStore interface {
+	// Get returns the caller's profile; a caller without a user row has an empty profile.
+	Get(ctx context.Context, a Actor) (PublicProfile, error)
+	// Put sets the username (nil keeps the current one) and replaces the published wallets. It
+	// returns ErrBanned, ErrTooManyPublicWallets, ErrWalletNotLinked, *RateLimitedError or
+	// ErrUsernameTaken. username must already be normalized.
+	Put(ctx context.Context, a Actor, username *string, wallets []common.Address) (PublicProfile, error)
+	// Delete releases the username and unpublishes every wallet. It is never rate-limited and is
+	// allowed for banned users; it counts as a username change.
+	Delete(ctx context.Context, a Actor) error
+}

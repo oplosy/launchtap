@@ -862,13 +862,21 @@
           "tokens_traded": {
             "format": "int64",
             "type": "integer"
+          },
+          "username": {
+            "description": "Username published on this wallet, or null.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
           "rank",
           "address",
           "realized_pnl_wei",
-          "tokens_traded"
+          "tokens_traded",
+          "username"
         ],
         "type": "object"
       },
@@ -2123,6 +2131,13 @@
           },
           "unrealized_pnl_wei": {
             "type": "string"
+          },
+          "username": {
+            "description": "Username published on this wallet, or null.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -2136,7 +2151,8 @@
           "tokens_traded",
           "first_block",
           "last_block",
-          "attribution_complete"
+          "attribution_complete",
+          "username"
         ],
         "type": "object"
       },

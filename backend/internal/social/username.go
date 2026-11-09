@@ -3,12 +3,27 @@ package social
 import (
 	"errors"
 	"strings"
+	"time"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var (
-	ErrInvalidUsername  = errors.New("invalid username")
-	ErrUsernameReserved = errors.New("username reserved")
+	ErrInvalidUsername      = errors.New("invalid username")
+	ErrUsernameReserved     = errors.New("username reserved")
+	ErrUsernameTaken        = errors.New("username taken")
+	ErrTooManyPublicWallets = errors.New("too many public wallets")
 )
+
+// PublicProfile is the caller's public identity: an optional username and the wallets it is
+// published on. NextChangeAt is nil when a username change is allowed now.
+type PublicProfile struct {
+	Username          *string
+	UsernameChangedAt *time.Time
+	NextChangeAt      *time.Time
+	PublicWallets     []common.Address
+	Banned            bool
+}
 
 var reservedUsernames = map[string]struct{}{
 	"admin": {}, "administrator": {}, "launchpad": {}, "support": {}, "moderator": {}, "mod": {},

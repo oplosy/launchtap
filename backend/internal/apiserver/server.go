@@ -159,6 +159,13 @@ func (s *Server) RegisterCommentRoutes(r CommentRoutes) {
 	r.Register(s.API)
 }
 
+func (s *Server) RegisterPublicProfileRoutes(r PublicProfileRoutes) {
+	if r.Logger == nil {
+		r.Logger = s.logger
+	}
+	r.Register(s.API)
+}
+
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.shutdownOnce.Do(func() { close(s.streamShutdown) })
 	return s.HTTP.Shutdown(ctx)

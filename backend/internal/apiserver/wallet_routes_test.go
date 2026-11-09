@@ -175,3 +175,39 @@ func TestWalletOpenPositionsRejectCursorAndReportTruncated(t *testing.T) {
 		}
 	}
 }
+
+func TestWalletAndLeaderboardUsernameField(t *testing.T) {
+	s := walletServer(&walletReaderStub{})
+	var body map[string]any
+	if err := json.Unmarshal(walletGet(s, "/wallets/"+walletAddr).Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if v, present := body["username"]; !present || v != nil {
+		t.Fatalf("wallet username = %v (present=%v); want explicit null", v, present)
+	}
+
+	name := "alice"
+	s = walletServer(&namedLeaderboardStub{name: &name})
+	var board struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(walletGet(s, "/leaderboard").Body.Bytes(), &board); err != nil {
+		t.Fatal(err)
+	}
+	if len(board.Items) != 1 || board.Items[0]["username"] != "alice" {
+		t.Fatalf("leaderboard items = %v", board.Items)
+	}
+}
+
+type namedLeaderboardStub struct {
+	walletReaderStub
+	name *string
+}
+
+func (s *namedLeaderboardStub) Leaderboard(ctx context.Context, chainID int64, limit int) (wallet.LeaderboardPage, error) {
+	page, err := s.walletReaderStub.Leaderboard(ctx, chainID, limit)
+	for i := range page.Items {
+		page.Items[i].Username = s.name
+	}
+	return page, err
+}

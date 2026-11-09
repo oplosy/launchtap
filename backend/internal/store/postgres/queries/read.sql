@@ -519,6 +519,13 @@ SELECT NOT EXISTS (
     SELECT 1 FROM pool_swaps WHERE chain_id = sqlc.arg(chain_id) AND tx_from IS NULL
 ) AS complete;
 
+-- The only username a wallet read may show: from public_wallet_usernames (published wallet of an
+-- unbanned user with a username).
+-- name: GetWalletUsername :one
+SELECT username::text AS username
+FROM public_wallet_usernames
+WHERE chain_id = sqlc.arg(chain_id) AND deployment_id = sqlc.arg(deployment_id) AND wallet = sqlc.arg(wallet);
+
 -- name: CountWalletCreated :one
 SELECT count(*)::bigint FROM tokens
 WHERE chain_id = sqlc.arg(chain_id) AND creator = sqlc.arg(wallet);
@@ -601,8 +608,10 @@ LIMIT sqlc.arg(page_size)::integer;
 -- name: ListLeaderboard :many
 -- Only wallets with a positive realized PnL rank; fewer than page_size rows is normal. Ties are
 -- broken by wallet address, so the order is deterministic.
-SELECT w.wallet, w.realized_pnl, w.tokens_traded
+SELECT w.wallet, w.realized_pnl, w.tokens_traded, pu.username
 FROM wallet_totals AS w
+LEFT JOIN public_wallet_usernames AS pu
+  ON pu.chain_id = w.chain_id AND pu.deployment_id = sqlc.arg(deployment_id)::text AND pu.wallet = w.wallet
 WHERE w.chain_id = sqlc.arg(chain_id)
   AND w.realized_pnl > 0
   AND w.wallet <> decode(repeat('00', 20), 'hex')

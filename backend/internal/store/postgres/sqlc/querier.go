@@ -26,6 +26,8 @@ type Querier interface {
 	BanSocialUser(ctx context.Context, arg BanSocialUserParams) error
 	ClaimAggregationDirty(ctx context.Context, arg ClaimAggregationDirtyParams) ([]ClaimAggregationDirtyRow, error)
 	ClaimPositionDirty(ctx context.Context, arg ClaimPositionDirtyParams) ([]ClaimPositionDirtyRow, error)
+	// R10: publishing a wallet another user published moves it to the caller.
+	ClaimPublicWallet(ctx context.Context, arg ClaimPublicWalletParams) error
 	// The launch mint Transfer(0 -> curve) is ingested before the tokens row exists (the token
 	// constructor logs it before TokenLaunched), so the exclusion lookup could not see the curve.
 	// Drop the curve and pair marks once the row is written (R4).
@@ -80,6 +82,7 @@ type Querier interface {
 	GetIndexedBlockByNumber(ctx context.Context, arg GetIndexedBlockByNumberParams) (IndexedBlock, error)
 	GetKingOfTheHill(ctx context.Context, chainID int64) (GetKingOfTheHillRow, error)
 	GetNewestFeedCursors(ctx context.Context, chainID int64) (GetNewestFeedCursorsRow, error)
+	GetProfileState(ctx context.Context, arg GetProfileStateParams) (GetProfileStateRow, error)
 	GetProtocolStats(ctx context.Context, chainID int64) (GetProtocolStatsRow, error)
 	// No row when the comment is missing in this scope, hidden, or its author is banned. Every author
 	// has a social_users row (post creates it before inserting a comment). FOR SHARE locks the comment
@@ -96,6 +99,9 @@ type Querier interface {
 	GetTokenQuoteState(ctx context.Context, arg GetTokenQuoteStateParams) (GetTokenQuoteStateRow, error)
 	// Wallet page reads. A wallet with no activity has no wallet_totals row; the reader maps that to zeros.
 	GetWalletTotals(ctx context.Context, arg GetWalletTotalsParams) (GetWalletTotalsRow, error)
+	// The only username a wallet read may show: from public_wallet_usernames (published wallet of an
+	// unbanned user with a username).
+	GetWalletUsername(ctx context.Context, arg GetWalletUsernameParams) (string, error)
 	// Single source of the read-time position value (also used by ListWalletOpenPositions):
 	//   current_value = div(balance * eth_reserve, NULLIF(token_reserve, 0)), coalesced to 0
 	// div() is exact truncating division; a missing token_reserves row or a zero token_reserve gives 0.
@@ -145,6 +151,7 @@ type Querier interface {
 	ListMarketTradesAfter(ctx context.Context, arg ListMarketTradesAfterParams) ([]ListMarketTradesAfterRow, error)
 	// Comments with open reports, newest open report first. Policy: none; limit is the caller's.
 	ListOpenReportedComments(ctx context.Context, arg ListOpenReportedCommentsParams) ([]ListOpenReportedCommentsRow, error)
+	ListOwnPublicWallets(ctx context.Context, arg ListOwnPublicWalletsParams) ([]Address, error)
 	// One leg per transaction that touched (wallet, token), ordered by (block, tx index) (R1):
 	// token_delta is the wallet's net transfers in the tx (a self-transfer nets to 0); ETH comes only
 	// from trades attributed to the wallet: curve trades by trader, pool swaps by tx_from on the
@@ -239,6 +246,7 @@ type Querier interface {
 	RecordIndexerReorg(ctx context.Context, arg RecordIndexerReorgParams) (int64, error)
 	RefundClaimMatchesEvent(ctx context.Context, arg RefundClaimMatchesEventParams) (pgtype.Bool, error)
 	RefundCreditMatchesEvent(ctx context.Context, arg RefundCreditMatchesEventParams) (pgtype.Bool, error)
+	ReleaseUsername(ctx context.Context, arg ReleaseUsernameParams) error
 	ReplaceTokenImage(ctx context.Context, arg ReplaceTokenImageParams) (int64, error)
 	ReplaceTokenMetadata(ctx context.Context, arg ReplaceTokenMetadataParams) (int64, error)
 	ReportRateState(ctx context.Context, arg ReportRateStateParams) (ReportRateStateRow, error)
@@ -254,6 +262,7 @@ type Querier interface {
 	// Fills the sender of every still-unattributed swap in one transaction and returns the pairs
 	// that need a position re-mark.
 	SetPoolSwapTxFrom(ctx context.Context, arg SetPoolSwapTxFromParams) ([]Address, error)
+	SetUsername(ctx context.Context, arg SetUsernameParams) error
 	// True when the DID has a user row or at least one comment in scope.
 	SocialDIDKnown(ctx context.Context, arg SocialDIDKnownParams) (bool, error)
 	TokenExists(ctx context.Context, arg TokenExistsParams) (bool, error)
@@ -266,6 +275,9 @@ type Querier interface {
 	UpsertIndexedBlock(ctx context.Context, arg UpsertIndexedBlockParams) (int64, error)
 	UpsertSyncState(ctx context.Context, arg UpsertSyncStateParams) (SyncState, error)
 	UpsertWalletPosition(ctx context.Context, arg UpsertWalletPositionParams) error
+	// A name is unavailable to the caller when another user holds it, or another user released it
+	// within hold_seconds (database clock). The caller's own releases never block it.
+	UsernameUnavailable(ctx context.Context, arg UsernameUnavailableParams) (pgtype.Bool, error)
 	// R5: attribution is chain-wide. Backed by the partial index pool_swaps_tx_from_null_idx.
 	WalletAttributionComplete(ctx context.Context, chainID int64) (bool, error)
 }

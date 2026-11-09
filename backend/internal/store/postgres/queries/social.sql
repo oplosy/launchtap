@@ -131,3 +131,52 @@ SELECT EXISTS (
       AND privy_did = sqlc.arg(privy_did)
       AND wallet = sqlc.arg(wallet)
 );
+
+-- name: GetProfileState :one
+SELECT username, username_changed_at, banned_at, now()::timestamptz AS db_now
+FROM social_users
+WHERE chain_id = sqlc.arg(chain_id)
+  AND deployment_id = sqlc.arg(deployment_id)
+  AND privy_did = sqlc.arg(privy_did);
+
+-- name: ListOwnPublicWallets :many
+SELECT wallet
+FROM social_public_wallets
+WHERE chain_id = sqlc.arg(chain_id)
+  AND deployment_id = sqlc.arg(deployment_id)
+  AND privy_did = sqlc.arg(privy_did)
+ORDER BY wallet;
+
+-- A name is unavailable to the caller when another user holds it, or another user released it
+-- within hold_seconds (database clock). The caller's own releases never block it.
+-- name: UsernameUnavailable :one
+SELECT EXISTS (
+    SELECT 1 FROM social_users
+    WHERE chain_id = sqlc.arg(chain_id)::bigint AND deployment_id = sqlc.arg(deployment_id)::text
+      AND username = sqlc.arg(username)::text AND privy_did <> sqlc.arg(privy_did)::text
+) OR EXISTS (
+    SELECT 1 FROM username_releases
+    WHERE chain_id = sqlc.arg(chain_id)::bigint AND deployment_id = sqlc.arg(deployment_id)::text
+      AND username = sqlc.arg(username)::text AND privy_did <> sqlc.arg(privy_did)::text
+      AND released_at > now() - make_interval(secs => sqlc.arg(hold_seconds)::double precision)
+) AS unavailable;
+
+-- name: SetUsername :exec
+UPDATE social_users
+SET username = sqlc.narg(username), username_changed_at = now(), updated_at = now()
+WHERE chain_id = sqlc.arg(chain_id)
+  AND deployment_id = sqlc.arg(deployment_id)
+  AND privy_did = sqlc.arg(privy_did);
+
+-- name: ReleaseUsername :exec
+INSERT INTO username_releases (chain_id, deployment_id, username, privy_did)
+VALUES (sqlc.arg(chain_id), sqlc.arg(deployment_id), sqlc.arg(username), sqlc.arg(privy_did))
+ON CONFLICT (chain_id, deployment_id, username, privy_did) DO UPDATE SET released_at = now();
+
+-- R10: publishing a wallet another user published moves it to the caller.
+-- name: ClaimPublicWallet :exec
+INSERT INTO social_public_wallets (chain_id, deployment_id, wallet, privy_did)
+VALUES (sqlc.arg(chain_id), sqlc.arg(deployment_id), sqlc.arg(wallet), sqlc.arg(privy_did))
+ON CONFLICT (chain_id, deployment_id, wallet)
+DO UPDATE SET privy_did = EXCLUDED.privy_did, created_at = now()
+WHERE social_public_wallets.privy_did <> EXCLUDED.privy_did;

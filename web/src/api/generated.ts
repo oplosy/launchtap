@@ -740,6 +740,8 @@ export interface components {
             realized_pnl_wei: string;
             /** Format: int64 */
             tokens_traded: number;
+            /** @description Username published on this wallet, or null. */
+            username: string | null;
         };
         MetadataBody: {
             /**
@@ -1148,6 +1150,8 @@ export interface components {
             /** Format: int64 */
             tokens_traded: number;
             unrealized_pnl_wei: string;
+            /** @description Username published on this wallet, or null. */
+            username: string | null;
         };
         WalletPositionDTO: {
             average_cost_wad: string | null;

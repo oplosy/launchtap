@@ -33,6 +33,8 @@ type Overview struct {
 	FirstBlock          *int64
 	LastBlock           *int64
 	AttributionComplete bool
+	// Username is shown only for a published wallet of an unbanned user with a username.
+	Username *string
 }
 
 type Position struct {
@@ -113,6 +115,8 @@ type Ranked struct {
 	Address      common.Address
 	RealizedPnL  *big.Int
 	TokensTraded int64
+	// Username follows the same rule as Overview.Username.
+	Username *string
 }
 
 type LeaderboardPage struct {

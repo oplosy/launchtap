@@ -11,6 +11,32 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const claimPublicWallet = `-- name: ClaimPublicWallet :exec
+INSERT INTO social_public_wallets (chain_id, deployment_id, wallet, privy_did)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (chain_id, deployment_id, wallet)
+DO UPDATE SET privy_did = EXCLUDED.privy_did, created_at = now()
+WHERE social_public_wallets.privy_did <> EXCLUDED.privy_did
+`
+
+type ClaimPublicWalletParams struct {
+	ChainID      int64
+	DeploymentID string
+	Wallet       Address
+	PrivyDid     string
+}
+
+// R10: publishing a wallet another user published moves it to the caller.
+func (q *Queries) ClaimPublicWallet(ctx context.Context, arg ClaimPublicWalletParams) error {
+	_, err := q.db.Exec(ctx, claimPublicWallet,
+		arg.ChainID,
+		arg.DeploymentID,
+		arg.Wallet,
+		arg.PrivyDid,
+	)
+	return err
+}
+
 const commentRateState = `-- name: CommentRateState :one
 SELECT max(created_at)::timestamptz AS last_created_at,
        (count(*) FILTER (WHERE created_at > now() - make_interval(secs => $1::double precision)))::BIGINT AS count_in_window,
@@ -94,6 +120,39 @@ type EnsureSocialUserParams struct {
 func (q *Queries) EnsureSocialUser(ctx context.Context, arg EnsureSocialUserParams) error {
 	_, err := q.db.Exec(ctx, ensureSocialUser, arg.ChainID, arg.DeploymentID, arg.PrivyDid)
 	return err
+}
+
+const getProfileState = `-- name: GetProfileState :one
+SELECT username, username_changed_at, banned_at, now()::timestamptz AS db_now
+FROM social_users
+WHERE chain_id = $1
+  AND deployment_id = $2
+  AND privy_did = $3
+`
+
+type GetProfileStateParams struct {
+	ChainID      int64
+	DeploymentID string
+	PrivyDid     string
+}
+
+type GetProfileStateRow struct {
+	Username          pgtype.Text
+	UsernameChangedAt pgtype.Timestamptz
+	BannedAt          pgtype.Timestamptz
+	DbNow             pgtype.Timestamptz
+}
+
+func (q *Queries) GetProfileState(ctx context.Context, arg GetProfileStateParams) (GetProfileStateRow, error) {
+	row := q.db.QueryRow(ctx, getProfileState, arg.ChainID, arg.DeploymentID, arg.PrivyDid)
+	var i GetProfileStateRow
+	err := row.Scan(
+		&i.Username,
+		&i.UsernameChangedAt,
+		&i.BannedAt,
+		&i.DbNow,
+	)
+	return i, err
 }
 
 const getReportableComment = `-- name: GetReportableComment :one
@@ -269,6 +328,41 @@ func (q *Queries) IsPublicWallet(ctx context.Context, arg IsPublicWalletParams) 
 	return exists, err
 }
 
+const listOwnPublicWallets = `-- name: ListOwnPublicWallets :many
+SELECT wallet
+FROM social_public_wallets
+WHERE chain_id = $1
+  AND deployment_id = $2
+  AND privy_did = $3
+ORDER BY wallet
+`
+
+type ListOwnPublicWalletsParams struct {
+	ChainID      int64
+	DeploymentID string
+	PrivyDid     string
+}
+
+func (q *Queries) ListOwnPublicWallets(ctx context.Context, arg ListOwnPublicWalletsParams) ([]Address, error) {
+	rows, err := q.db.Query(ctx, listOwnPublicWallets, arg.ChainID, arg.DeploymentID, arg.PrivyDid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Address{}
+	for rows.Next() {
+		var wallet Address
+		if err := rows.Scan(&wallet); err != nil {
+			return nil, err
+		}
+		items = append(items, wallet)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTokenComments = `-- name: ListTokenComments :many
 SELECT c.id, c.body, c.created_at, c.author_role AS role,
        u.username AS display_username,
@@ -441,6 +535,29 @@ func (q *Queries) QualifyWallets(ctx context.Context, arg QualifyWalletsParams) 
 	return items, nil
 }
 
+const releaseUsername = `-- name: ReleaseUsername :exec
+INSERT INTO username_releases (chain_id, deployment_id, username, privy_did)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (chain_id, deployment_id, username, privy_did) DO UPDATE SET released_at = now()
+`
+
+type ReleaseUsernameParams struct {
+	ChainID      int64
+	DeploymentID string
+	Username     string
+	PrivyDid     string
+}
+
+func (q *Queries) ReleaseUsername(ctx context.Context, arg ReleaseUsernameParams) error {
+	_, err := q.db.Exec(ctx, releaseUsername,
+		arg.ChainID,
+		arg.DeploymentID,
+		arg.Username,
+		arg.PrivyDid,
+	)
+	return err
+}
+
 const reportRateState = `-- name: ReportRateState :one
 SELECT count(*)::BIGINT AS count_in_window,
        min(created_at)::timestamptz AS oldest_in_window,
@@ -475,4 +592,65 @@ func (q *Queries) ReportRateState(ctx context.Context, arg ReportRateStateParams
 	var i ReportRateStateRow
 	err := row.Scan(&i.CountInWindow, &i.OldestInWindow, &i.DbNow)
 	return i, err
+}
+
+const setUsername = `-- name: SetUsername :exec
+UPDATE social_users
+SET username = $1, username_changed_at = now(), updated_at = now()
+WHERE chain_id = $2
+  AND deployment_id = $3
+  AND privy_did = $4
+`
+
+type SetUsernameParams struct {
+	Username     pgtype.Text
+	ChainID      int64
+	DeploymentID string
+	PrivyDid     string
+}
+
+func (q *Queries) SetUsername(ctx context.Context, arg SetUsernameParams) error {
+	_, err := q.db.Exec(ctx, setUsername,
+		arg.Username,
+		arg.ChainID,
+		arg.DeploymentID,
+		arg.PrivyDid,
+	)
+	return err
+}
+
+const usernameUnavailable = `-- name: UsernameUnavailable :one
+SELECT EXISTS (
+    SELECT 1 FROM social_users
+    WHERE chain_id = $1::bigint AND deployment_id = $2::text
+      AND username = $3::text AND privy_did <> $4::text
+) OR EXISTS (
+    SELECT 1 FROM username_releases
+    WHERE chain_id = $1::bigint AND deployment_id = $2::text
+      AND username = $3::text AND privy_did <> $4::text
+      AND released_at > now() - make_interval(secs => $5::double precision)
+) AS unavailable
+`
+
+type UsernameUnavailableParams struct {
+	ChainID      int64
+	DeploymentID string
+	Username     string
+	PrivyDid     string
+	HoldSeconds  float64
+}
+
+// A name is unavailable to the caller when another user holds it, or another user released it
+// within hold_seconds (database clock). The caller's own releases never block it.
+func (q *Queries) UsernameUnavailable(ctx context.Context, arg UsernameUnavailableParams) (pgtype.Bool, error) {
+	row := q.db.QueryRow(ctx, usernameUnavailable,
+		arg.ChainID,
+		arg.DeploymentID,
+		arg.Username,
+		arg.PrivyDid,
+		arg.HoldSeconds,
+	)
+	var unavailable pgtype.Bool
+	err := row.Scan(&unavailable)
+	return unavailable, err
 }
