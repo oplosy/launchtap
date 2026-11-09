@@ -147,3 +147,62 @@ test("own trade reaching safe finality toasts and lists, with keyboard-accessibl
   await expect(panel).toHaveCount(0);
   await expect(bell).toBeFocused();
 });
+
+test("a connected wallet is notified of a held token's graduation without a watchlist entry", async ({
+  page,
+}) => {
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  let positionsServed: () => void = () => undefined;
+  const positionsDone = new Promise<void>((resolve) => (positionsServed = resolve));
+  await page.route("**/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/events")) {
+      await gate;
+      await route
+        .fulfill({
+          status: 200,
+          contentType: "text/event-stream",
+          body: sse([
+            {
+              event: "graduation",
+              data: {
+                chain_id: CHAIN_ID,
+                deployment_id: DEPLOYMENT_ID,
+                token: TOKEN,
+                name: "Held",
+                symbol: "HELD",
+                pair: "0x0000000000000000000000000000000000000001",
+                block_number: 10,
+                tx_hash: `0x${"b".repeat(64)}`,
+              },
+            },
+          ]),
+        })
+        .catch(() => undefined);
+    } else if (url.pathname.endsWith(`/wallets/${ACCOUNT.toLowerCase()}/positions`)) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ snapshot, items: [{ token: TOKEN }] }),
+      });
+      positionsServed();
+    } else if (url.pathname.endsWith("/eth-usd")) {
+      await route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+    } else {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ snapshot, items: [], next_cursor: undefined }),
+      });
+    }
+  });
+  await installWallet(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Connect wallet" }).last().click();
+  const dialog = page.getByRole("dialog", { name: "Choose a wallet" });
+  await dialog.getByRole("button", { name: "Browser wallet" }).click();
+  await positionsDone;
+  release();
+  await expect(page.locator(".notify-toasts")).toContainText("HELD graduated");
+});

@@ -17,6 +17,7 @@ import type { LiveEvent } from "@/api/types";
 import { BellSimple, X } from "@/components/icons";
 import { publicConfiguration } from "@/config/public";
 import { parseTokenAddress } from "@/token/address";
+import { holdingsRefreshReason, loadHoldings, mergeWatched } from "./holdings";
 import { useLiveEvents } from "./live-events";
 import { isEventInScope } from "./live-strip-model";
 import {
@@ -67,6 +68,19 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
   const [identity, setIdentityState] = useState<NotificationIdentity>(NO_IDENTITY);
   const identityRef = useRef(identity);
   const ruleState = useRef<RuleState>(createRuleState());
+  // Tokens the connected wallet holds; they count as watched even without a watchlist entry.
+  const holdingsRef = useRef<string[]>([]);
+  const holdingsGeneration = useRef(0);
+
+  const refreshHoldings = useCallback((wallet: string | undefined) => {
+    const generation = ++holdingsGeneration.current;
+    if (!wallet) return;
+    void loadHoldings(wallet).then((tokens) => {
+      // A newer refresh, or another identity, has superseded this answer.
+      if (generation !== holdingsGeneration.current) return;
+      holdingsRef.current = tokens;
+    });
+  }, []);
 
   const setIdentity = useCallback(
     (next: NotificationIdentity) => {
@@ -74,6 +88,8 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       // Notifications and pending own trades belong to the identity that earned them.
       if (identityChanged(identityRef.current, next)) {
         ruleState.current = createRuleState();
+        holdingsRef.current = [];
+        holdingsGeneration.current += 1;
         store.reset();
       }
       identityRef.current = next;
@@ -84,27 +100,45 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
 
   const onEvent = useCallback(
     (event: LiveEvent) => {
-      if (event.event === "reconnected") return;
       const configuration = publicConfiguration();
       if (configuration.status !== "ready") return;
       if (configuration.chainId === null || configuration.deploymentId === null) return;
       const scope = { chainId: configuration.chainId, deploymentId: configuration.deploymentId };
       if (!isEventInScope(event, scope)) return;
       const current = identityRef.current;
+      // Before evaluate: a finality event must still see the pending own trades it releases.
+      if (holdingsRefreshReason(event, current.wallet ?? null, ruleState.current) !== null) {
+        refreshHoldings(current.wallet);
+      }
+      if (event.event === "reconnected") return;
       if (!bellVisible({ signedIn: current.signedIn, connected: Boolean(current.wallet) })) return;
       const notifications = evaluate(
         event,
         {
-          watched: current.signedIn ? new Set(current.watched) : new Set(),
+          watched: new Set(
+            mergeWatched(
+              current.signedIn ? current.watched : [],
+              current.wallet ? holdingsRef.current : [],
+            ),
+          ),
           wallet: current.wallet,
         },
         ruleState.current,
       );
       if (notifications.length > 0) store.add(notifications);
     },
-    [store],
+    [refreshHoldings, store],
   );
   useLiveEvents(onEvent);
+
+  // Connect or address change: load that wallet's holdings (the identity reset already cleared them).
+  const connectedWallet = identity.wallet?.toLowerCase();
+  useEffect(() => {
+    refreshHoldings(connectedWallet);
+    return () => {
+      holdingsGeneration.current += 1;
+    };
+  }, [connectedWallet, refreshHoldings]);
 
   const value = useMemo(() => ({ store, identity, setIdentity }), [store, identity, setIdentity]);
   return (
