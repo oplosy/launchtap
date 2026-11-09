@@ -31,6 +31,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/leaderboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getLeaderboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/watchlist": {
         parameters: {
             query?: never;
@@ -319,6 +335,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/wallets/{address}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getWallet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wallets/{address}/created": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listWalletCreated"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wallets/{address}/positions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listWalletPositions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wallets/{address}/trades": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listWalletTrades"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -529,6 +609,24 @@ export interface components {
             chain_id: number;
             deployment_id: string;
             token: string;
+        };
+        LeaderboardBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/LeaderboardBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["LeaderboardItemDTO"][] | null;
+            snapshot: components["schemas"]["SnapshotDTO"];
+        };
+        LeaderboardItemDTO: {
+            address: string;
+            /** Format: int64 */
+            rank: number;
+            realized_pnl_wei: string;
+            /** Format: int64 */
+            tokens_traded: number;
         };
         MetadataBody: {
             /**
@@ -867,6 +965,110 @@ export interface components {
             volume_24h_eth: string;
             window_volume_eth: string;
         };
+        WalletCreatedBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/WalletCreatedBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["WalletCreatedDTO"][] | null;
+            next_cursor?: string;
+            snapshot: components["schemas"]["SnapshotDTO"];
+        };
+        WalletCreatedDTO: {
+            /** Format: int64 */
+            launch_block: number;
+            market_cap_wei: string;
+            name: string;
+            phase: string;
+            symbol: string;
+            token: string;
+        };
+        WalletDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/WalletDTO.json
+             */
+            readonly $schema?: string;
+            address: string;
+            attribution_complete: boolean;
+            /** Format: int64 */
+            created_count: number;
+            /** Format: int64 */
+            first_block: number | null;
+            /** Format: int64 */
+            held_count: number;
+            /** Format: int64 */
+            last_block: number | null;
+            portfolio_value_wei: string;
+            realized_pnl_wei: string;
+            snapshot: components["schemas"]["SnapshotDTO"];
+            /** Format: int64 */
+            tokens_traded: number;
+            unrealized_pnl_wei: string;
+        };
+        WalletPositionDTO: {
+            average_cost_wad: string | null;
+            balance: string;
+            current_value_wei: string;
+            /** Format: int64 */
+            last_block: number;
+            name: string;
+            phase: string;
+            realized_pnl_wei: string;
+            remaining_cost_wei: string;
+            symbol: string;
+            token: string;
+            /** Format: int64 */
+            trade_count: number;
+            transferred_in: string;
+            unrealized_pnl_wei: string;
+        };
+        WalletPositionsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/WalletPositionsBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["WalletPositionDTO"][] | null;
+            next_cursor?: string;
+            snapshot: components["schemas"]["SnapshotDTO"];
+        };
+        WalletTradeDTO: {
+            /** Format: int64 */
+            block_number: number;
+            eth_volume: string;
+            execution_price: string;
+            finality: string;
+            /** Format: int32 */
+            log_index: number;
+            name: string;
+            side: string;
+            source: string;
+            spot_price: string;
+            symbol: string;
+            time: string;
+            token: string;
+            token_volume: string;
+            trader: string | null;
+            /** Format: int32 */
+            transaction_index: number;
+            tx_hash: string;
+        };
+        WalletTradesBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/WalletTradesBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["WalletTradeDTO"][] | null;
+            next_cursor?: string;
+            snapshot: components["schemas"]["SnapshotDTO"];
+        };
         WatchlistBody: {
             /**
              * Format: uri
@@ -1028,6 +1230,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getLeaderboard: {
+        parameters: {
+            query?: {
+                /** @description Number of wallets, 1-100; defaults to 100. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaderboardBody"];
                 };
             };
             /** @description Error */
@@ -1747,6 +1981,144 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CanonicalObservationBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getWallet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    listWalletCreated: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                /** @description Page size, 1-100; defaults to 50. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletCreatedBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    listWalletPositions: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                /** @description List closed positions (balance 0) instead of open ones. */
+                closed?: boolean;
+                /** @description Page size, 1-100; defaults to 50. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletPositionsBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    listWalletTrades: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                /** @description Page size, 1-100; defaults to 50. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletTradesBody"];
                 };
             };
             /** @description Error */

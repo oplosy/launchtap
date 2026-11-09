@@ -506,3 +506,106 @@ LEFT JOIN LATERAL (
 SELECT COALESCE(safe_number, 0)::bigint AS safe_number, COALESCE(finalized_number, 0)::bigint AS finalized_number
 FROM sync_state
 WHERE chain_id = sqlc.arg(chain_id) AND deployment_id = sqlc.arg(deployment_id);
+
+-- Wallet page reads. A wallet with no activity has no wallet_totals row; the reader maps that to zeros.
+-- name: GetWalletTotals :one
+SELECT realized_pnl, tokens_traded, held_count, first_block_number, last_block_number
+FROM wallet_totals
+WHERE chain_id = sqlc.arg(chain_id) AND wallet = sqlc.arg(wallet);
+
+-- R5: attribution is chain-wide. Backed by the partial index pool_swaps_tx_from_null_idx.
+-- name: WalletAttributionComplete :one
+SELECT NOT EXISTS (
+    SELECT 1 FROM pool_swaps WHERE chain_id = sqlc.arg(chain_id) AND tx_from IS NULL
+) AS complete;
+
+-- name: CountWalletCreated :one
+SELECT count(*)::bigint FROM tokens
+WHERE chain_id = sqlc.arg(chain_id) AND creator = sqlc.arg(wallet);
+
+-- Single source of the read-time position value (also used by ListWalletOpenPositions):
+--   current_value = div(balance * eth_reserve, NULLIF(token_reserve, 0)), coalesced to 0
+-- div() is exact truncating division; a missing token_reserves row or a zero token_reserve gives 0.
+-- unrealized PnL = current_value - remaining_cost, computed by the reader.
+-- name: GetWalletValuation :one
+SELECT COALESCE(sum(valued.current_value), 0)::numeric AS portfolio_value,
+       COALESCE(sum(valued.remaining_cost), 0)::numeric AS open_cost
+FROM (
+    SELECT p.remaining_cost,
+           COALESCE(div(p.balance * r.eth_reserve, NULLIF(r.token_reserve, 0)), 0)::numeric AS current_value
+    FROM wallet_positions AS p
+    JOIN tokens AS t ON t.chain_id = p.chain_id AND t.token_address = p.token_address
+    LEFT JOIN token_reserves AS r ON r.chain_id = p.chain_id AND r.token_address = p.token_address
+    WHERE p.chain_id = sqlc.arg(chain_id) AND p.wallet = sqlc.arg(wallet) AND p.balance > 0
+) AS valued;
+
+-- Open positions, largest value first. current_value is the single-source expression documented on
+-- GetWalletValuation; keep the two identical.
+-- name: ListWalletOpenPositions :many
+SELECT valued.token_address, valued.name, valued.symbol, valued.phase, valued.balance, valued.remaining_cost,
+       valued.realized_pnl, valued.transferred_in, valued.trade_count, valued.last_block_number, valued.current_value
+FROM (
+    SELECT p.token_address, t.name, t.symbol, t.phase, p.balance, p.remaining_cost, p.realized_pnl,
+           p.transferred_in, p.trade_count, p.last_block_number,
+           COALESCE(div(p.balance * r.eth_reserve, NULLIF(r.token_reserve, 0)), 0)::numeric AS current_value
+    FROM wallet_positions AS p
+    JOIN tokens AS t ON t.chain_id = p.chain_id AND t.token_address = p.token_address
+    LEFT JOIN token_reserves AS r ON r.chain_id = p.chain_id AND r.token_address = p.token_address
+    WHERE p.chain_id = sqlc.arg(chain_id) AND p.wallet = sqlc.arg(wallet) AND p.balance > 0
+) AS valued
+WHERE (sqlc.narg(after_value)::numeric IS NULL OR
+       valued.current_value < sqlc.narg(after_value)::numeric OR
+       (valued.current_value = sqlc.narg(after_value)::numeric AND valued.token_address > sqlc.narg(after_address)::bytea))
+ORDER BY valued.current_value DESC, valued.token_address
+LIMIT sqlc.arg(page_size)::integer;
+
+-- Closed positions (balance 0) carry no value, newest activity first.
+-- name: ListWalletClosedPositions :many
+SELECT p.token_address, t.name, t.symbol, t.phase, p.balance, p.remaining_cost, p.realized_pnl,
+       p.transferred_in, p.trade_count, p.last_block_number
+FROM wallet_positions AS p
+JOIN tokens AS t ON t.chain_id = p.chain_id AND t.token_address = p.token_address
+WHERE p.chain_id = sqlc.arg(chain_id) AND p.wallet = sqlc.arg(wallet) AND p.balance = 0
+  AND (sqlc.narg(after_block)::bigint IS NULL OR
+       p.last_block_number < sqlc.narg(after_block)::bigint OR
+       (p.last_block_number = sqlc.narg(after_block)::bigint AND p.token_address > sqlc.narg(after_address)::bytea))
+ORDER BY p.last_block_number DESC, p.token_address
+LIMIT sqlc.arg(page_size)::integer;
+
+-- name: ListWalletTrades :many
+SELECT m.token_address, t.name, t.symbol, m.source, m.side_buy, m.execution_price_wad, m.spot_price_wad,
+       m.gross_eth_volume, m.token_volume, m.block_number, m.transaction_index,
+       m.tx_hash, m.log_index, m.block_time, m.finality
+FROM market_trades AS m
+JOIN tokens AS t ON t.chain_id = m.chain_id AND t.token_address = m.token_address
+WHERE m.chain_id = sqlc.arg(chain_id)
+  AND m.trader = sqlc.arg(wallet)::bytea
+  AND (sqlc.narg(after_block)::bigint IS NULL OR
+       (m.block_number, m.transaction_index, m.log_index) <
+       (sqlc.narg(after_block)::bigint, sqlc.narg(after_transaction_index)::integer, sqlc.narg(after_log_index)::integer))
+ORDER BY m.block_number DESC, m.transaction_index DESC, m.log_index DESC
+LIMIT sqlc.arg(page_size)::integer;
+
+-- name: ListWalletCreated :many
+SELECT t.token_address, t.name, t.symbol, t.phase, t.launch_block_number,
+       COALESCE(s.market_cap_eth_wad, 0::numeric) AS market_cap_eth_wad
+FROM tokens AS t
+LEFT JOIN token_stats AS s ON s.chain_id = t.chain_id AND s.token_address = t.token_address
+WHERE t.chain_id = sqlc.arg(chain_id) AND t.creator = sqlc.arg(wallet)
+  AND (sqlc.narg(after_block)::bigint IS NULL OR
+       t.launch_block_number < sqlc.narg(after_block)::bigint OR
+       (t.launch_block_number = sqlc.narg(after_block)::bigint AND t.token_address < sqlc.narg(after_address)::bytea))
+ORDER BY t.launch_block_number DESC, t.token_address DESC
+LIMIT sqlc.arg(page_size)::integer;
+
+-- R4 at read time: the zero address and every curve or pair address are never ranked. The factory
+-- is never marked dirty, so it never has totals.
+-- name: ListLeaderboard :many
+SELECT w.wallet, w.realized_pnl, w.tokens_traded
+FROM wallet_totals AS w
+WHERE w.chain_id = sqlc.arg(chain_id)
+  AND w.wallet <> decode(repeat('00', 20), 'hex')
+  AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.curve_address = w.wallet)
+  AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.lp_pair = w.wallet)
+ORDER BY w.realized_pnl DESC, w.wallet
+LIMIT sqlc.arg(page_size)::integer;

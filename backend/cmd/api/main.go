@@ -95,6 +95,7 @@ func run() error {
 	server.RegisterEventRoutes(apiserver.EventRoutes{Hub: hub, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, Streams: apiserver.NewStreamLimiter(int(c.APISSEMaxPerClient))})
 	feedReader := storepostgres.FeedReader{Pool: pool, DeploymentID: c.DeploymentID}
 	server.RegisterFeedRoutes(apiserver.FeedRoutes{Reader: feedReader, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
+	server.RegisterWalletRoutes(apiserver.WalletRoutes{Reader: storepostgres.WalletReader{Pool: pool, DeploymentID: c.DeploymentID}, ChainID: int64(c.ChainID)})
 	server.RegisterObservationRoutes(apiserver.ObservationRoutes{Reader: storepostgres.ObservationReader{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	references := apiserver.ReferenceRoutes{}
 	if c.ETHUSDSource == config.ETHUSDSourceCoinGecko {

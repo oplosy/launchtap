@@ -142,6 +142,7 @@ func (s *Server) RegisterEventRoutes(r EventRoutes) {
 	r.Register(s.API)
 }
 func (s *Server) RegisterFeedRoutes(r FeedRoutes)               { r.Register(s.API) }
+func (s *Server) RegisterWalletRoutes(r WalletRoutes)           { r.Register(s.API) }
 func (s *Server) RegisterObservationRoutes(r ObservationRoutes) { r.Register(s.API) }
 func (s *Server) RegisterProfileRoutes(r ProfileRoutes)         { r.Register(s.API) }
 func (s *Server) RegisterReferenceRoutes(r ReferenceRoutes)     { r.Register(s.API) }

@@ -33,6 +33,7 @@ type Querier interface {
 	CompleteAggregationDirty(ctx context.Context, arg CompleteAggregationDirtyParams) (int64, error)
 	CompleteIndexerReorg(ctx context.Context, reorgID int64) (CompleteIndexerReorgRow, error)
 	CompletePositionDirty(ctx context.Context, arg CompletePositionDirtyParams) (int64, error)
+	CountWalletCreated(ctx context.Context, arg CountWalletCreatedParams) (int64, error)
 	CountWatchlist(ctx context.Context, arg CountWatchlistParams) (int64, error)
 	CreatorFeeClaimMatchesEvent(ctx context.Context, arg CreatorFeeClaimMatchesEventParams) (pgtype.Bool, error)
 	// The database clock is the one the stats recompute uses for its 24h window.
@@ -76,6 +77,13 @@ type Querier interface {
 	GetTokenImage(ctx context.Context, arg GetTokenImageParams) (GetTokenImageRow, error)
 	GetTokenMetadata(ctx context.Context, arg GetTokenMetadataParams) (GetTokenMetadataRow, error)
 	GetTokenQuoteState(ctx context.Context, arg GetTokenQuoteStateParams) (GetTokenQuoteStateRow, error)
+	// Wallet page reads. A wallet with no activity has no wallet_totals row; the reader maps that to zeros.
+	GetWalletTotals(ctx context.Context, arg GetWalletTotalsParams) (GetWalletTotalsRow, error)
+	// Single source of the read-time position value (also used by ListWalletOpenPositions):
+	//   current_value = div(balance * eth_reserve, NULLIF(token_reserve, 0)), coalesced to 0
+	// div() is exact truncating division; a missing token_reserves row or a zero token_reserve gives 0.
+	// unrealized PnL = current_value - remaining_cost, computed by the reader.
+	GetWalletValuation(ctx context.Context, arg GetWalletValuationParams) (GetWalletValuationRow, error)
 	GraduationMatchesEvent(ctx context.Context, arg GraduationMatchesEventParams) (pgtype.Bool, error)
 	HasCanonicalLaunch(ctx context.Context, arg HasCanonicalLaunchParams) (bool, error)
 	InsertCreatorFeeClaim(ctx context.Context, arg InsertCreatorFeeClaimParams) (int64, error)
@@ -104,6 +112,9 @@ type Querier interface {
 	ListCandlesAggregated(ctx context.Context, arg ListCandlesAggregatedParams) ([]ListCandlesAggregatedRow, error)
 	ListGraduationsAfter(ctx context.Context, arg ListGraduationsAfterParams) ([]ListGraduationsAfterRow, error)
 	ListLaunchesAfter(ctx context.Context, arg ListLaunchesAfterParams) ([]ListLaunchesAfterRow, error)
+	// R4 at read time: the zero address and every curve or pair address are never ranked. The factory
+	// is never marked dirty, so it never has totals.
+	ListLeaderboard(ctx context.Context, arg ListLeaderboardParams) ([]ListLeaderboardRow, error)
 	ListMarketTrades(ctx context.Context, arg ListMarketTradesParams) ([]ListMarketTradesRow, error)
 	ListMarketTradesAfter(ctx context.Context, arg ListMarketTradesAfterParams) ([]ListMarketTradesAfterRow, error)
 	// One leg per transaction that touched (wallet, token), ordered by (block, tx index) (R1):
@@ -132,6 +143,13 @@ type Querier interface {
 	// Backfill cursor: distinct transactions that still have a pool swap without a sender, in
 	// (block_number, tx_hash) order, strictly after the keyset position (after_block, after_hash).
 	ListUnattributedPoolSwaps(ctx context.Context, arg ListUnattributedPoolSwapsParams) ([]ListUnattributedPoolSwapsRow, error)
+	// Closed positions (balance 0) carry no value, newest activity first.
+	ListWalletClosedPositions(ctx context.Context, arg ListWalletClosedPositionsParams) ([]ListWalletClosedPositionsRow, error)
+	ListWalletCreated(ctx context.Context, arg ListWalletCreatedParams) ([]ListWalletCreatedRow, error)
+	// Open positions, largest value first. current_value is the single-source expression documented on
+	// GetWalletValuation; keep the two identical.
+	ListWalletOpenPositions(ctx context.Context, arg ListWalletOpenPositionsParams) ([]ListWalletOpenPositionsRow, error)
+	ListWalletTrades(ctx context.Context, arg ListWalletTradesParams) ([]ListWalletTradesRow, error)
 	// Token columns are NULL when the token row is gone (no FK); the casts keep sqlc from
 	// applying the non-nullable Address/Uint256/Hash overrides to them.
 	ListWatchlist(ctx context.Context, arg ListWatchlistParams) ([]ListWatchlistRow, error)
@@ -190,6 +208,8 @@ type Querier interface {
 	UpsertIndexedBlock(ctx context.Context, arg UpsertIndexedBlockParams) (int64, error)
 	UpsertSyncState(ctx context.Context, arg UpsertSyncStateParams) (SyncState, error)
 	UpsertWalletPosition(ctx context.Context, arg UpsertWalletPositionParams) error
+	// R5: attribution is chain-wide. Backed by the partial index pool_swaps_tx_from_null_idx.
+	WalletAttributionComplete(ctx context.Context, chainID int64) (bool, error)
 }
 
 var _ Querier = (*Queries)(nil)
