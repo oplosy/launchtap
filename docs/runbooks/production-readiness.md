@@ -355,9 +355,10 @@ go run ./cmd/moderate <command> -chain-id N -deployment-id ID -operator NAME [fl
 | `unban` | `-did DID -reason TEXT` | Lifts the ban; comments and username return. |
 | `resolve` | `-comment ID -resolution dismissed\|actioned -reason TEXT` | Closes the comment's open reports without hiding it. |
 
-`-operator` is 1-64 bytes and `-reason` is 1-500 bytes. Every mutation runs in one transaction,
-appends a `moderation_actions` row, and sends one `comment` refresh hint per affected token so
-open token pages update. An unknown comment or DID exits non-zero and writes nothing. Reasons
+`-operator` is 1-64 bytes and `-reason` is 1-500 bytes. Every mutation runs in one transaction and
+appends a `moderation_actions` row. `hide`, `unhide`, `ban` and `unban` also send one `comment`
+refresh hint per affected token so open token pages update; `resolve` changes nothing public and
+sends no hint. An unknown comment or DID exits non-zero and writes nothing. Reasons
 and the audit log are never public.
 
 Example session:

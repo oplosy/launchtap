@@ -99,13 +99,14 @@ func (q *Queries) EnsureSocialUser(ctx context.Context, arg EnsureSocialUserPara
 const getReportableComment = `-- name: GetReportableComment :one
 SELECT c.id, c.chain_id, c.deployment_id, c.token_address, c.privy_did AS author_did
 FROM token_comments AS c
-LEFT JOIN social_users AS u
+JOIN social_users AS u
   ON u.chain_id = c.chain_id AND u.deployment_id = c.deployment_id AND u.privy_did = c.privy_did
 WHERE c.id = $1
   AND c.chain_id = $2
   AND c.deployment_id = $3
   AND c.hidden_at IS NULL
   AND u.banned_at IS NULL
+FOR SHARE OF c, u
 `
 
 type GetReportableCommentParams struct {
@@ -122,7 +123,10 @@ type GetReportableCommentRow struct {
 	AuthorDid    string
 }
 
-// No row when the comment is missing in this scope, hidden, or its author is banned.
+// No row when the comment is missing in this scope, hidden, or its author is banned. Every author
+// has a social_users row (post creates it before inserting a comment). FOR SHARE locks the comment
+// and the author row, so a report waits for an in-flight hide or ban and then re-checks the
+// committed state; the later report insert cannot leave an open report on actioned content.
 func (q *Queries) GetReportableComment(ctx context.Context, arg GetReportableCommentParams) (GetReportableCommentRow, error) {
 	row := q.db.QueryRow(ctx, getReportableComment, arg.CommentID, arg.ChainID, arg.DeploymentID)
 	var i GetReportableCommentRow

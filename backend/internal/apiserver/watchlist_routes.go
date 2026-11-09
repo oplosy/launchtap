@@ -8,13 +8,14 @@ import (
 	"net/http"
 
 	"github.com/Contictus/launchtap/backend/internal/privyauth"
+	"github.com/Contictus/launchtap/backend/internal/social"
 	"github.com/Contictus/launchtap/backend/internal/watchlist"
 	"github.com/danielgtaylor/huma/v2"
 )
 
 // maxPrivyDIDBytes bounds the verified DID before it becomes part of a database key. A real
 // Privy DID is short, so an oversized one is treated as an invalid credential.
-const maxPrivyDIDBytes = 255
+const maxPrivyDIDBytes = social.MaxDIDBytes
 
 type WatchlistRoutes struct {
 	Verifier     privyauth.Verifier

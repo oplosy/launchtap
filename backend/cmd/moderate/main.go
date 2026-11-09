@@ -30,11 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-const (
-	defaultReportLimit = 50
-	maxReportLimit     = 500
-	maxDIDBytes        = 255
-)
+const defaultReportLimit = 50
 
 // command is a fully validated invocation.
 type command struct {
@@ -126,8 +122,8 @@ func parseCommand(args []string) (command, error) {
 	}
 
 	if cmd.Name == "reports" {
-		if cmd.Limit < 1 || cmd.Limit > maxReportLimit {
-			return command{}, fmt.Errorf("-limit must be between 1 and %d", maxReportLimit)
+		if cmd.Limit < 1 || cmd.Limit > social.MaxReportListLimit {
+			return command{}, fmt.Errorf("-limit must be between 1 and %d", social.MaxReportListLimit)
 		}
 		return cmd, nil
 	}
@@ -148,8 +144,8 @@ func parseCommand(args []string) (command, error) {
 			return command{}, errors.New("-comment is required")
 		}
 	}
-	if cmd.DID != "" && len(cmd.DID) > maxDIDBytes {
-		return command{}, fmt.Errorf("-did must be at most %d bytes", maxDIDBytes)
+	if cmd.DID != "" && len(cmd.DID) > social.MaxDIDBytes {
+		return command{}, fmt.Errorf("-did must be at most %d bytes", social.MaxDIDBytes)
 	}
 	if cmd.CommentID < 0 {
 		return command{}, errors.New("-comment must be positive")

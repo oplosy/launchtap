@@ -570,6 +570,8 @@ func TestSocialReportAndSubjectQueries(t *testing.T) {
 	token := seedSocialToken(t, ctx, database, 0x10)
 	wallet := socialHolder.Bytes()
 
+	// Post always creates the author's social_users row first; mirror that invariant.
+	insertSocialUser(t, ctx, database.DB, socialDep, "did:author", nil, false)
 	visible := insertSocialComment(t, ctx, database.DB, token.Bytes(), "did:author", wallet, "v", false)
 	hidden := insertSocialComment(t, ctx, database.DB, token.Bytes(), "did:author", wallet, "h", true)
 	insertSocialUser(t, ctx, database.DB, socialDep, "did:bannedauthor", nil, true)
@@ -682,6 +684,8 @@ func TestReportCommentOfReorgedTokenIsNotFound(t *testing.T) {
 	defer cancel()
 	store, _ := newSocialStore(t, ctx, database)
 	token := seedSocialToken(t, ctx, database, 0x10)
+	// Post always creates the author's social_users row first; mirror that invariant.
+	insertSocialUser(t, ctx, database.DB, socialDep, "did:author", nil, false)
 	id := insertSocialComment(t, ctx, database.DB, token.Bytes(), "did:author", socialHolder.Bytes(), "c", false)
 	reporter := socialActor("did:reporter", socialStray)
 

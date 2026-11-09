@@ -81,7 +81,10 @@ type Querier interface {
 	GetKingOfTheHill(ctx context.Context, chainID int64) (GetKingOfTheHillRow, error)
 	GetNewestFeedCursors(ctx context.Context, chainID int64) (GetNewestFeedCursorsRow, error)
 	GetProtocolStats(ctx context.Context, chainID int64) (GetProtocolStatsRow, error)
-	// No row when the comment is missing in this scope, hidden, or its author is banned.
+	// No row when the comment is missing in this scope, hidden, or its author is banned. Every author
+	// has a social_users row (post creates it before inserting a comment). FOR SHARE locks the comment
+	// and the author row, so a report waits for an in-flight hide or ban and then re-checks the
+	// committed state; the later report insert cannot leave an open report on actioned content.
 	GetReportableComment(ctx context.Context, arg GetReportableCommentParams) (GetReportableCommentRow, error)
 	GetSocialUser(ctx context.Context, arg GetSocialUserParams) (GetSocialUserRow, error)
 	GetSyncState(ctx context.Context, arg GetSyncStateParams) (SyncState, error)

@@ -29,4 +29,8 @@ const (
 	// MaxOperatorBytes and MaxModerationReasonBytes bound the free text of a moderation action.
 	MaxOperatorBytes         = 64
 	MaxModerationReasonBytes = 500
+	// MaxDIDBytes bounds a Privy DID; the database CHECK constraints use the same value.
+	MaxDIDBytes = 255
+	// MaxReportListLimit bounds one `moderate reports` listing.
+	MaxReportListLimit = 500
 )

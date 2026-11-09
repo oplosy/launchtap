@@ -82,17 +82,21 @@ WHERE c.chain_id = sqlc.arg(chain_id)
   AND c.hidden_at IS NULL
   AND u.banned_at IS NULL;
 
--- No row when the comment is missing in this scope, hidden, or its author is banned.
+-- No row when the comment is missing in this scope, hidden, or its author is banned. Every author
+-- has a social_users row (post creates it before inserting a comment). FOR SHARE locks the comment
+-- and the author row, so a report waits for an in-flight hide or ban and then re-checks the
+-- committed state; the later report insert cannot leave an open report on actioned content.
 -- name: GetReportableComment :one
 SELECT c.id, c.chain_id, c.deployment_id, c.token_address, c.privy_did AS author_did
 FROM token_comments AS c
-LEFT JOIN social_users AS u
+JOIN social_users AS u
   ON u.chain_id = c.chain_id AND u.deployment_id = c.deployment_id AND u.privy_did = c.privy_did
 WHERE c.id = sqlc.arg(comment_id)
   AND c.chain_id = sqlc.arg(chain_id)
   AND c.deployment_id = sqlc.arg(deployment_id)
   AND c.hidden_at IS NULL
-  AND u.banned_at IS NULL;
+  AND u.banned_at IS NULL
+FOR SHARE OF c, u;
 
 -- name: InsertReport :execrows
 INSERT INTO comment_reports (comment_id, chain_id, deployment_id, reporter_did, reason)
