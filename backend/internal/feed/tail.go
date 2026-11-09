@@ -2,10 +2,12 @@ package feed
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"math"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Contictus/launchtap/backend/internal/realtime"
@@ -33,6 +35,9 @@ func (noopObserver) Lag(time.Duration) {}
 
 const burstWindow = time.Second
 
+// ErrStarted is returned by a second Start call: one Tail runs one worker.
+var ErrStarted = errors.New("feed tail already started")
+
 // Tail reads new trades, launches and graduations after an in-memory cursor and publishes them.
 // One Tail runs per API process. All reads and cursor changes happen in the Start goroutine.
 type Tail struct {
@@ -47,9 +52,10 @@ type Tail struct {
 	PerSecond      int           // trade events per 1-second window, default 20
 	WatermarkEvery time.Duration // finality poll interval, default 5s
 
-	once   sync.Once
-	signal chan struct{}
-	ready  chan struct{} // closed once the starting cursors are read
+	once    sync.Once
+	started atomic.Bool
+	signal  chan struct{}
+	ready   chan struct{} // closed once the starting cursors are read
 
 	mu     sync.Mutex
 	rewind *int64 // lowest pending common ancestor
@@ -91,7 +97,11 @@ func (t *Tail) Hint(event realtime.Event) {
 }
 
 // Start reads the newest positions, then serves hints and the watermark ticker until ctx ends.
+// It returns ErrStarted at once when called a second time.
 func (t *Tail) Start(ctx context.Context) error {
+	if !t.started.CompareAndSwap(false, true) {
+		return ErrStarted
+	}
 	t.init()
 	if t.Observer == nil {
 		t.Observer = noopObserver{}

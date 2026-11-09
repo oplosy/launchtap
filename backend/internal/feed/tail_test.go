@@ -532,3 +532,19 @@ func TestTailBurstClosedByTimerWithoutFurtherReads(t *testing.T) {
 		t.Fatalf("bursts=%d total=%d observer=%d types=%v", bursts, total, obs.burstCount(), rec.types())
 	}
 }
+
+func TestTailSecondStartReturnsErrStarted(t *testing.T) {
+	tail := newTail(&fakeReader{}, newRecorder(), &clock{t: time.Unix(100, 0)})
+	stop := startTail(t, tail)
+	defer stop()
+	done := make(chan error, 1)
+	go func() { done <- tail.Start(context.Background()) }()
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrStarted) {
+			t.Fatalf("second Start = %v, want ErrStarted", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("second Start did not return")
+	}
+}
