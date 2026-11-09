@@ -1,4 +1,5 @@
 import type { ApiEvent, TradeFeedItem } from "@/api/types";
+import { formatDisplayAmount } from "@/amounts";
 
 /** A trade of at least this much gross ETH (0.5 ETH, in wei) on a watched token notifies. */
 export const LARGE_TRADE_WEI = 500_000_000_000_000_000n;
@@ -14,8 +15,17 @@ export type Notification = {
   token: string;
   /** User-controlled text: render as text only. */
   symbol: string;
+  /** Empty for notifications raised from a `trade_burst` entry, which carries no tx hash. */
   txHash: string;
   at: number;
+  /** Set when raised from a `trade_burst` entry: the folded trade count and the largest amount. */
+  burst?: { count: number; maxEthWei: string };
+  /**
+   * Own trade seen in a `trade_burst` entry. A burst has no tx hash or block, so the trade cannot
+   * be tracked to `safe` finality: the notification reuses the own-trade kind with "pending"
+   * semantics (seen, not yet safe) instead of waiting for a finality event that cannot match it.
+   */
+  unconfirmed?: true;
 };
 
 export type RuleState = { pendingOwn: Map<string, TradeFeedItem> };
@@ -108,6 +118,45 @@ export function evaluate(
       }
       return out;
     }
+    case "trade_burst": {
+      const data = event.data;
+      const window = `${data.window_start}:${data.window_end}`;
+      const wallet = ctx.wallet?.toLowerCase();
+      const out: Notification[] = [];
+      for (const item of data.items ?? []) {
+        const token = item.token.toLowerCase();
+        const burst = { count: item.count, maxEthWei: item.max_eth_wei };
+        if (ctx.watched.has(token) && isLargeTrade(item.max_eth_wei)) {
+          out.push({
+            id: `large-burst:${window}:${token}`.toLowerCase(),
+            kind: "large_trade",
+            token: item.token,
+            symbol: "",
+            txHash: "",
+            at: now,
+            burst,
+          });
+        }
+        // A truncated trader list means "unknown": never claim an own trade from it.
+        if (
+          wallet &&
+          !item.traders_truncated &&
+          item.traders.some((trader) => trader.toLowerCase() === wallet)
+        ) {
+          out.push({
+            id: `own-burst:${window}:${token}`.toLowerCase(),
+            kind: "own_trade_safe",
+            token: item.token,
+            symbol: "",
+            txHash: "",
+            at: now,
+            burst,
+            unconfirmed: true,
+          });
+        }
+      }
+      return out;
+    }
     case "finality": {
       const out: Notification[] = [];
       for (const [key, trade] of state.pendingOwn) {
@@ -125,6 +174,25 @@ export function evaluate(
     }
     default:
       return [];
+  }
+}
+
+/** Display text for a notification. The symbol is user-controlled: render the result as text. */
+export function describeNotification(notification: Notification): string {
+  const ticker = notification.symbol.trim() || "Token";
+  switch (notification.kind) {
+    case "graduation":
+      return `${ticker} graduated`;
+    case "large_trade": {
+      const burst = notification.burst;
+      if (!burst) return `Large trade on ${ticker}`;
+      const largest = formatDisplayAmount(BigInt(burst.maxEthWei), 18, 4);
+      return `Large trade on ${ticker}: ${burst.count} trades, largest ${largest} ETH`;
+    }
+    case "own_trade_safe":
+      return notification.unconfirmed
+        ? `Your ${ticker} trade was seen (not yet safe)`
+        : `Your ${ticker} trade is safe`;
   }
 }
 

@@ -28,6 +28,7 @@ import { isEventInScope } from "./live-strip-model";
 import {
   bellVisible,
   createRuleState,
+  describeNotification as describe,
   evaluate,
   identityChanged,
   type Notification,
@@ -172,18 +173,6 @@ function useSnapshot() {
     () => EMPTY_SNAPSHOT,
   );
   return { context, snapshot };
-}
-
-function describe(notification: Notification): string {
-  const ticker = notification.symbol.trim() || "Token";
-  switch (notification.kind) {
-    case "graduation":
-      return `${ticker} graduated`;
-    case "large_trade":
-      return `Large trade on ${ticker}`;
-    case "own_trade_safe":
-      return `Your ${ticker} trade is safe`;
-  }
 }
 
 function tokenHref(notification: Notification): string | null {

@@ -5,6 +5,7 @@ import {
   PENDING_OWN_MAX,
   bellVisible,
   createRuleState,
+  describeNotification,
   evaluate,
   identityChanged,
 } from "./notification-rules";
@@ -193,5 +194,124 @@ describe("identityChanged", () => {
     expect(
       identityChanged(base, { ...base, wallet: "0x3333333333333333333333333333333333333333" }),
     ).toBe(true);
+  });
+});
+
+describe("trade_burst", () => {
+  const OTHER = "0x00000000000000000000000000000000000000bb";
+  function burst(
+    items: Array<{
+      token?: string;
+      count?: number;
+      max_eth_wei?: string;
+      traders?: string[];
+      traders_truncated?: boolean;
+    }>,
+  ): ApiEvent {
+    return {
+      event: "trade_burst",
+      data: {
+        ...base,
+        window_start: "2026-01-01T00:00:00Z",
+        window_end: "2026-01-01T00:00:01Z",
+        items: items.map((item) => ({
+          token: TOKEN,
+          count: 3,
+          max_eth_wei: "0",
+          traders: [],
+          traders_truncated: false,
+          ...item,
+        })),
+      },
+    };
+  }
+
+  it("raises one large-trade notification per watched entry at or above the threshold", () => {
+    const out = evaluate(
+      burst([
+        { max_eth_wei: LARGE_TRADE_WEI.toString(), count: 4 },
+        { token: OTHER, max_eth_wei: "9".repeat(30) },
+      ]),
+      { watched },
+      createRuleState(),
+      9,
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      kind: "large_trade",
+      token: TOKEN,
+      at: 9,
+      burst: { count: 4, maxEthWei: LARGE_TRADE_WEI.toString() },
+    });
+    expect(describeNotification(out[0]!)).toBe("Large trade on Token: 4 trades, largest 0.5 ETH");
+  });
+
+  it("ignores entries below the threshold, with unknown or malformed max", () => {
+    for (const max of ["499999999999999999", "0", "1e30", ""]) {
+      expect(evaluate(burst([{ max_eth_wei: max }]), { watched }, createRuleState())).toEqual([]);
+    }
+  });
+
+  it("raises an unconfirmed own-trade notification when traders lists the wallet", () => {
+    const state = createRuleState();
+    const out = evaluate(
+      burst([{ token: OTHER, traders: ["0x2222222222222222222222222222222222222222", WALLET] }]),
+      { watched: new Set(), wallet: WALLET.toUpperCase().replace("0X", "0x") },
+      state,
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ kind: "own_trade_safe", token: OTHER, unconfirmed: true });
+    expect(describeNotification(out[0]!)).toBe("Your Token trade was seen (not yet safe)");
+    // A burst has no tx hash, so nothing is tracked toward finality.
+    expect(state.pendingOwn.size).toBe(0);
+  });
+
+  it("does not raise own-trade when traders is truncated (unknown)", () => {
+    const out = evaluate(
+      burst([{ traders: [WALLET], traders_truncated: true }]),
+      { watched: new Set(), wallet: WALLET },
+      createRuleState(),
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("does not raise own-trade without a wallet or when the wallet is absent", () => {
+    expect(
+      evaluate(burst([{ traders: [WALLET] }]), { watched: new Set() }, createRuleState()),
+    ).toEqual([]);
+    expect(
+      evaluate(
+        burst([{ traders: ["0x2222222222222222222222222222222222222222"] }]),
+        { watched: new Set(), wallet: WALLET },
+        createRuleState(),
+      ),
+    ).toEqual([]);
+  });
+
+  it("gives the same burst the same ids, so a replay does not double-notify", () => {
+    const event = burst([{ max_eth_wei: LARGE_TRADE_WEI.toString(), traders: [WALLET] }]);
+    const ctx = { watched, wallet: WALLET };
+    const a = evaluate(event, ctx, createRuleState()).map((n) => n.id);
+    const b = evaluate(event, ctx, createRuleState()).map((n) => n.id);
+    expect(a).toHaveLength(2);
+    expect(new Set(a).size).toBe(2);
+    expect(b).toEqual(a);
+  });
+
+  it("tolerates a null items list", () => {
+    const event: ApiEvent = {
+      event: "trade_burst",
+      data: { ...base, window_start: "a", window_end: "b", items: null },
+    };
+    expect(evaluate(event, { watched, wallet: WALLET }, createRuleState())).toEqual([]);
+  });
+});
+
+describe("describeNotification", () => {
+  it("keeps the single-event wording", () => {
+    const n = { id: "x", token: TOKEN, symbol: "TKN", txHash: "0x1", at: 0 };
+    expect(describeNotification({ ...n, kind: "graduation" })).toBe("TKN graduated");
+    expect(describeNotification({ ...n, kind: "large_trade" })).toBe("Large trade on TKN");
+    expect(describeNotification({ ...n, kind: "own_trade_safe" })).toBe("Your TKN trade is safe");
   });
 });
