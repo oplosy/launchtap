@@ -25,14 +25,17 @@ type Event struct {
 
 	// Feed events (trade, graduation, new_token, trade_burst, finality) are produced in-process by the
 	// feed tail and never decoded from NOTIFY.
-	Trade          *Trade       `json:"trade,omitempty"`
-	Graduation     *Graduation  `json:"graduation,omitempty"`
-	Launch         *Launch      `json:"launch,omitempty"`
-	Burst          []BurstCount `json:"burst,omitempty"`
-	BurstStart     time.Time    `json:"burst_start,omitempty"`
-	BurstEnd       time.Time    `json:"burst_end,omitempty"`
-	SafeBlock      int64        `json:"safe_block,omitempty"`
-	FinalizedBlock int64        `json:"finalized_block,omitempty"`
+	Trade      *Trade       `json:"trade,omitempty"`
+	Graduation *Graduation  `json:"graduation,omitempty"`
+	Launch     *Launch      `json:"launch,omitempty"`
+	Burst      []BurstCount `json:"burst,omitempty"`
+	BurstStart time.Time    `json:"burst_start,omitempty"`
+	BurstEnd   time.Time    `json:"burst_end,omitempty"`
+	// BurstLaunches and BurstGraduations count new_token and graduation events folded into a trade_burst.
+	BurstLaunches    int   `json:"burst_launches,omitempty"`
+	BurstGraduations int   `json:"burst_graduations,omitempty"`
+	SafeBlock        int64 `json:"safe_block,omitempty"`
+	FinalizedBlock   int64 `json:"finalized_block,omitempty"`
 }
 
 // BurstCount is the number of trades of one token that were rolled into a trade_burst event.

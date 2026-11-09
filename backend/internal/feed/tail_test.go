@@ -665,3 +665,61 @@ func TestTailPublishesInGlobalChainOrderAcrossPages(t *testing.T) {
 		t.Fatalf("unexpected tail %v", rec.types())
 	}
 }
+
+func TestTailRateLimitFoldsLaunchesAndGraduations(t *testing.T) {
+	reader := &fakeReader{}
+	rec := newRecorder()
+	obs := &countObserver{}
+	clk := &clock{t: time.Unix(100, 0)}
+	tail := newTail(reader, rec, clk)
+	tail.Observer = obs
+	tail.PerSecond = 2 // one budget shared by trades, launches and graduations
+	stop := startTail(t, tail)
+	defer stop()
+	reader.update(func(f *fakeReader) {
+		f.launches = []Launch{
+			{Token: common.Address{1}, Block: 1, TxIndex: 0},
+			{Token: common.Address{2}, Block: 1, TxIndex: 1},
+			{Token: common.Address{3}, Block: 1, TxIndex: 3},
+		}
+		f.trades = []Trade{trade(1, 2, 0, 1), trade(1, 4, 0, 1)}
+		f.grads = []Graduation{{Token: common.Address{1}, Block: 1, TxIndex: 2, LogIndex: 1}, {Token: common.Address{2}, Block: 1, TxIndex: 5}}
+	})
+	tail.Hint(tokenHint)
+	rec.waitCount(t, 2)
+	quiet()
+	if got := rec.types(); len(got) != 2 || got[0] != "new_token" || got[1] != "new_token" {
+		t.Fatalf("budget not shared: %v", got)
+	}
+	clk.advance(1100 * time.Millisecond)
+	rec.waitCount(t, 3)
+	quiet()
+	got := rec.snapshot()
+	if len(got) != 3 || got[2].Type != "trade_burst" || obs.burstCount() != 1 {
+		t.Fatalf("unexpected %v bursts=%d", rec.types(), obs.burstCount())
+	}
+	burst := got[2]
+	if burst.BurstLaunches != 1 || burst.BurstGraduations != 2 || len(burst.Burst) != 1 || burst.Burst[0].Count != 2 {
+		t.Fatalf("burst launches=%d graduations=%d items=%+v", burst.BurstLaunches, burst.BurstGraduations, burst.Burst)
+	}
+}
+
+func TestTailBurstWithOnlyLaunchesHasNoTradeItems(t *testing.T) {
+	reader := &fakeReader{}
+	rec := newRecorder()
+	clk := &clock{t: time.Unix(100, 0)}
+	tail := newTail(reader, rec, clk)
+	tail.PerSecond = 1
+	stop := startTail(t, tail)
+	defer stop()
+	reader.update(func(f *fakeReader) {
+		f.launches = []Launch{{Token: common.Address{1}, Block: 1}, {Token: common.Address{2}, Block: 2}}
+	})
+	tail.Hint(realtime.Event{Type: "launch"})
+	rec.waitCount(t, 1)
+	clk.advance(1100 * time.Millisecond)
+	rec.waitCount(t, 2)
+	if b := rec.snapshot()[1]; b.Type != "trade_burst" || b.BurstLaunches != 1 || b.BurstGraduations != 0 || len(b.Burst) != 0 {
+		t.Fatalf("unexpected %+v", b)
+	}
+}

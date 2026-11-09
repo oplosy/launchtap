@@ -64,12 +64,18 @@ type burstItem struct {
 	Count int    `json:"count"`
 }
 
+// tradeBurstFeedEvent summarizes the feed events of one 1-second window beyond the per-process budget
+// shared by trade, new_token and graduation events. items counts the folded trades per token; launches
+// and graduations count folded new_token and graduation events (absent when zero), so a client refetches
+// the token lists instead of receiving each event.
 type tradeBurstFeedEvent struct {
 	ChainID      int64       `json:"chain_id"`
 	DeploymentID string      `json:"deployment_id"`
 	WindowStart  string      `json:"window_start"`
 	WindowEnd    string      `json:"window_end"`
 	Items        []burstItem `json:"items"`
+	Launches     int         `json:"launches,omitempty" doc:"new_token events folded into this window."`
+	Graduations  int         `json:"graduations,omitempty" doc:"graduation events folded into this window."`
 }
 
 type finalityFeedEvent struct {
@@ -115,7 +121,11 @@ func (r EventRoutes) feedPayload(event realtime.Event) (payload any, ok bool) {
 		for _, b := range event.Burst {
 			items = append(items, burstItem{Token: b.Token, Count: b.Count})
 		}
-		return tradeBurstFeedEvent{ChainID: event.ChainID, DeploymentID: scope, WindowStart: event.BurstStart.UTC().Format(time.RFC3339Nano), WindowEnd: event.BurstEnd.UTC().Format(time.RFC3339Nano), Items: items}, true
+		return tradeBurstFeedEvent{
+			ChainID: event.ChainID, DeploymentID: scope, WindowStart: event.BurstStart.UTC().Format(time.RFC3339Nano),
+			WindowEnd: event.BurstEnd.UTC().Format(time.RFC3339Nano), Items: items,
+			Launches: event.BurstLaunches, Graduations: event.BurstGraduations,
+		}, true
 	case "finality":
 		return finalityFeedEvent{ChainID: event.ChainID, DeploymentID: scope, SafeBlock: event.SafeBlock, FinalizedBlock: event.FinalizedBlock}, true
 	}

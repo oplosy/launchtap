@@ -893,7 +893,17 @@ export interface components {
             /** Format: int64 */
             chain_id: number;
             deployment_id: string;
+            /**
+             * Format: int64
+             * @description graduation events folded into this window.
+             */
+            graduations?: number;
             items: components["schemas"]["BurstItem"][] | null;
+            /**
+             * Format: int64
+             * @description new_token events folded into this window.
+             */
+            launches?: number;
             window_end: string;
             window_start: string;
         };

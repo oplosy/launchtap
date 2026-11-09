@@ -274,6 +274,27 @@ func TestEventStreamAllFeedEventTypes(t *testing.T) {
 	}
 }
 
+func TestEventStreamTradeBurstFoldedLaunchesAndGraduations(t *testing.T) {
+	hub := realtime.NewHub(4, 64)
+	reader := openFeedStream(t, hub, "")
+	start := time.Unix(1700000000, 0).UTC()
+	hub.Publish(realtime.Event{Type: "trade_burst", ChainID: 46630, DeploymentID: "testnet", BurstLaunches: 2, BurstGraduations: 1, BurstStart: start, BurstEnd: start.Add(time.Second)})
+	hub.Publish(realtime.Event{Type: "trade_burst", ChainID: 46630, DeploymentID: "testnet", Burst: []realtime.BurstCount{{Token: "0x00000000000000000000000000000000000000aa", Count: 1}}, BurstStart: start, BurstEnd: start.Add(time.Second)})
+	got := readUntil(t, reader, `"count":1`, time.Second)
+	bursts := strings.Split(got, "event: trade_burst")
+	if len(bursts) != 3 {
+		t.Fatalf("want 2 trade_burst events in %q", got)
+	}
+	for _, want := range []string{`"launches":2`, `"graduations":1`, `"items":[]`} {
+		if !strings.Contains(bursts[1], want) {
+			t.Fatalf("missing %s in %q", want, bursts[1])
+		}
+	}
+	if strings.Contains(bursts[2], `"launches"`) || strings.Contains(bursts[2], `"graduations"`) {
+		t.Fatalf("zero folded counts not omitted: %q", bursts[2])
+	}
+}
+
 func TestEventStreamTokenFilterAppliesToFeed(t *testing.T) {
 	hub := realtime.NewHub(4, 64)
 	a, b := "0x00000000000000000000000000000000000000aa", "0x00000000000000000000000000000000000000bb"

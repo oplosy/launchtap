@@ -55,9 +55,12 @@ The product must feel live and be shareable, like competing launchpads. Success 
   `finality` event whenever either advances. Watermarks can advance with no new trade and no
   hint, so the tail also runs the watermark read on a 5-second ticker. Clients upgrade every item
   at or below those blocks.
-- **Rate limit:** at most 20 `trade` events per second per process are published individually;
-  beyond that the tail publishes one `trade_burst` summary event (count per token) for the window,
-  so a bot storm cannot flood every stream. Mirrors the existing per-stream hint coalescing.
+- **Rate limit:** at most 20 feed events (`trade`, `new_token` and `graduation` share one budget)
+  per second per process are published individually; beyond that the tail publishes one
+  `trade_burst` summary event for the window (trade count per token, plus folded launch and
+  graduation totals), so a bot storm or a launch-heavy block cannot flood every stream. Mirrors the
+  existing per-stream hint coalescing. Within each read the tail publishes the three tables merged
+  in `(block, tx_index, log_index)` order.
 
 ### Events (`/v1/events`)
 
@@ -70,7 +73,10 @@ New SSE event types beside `launch`, `token`, `reorg`:
 - `new_token`: chain, deployment, token, creator, name, symbol, tx hash, block number, read from
   `token_launches` by the same tail. (The existing `launch` event stays a refresh hint without a
   name.)
-- `trade_burst`: chain, deployment, window start and end, `[{token, count}]`.
+- `trade_burst`: chain, deployment, window start and end, `items: [{token, count}]` (folded
+  trades per token), and `launches` / `graduations`: the number of folded `new_token` and
+  `graduation` events in the window, omitted when zero. Additive totals, not per token: a client
+  refetches the token lists instead.
 - `finality`: chain, deployment, `safe_block`, `finalized_block`. Sent to every stream, including
   `?token=` streams.
 
