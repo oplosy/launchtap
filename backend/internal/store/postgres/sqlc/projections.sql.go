@@ -439,6 +439,28 @@ func (q *Queries) CompletePositionDirty(ctx context.Context, arg CompletePositio
 	return result.RowsAffected(), nil
 }
 
+const countUnattributedPoolSwaps = `-- name: CountUnattributedPoolSwaps :one
+SELECT count(*)::bigint AS pending
+FROM pool_swaps
+WHERE chain_id = $1::bigint
+  AND tx_from IS NULL
+  AND block_number <= $2::bigint
+`
+
+type CountUnattributedPoolSwapsParams struct {
+	ChainID      int64
+	ThroughBlock int64
+}
+
+// Pool swaps still without a sender at or below through_block (the indexer's safe head); served
+// by the partial index pool_swaps_tx_from_null_idx.
+func (q *Queries) CountUnattributedPoolSwaps(ctx context.Context, arg CountUnattributedPoolSwapsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countUnattributedPoolSwaps, arg.ChainID, arg.ThroughBlock)
+	var pending int64
+	err := row.Scan(&pending)
+	return pending, err
+}
+
 const databaseNow = `-- name: DatabaseNow :one
 SELECT now()::timestamptz AS now
 `

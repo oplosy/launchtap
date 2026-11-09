@@ -31,6 +31,15 @@ func (adapter *Adapter) ListUnattributedSwapTxs(ctx context.Context, chainID, th
 	return result, nil
 }
 
+// CountUnattributedSwaps counts the chain's pool swaps without a sender at or below throughBlock.
+func (adapter *Adapter) CountUnattributedSwaps(ctx context.Context, chainID, throughBlock int64) (int64, error) {
+	pending, err := adapter.queries.CountUnattributedPoolSwaps(ctx, sqlc.CountUnattributedPoolSwapsParams{ChainID: chainID, ThroughBlock: throughBlock})
+	if err != nil {
+		return 0, fmt.Errorf("count unattributed pool swaps: %w", err)
+	}
+	return pending, nil
+}
+
 // AttributeSwapSender fills tx_from on every still-unattributed swap of txHash and marks the
 // affected (sender, token) positions dirty. It returns the number of swaps updated; a swap that
 // already has a sender is left alone, so a rerun updates nothing.

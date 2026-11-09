@@ -180,11 +180,20 @@ func run() error {
 			Sleep:   swapbackfill.RateSleeper(swapbackfill.DefaultRate),
 		},
 		Interval: c.IndexerSenderBackfillInterval, Batch: swapbackfill.DefaultBatch, MaxTransactions: int(c.IndexerSenderBackfillMaxTxs),
-		SafeBlock: backfillStore.SafeBlock,
-		OnFilled:  indexerMetrics.SenderBackfillFilled, OnError: indexerMetrics.SenderBackfillFailed,
+		SafeBlock: backfillStore.SafeBlock, Backlog: backfillStore.CountUnattributed, OnBacklog: indexerMetrics.SenderBackfillPending,
+		OnFilled: indexerMetrics.SenderBackfillFilled, OnError: indexerMetrics.SenderBackfillFailed,
 		Secrets: []string{c.RPCURL, c.DatabaseURL},
 	}
-	go func() { _ = senderBackfill.Run(ctx) }()
+	// Joined on return, before the deferred pool.Close, so no pass uses a closed pool.
+	senderBackfillDone := make(chan struct{})
+	go func() {
+		defer close(senderBackfillDone)
+		_ = senderBackfill.Run(ctx)
+	}()
+	defer func() {
+		stop()
+		<-senderBackfillDone
+	}()
 	aggregationErrors := make(chan error, 2)
 	for _, worker := range []stats.Worker{aggregation, positions} {
 		go func() {

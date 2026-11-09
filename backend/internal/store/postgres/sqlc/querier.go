@@ -33,6 +33,9 @@ type Querier interface {
 	CompleteAggregationDirty(ctx context.Context, arg CompleteAggregationDirtyParams) (int64, error)
 	CompleteIndexerReorg(ctx context.Context, reorgID int64) (CompleteIndexerReorgRow, error)
 	CompletePositionDirty(ctx context.Context, arg CompletePositionDirtyParams) (int64, error)
+	// Pool swaps still without a sender at or below through_block (the indexer's safe head); served
+	// by the partial index pool_swaps_tx_from_null_idx.
+	CountUnattributedPoolSwaps(ctx context.Context, arg CountUnattributedPoolSwapsParams) (int64, error)
 	CountWalletCreated(ctx context.Context, arg CountWalletCreatedParams) (int64, error)
 	CountWatchlist(ctx context.Context, arg CountWatchlistParams) (int64, error)
 	CreatorFeeClaimMatchesEvent(ctx context.Context, arg CreatorFeeClaimMatchesEventParams) (pgtype.Bool, error)

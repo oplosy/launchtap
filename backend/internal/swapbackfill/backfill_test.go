@@ -1,11 +1,13 @@
 package swapbackfill
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -172,5 +174,46 @@ func TestRunCapsTransactionsPerPass(t *testing.T) {
 	}
 	if want := []int{2, 1}; len(store.limits) != 2 || store.limits[0] != want[0] || store.limits[1] != want[1] {
 		t.Fatalf("limits = %v, want %v", store.limits, want)
+	}
+}
+
+func TestRunResumesAfterStartCursorAndReportsEnd(t *testing.T) {
+	t.Parallel()
+	rows := []SwapTx{{hash(1), 5}, {hash(2), 6}, {hash(3), 7}}
+	known := map[common.Hash]common.Address{hash(1): {1}, hash(2): {2}, hash(3): {3}}
+	store, _, d := newDeps(rows, known)
+	summary, err := Run(t.Context(), d, Options{Batch: 10, Start: &Cursor{Block: 5, Hash: hash(1)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, filled := store.filled[hash(1)]; filled || len(store.filled) != 2 || !summary.ReachedEnd || summary.Cursor != (Cursor{Block: 7, Hash: hash(3)}) {
+		t.Fatalf("summary=%+v filled=%v, want rows after the start cursor and the end reached", summary, store.filled)
+	}
+}
+
+func TestRunReportsCappedCursor(t *testing.T) {
+	t.Parallel()
+	rows := []SwapTx{{hash(1), 5}, {hash(2), 6}, {hash(3), 7}}
+	_, _, d := newDeps(rows, nil)
+	summary, _ := Run(t.Context(), d, Options{Batch: 10, MaxTransactions: 2})
+	if summary.ReachedEnd || summary.Cursor != (Cursor{Block: 6, Hash: hash(2)}) {
+		t.Fatalf("summary=%+v, want a capped run stopping after the second row", summary)
+	}
+}
+
+func TestRunQuietUnresolvedLogsAtDebug(t *testing.T) {
+	t.Parallel()
+	for _, quiet := range []bool{false, true} {
+		var logs bytes.Buffer
+		_, _, d := newDeps([]SwapTx{{hash(1), 5}}, nil)
+		d.Log = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		_, _ = Run(t.Context(), d, Options{Batch: 10, QuietUnresolved: quiet})
+		want := "level=WARN"
+		if quiet {
+			want = "level=DEBUG"
+		}
+		if !strings.Contains(logs.String(), want+" msg=\"transaction sender unresolved, skipped\"") {
+			t.Fatalf("quiet=%t log=%q, want %s", quiet, logs.String(), want)
+		}
 	}
 }

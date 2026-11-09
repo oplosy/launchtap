@@ -30,6 +30,18 @@ type Options struct {
 	ThroughBlock *int64
 	// MaxTransactions caps the transactions one run lists; 0 means no cap.
 	MaxTransactions int
+	// Start, when set, resumes the walk strictly after this (block, hash) position instead of
+	// at the oldest NULL-sender transaction.
+	Start *Cursor
+	// QuietUnresolved logs each unresolved transaction at Debug instead of Warn (the indexer's
+	// scheduler retries them every pass and logs one summary line instead).
+	QuietUnresolved bool
+}
+
+// Cursor is a (block, hash) keyset position in the NULL-sender transaction walk.
+type Cursor struct {
+	Block int64
+	Hash  common.Hash
 }
 
 // SwapTx is one transaction that still has a pool swap without a known sender.
@@ -69,6 +81,10 @@ type Summary struct {
 	Updated     int // swap rows written
 	WouldUpdate int // transactions resolved in dry-run mode
 	Skipped     int
+	// Cursor is the last listed position (Start, or the initial position, when nothing was
+	// listed); ReachedEnd is true when the walk ran out of rows rather than hitting the cap.
+	Cursor     Cursor
+	ReachedEnd bool
 }
 
 // Run walks the NULL-sender transactions with a (block, hash) keyset cursor, so an unresolved
@@ -78,6 +94,14 @@ func Run(ctx context.Context, d Deps, o Options) (Summary, error) {
 	var result Summary
 	var afterBlock int64 = -1
 	var afterHash common.Hash
+	if o.Start != nil {
+		afterBlock, afterHash = o.Start.Block, o.Start.Hash
+	}
+	result.Cursor = Cursor{Block: afterBlock, Hash: afterHash}
+	unresolvedLevel := slog.LevelWarn
+	if o.QuietUnresolved {
+		unresolvedLevel = slog.LevelDebug
+	}
 	throughBlock := int64(math.MaxInt64)
 	if o.ThroughBlock != nil {
 		throughBlock = *o.ThroughBlock
@@ -99,10 +123,12 @@ func Run(ctx context.Context, d Deps, o Options) (Summary, error) {
 			return result, err
 		}
 		if len(batch) == 0 {
+			result.ReachedEnd = true
 			break
 		}
 		last := batch[len(batch)-1]
 		afterBlock, afterHash = last.Block, last.Hash
+		result.Cursor = Cursor{Block: last.Block, Hash: last.Hash}
 		result.Listed += len(batch)
 
 		hashes := make([]common.Hash, len(batch))
@@ -118,7 +144,7 @@ func Run(ctx context.Context, d Deps, o Options) (Summary, error) {
 			sender, ok := senders[row.Hash]
 			if !ok {
 				result.Skipped++
-				d.Log.Warn("transaction sender unresolved, skipped", "tx_hash", row.Hash.Hex(), "block_number", row.Block)
+				d.Log.Log(ctx, unresolvedLevel, "transaction sender unresolved, skipped", "tx_hash", row.Hash.Hex(), "block_number", row.Block)
 				continue
 			}
 			resolved[row.Hash] = sender
@@ -142,6 +168,10 @@ func Run(ctx context.Context, d Deps, o Options) (Summary, error) {
 		if err := d.Sleep(ctx); err != nil {
 			return result, err
 		}
+		if len(batch) < limit {
+			result.ReachedEnd = true
+			break
+		}
 	}
 	if result.Skipped > 0 {
 		return result, fmt.Errorf("%w: %d skipped, their swaps keep tx_from NULL", ErrSkipped, result.Skipped)
@@ -157,6 +187,12 @@ type PostgresStore struct {
 	Factory common.Address
 	// DeploymentID selects the indexer sync state SafeBlock reads.
 	DeploymentID string
+}
+
+// CountUnattributed counts the chain's pool swaps with a NULL sender in blocks at or below
+// throughBlock (served by the partial index pool_swaps_tx_from_null_idx).
+func (s PostgresStore) CountUnattributed(ctx context.Context, throughBlock int64) (int64, error) {
+	return storepostgres.NewAdapter(s.Pool).CountUnattributedSwaps(ctx, s.ChainID, throughBlock)
 }
 
 // SafeBlock returns the indexer's committed safe block for the chain and deployment; ok is

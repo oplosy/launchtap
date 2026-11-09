@@ -153,6 +153,7 @@ func TestSchedulerPassFillsSwapsAtOrBelowSafeHead(t *testing.T) {
 
 	senderA, senderB := common.BytesToAddress(addressBytes(0xc5)), common.BytesToAddress(addressBytes(0xc6))
 	var filled, failures int
+	var pending []int64
 	scheduler := swapbackfill.Scheduler{
 		Deps: swapbackfill.Deps{
 			Store:   store,
@@ -161,9 +162,16 @@ func TestSchedulerPassFillsSwapsAtOrBelowSafeHead(t *testing.T) {
 			Sleep:   func(context.Context) error { return nil },
 		},
 		Interval: time.Minute, Batch: swapbackfill.DefaultBatch, MaxTransactions: 100, SafeBlock: store.SafeBlock,
+		Backlog: store.CountUnattributed, OnBacklog: func(n int64) { pending = append(pending, n) },
 		OnFilled: func(n int) { filled += n }, OnError: func() { failures++ },
 	}
+	if before, err := store.CountUnattributed(ctx, 10); err != nil || before != 1 {
+		t.Fatalf("CountUnattributed(10) before the pass = %d, %v; want 1 (the unsafe swap is not counted)", before, err)
+	}
 	scheduler.Pass(ctx)
+	if len(pending) != 1 || pending[0] != 0 {
+		t.Fatalf("pending after the pass = %v, want [0]", pending)
+	}
 
 	if filled != 1 || failures != 0 {
 		t.Fatalf("filled = %d, failures = %d; want 1, 0", filled, failures)

@@ -17,6 +17,7 @@ type Indexer struct {
 	senderMiss   prometheus.Counter
 	backfilled   prometheus.Counter
 	backfillFail prometheus.Counter
+	backfillWait prometheus.Gauge
 }
 
 var (
@@ -57,8 +58,12 @@ func NewIndexer(reg prometheus.Registerer, snapshot func() indexer.Health) *Inde
 			Name: "launchpad_indexer_sender_backfill_errors_total",
 			Help: "Automatic sender backfill passes that failed (RPC or database error); the next pass retries.",
 		}),
+		backfillWait: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "launchpad_indexer_sender_backfill_pending",
+			Help: "Pool swaps still without a sender (tx_from NULL) at or below the safe head, counted after each automatic backfill pass.",
+		}),
 	}
-	reg.MustRegister(m.rpc, m.recomputed, m.notification, m.positionFail, m.senderMiss, m.backfilled, m.backfillFail)
+	reg.MustRegister(m.rpc, m.recomputed, m.notification, m.positionFail, m.senderMiss, m.backfilled, m.backfillFail, m.backfillWait)
 	reg.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "launchpad_aggregation_position_dirty_backlog",
 		Help: "Pending wallet position recomputations (position_dirty rows for the chain).",
@@ -136,6 +141,11 @@ func (m *Indexer) SenderBackfillFilled(count int) {
 // SenderBackfillFailed counts one failed automatic sender backfill pass.
 func (m *Indexer) SenderBackfillFailed() {
 	m.backfillFail.Inc()
+}
+
+// SenderBackfillPending records the NULL-sender swaps at or below the safe head after a pass.
+func (m *Indexer) SenderBackfillPending(count int64) {
+	m.backfillWait.Set(float64(count))
 }
 
 // Notified counts one NOTIFY outcome. Unknown channels are ignored.

@@ -573,6 +573,15 @@ GROUP BY tx_hash, block_number
 ORDER BY block_number, tx_hash
 LIMIT sqlc.arg(row_limit)::int;
 
+-- name: CountUnattributedPoolSwaps :one
+-- Pool swaps still without a sender at or below through_block (the indexer's safe head); served
+-- by the partial index pool_swaps_tx_from_null_idx.
+SELECT count(*)::bigint AS pending
+FROM pool_swaps
+WHERE chain_id = sqlc.arg(chain_id)::bigint
+  AND tx_from IS NULL
+  AND block_number <= sqlc.arg(through_block)::bigint;
+
 -- name: SetPoolSwapTxFrom :many
 -- Fills the sender of every still-unattributed swap in one transaction and returns the pairs
 -- that need a position re-mark.

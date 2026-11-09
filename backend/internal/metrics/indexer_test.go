@@ -122,11 +122,16 @@ func TestSenderBackfillMetricsRegistered(t *testing.T) {
 	m.SenderBackfillFilled(0)
 	m.SenderBackfillFilled(-2)
 	m.SenderBackfillFailed()
+	m.SenderBackfillPending(9)
+	m.SenderBackfillPending(3)
 
 	if got := seriesValue(t, reg, "launchpad_indexer_sender_backfill_filled_total", map[string]string{}); got != 4 {
 		t.Errorf("launchpad_indexer_sender_backfill_filled_total = %v, want 4", got)
 	}
 	if got := seriesValue(t, reg, "launchpad_indexer_sender_backfill_errors_total", map[string]string{}); got != 1 {
 		t.Errorf("launchpad_indexer_sender_backfill_errors_total = %v, want 1", got)
+	}
+	if got := seriesValue(t, reg, "launchpad_indexer_sender_backfill_pending", map[string]string{}); got != 3 {
+		t.Errorf("launchpad_indexer_sender_backfill_pending = %v, want the latest count 3", got)
 	}
 }
