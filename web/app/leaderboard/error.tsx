@@ -11,15 +11,16 @@ import { scrubTelemetry, safeLog } from "@/security/logging";
  */
 export default function LeaderboardError({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  retry: () => void;
 }) {
   useEffect(() => {
     safeLog("route_error", { digest: error.digest, error: scrubTelemetry(error) });
   }, [error]);
   return (
+    // `retry` (Next 16.3+) refetches the server content; `reset` would only re-render it.
     <div className="page-stack leaderboard-page">
       <section className="page-hero">
         <div>
@@ -32,7 +33,7 @@ export default function LeaderboardError({
         description="The ranking could not be loaded. Try again in a minute."
       />
       <div className="error-actions">
-        <button className="ui-button ui-button-secondary ui-button-md" onClick={reset}>
+        <button className="ui-button ui-button-secondary ui-button-md" onClick={() => retry()}>
           Try again
         </button>
         <Link className="ui-button ui-button-secondary ui-button-md" href="/analytics">
