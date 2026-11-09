@@ -5,7 +5,6 @@ import type { RuleState } from "./notification-rules";
 
 /** Same 3 s bound as the share-card fetches; those live in a server-only module, so it is repeated. */
 export const HOLDINGS_FETCH_TIMEOUT_MS = 3000;
-const HOLDINGS_LIMIT = 100;
 
 /** Watchlist (signed-in) plus holdings (connected): lowercased, deduped, sorted. */
 export function mergeWatched(watchlist: readonly string[], holdings: readonly string[]): string[] {
@@ -56,9 +55,11 @@ export async function loadHoldingsResult(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    // Open mode ignores `limit` and returns every open position in one response, capped at 500
+    // (`truncated` beyond that), so no limit is sent.
     const response = await new ApiClient({ baseUrl, fetch: fetcher }).listWalletPositions(
       wallet.toLowerCase(),
-      { closed: false, limit: HOLDINGS_LIMIT },
+      { closed: false },
       controller.signal,
     );
     if (!Array.isArray(response.items)) return null;
@@ -75,7 +76,10 @@ export async function loadHoldingsResult(
   }
 }
 
-/** Open-position token addresses of `wallet` (first page only), lowercased; [] on any failure. */
+/**
+ * Open-position token addresses of `wallet` (the API's single open-mode response, up to 500;
+ * positions past a `truncated` cap are not watched), lowercased; [] on any failure.
+ */
 export async function loadHoldings(
   ...args: Parameters<typeof loadHoldingsResult>
 ): Promise<string[]> {

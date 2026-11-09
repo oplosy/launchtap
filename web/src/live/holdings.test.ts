@@ -131,7 +131,7 @@ describe("loadHoldings", () => {
       return new Response(JSON.stringify({ items: [{ token: TOKEN }] }), { status: 200 });
     }) as unknown as typeof fetch;
     expect(await loadHoldings(WALLET, fetcher, BASE_URL)).toEqual([TOKEN.toLowerCase()]);
-    expect(calls[0]).toContain(`/v1/wallets/${WALLET}/positions?closed=false&limit=100`);
+    expect(calls[0]?.endsWith(`/v1/wallets/${WALLET}/positions?closed=false`)).toBe(true);
   });
 
   it("returns [] on a 500", async () => {
