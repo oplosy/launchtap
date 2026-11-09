@@ -262,6 +262,67 @@ func (q *Queries) ClaimAggregationDirty(ctx context.Context, arg ClaimAggregatio
 	return items, nil
 }
 
+const claimPositionDirty = `-- name: ClaimPositionDirty :many
+WITH candidate AS (
+    SELECT chain_id, wallet, token_address
+    FROM position_dirty
+    WHERE chain_id = $2::bigint
+      AND (claimed_generation IS NULL
+       OR claimed_generation < generation
+       OR (claimed_at IS NOT NULL AND claimed_at < now() - interval '30 seconds'))
+    ORDER BY generation, chain_id, wallet, token_address
+    LIMIT $3::integer
+    FOR UPDATE SKIP LOCKED
+)
+UPDATE position_dirty AS dirty
+SET claimed_generation = dirty.generation,
+    claimed_at = now(),
+    claimed_by = $1
+FROM candidate
+WHERE dirty.chain_id = candidate.chain_id
+  AND dirty.wallet = candidate.wallet
+  AND dirty.token_address = candidate.token_address
+RETURNING dirty.chain_id, dirty.wallet, dirty.token_address, dirty.claimed_generation
+`
+
+type ClaimPositionDirtyParams struct {
+	WorkerID  pgtype.Text
+	ChainID   int64
+	BatchSize int32
+}
+
+type ClaimPositionDirtyRow struct {
+	ChainID           int64
+	Wallet            Address
+	TokenAddress      Address
+	ClaimedGeneration pgtype.Int8
+}
+
+func (q *Queries) ClaimPositionDirty(ctx context.Context, arg ClaimPositionDirtyParams) ([]ClaimPositionDirtyRow, error) {
+	rows, err := q.db.Query(ctx, claimPositionDirty, arg.WorkerID, arg.ChainID, arg.BatchSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ClaimPositionDirtyRow{}
+	for rows.Next() {
+		var i ClaimPositionDirtyRow
+		if err := rows.Scan(
+			&i.ChainID,
+			&i.Wallet,
+			&i.TokenAddress,
+			&i.ClaimedGeneration,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const clearLaunchPositionDirty = `-- name: ClearLaunchPositionDirty :exec
 DELETE FROM position_dirty
 WHERE chain_id = $1::bigint
@@ -346,6 +407,38 @@ func (q *Queries) CompleteAggregationDirty(ctx context.Context, arg CompleteAggr
 	return result.RowsAffected(), nil
 }
 
+const completePositionDirty = `-- name: CompletePositionDirty :execrows
+DELETE FROM position_dirty
+WHERE chain_id = $1
+  AND wallet = $2
+  AND token_address = $3
+  AND generation = $4
+  AND claimed_generation = $4
+  AND claimed_by = $5
+`
+
+type CompletePositionDirtyParams struct {
+	ChainID           int64
+	Wallet            Address
+	TokenAddress      Address
+	ClaimedGeneration int64
+	WorkerID          pgtype.Text
+}
+
+func (q *Queries) CompletePositionDirty(ctx context.Context, arg CompletePositionDirtyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, completePositionDirty,
+		arg.ChainID,
+		arg.Wallet,
+		arg.TokenAddress,
+		arg.ClaimedGeneration,
+		arg.WorkerID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const databaseNow = `-- name: DatabaseNow :one
 SELECT now()::timestamptz AS now
 `
@@ -375,6 +468,21 @@ func (q *Queries) DeleteTokenStats(ctx context.Context, arg DeleteTokenStatsPara
 	return result.RowsAffected(), nil
 }
 
+const deleteWalletPosition = `-- name: DeleteWalletPosition :exec
+DELETE FROM wallet_positions WHERE chain_id = $1 AND wallet = $2 AND token_address = $3
+`
+
+type DeleteWalletPositionParams struct {
+	ChainID      int64
+	Wallet       Address
+	TokenAddress Address
+}
+
+func (q *Queries) DeleteWalletPosition(ctx context.Context, arg DeleteWalletPositionParams) error {
+	_, err := q.db.Exec(ctx, deleteWalletPosition, arg.ChainID, arg.Wallet, arg.TokenAddress)
+	return err
+}
+
 const hasCanonicalLaunch = `-- name: HasCanonicalLaunch :one
 SELECT EXISTS(SELECT 1 FROM token_launches WHERE chain_id=$1 AND token_address=$2)
 `
@@ -389,6 +497,114 @@ func (q *Queries) HasCanonicalLaunch(ctx context.Context, arg HasCanonicalLaunch
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const listPositionLegs = `-- name: ListPositionLegs :many
+WITH token AS (
+    SELECT t.lp_pair, t.token_is_token0
+    FROM tokens AS t
+    WHERE t.chain_id = $1::bigint AND t.token_address = $2::bytea
+), transfer_legs AS (
+    SELECT moves.tx_hash, moves.block_number, moves.transaction_index, sum(moves.delta) AS token_delta
+    FROM (
+        SELECT tr.tx_hash, tr.block_number, tr.transaction_index, tr.value AS delta
+        FROM transfers AS tr
+        WHERE tr.chain_id = $1::bigint AND tr.to_address = $3::bytea
+          AND tr.token_address = $2::bytea
+        UNION ALL
+        SELECT tr.tx_hash, tr.block_number, tr.transaction_index, -tr.value
+        FROM transfers AS tr
+        WHERE tr.chain_id = $1::bigint AND tr.from_address = $3::bytea
+          AND tr.token_address = $2::bytea
+    ) AS moves
+    GROUP BY moves.tx_hash, moves.block_number, moves.transaction_index
+), trade_legs AS (
+    SELECT trade.tx_hash, trade.block_number, trade.transaction_index,
+        sum(CASE WHEN trade.is_buy THEN trade.eth_gross ELSE 0 END) AS eth_paid,
+        sum(CASE WHEN trade.is_buy THEN 0 ELSE trade.eth_gross - trade.protocol_fee - trade.creator_fee END) AS eth_received
+    FROM trades AS trade
+    WHERE trade.chain_id = $1::bigint AND trade.trader = $3::bytea
+      AND trade.token_address = $2::bytea
+    GROUP BY trade.tx_hash, trade.block_number, trade.transaction_index
+), swap_legs AS (
+    SELECT swap.tx_hash, swap.block_number, swap.transaction_index,
+        sum(CASE WHEN token.token_is_token0 THEN swap.amount1_in ELSE swap.amount0_in END) AS eth_paid,
+        sum(CASE WHEN token.token_is_token0 THEN swap.amount1_out ELSE swap.amount0_out END) AS eth_received
+    FROM pool_swaps AS swap
+    JOIN token ON swap.pair_address = token.lp_pair
+    WHERE swap.chain_id = $1::bigint AND swap.tx_from = $3::bytea
+    GROUP BY swap.tx_hash, swap.block_number, swap.transaction_index
+)
+SELECT
+    COALESCE(transfer_legs.block_number, trade_legs.block_number, swap_legs.block_number)::bigint AS leg_block_number,
+    COALESCE(transfer_legs.transaction_index, trade_legs.transaction_index, swap_legs.transaction_index)::integer AS leg_transaction_index,
+    COALESCE(transfer_legs.token_delta, 0)::numeric AS leg_token_delta,
+    (COALESCE(trade_legs.eth_paid, 0) + COALESCE(swap_legs.eth_paid, 0))::numeric AS leg_eth_paid,
+    (COALESCE(trade_legs.eth_received, 0) + COALESCE(swap_legs.eth_received, 0))::numeric AS leg_eth_received
+FROM transfer_legs
+FULL OUTER JOIN trade_legs ON trade_legs.tx_hash = transfer_legs.tx_hash
+FULL OUTER JOIN swap_legs ON swap_legs.tx_hash = COALESCE(transfer_legs.tx_hash, trade_legs.tx_hash)
+ORDER BY leg_block_number, leg_transaction_index
+`
+
+type ListPositionLegsParams struct {
+	ChainID      int64
+	TokenAddress []byte
+	Wallet       []byte
+}
+
+type ListPositionLegsRow struct {
+	LegBlockNumber      int64
+	LegTransactionIndex int32
+	LegTokenDelta       pgtype.Numeric
+	LegEthPaid          pgtype.Numeric
+	LegEthReceived      pgtype.Numeric
+}
+
+// One leg per transaction that touched (wallet, token), ordered by (block, tx index) (R1):
+// token_delta is the wallet's net transfers in the tx (a self-transfer nets to 0); ETH comes only
+// from trades attributed to the wallet: curve trades by trader, pool swaps by tx_from on the
+// token's own pair, valued on the pair's WETH side.
+func (q *Queries) ListPositionLegs(ctx context.Context, arg ListPositionLegsParams) ([]ListPositionLegsRow, error) {
+	rows, err := q.db.Query(ctx, listPositionLegs, arg.ChainID, arg.TokenAddress, arg.Wallet)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPositionLegsRow{}
+	for rows.Next() {
+		var i ListPositionLegsRow
+		if err := rows.Scan(
+			&i.LegBlockNumber,
+			&i.LegTransactionIndex,
+			&i.LegTokenDelta,
+			&i.LegEthPaid,
+			&i.LegEthReceived,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockWalletTotals = `-- name: LockWalletTotals :exec
+SELECT pg_advisory_xact_lock(hashtextextended('wallet_totals:' || $1::bigint::text || ':' || encode($2::bytea, 'hex'), 0))
+`
+
+type LockWalletTotalsParams struct {
+	ChainID int64
+	Wallet  []byte
+}
+
+// Serializes the wallet_totals recompute of one wallet across concurrent position computes, so
+// each recompute reads every committed position of the wallet.
+func (q *Queries) LockWalletTotals(ctx context.Context, arg LockWalletTotalsParams) error {
+	_, err := q.db.Exec(ctx, lockWalletTotals, arg.ChainID, arg.Wallet)
+	return err
 }
 
 const markPairTokenDirty = `-- name: MarkPairTokenDirty :exec
@@ -809,5 +1025,87 @@ type RecomputeTokenStatsParams struct {
 // read only the finest ('1m') series so each trade is counted once.
 func (q *Queries) RecomputeTokenStats(ctx context.Context, arg RecomputeTokenStatsParams) error {
 	_, err := q.db.Exec(ctx, recomputeTokenStats, arg.ChainID, arg.TokenAddress)
+	return err
+}
+
+const recomputeWalletTotals = `-- name: RecomputeWalletTotals :exec
+WITH aggregate AS (
+    SELECT p.chain_id, p.wallet, sum(p.realized_pnl) AS realized_pnl,
+        count(*) FILTER (WHERE p.trade_count > 0) AS tokens_traded,
+        count(*) FILTER (WHERE p.balance > 0) AS held_count,
+        min(p.first_block_number) AS first_block_number,
+        max(p.last_block_number) AS last_block_number
+    FROM wallet_positions AS p
+    WHERE p.chain_id = $1::bigint AND p.wallet = $2::bytea
+    GROUP BY p.chain_id, p.wallet
+), removed AS (
+    DELETE FROM wallet_totals AS totals
+    WHERE totals.chain_id = $1::bigint AND totals.wallet = $2::bytea
+      AND NOT EXISTS (SELECT 1 FROM aggregate)
+)
+INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
+SELECT chain_id, wallet, realized_pnl, tokens_traded, held_count, first_block_number, last_block_number FROM aggregate
+ON CONFLICT (chain_id, wallet) DO UPDATE SET
+    realized_pnl = EXCLUDED.realized_pnl, tokens_traded = EXCLUDED.tokens_traded, held_count = EXCLUDED.held_count,
+    first_block_number = EXCLUDED.first_block_number, last_block_number = EXCLUDED.last_block_number
+`
+
+type RecomputeWalletTotalsParams struct {
+	ChainID int64
+	Wallet  []byte
+}
+
+// Rebuilds one wallet's totals from its positions; the row is deleted when none remain.
+func (q *Queries) RecomputeWalletTotals(ctx context.Context, arg RecomputeWalletTotalsParams) error {
+	_, err := q.db.Exec(ctx, recomputeWalletTotals, arg.ChainID, arg.Wallet)
+	return err
+}
+
+const upsertWalletPosition = `-- name: UpsertWalletPosition :exec
+INSERT INTO wallet_positions (
+    chain_id, wallet, token_address, balance, remaining_cost, realized_pnl, transferred_in,
+    eth_paid, eth_received, trade_count, first_block_number, last_block_number
+) VALUES (
+    $1, $2, $3, $4, $5,
+    $6, $7, $8, $9,
+    $10, $11, $12
+)
+ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET
+    balance = EXCLUDED.balance, remaining_cost = EXCLUDED.remaining_cost, realized_pnl = EXCLUDED.realized_pnl,
+    transferred_in = EXCLUDED.transferred_in, eth_paid = EXCLUDED.eth_paid, eth_received = EXCLUDED.eth_received,
+    trade_count = EXCLUDED.trade_count, first_block_number = EXCLUDED.first_block_number,
+    last_block_number = EXCLUDED.last_block_number
+`
+
+type UpsertWalletPositionParams struct {
+	ChainID          int64
+	Wallet           Address
+	TokenAddress     Address
+	Balance          Uint256
+	RemainingCost    Uint256
+	RealizedPnl      pgtype.Numeric
+	TransferredIn    Uint256
+	EthPaid          Uint256
+	EthReceived      Uint256
+	TradeCount       int64
+	FirstBlockNumber int64
+	LastBlockNumber  int64
+}
+
+func (q *Queries) UpsertWalletPosition(ctx context.Context, arg UpsertWalletPositionParams) error {
+	_, err := q.db.Exec(ctx, upsertWalletPosition,
+		arg.ChainID,
+		arg.Wallet,
+		arg.TokenAddress,
+		arg.Balance,
+		arg.RemainingCost,
+		arg.RealizedPnl,
+		arg.TransferredIn,
+		arg.EthPaid,
+		arg.EthReceived,
+		arg.TradeCount,
+		arg.FirstBlockNumber,
+		arg.LastBlockNumber,
+	)
 	return err
 }

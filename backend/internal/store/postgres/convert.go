@@ -253,3 +253,53 @@ func uint256(name string, value *big.Int) (sqlc.Uint256, error) {
 	}
 	return result, nil
 }
+
+// maxSignedNumeric bounds the signed NUMERIC(79,0) columns (wallet realized PnL): |value| < 10^79.
+var maxSignedNumeric = new(big.Int).Exp(big.NewInt(10), big.NewInt(79), nil)
+
+// signedNumeric converts a signed integer for a NUMERIC(79,0) column. The Uint256 codec rejects
+// negatives, so signed columns stay pgtype.Numeric.
+func signedNumeric(name string, value *big.Int) (pgtype.Numeric, error) {
+	if value == nil {
+		return pgtype.Numeric{}, fmt.Errorf("%s: value is nil", name)
+	}
+	if new(big.Int).Abs(value).Cmp(maxSignedNumeric) >= 0 {
+		return pgtype.Numeric{}, fmt.Errorf("%s: value exceeds 79 decimal digits", name)
+	}
+	return pgtype.Numeric{Int: new(big.Int).Set(value), Valid: true}, nil
+}
+
+// signedBigInt converts a finite, integral, non-NULL numeric into a signed integer of at most 79
+// decimal digits.
+func signedBigInt(name string, numeric pgtype.Numeric) (*big.Int, error) {
+	if !numeric.Valid {
+		return nil, fmt.Errorf("%s: value is NULL", name)
+	}
+	if numeric.NaN || numeric.InfinityModifier != pgtype.Finite || numeric.Int == nil {
+		return nil, fmt.Errorf("%s: value is not finite", name)
+	}
+	value := new(big.Int).Set(numeric.Int)
+	if value.Sign() != 0 && numeric.Exp != 0 {
+		if numeric.Exp > 78 || numeric.Exp < -79 {
+			return nil, fmt.Errorf("%s: value out of range", name)
+		}
+		exponent := int64(numeric.Exp)
+		if exponent < 0 {
+			exponent = -exponent
+		}
+		power := new(big.Int).Exp(big.NewInt(10), big.NewInt(exponent), nil)
+		if numeric.Exp > 0 {
+			value.Mul(value, power)
+		} else {
+			remainder := new(big.Int)
+			value.QuoRem(value, power, remainder)
+			if remainder.Sign() != 0 {
+				return nil, fmt.Errorf("%s: value is fractional", name)
+			}
+		}
+	}
+	if new(big.Int).Abs(value).Cmp(maxSignedNumeric) >= 0 {
+		return nil, fmt.Errorf("%s: value exceeds 79 decimal digits", name)
+	}
+	return value, nil
+}

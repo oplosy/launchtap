@@ -121,7 +121,12 @@ func run() error {
 			}
 		}
 	}()
+	// One market_dirty NOTIFY must wake both aggregation workers, so the listener feeds a fan-out
+	// instead of a single receiver channel.
 	wake := make(chan struct{}, 1)
+	positionWake := make(chan struct{}, 1)
+	notified := make(chan struct{}, 1)
+	go fanOutWake(ctx, notified, wake, positionWake)
 	healthMux := http.NewServeMux()
 	healthMux.Handle("/healthz", indexer.HealthHandler(health))
 	healthMux.Handle("/metrics", metrics.Handler(metricsRegistry))
@@ -142,7 +147,7 @@ func run() error {
 		slog.Error("aggregation compute failed", "chain_id", claim.ChainID, "token", fmt.Sprintf("%x", claim.Token), "error", err)
 	}}
 	go func() {
-		if err := storepostgres.ListenMarketDirty(ctx, pool, wake); err != nil && !errors.Is(err, context.Canceled) {
+		if err := storepostgres.ListenMarketDirty(ctx, pool, notified); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Warn("market dirty listener stopped", "error", err)
 		}
 	}()
@@ -159,14 +164,20 @@ func run() error {
 			slog.Warn("volume window sweeper stopped", "error", err)
 		}
 	}()
-	aggregationErrors := make(chan error, 1)
-	go func() {
-		if err := aggregation.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			health.Failed(err)
-			aggregationErrors <- err
-			stop()
-		}
-	}()
+	positions := stats.Worker{Source: storepostgres.PositionSource{Adapter: storepostgres.NewAdapter(pool), ChainID: int64(c.ChainID)}, WorkerID: c.IndexerWorkerID + "-positions", PollInterval: stats.DefaultDirtyPollInterval, BatchSize: 64, Wake: positionWake, OnError: func(claim stats.Claim, err error) {
+		indexerMetrics.PositionFailed()
+		slog.Error("position compute failed", "chain_id", claim.ChainID, "error", err)
+	}}
+	aggregationErrors := make(chan error, 2)
+	for _, worker := range []stats.Worker{aggregation, positions} {
+		go func() {
+			if err := worker.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				health.Failed(err)
+				aggregationErrors <- err
+				stop()
+			}
+		}()
+	}
 	slog.Info("indexer started", "chain_id", c.ChainID, "deployment_id", c.DeploymentID, "start_block", deployment.StartBlock,
 		"reorg_search_depth", c.IndexerReorgSearchDepth, "reorg_recovery_mode", c.IndexerReorgRecoveryMode, "started_at", time.Now().UTC())
 	runErr := engine.Run(ctx)
@@ -204,4 +215,22 @@ func loadDeploymentRegistry() (*deployments.Registry, error) {
 		return deployments.LoadEmbeddedWithManifest(manifest)
 	}
 	return deployments.LoadEmbedded()
+}
+
+// fanOutWake forwards each wake signal from in to every out channel without blocking: a full
+// channel already holds a pending wake.
+func fanOutWake(ctx context.Context, in <-chan struct{}, outs ...chan<- struct{}) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-in:
+			for _, out := range outs {
+				select {
+				case out <- struct{}{}:
+				default:
+				}
+			}
+		}
+	}
 }

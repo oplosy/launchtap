@@ -13,6 +13,7 @@ type Indexer struct {
 	rpc          *prometheus.CounterVec
 	recomputed   prometheus.Counter
 	notification *prometheus.CounterVec
+	positionFail prometheus.Counter
 }
 
 var (
@@ -37,8 +38,16 @@ func NewIndexer(reg prometheus.Registerer, snapshot func() indexer.Health) *Inde
 			Name: "launchpad_indexer_notifications_total",
 			Help: "PostgreSQL NOTIFY calls by channel and outcome.",
 		}, []string{"channel", "outcome"}),
+		positionFail: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "launchpad_aggregation_position_failures_total",
+			Help: "Wallet position recomputations that failed and stay dirty for retry.",
+		}),
 	}
-	reg.MustRegister(m.rpc, m.recomputed, m.notification)
+	reg.MustRegister(m.rpc, m.recomputed, m.notification, m.positionFail)
+	reg.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "launchpad_aggregation_position_dirty_backlog",
+		Help: "Pending wallet position recomputations (position_dirty rows for the chain).",
+	}, func() float64 { return float64(snapshot().PositionDirtyWork) }))
 
 	gauge := func(name, help string, value func(indexer.Health) float64) {
 		reg.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: "launchpad_indexer_" + name, Help: help}, func() float64 { return value(snapshot()) }))
@@ -88,6 +97,11 @@ func (m *Indexer) Recomputed(count int) {
 	if count > 0 {
 		m.recomputed.Add(float64(count))
 	}
+}
+
+// PositionFailed counts one failed wallet position recomputation.
+func (m *Indexer) PositionFailed() {
+	m.positionFail.Inc()
 }
 
 // Notified counts one NOTIFY outcome. Unknown channels are ignored.

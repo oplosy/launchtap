@@ -9,7 +9,9 @@ import (
 const DefaultDirtyPollInterval = 5 * time.Second
 
 type Claim struct {
-	ChainID    int64
+	ChainID int64
+	// Wallet is set only for wallet position claims; token claims leave it zero.
+	Wallet     [20]byte
 	Token      [20]byte
 	Generation int64
 }

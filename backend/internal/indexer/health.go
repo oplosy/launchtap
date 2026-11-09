@@ -19,6 +19,7 @@ type Health struct {
 	ObservedLag, SafeLag, FinalizedLag time.Duration
 	OwnershipHeld, RPCHealthy          bool
 	DirtyWork                          int64
+	PositionDirtyWork                  int64
 	LastReorgID                        int64
 	LastReorgDepth                     int64
 	LastReorgAt                        time.Time
@@ -33,11 +34,12 @@ type Health struct {
 // It is deliberately neutral so a store adapter, not generated SQL types,
 // crosses the application boundary.
 type OperationalHealth struct {
-	DirtyWork      int64
-	LastReorgID    int64
-	LastReorgDepth int64
-	LastReorgAt    time.Time
-	PhaseCounts    map[string]int64
+	DirtyWork         int64
+	PositionDirtyWork int64
+	LastReorgID       int64
+	LastReorgDepth    int64
+	LastReorgAt       time.Time
+	PhaseCounts       map[string]int64
 }
 
 type HealthTracker struct {
@@ -129,6 +131,7 @@ func (h *HealthTracker) Snapshot() Health {
 func (h *HealthTracker) Operational(value OperationalHealth) {
 	h.Update(func(snapshot *Health) {
 		snapshot.DirtyWork = value.DirtyWork
+		snapshot.PositionDirtyWork = value.PositionDirtyWork
 		snapshot.LastReorgID = value.LastReorgID
 		snapshot.LastReorgDepth = value.LastReorgDepth
 		snapshot.LastReorgAt = value.LastReorgAt

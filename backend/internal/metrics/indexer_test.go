@@ -88,3 +88,21 @@ func TestIndexerMetricsMatchHealthSnapshot(t *testing.T) {
 		t.Fatalf("unsafe labels: %v", unsafe)
 	}
 }
+
+func TestPositionMetricsRegistered(t *testing.T) {
+	t.Parallel()
+
+	tracker := new(indexer.HealthTracker)
+	tracker.Operational(indexer.OperationalHealth{PositionDirtyWork: 7})
+	reg := NewRegistry(ComponentIndexer)
+	m := NewIndexer(reg, tracker.Snapshot)
+	m.PositionFailed()
+	m.PositionFailed()
+
+	if got := seriesValue(t, reg, "launchpad_aggregation_position_failures_total", map[string]string{}); got != 2 {
+		t.Errorf("launchpad_aggregation_position_failures_total = %v, want 2", got)
+	}
+	if got := seriesValue(t, reg, "launchpad_aggregation_position_dirty_backlog", map[string]string{}); got != 7 {
+		t.Errorf("launchpad_aggregation_position_dirty_backlog = %v, want 7", got)
+	}
+}
