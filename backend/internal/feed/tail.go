@@ -59,6 +59,7 @@ type Tail struct {
 
 	mu     sync.Mutex
 	rewind *int64 // lowest pending common ancestor
+	resync bool   // rewind to the safe watermark on the next drain
 
 	// worker-owned state
 	trade, grad, launch Cursor
@@ -93,6 +94,18 @@ func (t *Tail) Hint(event realtime.Event) {
 		}
 		t.mu.Unlock()
 	}
+	t.wake()
+}
+
+// Reconnected schedules a rewind of every cursor to the current safe block and wakes the worker. Call it
+// each time the hint connection is listening again after a disconnect: a reorg hint sent while it was
+// down is lost, and rows above the safe block may have been replaced. Rows above the safe block are
+// published again; clients dedupe them by transaction hash and log index.
+func (t *Tail) Reconnected() {
+	t.init()
+	t.mu.Lock()
+	t.resync = true
+	t.mu.Unlock()
 	t.wake()
 }
 
@@ -134,7 +147,7 @@ func (t *Tail) Start(ctx context.Context) error {
 		// below already reflect it. One recorded while the read runs is kept, so it is applied relative to
 		// those heads and replays at most the reorged range.
 		t.mu.Lock()
-		t.rewind = nil
+		t.rewind, t.resync = nil, false
 		t.mu.Unlock()
 		trade, grad, launch, err := t.Reader.Newest(ctx, t.ChainID)
 		if err == nil {
@@ -190,7 +203,7 @@ func minDuration(a, b time.Duration) time.Duration {
 }
 
 func (t *Tail) drain(ctx context.Context) {
-	t.applyRewind()
+	t.applyRewind(ctx)
 	t.closeWindowIfDue()
 	t.drainLaunches(ctx)
 	t.drainTrades(ctx)
@@ -198,11 +211,26 @@ func (t *Tail) drain(ctx context.Context) {
 	t.closeWindowIfDue()
 }
 
-func (t *Tail) applyRewind() {
+func (t *Tail) applyRewind(ctx context.Context) {
 	t.mu.Lock()
-	pending := t.rewind
-	t.rewind = nil
+	pending, resync := t.rewind, t.resync
+	t.rewind, t.resync = nil, false
 	t.mu.Unlock()
+	if resync {
+		marks, err := t.Reader.Watermarks(ctx, t.ChainID, t.DeploymentID)
+		switch {
+		case err != nil:
+			// Keep the resync pending; the next hint or tick retries it.
+			t.readFailed(ctx, "watermarks", err)
+			t.mu.Lock()
+			t.resync = true
+			t.mu.Unlock()
+		case marks.Safe > 0: // an unknown safe block (0) would replay all history
+			if pending == nil || marks.Safe < *pending {
+				pending = &marks.Safe
+			}
+		}
+	}
 	if pending == nil {
 		return
 	}

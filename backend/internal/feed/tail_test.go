@@ -570,3 +570,40 @@ func TestTailReorgHintBeforeStartDoesNotReplayHistory(t *testing.T) {
 		t.Fatalf("unexpected %v", rec.types())
 	}
 }
+
+func TestTailReconnectedRewindsToSafeBlock(t *testing.T) {
+	reader := &fakeReader{trades: []Trade{trade(8, 0, 0, 1)}, marks: Watermarks{Safe: 5, Finalized: 3}}
+	rec := newRecorder()
+	tail := newTail(reader, rec, &clock{t: time.Unix(100, 0)})
+	stop := startTail(t, tail)
+	defer stop()
+	tail.Hint(tokenHint)
+	rec.waitCount(t, 1) // finality
+	// Blocks above 5 were reorged while the hint connection was down; the reorg hint was lost.
+	reader.update(func(f *fakeReader) { f.trades = []Trade{trade(4, 0, 0, 1), trade(6, 0, 0, 2)} })
+	tail.Hint(tokenHint)
+	quiet()
+	if len(rec.snapshot()) != 1 {
+		t.Fatalf("published without a rewind: %v", rec.types())
+	}
+	tail.Reconnected()
+	rec.waitCount(t, 2)
+	quiet()
+	got := rec.snapshot()
+	if len(got) != 2 || got[1].Type != "trade" || got[1].Trade.Block != 6 {
+		t.Fatalf("unexpected %v", rec.types())
+	}
+}
+
+func TestTailReconnectedWithoutSafeBlockKeepsCursor(t *testing.T) {
+	reader := &fakeReader{trades: []Trade{trade(8, 0, 0, 1)}}
+	rec := newRecorder()
+	tail := newTail(reader, rec, &clock{t: time.Unix(100, 0)})
+	stop := startTail(t, tail)
+	defer stop()
+	tail.Reconnected()
+	quiet()
+	if len(rec.snapshot()) != 0 {
+		t.Fatalf("unknown safe block rewound to genesis: %v", rec.types())
+	}
+}

@@ -152,16 +152,44 @@ func loadDeploymentRegistry() (*deployments.Registry, error) {
 }
 
 func listenRefreshHints(ctx context.Context, pool *pgxpool.Pool, hub *realtime.Hub, tail *feed.Tail, chainID int64, deploymentID string) {
-	for ctx.Err() == nil {
-		err := storepostgres.ListenAPIRefresh(ctx, pool, func(payload []byte) {
-			event, err := realtime.Decode(payload)
-			if err != nil || event.ChainID != chainID || (event.DeploymentID != "" && event.DeploymentID != deploymentID) {
-				return
+	receive := func(payload []byte) {
+		event, err := realtime.Decode(payload)
+		if err != nil || event.ChainID != chainID || (event.DeploymentID != "" && event.DeploymentID != deploymentID) {
+			return
+		}
+		hub.Publish(event)
+		// Tail.Hint does no scope check, so it is called only after the filter above.
+		tail.Hint(event)
+	}
+	listen := func(ctx context.Context, ready chan<- struct{}) error {
+		return storepostgres.ListenAPIRefreshReady(ctx, pool, ready, receive)
+	}
+	// Hints sent while the listener was down are lost, a reorg hint among them; the tail rewinds to the
+	// safe block once LISTEN is active again.
+	listenLoop(ctx, listen, tail.Reconnected, time.Second)
+}
+
+// listenLoop runs listen until ctx ends, restarting it backoff after each failure. listen closes ready
+// once it is listening. onReconnect runs each time a restarted listener becomes ready, never for the
+// first attempt.
+func listenLoop(ctx context.Context, listen func(context.Context, chan<- struct{}) error, onReconnect func(), backoff time.Duration) {
+	for attempt := 0; ctx.Err() == nil; attempt++ {
+		ready := make(chan struct{})
+		attemptCtx, cancel := context.WithCancel(ctx)
+		watched := make(chan struct{})
+		go func(restart bool) {
+			defer close(watched)
+			select {
+			case <-ready:
+				if restart {
+					onReconnect()
+				}
+			case <-attemptCtx.Done():
 			}
-			hub.Publish(event)
-			// Tail.Hint does no scope check, so it is called only after the filter above.
-			tail.Hint(event)
-		})
+		}(attempt > 0)
+		err := listen(attemptCtx, ready)
+		cancel()
+		<-watched
 		if err == nil || errors.Is(err, context.Canceled) || ctx.Err() != nil {
 			return
 		}
@@ -169,7 +197,7 @@ func listenRefreshHints(ctx context.Context, pool *pgxpool.Pool, hub *realtime.H
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(time.Second):
+		case <-time.After(backoff):
 		}
 	}
 }
