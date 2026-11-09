@@ -7,7 +7,7 @@ import {
   loadHoldingsResult,
   mergeWatched,
 } from "./holdings";
-import { createRuleState, evaluate } from "./notification-rules";
+import { createRuleState, evaluate, OWN_BURST_REPLAY_MS } from "./notification-rules";
 
 const TOKEN = "0x00000000000000000000000000000000000000Aa";
 const WALLET = "0x1111111111111111111111111111111111111111";
@@ -167,6 +167,64 @@ describe("holdingsRefreshReason", () => {
         createRuleState(),
       ),
     ).toBeNull();
+  });
+
+  it("a burst sighting counts as seen: its individual replay does not load again", () => {
+    const state = createRuleState();
+    const ctx = { watched: new Set<string>(), wallet: WALLET };
+    const reasons: Array<string | null> = [];
+    const feed = (event: LiveEvent) => {
+      reasons.push(holdingsRefreshReason(event, WALLET, state, 1_000));
+      if (event.event !== "reconnected") evaluate(event, ctx, state, 1_000);
+    };
+    feed({
+      event: "trade_burst",
+      data: {
+        ...base,
+        window_start: "a",
+        window_end: "b",
+        items: [
+          { token: TOKEN, count: 2, max_eth_wei: "0", traders: [WALLET], traders_truncated: false },
+        ],
+      },
+    });
+    feed(trade({ trader: WALLET, block_number: 10 })); // replayed row of the folded trade
+    feed(finality(10));
+    expect(reasons.filter((reason) => reason !== null)).toEqual([
+      "own_trade_seen",
+      "own_trade_safe",
+    ]);
+  });
+
+  it("a burst sighting expires, so a much later own trade loads when seen", () => {
+    const state = createRuleState();
+    const ctx = { watched: new Set<string>(), wallet: WALLET };
+    evaluate(
+      {
+        event: "trade_burst",
+        data: {
+          ...base,
+          window_start: "a",
+          window_end: "b",
+          items: [
+            {
+              token: TOKEN,
+              count: 2,
+              max_eth_wei: "0",
+              traders: [WALLET],
+              traders_truncated: false,
+            },
+          ],
+        },
+      },
+      ctx,
+      state,
+      0,
+    );
+    const later = trade({ trader: WALLET, tx_hash: "0xlater" });
+    expect(holdingsRefreshReason(later, WALLET, state, OWN_BURST_REPLAY_MS + 1)).toBe(
+      "own_trade_seen",
+    );
   });
 
   it("returns reconnected for a reconnect and null for unrelated events", () => {

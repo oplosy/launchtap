@@ -1,7 +1,7 @@
 import { ApiClient } from "@/api/client";
 import type { LiveEvent } from "@/api/types";
 import { publicConfiguration } from "@/config/public";
-import { tradeKey, type RuleState } from "./notification-rules";
+import { OWN_BURST_REPLAY_MS, tradeKey, type RuleState } from "./notification-rules";
 
 /** Same 3 s bound as the share-card fetches; those live in a server-only module, so it is repeated. */
 export const HOLDINGS_FETCH_TIMEOUT_MS = 3000;
@@ -17,7 +17,9 @@ export function mergeWatched(watchlist: readonly string[], holdings: readonly st
  * causes at most two loads (seen, then safe); an already-safe trade causes one, and a replayed
  * row that is still pending (republished after a server reconnect) causes none. A `trade_burst`
  * entry listing the wallet counts as seen (it has no tx hash, so it never becomes "safe" here);
- * a truncated trader list is unknown and does not. Call before `evaluate` so a `finality` event
+ * a truncated trader list is unknown and does not. The first non-pending own row on a token within
+ * OWN_BURST_REPLAY_MS of such a burst is taken as that burst's replay and does not load again (a
+ * genuinely new trade then still gets its "safe" load). Call before `evaluate` so a `finality` event
  * still sees the pending own trades it is about to release, and a first sighting is not yet
  * pending.
  */
@@ -25,6 +27,7 @@ export function holdingsRefreshReason(
   event: LiveEvent,
   wallet: string | null,
   rules: RuleState,
+  now: number = Date.now(),
 ): "reconnected" | "own_trade_seen" | "own_trade_safe" | null {
   if (!wallet) return null;
   if (event.event === "reconnected") return "reconnected";
@@ -33,7 +36,16 @@ export function holdingsRefreshReason(
     const trade = event.data;
     if (trade.trader?.toLowerCase() !== lower) return null;
     if (trade.finality === "safe" || trade.finality === "finalized") return "own_trade_safe";
-    return rules.pendingOwn.has(tradeKey(trade)) ? null : "own_trade_seen";
+    if (rules.pendingOwn.has(tradeKey(trade))) return null;
+    // A recent burst that listed the wallet on this token already caused the "seen" load; its
+    // individual row (republished after a server reconnect) consumes that sighting instead.
+    const token = trade.token.toLowerCase();
+    const sighted = rules.ownBurstSeen.get(token);
+    if (sighted !== undefined) {
+      rules.ownBurstSeen.delete(token);
+      if (now - sighted <= OWN_BURST_REPLAY_MS) return null;
+    }
+    return "own_trade_seen";
   }
   if (event.event === "trade_burst") {
     for (const item of event.data.items ?? []) {

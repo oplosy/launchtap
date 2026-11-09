@@ -28,7 +28,29 @@ export type Notification = {
   unconfirmed?: true;
 };
 
-export type RuleState = { pendingOwn: Map<string, TradeFeedItem> };
+/** Tokens with recorded burst windows; the oldest token is evicted beyond this. */
+export const BURST_TOKENS_MAX = 200;
+/** Windows kept per token (newest last). */
+export const BURST_WINDOWS_PER_TOKEN = 8;
+/**
+ * How long a burst sighting of the wallet's own trade stands in for its individual row: a row the
+ * server republishes after a reconnect arrives within seconds, so two minutes is generous.
+ */
+export const OWN_BURST_REPLAY_MS = 120_000;
+
+export type BurstWindow = { start: number; end: number; maxEthWei: string };
+
+export type RuleState = {
+  pendingOwn: Map<string, TradeFeedItem>;
+  /**
+   * Burst windows already reported per lowercase token, so the same folded trades replayed later
+   * (individually, or re-folded into another window) do not raise a second large-trade
+   * notification. Bounded by BURST_TOKENS_MAX and BURST_WINDOWS_PER_TOKEN.
+   */
+  burstWindows: Map<string, BurstWindow[]>;
+  /** Lowercase token -> when a burst listed the wallet as a trader (read by holdings refresh). */
+  ownBurstSeen: Map<string, number>;
+};
 
 export type RuleContext = {
   /** Lowercase watched token addresses. */
@@ -37,7 +59,7 @@ export type RuleContext = {
 };
 
 export function createRuleState(): RuleState {
-  return { pendingOwn: new Map() };
+  return { pendingOwn: new Map(), burstWindows: new Map(), ownBurstSeen: new Map() };
 }
 
 /** Key of a trade in `RuleState.pendingOwn`. */
@@ -64,6 +86,46 @@ function ownTradeNotification(trade: TradeFeedItem, at: number): Notification {
     txHash: trade.tx_hash,
     at,
   };
+}
+
+/**
+ * True when a single trade is most likely one already reported inside a burst for its token:
+ * its time falls inside a recorded window, or its amount is a recorded window's largest. Burst
+ * windows are server publish (wall-clock) times while a trade carries its block time, so the
+ * amount check catches the replay whose block time precedes the window.
+ */
+function coveredByBurst(state: RuleState, trade: TradeFeedItem): boolean {
+  const windows = state.burstWindows.get(trade.token.toLowerCase());
+  if (!windows) return false;
+  const at = Date.parse(trade.time);
+  return windows.some(
+    (window) =>
+      (!Number.isNaN(at) && at >= window.start && at <= window.end) ||
+      (window.maxEthWei !== "0" && window.maxEthWei === trade.eth_volume),
+  );
+}
+
+function recordBurstWindow(state: RuleState, token: string, window: BurstWindow) {
+  const windows = state.burstWindows.get(token) ?? [];
+  state.burstWindows.delete(token);
+  windows.push(window);
+  while (windows.length > BURST_WINDOWS_PER_TOKEN) windows.shift();
+  state.burstWindows.set(token, windows);
+  while (state.burstWindows.size > BURST_TOKENS_MAX) {
+    const oldest = state.burstWindows.keys().next().value;
+    if (oldest === undefined) break;
+    state.burstWindows.delete(oldest);
+  }
+}
+
+function recordOwnBurst(state: RuleState, token: string, at: number) {
+  state.ownBurstSeen.delete(token);
+  state.ownBurstSeen.set(token, at);
+  while (state.ownBurstSeen.size > BURST_TOKENS_MAX) {
+    const oldest = state.ownBurstSeen.keys().next().value;
+    if (oldest === undefined) break;
+    state.ownBurstSeen.delete(oldest);
+  }
 }
 
 /**
@@ -94,7 +156,12 @@ export function evaluate(
     case "trade": {
       const trade = event.data;
       const out: Notification[] = [];
-      if (ctx.watched.has(trade.token.toLowerCase()) && isLargeTrade(trade.eth_volume)) {
+      // Own-trade handling below is unaffected: only the large-trade alert can be a duplicate.
+      if (
+        ctx.watched.has(trade.token.toLowerCase()) &&
+        isLargeTrade(trade.eth_volume) &&
+        !coveredByBurst(state, trade)
+      ) {
         out.push({
           id: `large:${tradeKey(trade)}`,
           kind: "large_trade",
@@ -125,10 +192,20 @@ export function evaluate(
       const window = `${data.window_start}:${data.window_end}`;
       const wallet = ctx.wallet?.toLowerCase();
       const out: Notification[] = [];
+      const start = Date.parse(data.window_start);
+      const end = Date.parse(data.window_end);
       for (const item of data.items ?? []) {
         const token = item.token.toLowerCase();
         const burst = { count: item.count, maxEthWei: item.max_eth_wei };
-        if (ctx.watched.has(token) && isLargeTrade(item.max_eth_wei)) {
+        // A replay re-folded into another window repeats the same largest amount.
+        const repeated =
+          state.burstWindows.get(token)?.some((w) => w.maxEthWei === item.max_eth_wei) ?? false;
+        recordBurstWindow(state, token, {
+          start, // NaN for an unparsable time: then only the amount check can match
+          end,
+          maxEthWei: /^\d+$/.test(item.max_eth_wei) ? item.max_eth_wei : "0",
+        });
+        if (ctx.watched.has(token) && isLargeTrade(item.max_eth_wei) && !repeated) {
           out.push({
             id: `large-burst:${window}:${token}`.toLowerCase(),
             kind: "large_trade",
@@ -145,6 +222,7 @@ export function evaluate(
           !item.traders_truncated &&
           item.traders.some((trader) => trader.toLowerCase() === wallet)
         ) {
+          recordOwnBurst(state, token, now);
           out.push({
             id: `own-burst:${window}:${token}`.toLowerCase(),
             kind: "own_trade_safe",

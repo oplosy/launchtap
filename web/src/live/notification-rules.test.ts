@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ApiEvent, TradeFeedItem } from "@/api/types";
 import {
+  BURST_TOKENS_MAX,
   LARGE_TRADE_WEI,
   PENDING_OWN_MAX,
   bellVisible,
@@ -304,6 +305,110 @@ describe("trade_burst", () => {
       data: { ...base, window_start: "a", window_end: "b", items: null },
     };
     expect(evaluate(event, { watched, wallet: WALLET }, createRuleState())).toEqual([]);
+  });
+});
+
+describe("burst then replayed rows", () => {
+  const LARGE = LARGE_TRADE_WEI.toString();
+  function burstAt(start: string, end: string, item: Record<string, unknown>): ApiEvent {
+    return {
+      event: "trade_burst",
+      data: {
+        ...base,
+        window_start: start,
+        window_end: end,
+        items: [
+          {
+            token: TOKEN,
+            count: 3,
+            max_eth_wei: "0",
+            traders: [],
+            traders_truncated: false,
+            ...item,
+          },
+        ],
+      },
+    } as ApiEvent;
+  }
+
+  it("does not re-notify a large trade replayed individually inside the burst window", () => {
+    const state = createRuleState();
+    const ctx = { watched, wallet: WALLET };
+    const burst = burstAt("2026-01-01T00:00:00Z", "2026-01-01T00:00:01Z", { max_eth_wei: LARGE });
+    expect(evaluate(burst, ctx, state).map((n) => n.kind)).toEqual(["large_trade"]);
+    const replay = trade({
+      eth_volume: (LARGE_TRADE_WEI + 1n).toString(),
+      time: "2026-01-01T00:00:00.500Z",
+    });
+    expect(evaluate(replay, ctx, state)).toEqual([]);
+  });
+
+  it("does not re-notify a replayed trade whose amount is the burst's largest", () => {
+    const state = createRuleState();
+    evaluate(
+      burstAt("2026-01-01T00:00:10Z", "2026-01-01T00:00:11Z", { max_eth_wei: LARGE }),
+      { watched },
+      state,
+    );
+    // Block time precedes the (wall-clock) publish window, but the amount identifies it.
+    const replay = trade({ eth_volume: LARGE, time: "2026-01-01T00:00:05Z" });
+    expect(evaluate(replay, { watched }, state)).toEqual([]);
+  });
+
+  it("still notifies a different large trade outside the window, and keeps own-trade safe", () => {
+    const state = createRuleState();
+    const ctx = { watched, wallet: WALLET };
+    evaluate(
+      burstAt("2026-01-01T00:00:00Z", "2026-01-01T00:00:01Z", { max_eth_wei: LARGE }),
+      ctx,
+      state,
+    );
+    const later = trade({
+      eth_volume: (LARGE_TRADE_WEI * 3n).toString(),
+      time: "2026-01-01T00:05:00Z",
+      tx_hash: "0xnew",
+    });
+    expect(evaluate(later, ctx, state).map((n) => n.kind)).toEqual(["large_trade"]);
+    const ownInside = trade({
+      trader: WALLET,
+      finality: "safe",
+      eth_volume: LARGE,
+      time: "2026-01-01T00:00:00.500Z",
+      tx_hash: "0xown",
+    });
+    expect(evaluate(ownInside, ctx, state).map((n) => n.kind)).toEqual(["own_trade_safe"]);
+  });
+
+  it("does not re-notify a replay re-folded into a different burst window", () => {
+    const state = createRuleState();
+    const ctx = { watched };
+    const first = burstAt("2026-01-01T00:00:00Z", "2026-01-01T00:00:01Z", {
+      max_eth_wei: LARGE,
+    });
+    const refolded = burstAt("2026-01-01T00:00:30Z", "2026-01-01T00:00:31Z", {
+      max_eth_wei: LARGE,
+    });
+    expect(evaluate(first, ctx, state)).toHaveLength(1);
+    expect(evaluate(refolded, ctx, state)).toEqual([]);
+    const bigger = burstAt("2026-01-01T00:01:00Z", "2026-01-01T00:01:01Z", {
+      max_eth_wei: (LARGE_TRADE_WEI * 2n).toString(),
+    });
+    expect(evaluate(bigger, ctx, state)).toHaveLength(1);
+  });
+
+  it("bounds the recorded burst windows", () => {
+    const state = createRuleState();
+    for (let i = 0; i < BURST_TOKENS_MAX + 10; i++) {
+      evaluate(
+        burstAt("2026-01-01T00:00:00Z", "2026-01-01T00:00:01Z", {
+          token: `0x${i.toString(16).padStart(40, "0")}`,
+          max_eth_wei: LARGE,
+        }),
+        { watched },
+        state,
+      );
+    }
+    expect(state.burstWindows.size).toBe(BURST_TOKENS_MAX);
   });
 });
 
