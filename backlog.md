@@ -103,7 +103,8 @@
      launches/trades/graduations in global chain order; guard `Tail.Start` against a second
      call; a reorg hint before `Newest` succeeds replays history.
   2. Notifications: large-trade and own-trade notifications are lost when trades fold into
-     `trade_burst`; own pool (dex) trades never notify because the trader is null.
+     `trade_burst`. (Own pool trades now notify: P0-C1 attributes the pool trader from
+     `tx_from`; a swap whose sender lookup missed still has a null trader until backfilled.)
   3. Web: emit the `reconnected` signal on the EventSource `open` event, not right after
      `connect()`, to close the last small recovery gap (`web/src/api/sse.ts` ~131); catch the
      harmless abort rejection when a reconnect reload cancels a reorg refresh on the token page;
@@ -119,6 +120,40 @@
      is app-wide; document share-card render cost per distinct address in the runbook.
 - **Pitfalls / notes:** keep amounts as decimal strings / `*big.Int`; the web unit tests run in
   node only (no DOM), so put logic in pure `.ts` modules.
+
+### P0-C1 follow-ups: wallet/PnL minors deferred in review
+
+- **Date:** 2026-11-09
+- **Reason:** scope decision (minor findings from the P0-C1 task and final reviews)
+- **Where it stopped:** P0-C1 is done (see Done). These were judged minor or architectural and
+  deferred.
+- **Related files:** `backend/internal/indexer/engine.go`, `backend/cmd/indexer/main.go`,
+  `backend/internal/store/postgres/position_source.go`, `backend/queries/`,
+  `web/app/leaderboard/page.tsx`, `web/src/portfolio/`, `web/app/wallet/[address]/`,
+  `web/src/live/holdings.ts`, `web/scripts/anvil-task6-gate.ps1`
+- **Resume (next step):** pick from this list, highest first:
+  1. Sender attribution: misses are counted (`launchpad_indexer_sender_lookup_misses_total`)
+     but not retried. Run `swapbackfill.Run` periodically inside the indexer for blocks below
+     the safe head (architectural: record it in the system-design canvas). The miss counter is
+     incremented before the step commits, so a retried step double-counts.
+  2. Position worker throughput: one batch of 64 every 5 s drains a large backlog slowly (the
+     `-seed-positions` upgrade step creates one); each claim sorts the whole `position_dirty`
+     queue by generation with no index; `-seed-positions` is a single statement over the whole
+     ledger.
+  3. Leaderboard: fills with zero-PnL transfer-only wallets when fewer than 100 have positive
+     PnL; `loadLeaderboard` swallows errors so ISR caches "unavailable" for 60 s.
+  4. Wallet page: a live refetch can run before the position worker recomputes (new trade shown
+     with old PnL); a live refetch resets paged lists to page 1 and does not cancel an in-flight
+     "load more"; add `key={parsed}` on `<WalletView>`; direct phosphor imports vs the
+     `./icons` barrel.
+  5. Holdings: new buys between refresh triggers are not watched until the next trigger; the
+     provider's refresh wiring has no test beyond `holdingsRefreshReason` (no DOM test library).
+  6. Share card: a positions failure degrades the whole wallet card to generic; the generic card
+     is cached 300 s on an API blip; the wallet-kind card render is not exercised by a test.
+  7. Tests/tooling: stale "14 checks" comment in `web/scripts/anvil-task6-gate.ps1` (now 22);
+     loose `toContainText("0 ETH")` and end-unanchored PnL regex in `task6-anvil.spec.ts`.
+- **Pitfalls / notes:** amounts stay decimal strings / `*big.Int`; `internal/position` and
+  `internal/redact` are stdlib-only.
 
 ### Production release, governance, and audit inputs
 
@@ -163,6 +198,22 @@
 ---
 
 ## Done
+
+### P0-C1: public wallet page, PnL and leaderboard
+
+- **Date:** 2026-11-09
+- **Commits:** `927ee70..e63c0a9` on `dev` (plan `docs/plans/2026-11-06-p0c1-wallet-page-pnl.md`,
+  spec `docs/specs/2026-11-06-p0c1-wallet-page-pnl-design.md`), plus this backlog update.
+- **Gate evidence:** the Anvil gate (`cd web && npm run test:anvil`, 22 passed) asserts the
+  wallet page's realized PnL after curve buy, curve sell and pool sell without reload, exactly
+  in wei through the API and at display precision on the page, against a value derived from
+  the receipts (AC4). Backend build, unit/race, integration, sqlc and openapi checks, web
+  lint/typecheck/test (301) and the live e2e suites (37 passed, 3 skipped) passed locally;
+  failures were only the known Windows CRLF false positives on untouched files.
+- **Upgrade step:** on a database with history, run the sender backfill and then
+  `backfill-swap-sender -seed-positions` (runbook "Backfill pool swap senders (P0-C1)").
+- **Next sub-project:** P0-C2 (comments).
+- **Open follow-ups:** see the Active item "P0-C1 follow-ups".
 
 ### P0-B: live trade feed, in-app notifications and share cards
 
