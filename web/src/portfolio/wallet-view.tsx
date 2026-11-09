@@ -67,7 +67,7 @@ function Pnl({ wei }: { wei: string }) {
   const usd = pnlUsd(wei);
   return (
     <span className={`pnl pnl-${pnlTone(wei)}`}>
-      {formatSignedEth(wei)}
+      <span className="pnl-value">{formatSignedEth(wei)}</span>
       <UsdLine wei={usd.wei} negative={usd.negative} />
     </span>
   );

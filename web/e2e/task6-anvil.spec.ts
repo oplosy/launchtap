@@ -717,10 +717,12 @@ test.describe("Task 6 Anvil transaction gate", () => {
     const walletPage = await context.newPage();
     await walletPage.goto(`/wallet/${trader.toLowerCase()}`);
     const totals = walletPage.getByRole("region", { name: "Wallet totals" });
+    // The signed ETH figure only: the USD line is a separate element inside the same cell.
     const realizedText = totals
       .getByText("Realized PnL", { exact: true })
-      .locator("xpath=following-sibling::dd[1]");
-    await expect(realizedText).toContainText("0 ETH", { timeout: 30_000 });
+      .locator("xpath=following-sibling::dd[1]")
+      .locator(".pnl-value");
+    await expect(realizedText).toHaveText("0 ETH", { timeout: 30_000 });
 
     const publicClient = createPublicClient({ transport: http(rpcUrl) });
     const walletClient = createWalletClient({ transport: http(rpcUrl) });
@@ -900,7 +902,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     // The same helper the page renders with; there is no page.reload() after the page opened.
     const expectedText = formatSignedEth(realized.toString());
     await expect(realizedText).toHaveText(
-      new RegExp(`^${expectedText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+      new RegExp(`^${expectedText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`),
       { timeout: 10_000 },
     );
   });
