@@ -717,9 +717,78 @@ func TestTailBurstWithOnlyLaunchesHasNoTradeItems(t *testing.T) {
 	})
 	tail.Hint(realtime.Event{Type: "launch"})
 	rec.waitCount(t, 1)
+	quiet() // let the drain finish folding before the window closes
 	clk.advance(1100 * time.Millisecond)
 	rec.waitCount(t, 2)
 	if b := rec.snapshot()[1]; b.Type != "trade_burst" || b.BurstLaunches != 1 || b.BurstGraduations != 0 || len(b.Burst) != 0 {
 		t.Fatalf("unexpected %+v", b)
+	}
+}
+
+func TestTailBurstCarriesLargestTradeAndTraders(t *testing.T) {
+	reader := &fakeReader{}
+	rec := newRecorder()
+	clk := &clock{t: time.Unix(100, 0)}
+	tail := newTail(reader, rec, clk)
+	tail.PerSecond = 1
+	stop := startTail(t, tail)
+	defer stop()
+	alice, bob := common.HexToAddress("0x00000000000000000000000000000000000000AA"), common.HexToAddress("0x00000000000000000000000000000000000000Bb")
+	withTrader := func(tr Trade, eth int64, trader *common.Address) Trade {
+		tr.ETHVolume, tr.Trader = big.NewInt(eth), trader
+		return tr
+	}
+	reader.update(func(f *fakeReader) {
+		f.trades = []Trade{
+			withTrader(trade(1, 0, 0, 1), 100, &alice), // published individually
+			withTrader(trade(1, 1, 0, 1), 5, &alice),
+			withTrader(trade(1, 2, 0, 1), 9, nil),
+			withTrader(trade(1, 3, 0, 1), 3, &alice),
+			withTrader(trade(1, 4, 0, 1), 7, &bob),
+		}
+		for i := 0; i < maxBurstTraders+2; i++ {
+			trader := common.BigToAddress(big.NewInt(int64(1000 + i)))
+			f.trades = append(f.trades, withTrader(trade(2, int32(i), 0, 2), 1, &trader))
+		}
+	})
+	tail.Hint(tokenHint)
+	rec.waitCount(t, 1)
+	quiet() // let the drain finish folding before the window closes
+	clk.advance(1100 * time.Millisecond)
+	rec.waitCount(t, 2)
+	burst := rec.snapshot()[1]
+	if burst.Type != "trade_burst" || len(burst.Burst) != 2 {
+		t.Fatalf("unexpected %+v", burst)
+	}
+	first, second := burst.Burst[0], burst.Burst[1]
+	if first.Count != 4 || first.MaxETH == nil || first.MaxETH.String() != "9" {
+		t.Fatalf("first entry %+v", first)
+	}
+	wantTraders := []string{"0x00000000000000000000000000000000000000aa", "0x00000000000000000000000000000000000000bb"}
+	if len(first.Traders) != 2 || first.Traders[0] != wantTraders[0] || first.Traders[1] != wantTraders[1] || first.TradersTruncated {
+		t.Fatalf("first traders %v truncated=%v", first.Traders, first.TradersTruncated)
+	}
+	if second.Count != maxBurstTraders+2 || len(second.Traders) != maxBurstTraders || !second.TradersTruncated || second.MaxETH.String() != "1" {
+		t.Fatalf("second entry count=%d traders=%d truncated=%v", second.Count, len(second.Traders), second.TradersTruncated)
+	}
+}
+
+func TestTailBurstWithoutTradersHasEmptyList(t *testing.T) {
+	reader := &fakeReader{}
+	rec := newRecorder()
+	clk := &clock{t: time.Unix(100, 0)}
+	tail := newTail(reader, rec, clk)
+	tail.PerSecond = 1
+	stop := startTail(t, tail)
+	defer stop()
+	reader.update(func(f *fakeReader) { f.trades = []Trade{trade(1, 0, 0, 1), trade(1, 1, 0, 1)} })
+	tail.Hint(tokenHint)
+	rec.waitCount(t, 1)
+	quiet() // let the drain finish folding before the window closes
+	clk.advance(1100 * time.Millisecond)
+	rec.waitCount(t, 2)
+	entry := rec.snapshot()[1].Burst[0]
+	if entry.Traders == nil || len(entry.Traders) != 0 || entry.TradersTruncated || entry.MaxETH.String() != "1" {
+		t.Fatalf("unexpected %+v", entry)
 	}
 }

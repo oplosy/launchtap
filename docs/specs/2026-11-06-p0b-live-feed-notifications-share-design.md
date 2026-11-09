@@ -73,8 +73,11 @@ New SSE event types beside `launch`, `token`, `reorg`:
 - `new_token`: chain, deployment, token, creator, name, symbol, tx hash, block number, read from
   `token_launches` by the same tail. (The existing `launch` event stays a refresh hint without a
   name.)
-- `trade_burst`: chain, deployment, window start and end, `items: [{token, count}]` (folded
-  trades per token), and `launches` / `graduations`: the number of folded `new_token` and
+- `trade_burst`: chain, deployment, window start and end, `items: [{token, count, max_eth_wei,
+  traders, traders_truncated}]` (folded trades per token: the largest gross ETH amount as a wei
+  string, and the distinct non-null traders as lowercase hex in first-seen order, at most 32 with
+  `traders_truncated` set beyond that, so large-trade and own-trade notifications survive the
+  fold), and `launches` / `graduations`: the number of folded `new_token` and
   `graduation` events in the window, omitted when zero. Additive totals, not per token: a client
   refetches the token lists instead.
 - `finality`: chain, deployment, `safe_block`, `finalized_block`. Sent to every stream, including

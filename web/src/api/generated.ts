@@ -404,9 +404,18 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         BurstItem: {
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Trades of this token folded into the window.
+             */
             count: number;
+            /** @description Largest gross ETH amount among the folded trades, decimal wei string (same as a trade's eth_volume); "0" when unknown. */
+            max_eth_wei: string;
             token: string;
+            /** @description Distinct non-null traders of the folded trades, lowercase hex, first-seen order, at most 32. */
+            traders: string[] | null;
+            /** @description True when more distinct traders were folded than traders lists. */
+            traders_truncated: boolean;
         };
         CandleBody: {
             /**

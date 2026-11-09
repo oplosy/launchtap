@@ -295,6 +295,26 @@ func TestEventStreamTradeBurstFoldedLaunchesAndGraduations(t *testing.T) {
 	}
 }
 
+func TestEventStreamTradeBurstNotificationInputs(t *testing.T) {
+	hub := realtime.NewHub(4, 64)
+	reader := openFeedStream(t, hub, "")
+	a, b := "0x00000000000000000000000000000000000000aa", "0x00000000000000000000000000000000000000bb"
+	largest, _ := new(big.Int).SetString("123456789012345678901234567890", 10)
+	hub.Publish(realtime.Event{Type: "trade_burst", ChainID: 46630, DeploymentID: "testnet", Burst: []realtime.BurstCount{
+		{Token: a, Count: 3, MaxETH: largest, Traders: []string{"0x00000000000000000000000000000000000000cc"}, TradersTruncated: true},
+		{Token: b, Count: 1},
+	}})
+	got := readUntil(t, reader, `"token":"`+b+`"`, time.Second)
+	for _, want := range []string{
+		`{"token":"` + a + `","count":3,"max_eth_wei":"123456789012345678901234567890","traders":["0x00000000000000000000000000000000000000cc"],"traders_truncated":true}`,
+		`{"token":"` + b + `","count":1,"max_eth_wei":"0","traders":[],"traders_truncated":false}`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %s in %q", want, got)
+		}
+	}
+}
+
 func TestEventStreamTokenFilterAppliesToFeed(t *testing.T) {
 	hub := realtime.NewHub(4, 64)
 	a, b := "0x00000000000000000000000000000000000000aa", "0x00000000000000000000000000000000000000bb"

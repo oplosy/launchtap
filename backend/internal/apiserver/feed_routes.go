@@ -59,9 +59,14 @@ type newTokenFeedEvent struct {
 	BlockNumber  int64  `json:"block_number"`
 }
 
+// burstItem is the folded trades of one token in a trade_burst. max_eth_wei and traders let a client
+// still raise large-trade and own-trade notifications for trades it did not receive one by one.
 type burstItem struct {
-	Token string `json:"token"`
-	Count int    `json:"count"`
+	Token            string   `json:"token"`
+	Count            int      `json:"count" doc:"Trades of this token folded into the window."`
+	MaxETHWei        string   `json:"max_eth_wei" doc:"Largest gross ETH amount among the folded trades, decimal wei string (same as a trade's eth_volume); \"0\" when unknown."`
+	Traders          []string `json:"traders" doc:"Distinct non-null traders of the folded trades, lowercase hex, first-seen order, at most 32."`
+	TradersTruncated bool     `json:"traders_truncated" doc:"True when more distinct traders were folded than traders lists."`
 }
 
 // tradeBurstFeedEvent summarizes the feed events of one 1-second window beyond the per-process budget
@@ -119,7 +124,11 @@ func (r EventRoutes) feedPayload(event realtime.Event) (payload any, ok bool) {
 	case "trade_burst":
 		items := make([]burstItem, 0, len(event.Burst))
 		for _, b := range event.Burst {
-			items = append(items, burstItem{Token: b.Token, Count: b.Count})
+			traders := b.Traders
+			if traders == nil {
+				traders = []string{}
+			}
+			items = append(items, burstItem{Token: b.Token, Count: b.Count, MaxETHWei: decimal(b.MaxETH), Traders: traders, TradersTruncated: b.TradersTruncated})
 		}
 		return tradeBurstFeedEvent{
 			ChainID: event.ChainID, DeploymentID: scope, WindowStart: event.BurstStart.UTC().Format(time.RFC3339Nano),

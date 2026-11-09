@@ -5,7 +5,10 @@ import (
 	"errors"
 	"log/slog"
 	"math"
+	"math/big"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -34,6 +37,9 @@ func (noopObserver) Burst()            {}
 func (noopObserver) Lag(time.Duration) {}
 
 const burstWindow = time.Second
+
+// maxBurstTraders caps the distinct traders listed per trade_burst entry.
+const maxBurstTraders = 32
 
 // ErrStarted is returned by a second Start call: one Tail runs one worker.
 var ErrStarted = errors.New("feed tail already started")
@@ -66,7 +72,7 @@ type Tail struct {
 	lastSafe, lastFinal int64
 	windowStart         time.Time
 	windowCount         int
-	overflow            map[string]int // folded trades per token
+	overflow            map[string]*realtime.BurstCount // folded trades per token
 	overflowLaunches    int
 	overflowGraduations int
 }
@@ -324,14 +330,40 @@ func (t *Tail) emit(event realtime.Event) {
 	}
 	switch event.Type {
 	case "trade":
-		if t.overflow == nil {
-			t.overflow = make(map[string]int)
-		}
-		t.overflow[event.Trade.Token.Hex()]++
+		t.foldTrade(event.Trade)
 	case "new_token":
 		t.overflowLaunches++
 	case "graduation":
 		t.overflowGraduations++
+	}
+}
+
+// foldTrade adds one trade beyond the budget to its token's burst entry.
+func (t *Tail) foldTrade(row *Trade) {
+	if t.overflow == nil {
+		t.overflow = make(map[string]*realtime.BurstCount)
+	}
+	token := row.Token.Hex()
+	entry := t.overflow[token]
+	if entry == nil {
+		entry = &realtime.BurstCount{Token: token, Traders: []string{}}
+		t.overflow[token] = entry
+	}
+	entry.Count++
+	if row.ETHVolume != nil && (entry.MaxETH == nil || row.ETHVolume.Cmp(entry.MaxETH) > 0) {
+		entry.MaxETH = new(big.Int).Set(row.ETHVolume)
+	}
+	if row.Trader == nil {
+		return
+	}
+	trader := strings.ToLower(row.Trader.Hex())
+	if slices.Contains(entry.Traders, trader) {
+		return
+	}
+	if len(entry.Traders) < maxBurstTraders {
+		entry.Traders = append(entry.Traders, trader)
+	} else {
+		entry.TradersTruncated = true
 	}
 }
 
@@ -394,8 +426,8 @@ func (t *Tail) closeWindowIfDue() {
 	}
 	if t.overflowPending() {
 		counts := make([]realtime.BurstCount, 0, len(t.overflow))
-		for token, count := range t.overflow {
-			counts = append(counts, realtime.BurstCount{Token: token, Count: count})
+		for _, entry := range t.overflow {
+			counts = append(counts, *entry)
 		}
 		sort.Slice(counts, func(i, j int) bool { return counts[i].Token < counts[j].Token })
 		t.publish(realtime.Event{

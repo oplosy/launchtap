@@ -38,10 +38,15 @@ type Event struct {
 	FinalizedBlock   int64 `json:"finalized_block,omitempty"`
 }
 
-// BurstCount is the number of trades of one token that were rolled into a trade_burst event.
+// BurstCount describes the trades of one token that were rolled into a trade_burst event: how many,
+// the largest gross ETH amount among them (wei), and their distinct non-null traders as lowercase hex
+// in first-seen order, capped with TradersTruncated set when more were folded.
 type BurstCount struct {
-	Token string `json:"token"`
-	Count int    `json:"count"`
+	Token            string   `json:"token"`
+	Count            int      `json:"count"`
+	MaxETH           *big.Int `json:"max_eth_wei,omitempty"`
+	Traders          []string `json:"traders,omitempty"`
+	TradersTruncated bool     `json:"traders_truncated,omitempty"`
 }
 
 type Trade struct {

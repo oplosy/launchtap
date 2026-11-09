@@ -5,16 +5,38 @@
         "additionalProperties": false,
         "properties": {
           "count": {
+            "description": "Trades of this token folded into the window.",
             "format": "int64",
             "type": "integer"
           },
+          "max_eth_wei": {
+            "description": "Largest gross ETH amount among the folded trades, decimal wei string (same as a trade's eth_volume); \"0\" when unknown.",
+            "type": "string"
+          },
           "token": {
             "type": "string"
+          },
+          "traders": {
+            "description": "Distinct non-null traders of the folded trades, lowercase hex, first-seen order, at most 32.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "traders_truncated": {
+            "description": "True when more distinct traders were folded than traders lists.",
+            "type": "boolean"
           }
         },
         "required": [
           "token",
-          "count"
+          "count",
+          "max_eth_wei",
+          "traders",
+          "traders_truncated"
         ],
         "type": "object"
       },
