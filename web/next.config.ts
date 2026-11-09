@@ -11,10 +11,11 @@ const nextConfig: NextConfig = {
     return [
       { source: "/(.*)", headers: securityHeaders() },
       // Leave content-hashed Next assets on the framework's immutable cache path.
-      // Share-card images set their own public cache policy (revalidate = 300).
+      // Share-card images (token and wallet) set their own public cache policy (revalidate = 300,
+      // or a short lifetime for a wallet generic card served during an API failure).
       {
         source:
-          "/((?!_next/static|_next/image|favicon.ico|token/[^/]+/(?:opengraph|twitter)-image$).*)",
+          "/((?!_next/static|_next/image|favicon.ico|(?:token|wallet)/[^/]+/(?:opengraph|twitter)-image$).*)",
         headers: cacheHeaders,
       },
     ];

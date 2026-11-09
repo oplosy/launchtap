@@ -455,4 +455,6 @@ test("the wallet share card is a 1200x630 PNG and the page contacts only the app
   expect(bytes.subarray(1, 4).toString("ascii")).toBe("PNG");
   expect(bytes.readUInt32BE(16)).toBe(1200);
   expect(bytes.readUInt32BE(20)).toBe(630);
+  // A generic card caused by an API failure is cached downstream only briefly.
+  expect(response.headers()["cache-control"]).toBe("public, s-maxage=30");
 });

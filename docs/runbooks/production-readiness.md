@@ -187,6 +187,11 @@ describe it:
   per web process for 300 s (`experimental.isrFlushToDisk=false`, because the container root
   filesystem is read-only). A generic card served during an API outage, or for a token seconds
   after launch, can stay cached up to 300 s, plus any downstream stale-while-revalidate window.
+  Wallet cards (`/wallet/<address>/opengraph-image` and the Twitter image) are cached the same
+  way, except that a generic wallet card caused by an API failure is sent with
+  `Cache-Control: public, s-maxage=30`, so caches in front of the web server drop it within 30 s
+  (the web process's own route cache still keeps it up to 300 s; Next cannot shorten that per
+  response). A failed positions read alone does not degrade the card: it renders without symbols.
   Card text shows only characters the bundled font covers (emoji and CJK are stripped; the card
   falls back to `$SYMBOL`), so the renderer never contacts a third party.
 - Share-card render cost: one server-side render (a token card reads the token, its image and the

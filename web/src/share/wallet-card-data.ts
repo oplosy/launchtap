@@ -16,7 +16,11 @@ export type WalletCardData =
       /** At most three open-position symbols in the API's value order, cardText-cleaned. */
       topSymbols: string[];
     }
-  | { kind: "generic" };
+  /**
+   * `apiFailure`: the API failed or answered malformed data (transient), as opposed to an invalid
+   * address (a stable answer); the route then serves the card with a short cache lifetime.
+   */
+  | { kind: "generic"; apiFailure?: true };
 
 const MAX_SYMBOL_LENGTH = 16;
 const MAX_TOP_SYMBOLS = 3;
@@ -55,19 +59,11 @@ export async function loadWalletCardData(
   if (!parsed) return { kind: "generic" };
   try {
     const base = baseUrl ?? apiInternalBaseUrl();
-    const [overview, positions] = await Promise.all([
+    // Positions only supply the optional symbol row: their failure must not cost the whole card.
+    const [overview, topSymbols] = await Promise.all([
       getJson(`${base}/v1/wallets/${parsed}`, fetcher) as Promise<Record<string, unknown>>,
-      getJson(`${base}/v1/wallets/${parsed}/positions?closed=false`, fetcher) as Promise<
-        Record<string, unknown>
-      >,
+      loadTopSymbols(base, parsed, fetcher),
     ]);
-    const items = Array.isArray(positions.items) ? positions.items : [];
-    const topSymbols: string[] = [];
-    for (const item of items) {
-      if (topSymbols.length === MAX_TOP_SYMBOLS) break;
-      const symbol = cardText((item as { symbol?: unknown } | null)?.symbol, MAX_SYMBOL_LENGTH);
-      if (symbol) topSymbols.push(symbol);
-    }
     return {
       kind: "wallet",
       address: parsed,
@@ -77,6 +73,29 @@ export async function loadWalletCardData(
     };
   } catch (cause) {
     console.error("wallet share card: falling back to the generic card", cause);
-    return { kind: "generic" };
+    return { kind: "generic", apiFailure: true };
+  }
+}
+
+/** Up to three cleaned open-position symbols; [] (logged) when the positions read fails. */
+async function loadTopSymbols(base: string, wallet: string, fetcher: typeof fetch) {
+  try {
+    const positions = (await getJson(
+      `${base}/v1/wallets/${wallet}/positions?closed=false`,
+      fetcher,
+    )) as Record<string, unknown> | null;
+    const items = positions?.items;
+    if (items !== null && items !== undefined && !Array.isArray(items))
+      throw new Error("positions response is malformed");
+    const topSymbols: string[] = [];
+    for (const item of items ?? []) {
+      if (topSymbols.length === MAX_TOP_SYMBOLS) break;
+      const symbol = cardText((item as { symbol?: unknown } | null)?.symbol, MAX_SYMBOL_LENGTH);
+      if (symbol) topSymbols.push(symbol);
+    }
+    return topSymbols;
+  } catch (cause) {
+    console.error("wallet share card: positions unavailable, showing no symbols", cause);
+    return [];
   }
 }

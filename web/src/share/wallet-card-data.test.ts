@@ -42,9 +42,31 @@ describe("loadWalletCardData", () => {
     expect(calls).toEqual([]);
   });
 
-  it("returns generic on a non-200 response", async () => {
+  it("returns generic, marked as an API failure, on a non-200 overview response", async () => {
     const { fetcher } = fakeFetch({ wallet: () => new Response("x", { status: 500 }) });
-    expect(await loadWalletCardData(ADDRESS, fetcher, BASE)).toEqual({ kind: "generic" });
+    expect(await loadWalletCardData(ADDRESS, fetcher, BASE)).toEqual({
+      kind: "generic",
+      apiFailure: true,
+    });
+  });
+
+  it("keeps the wallet card with no symbols when only positions fail", async () => {
+    for (const positions of [
+      () => new Response("x", { status: 500 }),
+      () => {
+        throw new TypeError("fetch failed");
+      },
+      () => Response.json({ items: "nope" }),
+    ]) {
+      const { fetcher } = fakeFetch({ positions });
+      expect(await loadWalletCardData(ADDRESS, fetcher, BASE)).toEqual({
+        kind: "wallet",
+        address: LOWER,
+        realizedPnlWei: "-250000000000000000",
+        portfolioValueWei: "2000000000000000000",
+        topSymbols: [],
+      });
+    }
   });
 
   it("returns generic when the fetch exceeds the 3 s timeout", async () => {
@@ -57,14 +79,17 @@ describe("loadWalletCardData", () => {
     ) as unknown as typeof fetch;
     const pending = loadWalletCardData(ADDRESS, hanging, BASE);
     await vi.advanceTimersByTimeAsync(FETCH_TIMEOUT_MS + 1);
-    expect(await pending).toEqual({ kind: "generic" });
+    expect(await pending).toEqual({ kind: "generic", apiFailure: true });
   });
 
   it("returns generic when an amount is not a canonical decimal string", async () => {
     const { fetcher } = fakeFetch({
       wallet: () => Response.json(overview({ realized_pnl_wei: "1.5" })),
     });
-    expect(await loadWalletCardData(ADDRESS, fetcher, BASE)).toEqual({ kind: "generic" });
+    expect(await loadWalletCardData(ADDRESS, fetcher, BASE)).toEqual({
+      kind: "generic",
+      apiFailure: true,
+    });
   });
 
   it("cleans symbols (emoji and CJK dropped) and keeps at most three", async () => {
