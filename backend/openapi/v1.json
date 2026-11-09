@@ -1971,11 +1971,16 @@
           },
           "snapshot": {
             "$ref": "#/components/schemas/SnapshotDTO"
+          },
+          "truncated": {
+            "description": "Open mode only: true when the wallet has more open positions than the 500 returned.",
+            "type": "boolean"
           }
         },
         "required": [
           "snapshot",
-          "items"
+          "items",
+          "truncated"
         ],
         "type": "object"
       },
@@ -2452,12 +2457,13 @@
         "operationId": "getLeaderboard",
         "parameters": [
           {
-            "description": "Number of wallets, 1-100; defaults to 100.",
+            "description": "Number of wallets, 1-100.",
             "explode": false,
             "in": "query",
             "name": "limit",
             "schema": {
-              "description": "Number of wallets, 1-100; defaults to 100.",
+              "default": 100,
+              "description": "Number of wallets, 1-100.",
               "format": "int64",
               "maximum": 100,
               "minimum": 1,
@@ -3741,12 +3747,13 @@
             }
           },
           {
-            "description": "Page size, 1-100; defaults to 50.",
+            "description": "Page size, 1-100.",
             "explode": false,
             "in": "query",
             "name": "limit",
             "schema": {
-              "description": "Page size, 1-100; defaults to 50.",
+              "default": 50,
+              "description": "Page size, 1-100.",
               "format": "int64",
               "maximum": 100,
               "minimum": 1,
@@ -3794,30 +3801,33 @@
             }
           },
           {
+            "description": "Closed mode only; supplying it with closed=false is rejected with 422.",
             "explode": false,
             "in": "query",
             "name": "cursor",
             "schema": {
+              "description": "Closed mode only; supplying it with closed=false is rejected with 422.",
               "type": "string"
             }
           },
           {
-            "description": "List closed positions (balance 0) instead of open ones.",
+            "description": "List closed positions (balance 0) newest first, paginated. When false (default), all open positions are returned in one response ordered by current value, capped at 500 (see truncated).",
             "explode": false,
             "in": "query",
             "name": "closed",
             "schema": {
-              "description": "List closed positions (balance 0) instead of open ones.",
+              "description": "List closed positions (balance 0) newest first, paginated. When false (default), all open positions are returned in one response ordered by current value, capped at 500 (see truncated).",
               "type": "boolean"
             }
           },
           {
-            "description": "Page size, 1-100; defaults to 50.",
+            "description": "Page size, 1-100. Applies to closed mode only; open mode returns one capped page.",
             "explode": false,
             "in": "query",
             "name": "limit",
             "schema": {
-              "description": "Page size, 1-100; defaults to 50.",
+              "default": 50,
+              "description": "Page size, 1-100. Applies to closed mode only; open mode returns one capped page.",
               "format": "int64",
               "maximum": 100,
               "minimum": 1,
@@ -3873,12 +3883,13 @@
             }
           },
           {
-            "description": "Page size, 1-100; defaults to 50.",
+            "description": "Page size, 1-100.",
             "explode": false,
             "in": "query",
             "name": "limit",
             "schema": {
-              "description": "Page size, 1-100; defaults to 50.",
+              "default": 50,
+              "description": "Page size, 1-100.",
               "format": "int64",
               "maximum": 100,
               "minimum": 1,

@@ -232,15 +232,7 @@ func (r PublicRoutes) trades(ctx context.Context, in *pageInput) (*tradesOutput,
 	}
 	body := tradesBody{Snapshot: snapDTO(p.Snapshot, p.Finality), Items: make([]tradeDTO, 0, len(p.Items)), NextCursor: p.NextCursor}
 	for _, v := range p.Items {
-		var trader *string
-		if v.Trader != nil {
-			x := v.Trader.Hex()
-			trader = &x
-		}
-		side := "sell"
-		if v.Buy {
-			side = "buy"
-		}
+		trader, side := tradeParty(v.Trader, v.Buy)
 		body.Items = append(body.Items, tradeDTO{Source: v.Source, Trader: trader, Side: side, ExecutionPrice: decimal(v.ExecutionPrice), SpotPrice: decimal(v.SpotPrice), ETHVolume: decimal(v.ETHVolume), TokenVolume: decimal(v.TokenVolume), BlockNumber: v.BlockNumber, TransactionIndex: v.TransactionIndex, TxHash: v.TxHash.Hex(), LogIndex: v.LogIndex, Time: v.Time.UTC().Format(time.RFC3339Nano), Finality: v.Finality})
 	}
 	return &tradesOutput{Body: body}, nil
@@ -322,4 +314,17 @@ func dailyRange(fromValue, toValue string) (time.Time, time.Time, error) {
 		return time.Time{}, time.Time{}, errors.New("date range must be ordered and no longer than 366 days")
 	}
 	return from, to, nil
+}
+
+// tradeParty maps a trade's optional trader and its side to their JSON forms; shared by every trade DTO.
+func tradeParty(trader *common.Address, buy bool) (*string, string) {
+	var hex *string
+	if trader != nil {
+		x := trader.Hex()
+		hex = &x
+	}
+	if buy {
+		return hex, "buy"
+	}
+	return hex, "sell"
 }

@@ -1036,6 +1036,8 @@ export interface components {
             items: components["schemas"]["WalletPositionDTO"][] | null;
             next_cursor?: string;
             snapshot: components["schemas"]["SnapshotDTO"];
+            /** @description Open mode only: true when the wallet has more open positions than the 500 returned. */
+            truncated: boolean;
         };
         WalletTradeDTO: {
             /** Format: int64 */
@@ -1246,7 +1248,7 @@ export interface operations {
     getLeaderboard: {
         parameters: {
             query?: {
-                /** @description Number of wallets, 1-100; defaults to 100. */
+                /** @description Number of wallets, 1-100. */
                 limit?: number;
             };
             header?: never;
@@ -2029,7 +2031,7 @@ export interface operations {
         parameters: {
             query?: {
                 cursor?: string;
-                /** @description Page size, 1-100; defaults to 50. */
+                /** @description Page size, 1-100. */
                 limit?: number;
             };
             header?: never;
@@ -2063,10 +2065,11 @@ export interface operations {
     listWalletPositions: {
         parameters: {
             query?: {
+                /** @description Closed mode only; supplying it with closed=false is rejected with 422. */
                 cursor?: string;
-                /** @description List closed positions (balance 0) instead of open ones. */
+                /** @description List closed positions (balance 0) newest first, paginated. When false (default), all open positions are returned in one response ordered by current value, capped at 500 (see truncated). */
                 closed?: boolean;
-                /** @description Page size, 1-100; defaults to 50. */
+                /** @description Page size, 1-100. Applies to closed mode only; open mode returns one capped page. */
                 limit?: number;
             };
             header?: never;
@@ -2101,7 +2104,7 @@ export interface operations {
         parameters: {
             query?: {
                 cursor?: string;
-                /** @description Page size, 1-100; defaults to 50. */
+                /** @description Page size, 1-100. */
                 limit?: number;
             };
             header?: never;

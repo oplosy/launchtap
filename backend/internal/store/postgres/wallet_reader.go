@@ -21,7 +21,6 @@ const (
 	walletPositionsEndpoint = "wallet_positions"
 	walletTradesEndpoint    = "wallet_trades"
 	walletCreatedEndpoint   = "wallet_created"
-	positionsModeOpen       = "open"
 	positionsModeClosed     = "closed"
 )
 
@@ -30,6 +29,8 @@ const (
 type WalletReader struct {
 	Pool         *pgxpool.Pool
 	DeploymentID string
+	// OpenPositionCap overrides wallet.MaxOpenPositions when positive (tests).
+	OpenPositionCap int
 }
 
 var _ wallet.Reader = WalletReader{}
@@ -95,29 +96,59 @@ func keyBlock(value string) (int64, error) {
 	return block, nil
 }
 
-// ListPositions pages open (balance > 0, largest value first) or closed (balance 0, newest first)
-// positions. The cursor carries the mode; a cursor from the other mode is wallet.ErrCursorMode.
-// Open positions are ordered by their live value, so a reserve change between two pages can move a
-// row across the page boundary; the keyset still never repeats or skips a row at a fixed value.
+// ListPositions returns open positions (balance > 0) in one page ordered by live value, largest first,
+// capped at the reader's open-position cap with Truncated set beyond it, or closed positions
+// (balance 0) newest first with a keyset cursor. Open mode has no cursor and ignores Limit: its order
+// is a live value that reserve changes move between requests, so no stable keyset exists. A cursor in
+// open mode, or one issued for the other mode, is wallet.ErrCursorMode.
 func (r WalletReader) ListPositions(ctx context.Context, q wallet.PositionsQuery) (wallet.PositionsPage, error) {
-	if err := checkWalletLimit(q.Limit); err != nil {
-		return wallet.PositionsPage{}, err
+	if !q.Closed && q.Cursor != nil {
+		return wallet.PositionsPage{}, wallet.ErrCursorMode
 	}
-	mode := positionsModeOpen
 	if q.Closed {
-		mode = positionsModeClosed
+		if err := checkWalletLimit(q.Limit); err != nil {
+			return wallet.PositionsPage{}, err
+		}
+	}
+	openCap := r.OpenPositionCap
+	if openCap <= 0 {
+		openCap = wallet.MaxOpenPositions
 	}
 	var out wallet.PositionsPage
 	err := withReadSnapshotBeginner(ctx, r.Pool, q.ChainID, r.DeploymentID, func(ctx context.Context, a *Adapter, s ReadSnapshot) error {
+		out.Stamp = walletStamp(s)
+		out.Items = []wallet.Position{}
+		if !q.Closed {
+			rows, err := a.queries.ListWalletOpenPositions(ctx, sqlc.ListWalletOpenPositionsParams{
+				ChainID: q.ChainID, Wallet: sqlc.Address(q.Wallet), PageSize: int32(openCap + 1),
+			})
+			if err != nil {
+				return err
+			}
+			if len(rows) > openCap {
+				rows, out.Truncated = rows[:openCap], true
+			}
+			for _, row := range rows {
+				realized, err := signedBigInt("position realized pnl", row.RealizedPnl)
+				if err != nil {
+					return err
+				}
+				out.Items = append(out.Items, wallet.Position{
+					Token: common.Address(row.TokenAddress), Name: row.Name, Symbol: row.Symbol, Phase: row.Phase,
+					Balance: row.Balance.BigInt(), RemainingCost: row.RemainingCost.BigInt(), RealizedPnL: realized,
+					CurrentValue: numericBig(row.CurrentValue), TransferredIn: row.TransferredIn.BigInt(), TradeCount: row.TradeCount, LastBlock: row.LastBlockNumber,
+				})
+			}
+			return nil
+		}
 		filters := walletCursorFilter(q.Wallet)
-		var afterValue pgtype.Numeric
 		var afterBlock pgtype.Int8
 		var afterAddress []byte
 		if q.Cursor != nil {
-			if q.Cursor.Endpoint == walletPositionsEndpoint && q.Cursor.Sort != mode && (q.Cursor.Sort == positionsModeOpen || q.Cursor.Sort == positionsModeClosed) {
+			if q.Cursor.Endpoint == walletPositionsEndpoint && q.Cursor.Sort != positionsModeClosed {
 				return wallet.ErrCursorMode
 			}
-			if err := q.Cursor.ValidateRequest(walletPositionsEndpoint, mode, filters, "next", s.Identity, a.canonicalCursorCheck(ctx)); err != nil {
+			if err := q.Cursor.ValidateRequest(walletPositionsEndpoint, positionsModeClosed, filters, "next", s.Identity, a.canonicalCursorCheck(ctx)); err != nil {
 				return err
 			}
 			if len(q.Cursor.Key) != 2 {
@@ -127,65 +158,33 @@ func (r WalletReader) ListPositions(ctx context.Context, q wallet.PositionsQuery
 			if afterAddress, err = keyAddress(q.Cursor.Key[1]); err != nil {
 				return err
 			}
-			if q.Closed {
-				block, err := keyBlock(q.Cursor.Key[0])
-				if err != nil {
-					return err
-				}
-				afterBlock = pgtype.Int8{Int64: block, Valid: true}
-			} else {
-				value, ok := new(big.Int).SetString(q.Cursor.Key[0], 10)
-				if !ok || value.Sign() < 0 {
-					return pagination.ErrInvalidCursor
-				}
-				afterValue = pgtype.Numeric{Int: value, Valid: true}
+			block, err := keyBlock(q.Cursor.Key[0])
+			if err != nil {
+				return err
 			}
+			afterBlock = pgtype.Int8{Int64: block, Valid: true}
 		}
-		out.Stamp = walletStamp(s)
-		out.Items = []wallet.Position{}
+		rows, err := a.queries.ListWalletClosedPositions(ctx, sqlc.ListWalletClosedPositionsParams{
+			ChainID: q.ChainID, Wallet: sqlc.Address(q.Wallet), AfterBlock: afterBlock, AfterAddress: afterAddress, PageSize: int32(q.Limit),
+		})
+		if err != nil {
+			return err
+		}
 		var lastKey []string
-		if q.Closed {
-			rows, err := a.queries.ListWalletClosedPositions(ctx, sqlc.ListWalletClosedPositionsParams{
-				ChainID: q.ChainID, Wallet: sqlc.Address(q.Wallet), AfterBlock: afterBlock, AfterAddress: afterAddress, PageSize: int32(q.Limit),
-			})
+		for _, row := range rows {
+			realized, err := signedBigInt("position realized pnl", row.RealizedPnl)
 			if err != nil {
 				return err
 			}
-			for _, row := range rows {
-				realized, err := signedBigInt("position realized pnl", row.RealizedPnl)
-				if err != nil {
-					return err
-				}
-				out.Items = append(out.Items, wallet.Position{
-					Token: common.Address(row.TokenAddress), Name: row.Name, Symbol: row.Symbol, Phase: row.Phase,
-					Balance: row.Balance.BigInt(), RemainingCost: row.RemainingCost.BigInt(), RealizedPnL: realized,
-					CurrentValue: new(big.Int), TransferredIn: row.TransferredIn.BigInt(), TradeCount: row.TradeCount, LastBlock: row.LastBlockNumber,
-				})
-				lastKey = []string{strconv.FormatInt(row.LastBlockNumber, 10), common.Address(row.TokenAddress).Hex()}
-			}
-		} else {
-			rows, err := a.queries.ListWalletOpenPositions(ctx, sqlc.ListWalletOpenPositionsParams{
-				ChainID: q.ChainID, Wallet: sqlc.Address(q.Wallet), AfterValue: afterValue, AfterAddress: afterAddress, PageSize: int32(q.Limit),
+			out.Items = append(out.Items, wallet.Position{
+				Token: common.Address(row.TokenAddress), Name: row.Name, Symbol: row.Symbol, Phase: row.Phase,
+				Balance: row.Balance.BigInt(), RemainingCost: row.RemainingCost.BigInt(), RealizedPnL: realized,
+				CurrentValue: new(big.Int), TransferredIn: row.TransferredIn.BigInt(), TradeCount: row.TradeCount, LastBlock: row.LastBlockNumber,
 			})
-			if err != nil {
-				return err
-			}
-			for _, row := range rows {
-				realized, err := signedBigInt("position realized pnl", row.RealizedPnl)
-				if err != nil {
-					return err
-				}
-				value := numericBig(row.CurrentValue)
-				out.Items = append(out.Items, wallet.Position{
-					Token: common.Address(row.TokenAddress), Name: row.Name, Symbol: row.Symbol, Phase: row.Phase,
-					Balance: row.Balance.BigInt(), RemainingCost: row.RemainingCost.BigInt(), RealizedPnL: realized,
-					CurrentValue: value, TransferredIn: row.TransferredIn.BigInt(), TradeCount: row.TradeCount, LastBlock: row.LastBlockNumber,
-				})
-				lastKey = []string{value.String(), common.Address(row.TokenAddress).Hex()}
-			}
+			lastKey = []string{strconv.FormatInt(row.LastBlockNumber, 10), common.Address(row.TokenAddress).Hex()}
 		}
 		if len(out.Items) == q.Limit {
-			out.NextCursor, _ = pagination.Encode(pagination.Cursor{Version: pagination.CurrentVersion, Snapshot: s.Identity, Endpoint: walletPositionsEndpoint, Sort: mode, Filters: filters, Direction: "next", Key: lastKey})
+			out.NextCursor, _ = pagination.Encode(pagination.Cursor{Version: pagination.CurrentVersion, Snapshot: s.Identity, Endpoint: walletPositionsEndpoint, Sort: positionsModeClosed, Filters: filters, Direction: "next", Key: lastKey})
 		}
 		return nil
 	})

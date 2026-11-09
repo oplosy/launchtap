@@ -56,9 +56,14 @@ type PositionsQuery struct {
 	Cursor  *pagination.Cursor
 }
 
+// MaxOpenPositions caps the single-page open-positions list.
+const MaxOpenPositions = 500
+
 type PositionsPage struct {
 	Stamp
-	Items      []Position
+	Items []Position
+	// Truncated is set in open mode when the wallet holds more than MaxOpenPositions positions.
+	Truncated  bool
 	NextCursor string
 }
 

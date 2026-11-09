@@ -16,6 +16,7 @@ import (
 
 type walletReaderStub struct {
 	err         error
+	truncated   bool
 	positionsQ  wallet.PositionsQuery
 	leaderLimit int
 }
@@ -37,7 +38,7 @@ func (s *walletReaderStub) ListPositions(_ context.Context, q wallet.PositionsQu
 	if s.err != nil {
 		return wallet.PositionsPage{}, s.err
 	}
-	return wallet.PositionsPage{Stamp: s.stamp(), Items: []wallet.Position{
+	return wallet.PositionsPage{Stamp: s.stamp(), Truncated: s.truncated, Items: []wallet.Position{
 		{Token: common.HexToAddress("0xaa"), Name: "A", Symbol: "A", Phase: "curve", Balance: big.NewInt(100), RemainingCost: big.NewInt(50), RealizedPnL: big.NewInt(-1), CurrentValue: big.NewInt(80), TransferredIn: big.NewInt(0), TradeCount: 2, LastBlock: 9},
 		{Token: common.HexToAddress("0xbb"), Name: "B", Symbol: "B", Phase: "graduated", Balance: big.NewInt(0), RemainingCost: big.NewInt(0), RealizedPnL: big.NewInt(4), CurrentValue: big.NewInt(0), TransferredIn: big.NewInt(0), TradeCount: 1, LastBlock: 8},
 	}}, nil
@@ -155,5 +156,22 @@ func TestWalletLimitsAndErrors(t *testing.T) {
 	}
 	if rec := walletGet(walletServer(&walletReaderStub{err: errors.New("boom")}), "/wallets/"+walletAddr); rec.Code < 500 {
 		t.Fatalf("code=%d", rec.Code)
+	}
+}
+
+func TestWalletOpenPositionsRejectCursorAndReportTruncated(t *testing.T) {
+	stub := &walletReaderStub{}
+	s := walletServer(stub)
+	cur := "c3RhbGU" // any non-empty cursor: open mode is not paginated
+	if rec := walletGet(s, "/wallets/"+walletAddr+"/positions?cursor="+cur); rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("open + cursor: code=%d body=%s", rec.Code, rec.Body)
+	}
+	for _, truncated := range []bool{false, true} {
+		stub.truncated = truncated
+		rec := walletGet(s, "/wallets/"+walletAddr+"/positions")
+		var body map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || rec.Code != http.StatusOK || body["truncated"] != truncated || body["next_cursor"] != nil {
+			t.Fatalf("truncated=%t: code=%d body=%s", truncated, rec.Code, rec.Body)
+		}
 	}
 }

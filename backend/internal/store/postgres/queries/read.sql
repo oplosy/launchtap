@@ -539,8 +539,9 @@ FROM (
     WHERE p.chain_id = sqlc.arg(chain_id) AND p.wallet = sqlc.arg(wallet) AND p.balance > 0
 ) AS valued;
 
--- Open positions, largest value first. current_value is the single-source expression documented on
--- GetWalletValuation; keep the two identical.
+-- Open positions in one page, largest value first. current_value is the single-source expression
+-- documented on GetWalletValuation; keep the two identical. Not keyset-paginated: the order is a live
+-- value, so the reader asks for MaxOpenPositions+1 rows and reports truncation.
 -- name: ListWalletOpenPositions :many
 SELECT valued.token_address, valued.name, valued.symbol, valued.phase, valued.balance, valued.remaining_cost,
        valued.realized_pnl, valued.transferred_in, valued.trade_count, valued.last_block_number, valued.current_value
@@ -553,9 +554,6 @@ FROM (
     LEFT JOIN token_reserves AS r ON r.chain_id = p.chain_id AND r.token_address = p.token_address
     WHERE p.chain_id = sqlc.arg(chain_id) AND p.wallet = sqlc.arg(wallet) AND p.balance > 0
 ) AS valued
-WHERE (sqlc.narg(after_value)::numeric IS NULL OR
-       valued.current_value < sqlc.narg(after_value)::numeric OR
-       (valued.current_value = sqlc.narg(after_value)::numeric AND valued.token_address > sqlc.narg(after_address)::bytea))
 ORDER BY valued.current_value DESC, valued.token_address
 LIMIT sqlc.arg(page_size)::integer;
 

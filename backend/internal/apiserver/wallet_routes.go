@@ -31,18 +31,18 @@ type walletInput struct {
 type walletPageInput struct {
 	Address string `path:"address"`
 	Cursor  string `query:"cursor"`
-	Limit   int    `query:"limit" minimum:"1" maximum:"100" doc:"Page size, 1-100; defaults to 50."`
+	Limit   int    `query:"limit" minimum:"1" maximum:"100" default:"50" doc:"Page size, 1-100."`
 }
 
 type walletPositionsInput struct {
 	Address string `path:"address"`
-	Cursor  string `query:"cursor"`
-	Closed  bool   `query:"closed" doc:"List closed positions (balance 0) instead of open ones."`
-	Limit   int    `query:"limit" minimum:"1" maximum:"100" doc:"Page size, 1-100; defaults to 50."`
+	Cursor  string `query:"cursor" doc:"Closed mode only; supplying it with closed=false is rejected with 422."`
+	Closed  bool   `query:"closed" doc:"List closed positions (balance 0) newest first, paginated. When false (default), all open positions are returned in one response ordered by current value, capped at 500 (see truncated)."`
+	Limit   int    `query:"limit" minimum:"1" maximum:"100" default:"50" doc:"Page size, 1-100. Applies to closed mode only; open mode returns one capped page."`
 }
 
 type leaderboardInput struct {
-	Limit int `query:"limit" minimum:"1" maximum:"100" doc:"Number of wallets, 1-100; defaults to 100."`
+	Limit int `query:"limit" minimum:"1" maximum:"100" default:"100" doc:"Number of wallets, 1-100."`
 }
 
 // walletDTO amounts are wei decimal strings; the PnL fields are signed.
@@ -81,6 +81,7 @@ type walletPositionDTO struct {
 type walletPositionsBody struct {
 	Snapshot   snapshotDTO         `json:"snapshot"`
 	Items      []walletPositionDTO `json:"items"`
+	Truncated  bool                `json:"truncated" doc:"Open mode only: true when the wallet has more open positions than the 500 returned."`
 	NextCursor string              `json:"next_cursor,omitempty"`
 }
 
@@ -210,6 +211,9 @@ func (r WalletRoutes) positions(ctx context.Context, in *walletPositionsInput) (
 	if err != nil {
 		return nil, err
 	}
+	if !in.Closed && in.Cursor != "" {
+		return nil, apiProblem(http.StatusUnprocessableEntity, "cursor_not_supported", "Open positions are returned in one response; cursor applies only with closed=true")
+	}
 	cur, err := cursor(in.Cursor)
 	if err != nil {
 		return nil, err
@@ -218,7 +222,7 @@ func (r WalletRoutes) positions(ctx context.Context, in *walletPositionsInput) (
 	if err != nil {
 		return nil, walletReadError(ctx, err)
 	}
-	body := walletPositionsBody{Snapshot: stampDTO(page.Stamp), Items: make([]walletPositionDTO, 0, len(page.Items)), NextCursor: page.NextCursor}
+	body := walletPositionsBody{Snapshot: stampDTO(page.Stamp), Items: make([]walletPositionDTO, 0, len(page.Items)), Truncated: page.Truncated, NextCursor: page.NextCursor}
 	for _, p := range page.Items {
 		body.Items = append(body.Items, walletPositionDTO{
 			Token: p.Token.Hex(), Name: p.Name, Symbol: p.Symbol, Phase: p.Phase, Balance: decimal(p.Balance),
@@ -246,15 +250,7 @@ func (r WalletRoutes) trades(ctx context.Context, in *walletPageInput) (*walletT
 	}
 	body := walletTradesBody{Snapshot: stampDTO(page.Stamp), Items: make([]walletTradeDTO, 0, len(page.Items)), NextCursor: page.NextCursor}
 	for _, v := range page.Items {
-		var trader *string
-		if v.Trader != nil {
-			x := v.Trader.Hex()
-			trader = &x
-		}
-		side := "sell"
-		if v.Buy {
-			side = "buy"
-		}
+		trader, side := tradeParty(v.Trader, v.Buy)
 		body.Items = append(body.Items, walletTradeDTO{Token: v.Token.Hex(), Name: v.Name, Symbol: v.Symbol,
 			Source: v.Source, Trader: trader, Side: side, ExecutionPrice: decimal(v.ExecutionPrice), SpotPrice: decimal(v.SpotPrice),
 			ETHVolume: decimal(v.ETHVolume), TokenVolume: decimal(v.TokenVolume), BlockNumber: v.BlockNumber,

@@ -1922,19 +1922,14 @@ FROM (
     LEFT JOIN token_reserves AS r ON r.chain_id = p.chain_id AND r.token_address = p.token_address
     WHERE p.chain_id = $1 AND p.wallet = $2 AND p.balance > 0
 ) AS valued
-WHERE ($3::numeric IS NULL OR
-       valued.current_value < $3::numeric OR
-       (valued.current_value = $3::numeric AND valued.token_address > $4::bytea))
 ORDER BY valued.current_value DESC, valued.token_address
-LIMIT $5::integer
+LIMIT $3::integer
 `
 
 type ListWalletOpenPositionsParams struct {
-	ChainID      int64
-	Wallet       Address
-	AfterValue   pgtype.Numeric
-	AfterAddress []byte
-	PageSize     int32
+	ChainID  int64
+	Wallet   Address
+	PageSize int32
 }
 
 type ListWalletOpenPositionsRow struct {
@@ -1951,16 +1946,11 @@ type ListWalletOpenPositionsRow struct {
 	CurrentValue    pgtype.Numeric
 }
 
-// Open positions, largest value first. current_value is the single-source expression documented on
-// GetWalletValuation; keep the two identical.
+// Open positions in one page, largest value first. current_value is the single-source expression
+// documented on GetWalletValuation; keep the two identical. Not keyset-paginated: the order is a live
+// value, so the reader asks for MaxOpenPositions+1 rows and reports truncation.
 func (q *Queries) ListWalletOpenPositions(ctx context.Context, arg ListWalletOpenPositionsParams) ([]ListWalletOpenPositionsRow, error) {
-	rows, err := q.db.Query(ctx, listWalletOpenPositions,
-		arg.ChainID,
-		arg.Wallet,
-		arg.AfterValue,
-		arg.AfterAddress,
-		arg.PageSize,
-	)
+	rows, err := q.db.Query(ctx, listWalletOpenPositions, arg.ChainID, arg.Wallet, arg.PageSize)
 	if err != nil {
 		return nil, err
 	}

@@ -146,8 +146,9 @@ type Querier interface {
 	// Closed positions (balance 0) carry no value, newest activity first.
 	ListWalletClosedPositions(ctx context.Context, arg ListWalletClosedPositionsParams) ([]ListWalletClosedPositionsRow, error)
 	ListWalletCreated(ctx context.Context, arg ListWalletCreatedParams) ([]ListWalletCreatedRow, error)
-	// Open positions, largest value first. current_value is the single-source expression documented on
-	// GetWalletValuation; keep the two identical.
+	// Open positions in one page, largest value first. current_value is the single-source expression
+	// documented on GetWalletValuation; keep the two identical. Not keyset-paginated: the order is a live
+	// value, so the reader asks for MaxOpenPositions+1 rows and reports truncation.
 	ListWalletOpenPositions(ctx context.Context, arg ListWalletOpenPositionsParams) ([]ListWalletOpenPositionsRow, error)
 	ListWalletTrades(ctx context.Context, arg ListWalletTradesParams) ([]ListWalletTradesRow, error)
 	// Token columns are NULL when the token row is gone (no FK); the casts keep sqlc from

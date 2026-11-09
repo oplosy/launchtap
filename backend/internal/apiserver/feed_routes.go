@@ -80,15 +80,7 @@ type finalityFeedEvent struct {
 }
 
 func feedTradeItem(chainID int64, deploymentID string, t feed.Trade) tradeFeedItem {
-	var trader *string
-	if t.Trader != nil {
-		hex := t.Trader.Hex()
-		trader = &hex
-	}
-	side := "sell"
-	if t.Buy {
-		side = "buy"
-	}
+	trader, side := tradeParty(t.Trader, t.Buy)
 	return tradeFeedItem{
 		ChainID: chainID, DeploymentID: deploymentID, Token: t.Token.Hex(), Name: t.Name, Symbol: t.Symbol,
 		Source: t.Source, Trader: trader, Side: side, ETHVolume: decimal(t.ETHVolume), TokenVolume: decimal(t.TokenVolume),

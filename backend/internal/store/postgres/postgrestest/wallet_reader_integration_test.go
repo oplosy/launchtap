@@ -144,28 +144,25 @@ func TestWalletPositionsOrderAndClosedMode(t *testing.T) {
 		t.Fatalf("open fields = %+v", open.Items)
 	}
 
-	// Paging one at a time visits the same order.
-	var paged []common.Address
-	var cursor *pagination.Cursor
-	for range 4 {
-		page, err := f.reader.ListPositions(ctx, wallet.PositionsQuery{ChainID: walletChainID, Wallet: wantAddr(walletW), Limit: 1, Cursor: cursor})
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, item := range page.Items {
-			paged = append(paged, item.Token)
-		}
-		if page.NextCursor == "" {
-			break
-		}
-		decoded, err := pagination.Decode(page.NextCursor)
-		if err != nil {
-			t.Fatal(err)
-		}
-		cursor = &decoded
+	// Open mode is one page: limit does not apply, there is no cursor, nothing is truncated.
+	all, err := f.reader.ListPositions(ctx, wallet.PositionsQuery{ChainID: walletChainID, Wallet: wantAddr(walletW), Limit: 1})
+	if err != nil || len(all.Items) != 3 || all.NextCursor != "" || all.Truncated {
+		t.Fatalf("open page with limit 1 = %+v %v", all, err)
 	}
-	if len(paged) != 3 || paged[0] != open.Items[0].Token || paged[1] != open.Items[1].Token || paged[2] != open.Items[2].Token {
-		t.Fatalf("paged = %v", paged)
+	for i := range all.Items {
+		if all.Items[i].Token != open.Items[i].Token {
+			t.Fatalf("order changed at %d", i)
+		}
+	}
+	// Over the cap the list is cut after the largest values and flagged.
+	capped := storepostgres.WalletReader{Pool: f.pool, DeploymentID: walletReaderDeployment, OpenPositionCap: 2}
+	cut, err := capped.ListPositions(ctx, wallet.PositionsQuery{ChainID: walletChainID, Wallet: wantAddr(walletW), Limit: 50})
+	if err != nil || len(cut.Items) != 2 || !cut.Truncated || cut.Items[0].Token != open.Items[0].Token || cut.Items[1].Token != open.Items[1].Token {
+		t.Fatalf("capped = %+v %v", cut, err)
+	}
+	exact := storepostgres.WalletReader{Pool: f.pool, DeploymentID: walletReaderDeployment, OpenPositionCap: 3}
+	if page, err := exact.ListPositions(ctx, wallet.PositionsQuery{ChainID: walletChainID, Wallet: wantAddr(walletW), Limit: 50}); err != nil || len(page.Items) != 3 || page.Truncated {
+		t.Fatalf("exactly at cap = %+v %v", page, err)
 	}
 
 	closed, err := f.reader.ListPositions(ctx, wallet.PositionsQuery{ChainID: walletChainID, Wallet: wantAddr(walletW2), Closed: true, Limit: 10})
@@ -204,16 +201,24 @@ func TestWalletPositionsCursorModeMismatch422(t *testing.T) {
 	defer cancel()
 	f := newWalletReaderFixture(t, ctx)
 	f.seedWallets()
-	page, err := f.reader.ListPositions(ctx, wallet.PositionsQuery{ChainID: walletChainID, Wallet: wantAddr(walletW), Limit: 1})
+	w2 := wantAddr(walletW2)
+	page, err := f.reader.ListPositions(ctx, wallet.PositionsQuery{ChainID: walletChainID, Wallet: w2, Closed: true, Limit: 1})
 	if err != nil || page.NextCursor == "" {
-		t.Fatalf("first page: %+v %v", page, err)
+		t.Fatalf("first closed page: %+v %v", page, err)
 	}
 	decoded, err := pagination.Decode(page.NextCursor)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.reader.ListPositions(ctx, wallet.PositionsQuery{ChainID: walletChainID, Wallet: wantAddr(walletW), Closed: true, Limit: 1, Cursor: &decoded}); !errors.Is(err, wallet.ErrCursorMode) {
-		t.Fatalf("err = %v, want ErrCursorMode", err)
+	// Open mode is not paginated: any cursor is refused.
+	if _, err := f.reader.ListPositions(ctx, wallet.PositionsQuery{ChainID: walletChainID, Wallet: w2, Limit: 1, Cursor: &decoded}); !errors.Is(err, wallet.ErrCursorMode) {
+		t.Fatalf("open mode with cursor: err = %v, want ErrCursorMode", err)
+	}
+	// A cursor issued by an older open-mode build is refused in closed mode.
+	stale := decoded
+	stale.Sort = "open"
+	if _, err := f.reader.ListPositions(ctx, wallet.PositionsQuery{ChainID: walletChainID, Wallet: w2, Closed: true, Limit: 1, Cursor: &stale}); !errors.Is(err, wallet.ErrCursorMode) {
+		t.Fatalf("open-sorted cursor in closed mode: err = %v, want ErrCursorMode", err)
 	}
 
 	server := apiserver.New(apiserver.DefaultConfig(), apiserver.ReadyFunc(func(context.Context) error { return nil }), nil)
@@ -223,15 +228,15 @@ func TestWalletPositionsCursorModeMismatch422(t *testing.T) {
 		server.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		return rec
 	}
-	base := "/v1/wallets/" + wantAddr(walletW).Hex() + "/positions"
-	if rec := get(base + "?limit=1&closed=true&cursor=" + page.NextCursor); rec.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("code = %d body = %s", rec.Code, rec.Body)
+	base := "/v1/wallets/" + w2.Hex() + "/positions"
+	if rec := get(base + "?cursor=" + page.NextCursor); rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("cursor with closed=false: code = %d body = %s", rec.Code, rec.Body)
 	}
-	if rec := get(base + "?limit=1&cursor=" + page.NextCursor); rec.Code != http.StatusOK {
+	if rec := get(base + "?limit=1&closed=true&cursor=" + page.NextCursor); rec.Code != http.StatusOK {
 		t.Fatalf("same-mode cursor: code = %d body = %s", rec.Code, rec.Body)
 	}
 	// Review Focus 4: no closed rows is still a 200 with an empty list.
-	rec := get(base + "?closed=true")
+	rec := get("/v1/wallets/" + wantAddr(walletW).Hex() + "/positions?closed=true")
 	var body struct {
 		Items []any `json:"items"`
 	}
