@@ -141,7 +141,8 @@ type Querier interface {
 	ListTokenPhaseCounts(ctx context.Context, chainID int64) ([]ListTokenPhaseCountsRow, error)
 	ListTrendingTokens(ctx context.Context, arg ListTrendingTokensParams) ([]ListTrendingTokensRow, error)
 	// Backfill cursor: distinct transactions that still have a pool swap without a sender, in
-	// (block_number, tx_hash) order, strictly after the keyset position (after_block, after_hash).
+	// blocks at or below through_block, in (block_number, tx_hash) order, strictly after the keyset
+	// position (after_block, after_hash).
 	ListUnattributedPoolSwaps(ctx context.Context, arg ListUnattributedPoolSwapsParams) ([]ListUnattributedPoolSwapsRow, error)
 	// Closed positions (balance 0) carry no value, newest activity first.
 	ListWalletClosedPositions(ctx context.Context, arg ListWalletClosedPositionsParams) ([]ListWalletClosedPositionsRow, error)

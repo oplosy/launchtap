@@ -58,14 +58,20 @@ func New(settings Settings, store Store, source Source, discovery Discovery, dec
 	return &Engine{settings: settings, store: store, source: source, discovery: discovery, decoder: decoder, router: router}, nil
 }
 
+// senderMisses describes the transactions of one chunk left without a sender.
+type senderMisses struct {
+	misses, total int
+	err           error
+}
+
 // attachSenders sets PoolSwap.TxFrom from one batched sender lookup. A failed lookup is
-// logged and ignored: ingestion never stops for enrichment, the swaps are written with a nil
-// sender and backfilled later. Every transaction left without a sender (a failed call, an
-// errored element or a null result) is counted once per batch through OnSenderMisses and one
-// warning, so the gap is observable before attribution_complete reports it.
-func (e *Engine) attachSenders(ctx context.Context, decoded []chain.DecodedLog) {
+// ignored: ingestion never stops for enrichment, the swaps are written with a nil sender and
+// backfilled later. It returns the transactions left without a sender (a failed call, an
+// errored element or a null result); Step reports them only once the chunk commits, so a
+// retried step never counts the same miss twice.
+func (e *Engine) attachSenders(ctx context.Context, decoded []chain.DecodedLog) senderMisses {
 	if e.settings.Senders == nil {
-		return
+		return senderMisses{}
 	}
 	seen := make(map[common.Hash]struct{})
 	var hashes []common.Hash
@@ -79,12 +85,11 @@ func (e *Engine) attachSenders(ctx context.Context, decoded []chain.DecodedLog) 
 		}
 	}
 	if len(hashes) == 0 {
-		return
+		return senderMisses{}
 	}
 	senders, err := e.settings.Senders.TransactionSenders(ctx, hashes)
 	if err != nil {
-		e.reportSenderMisses(len(hashes), len(hashes), err)
-		return
+		return senderMisses{misses: len(hashes), total: len(hashes), err: err}
 	}
 	misses := 0
 	for _, hash := range hashes {
@@ -92,7 +97,6 @@ func (e *Engine) attachSenders(ctx context.Context, decoded []chain.DecodedLog) 
 			misses++
 		}
 	}
-	e.reportSenderMisses(misses, len(hashes), nil)
 	for index, log := range decoded {
 		swap, ok := log.Value.(chain.PoolSwap)
 		if !ok {
@@ -103,22 +107,24 @@ func (e *Engine) attachSenders(ctx context.Context, decoded []chain.DecodedLog) 
 			decoded[index].Value = swap
 		}
 	}
+	return senderMisses{misses: misses, total: len(hashes)}
 }
 
-// reportSenderMisses logs one warning and feeds the miss counter for a batch with unresolved
-// senders. The error is redacted: an RPC *url.Error carries the provider URL and its API key.
-func (e *Engine) reportSenderMisses(misses, total int, err error) {
-	if misses == 0 {
+// reportSenderMisses logs one warning and feeds the miss counter for a committed chunk with
+// unresolved senders. The error is redacted: an RPC *url.Error carries the provider URL and
+// its API key.
+func (e *Engine) reportSenderMisses(m senderMisses) {
+	if m.misses == 0 {
 		return
 	}
 	if e.settings.OnSenderMisses != nil {
-		e.settings.OnSenderMisses(misses)
+		e.settings.OnSenderMisses(m.misses)
 	}
-	attrs := []any{"chain_id", e.settings.ChainID, "transactions", total, "misses", misses}
-	if err != nil {
-		attrs = append(attrs, "error", redact.Error(err))
+	attrs := []any{"chain_id", e.settings.ChainID, "transactions", m.total, "misses", m.misses}
+	if m.err != nil {
+		attrs = append(attrs, "error", redact.Error(m.err))
 	}
-	slog.Warn("pool swap sender lookup missed; swaps stored without tx_from, run cmd/backfill-swap-sender", attrs...)
+	slog.Warn("pool swap sender lookup missed; swaps stored without tx_from, the indexer retries them once their block is safe", attrs...)
 }
 
 // Step commits at most one block-aligned chunk. RPC snapshots are checked against
@@ -228,6 +234,7 @@ func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
 		previous = &block
 	}
 	decoded := make([]chain.DecodedLog, 0)
+	var misses senderMisses
 	if len(blocks) > 0 {
 		emitters := chain.Emitters{Factory: e.settings.Factory, Curves: chain.NewAddressSet(), Tokens: chain.NewAddressSet(), Pairs: chain.NewAddressSet()}
 		for _, identity := range identities {
@@ -256,7 +263,7 @@ func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
 			}
 			decoded = append(decoded, event)
 		}
-		e.attachSenders(ctx, decoded)
+		misses = e.attachSenders(ctx, decoded)
 		check, err := e.source.HeaderByNumber(ctx, uint64(to))
 		if err != nil {
 			return false, rpcFailure("recheck chunk header", err)
@@ -329,8 +336,11 @@ func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
 		}
 		return u.WriteState(ctx, state)
 	})
-	if err == nil && e.settings.OnCommitted != nil {
-		e.settings.OnCommitted(state)
+	if err == nil {
+		e.reportSenderMisses(misses)
+		if e.settings.OnCommitted != nil {
+			e.settings.OnCommitted(state)
+		}
 	}
 	return len(blocks) > 0, err
 }

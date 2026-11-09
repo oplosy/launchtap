@@ -112,3 +112,21 @@ func TestPositionMetricsRegistered(t *testing.T) {
 		t.Errorf("launchpad_indexer_sender_lookup_misses_total = %v, want 3", got)
 	}
 }
+
+func TestSenderBackfillMetricsRegistered(t *testing.T) {
+	t.Parallel()
+
+	reg := NewRegistry(ComponentIndexer)
+	m := NewIndexer(reg, new(indexer.HealthTracker).Snapshot)
+	m.SenderBackfillFilled(4)
+	m.SenderBackfillFilled(0)
+	m.SenderBackfillFilled(-2)
+	m.SenderBackfillFailed()
+
+	if got := seriesValue(t, reg, "launchpad_indexer_sender_backfill_filled_total", map[string]string{}); got != 4 {
+		t.Errorf("launchpad_indexer_sender_backfill_filled_total = %v, want 4", got)
+	}
+	if got := seriesValue(t, reg, "launchpad_indexer_sender_backfill_errors_total", map[string]string{}); got != 1 {
+		t.Errorf("launchpad_indexer_sender_backfill_errors_total = %v, want 1", got)
+	}
+}

@@ -192,14 +192,16 @@ describe it:
 ### Wallet positions (P0-C1)
 
 The indexer's second stats worker recomputes wallet positions (cost basis and realized PnL)
-from the `position_dirty` queue. Three indexer metrics (on its health port `:8081`, `/metrics`)
+from the `position_dirty` queue. These indexer metrics (on its health port `:8081`, `/metrics`)
 describe it; no address is ever a label:
 
 | Metric | Meaning |
 |--------|---------|
 | `launchpad_aggregation_position_failures_total` | position recomputations that failed; the pair stays dirty and is retried |
 | `launchpad_aggregation_position_dirty_backlog` | pending `position_dirty` rows for the chain |
-| `launchpad_indexer_sender_lookup_misses_total` | pool swap transactions stored with `tx_from = NULL` because the sender lookup failed, errored for that hash, or returned `null` |
+| `launchpad_indexer_sender_lookup_misses_total` | pool swap transactions stored with `tx_from = NULL` because the sender lookup failed, errored for that hash, or returned `null`; counted once per committed chunk, so a retried step never double-counts |
+| `launchpad_indexer_sender_backfill_filled_total` | pool swap transactions whose missing sender the indexer's automatic backfill filled |
+| `launchpad_indexer_sender_backfill_errors_total` | automatic backfill passes that failed (RPC or database error); the next pass retries |
 
 - No alert rule ships for these. Suggested policy for the monitoring owner: warn when
   `launchpad_aggregation_position_dirty_backlog > 500` for 15 minutes, or when
@@ -208,13 +210,29 @@ describe it; no address is ever a label:
   drains on its own.
 - A growing backlog or rising failures mean wallet PnL and the leaderboard are stale, not wrong.
   Check the indexer log for `position compute failed`.
-- Sender misses are not retried by the indexer. Each one leaves a swap with `tx_from = NULL`,
-  which turns `attribution_complete` false for every wallet on the chain until it is filled.
-  Suggested alert: `increase(launchpad_indexer_sender_lookup_misses_total[15m]) > 0`. When it
-  fires, check the indexer log for `pool swap sender lookup missed` (one warning per batch, with
-  the miss count) and run `cmd/backfill-swap-sender` (see "Backfill pool swap senders (P0-C1)"
-  below) once the RPC is healthy. A lagging load-balanced node returning `null` for a
-  just-mined transaction is the usual cause; the backfill resolves those later.
+- Sender misses heal on their own. Each miss leaves a swap with `tx_from = NULL`, which turns
+  `attribution_complete` false for every wallet on the chain until it is filled. The indexer
+  runs the sender backfill itself every `INDEXER_SENDER_BACKFILL_INTERVAL` (default `60s`, `0`
+  disables), at most `INDEXER_SENDER_BACKFILL_MAX_TXS` transactions per pass (default `500`),
+  at the manual command's default rate (5 RPC calls per second, 50 hashes each). A pass only
+  touches swaps at or below the indexer's committed safe head, so it never races ingest; a
+  lagging load-balanced node returning `null` for a just-mined transaction (the usual cause) is
+  resolved by the first pass after the block turns safe. Filled senders mark their
+  `(sender, token)` positions dirty exactly like the manual command, and
+  `launchpad_indexer_sender_backfill_filled_total` rises. A failing pass is logged as
+  `sender backfill pass failed` (redacted), counted in
+  `launchpad_indexer_sender_backfill_errors_total`, and retried next interval; it never stops
+  ingest or fails `/healthz`.
+- Alert only on misses that persist: a miss followed by a matching fill (one safe-head lag plus
+  one interval later) is normal. Suggested alerts:
+  `increase(launchpad_indexer_sender_lookup_misses_total[1h]) - increase(launchpad_indexer_sender_backfill_filled_total[1h]) > 0`
+  for 1 hour, or `increase(launchpad_indexer_sender_backfill_errors_total[30m]) > 0`; the
+  authoritative check is the `tx_from IS NULL` count below staying above 0. When it fires, check the
+  indexer log for `pool swap sender lookup missed` (one warning per committed chunk, with the
+  miss count), `transaction sender unresolved, skipped` and `sender backfill pass failed`. If
+  the RPC keeps returning `null` for a safe transaction, run `cmd/backfill-swap-sender` (see
+  "Backfill pool swap senders (P0-C1)" below) against a different RPC. A transaction that never
+  resolves is retried, and logged, on every pass, and it keeps its slot in the per-pass cap.
 - After a backfill or an outage, the backlog should return to 0. See "Backfill pool swap senders
   (P0-C1)" below for the `cmd/backfill-swap-sender` command and `attribution_complete`.
 
@@ -242,7 +260,11 @@ go run ./cmd/backfill-swap-sender            # fill and mark positions dirty
   affected `(sender, token)` positions dirty; the indexer's position worker then recomputes them.
 - A transaction the RPC cannot resolve is logged and skipped for that run, and the command exits
   non-zero after finishing. Rerun later (or against a better RPC) to retry the skipped ones.
-- Sender fetch failures during normal ingestion never stop the indexer; they only leave `NULL`.
+- Sender fetch failures during normal ingestion never stop the indexer; they only leave `NULL`,
+  and the indexer's automatic backfill (see "Wallet positions (P0-C1)" above) fills them once
+  their block is safe. The manual command is for history that predates sender attribution, an
+  indexer running with `INDEXER_SENDER_BACKFILL_INTERVAL=0`, or a different RPC. It is safe to
+  run alongside the indexer: both only update rows that are still `NULL`.
 
 Seeding positions from existing history (upgrade procedure). The position queue starts empty,
 and ingestion marks only new events, so on a database that already holds trades, transfers or

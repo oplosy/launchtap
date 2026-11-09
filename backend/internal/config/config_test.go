@@ -35,6 +35,8 @@ func TestLoadParsesCompleteConfiguration(t *testing.T) {
 	env["API_RATE_LIMIT_BURST"] = "200"
 	env["API_SSE_MAX_PER_CLIENT"] = "8"
 	env["DATABASE_MAX_CONNS"] = "24"
+	env["INDEXER_SENDER_BACKFILL_INTERVAL"] = "2m"
+	env["INDEXER_SENDER_BACKFILL_MAX_TXS"] = "250"
 
 	got, err := Load(mapGetenv(env))
 	if err != nil {
@@ -43,32 +45,34 @@ func TestLoadParsesCompleteConfiguration(t *testing.T) {
 
 	wantConfirmations := uint64(12)
 	want := Config{
-		ChainID:                    4663,
-		DeploymentID:               "robinhood-mainnet-v1",
-		RPCURL:                     "https://rpc.example.test/v2/key",
-		DatabaseURL:                "postgresql://user:pass@db.example.test:5432/launchpad",
-		PrivyAppID:                 "app-id",
-		PrivyVerificationKey:       "verification-key",
-		LogLevel:                   "debug",
-		APIAddr:                    "127.0.0.1:9090",
-		IndexerHealthAddr:          "127.0.0.1:9091",
-		IndexerChunkSize:           2500,
-		IndexerReorgSearchDepth:    512,
-		IndexerReorgRecoveryMode:   true,
-		IndexerLogAddressBatchSize: 750,
-		IndexerPollInterval:        2 * time.Second,
-		RPCTimeout:                 15 * time.Second,
-		RPCMaxRetries:              5,
-		RPCRetryBackoff:            400 * time.Millisecond,
-		IndexerWorkerID:            "worker-a",
-		IndexerConfirmations:       &wantConfirmations,
-		ETHUSDSource:               "coingecko",
-		CoinGeckoAPIKey:            "cg-key",
-		APITrustedProxyCIDRs:       []netip.Prefix{netip.MustParsePrefix("172.16.0.0/12"), netip.MustParsePrefix("10.0.0.0/8")},
-		APIRateLimitPerMinute:      1200,
-		APIRateLimitBurst:          200,
-		APISSEMaxPerClient:         8,
-		DatabaseMaxConns:           24,
+		ChainID:                       4663,
+		DeploymentID:                  "robinhood-mainnet-v1",
+		RPCURL:                        "https://rpc.example.test/v2/key",
+		DatabaseURL:                   "postgresql://user:pass@db.example.test:5432/launchpad",
+		PrivyAppID:                    "app-id",
+		PrivyVerificationKey:          "verification-key",
+		LogLevel:                      "debug",
+		APIAddr:                       "127.0.0.1:9090",
+		IndexerHealthAddr:             "127.0.0.1:9091",
+		IndexerChunkSize:              2500,
+		IndexerReorgSearchDepth:       512,
+		IndexerReorgRecoveryMode:      true,
+		IndexerLogAddressBatchSize:    750,
+		IndexerPollInterval:           2 * time.Second,
+		RPCTimeout:                    15 * time.Second,
+		RPCMaxRetries:                 5,
+		RPCRetryBackoff:               400 * time.Millisecond,
+		IndexerWorkerID:               "worker-a",
+		IndexerConfirmations:          &wantConfirmations,
+		ETHUSDSource:                  "coingecko",
+		CoinGeckoAPIKey:               "cg-key",
+		APITrustedProxyCIDRs:          []netip.Prefix{netip.MustParsePrefix("172.16.0.0/12"), netip.MustParsePrefix("10.0.0.0/8")},
+		APIRateLimitPerMinute:         1200,
+		APIRateLimitBurst:             200,
+		APISSEMaxPerClient:            8,
+		DatabaseMaxConns:              24,
+		IndexerSenderBackfillInterval: 2 * time.Minute,
+		IndexerSenderBackfillMaxTxs:   250,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Load() = %#v, want %#v", got, want)
@@ -79,34 +83,36 @@ func TestConfigEnvironmentMapping(t *testing.T) {
 	t.Parallel()
 
 	want := map[string]string{
-		"ChainID":                    "CHAIN_ID",
-		"DeploymentID":               "DEPLOYMENT_ID",
-		"RPCURL":                     "RPC_URL",
-		"DatabaseURL":                "DATABASE_URL",
-		"PrivyAppID":                 "PRIVY_APP_ID",
-		"PrivyVerificationKey":       "PRIVY_VERIFICATION_KEY",
-		"LogLevel":                   "LOG_LEVEL",
-		"APIAddr":                    "API_ADDR",
-		"APIMetricsAddr":             "API_METRICS_ADDR",
-		"APIAllowedOrigins":          "API_ALLOWED_ORIGINS",
-		"APITrustedProxyCIDRs":       "API_TRUSTED_PROXY_CIDRS",
-		"APIRateLimitPerMinute":      "API_RATE_LIMIT_PER_MINUTE",
-		"APIRateLimitBurst":          "API_RATE_LIMIT_BURST",
-		"APISSEMaxPerClient":         "API_SSE_MAX_PER_CLIENT",
-		"DatabaseMaxConns":           "DATABASE_MAX_CONNS",
-		"IndexerHealthAddr":          "INDEXER_HEALTH_ADDR",
-		"IndexerChunkSize":           "INDEXER_CHUNK_SIZE",
-		"IndexerReorgSearchDepth":    "INDEXER_REORG_SEARCH_DEPTH",
-		"IndexerReorgRecoveryMode":   "INDEXER_REORG_RECOVERY_MODE",
-		"IndexerLogAddressBatchSize": "INDEXER_LOG_ADDRESS_BATCH_SIZE",
-		"IndexerPollInterval":        "INDEXER_POLL_INTERVAL",
-		"RPCTimeout":                 "RPC_TIMEOUT",
-		"RPCMaxRetries":              "RPC_MAX_RETRIES",
-		"RPCRetryBackoff":            "RPC_RETRY_BACKOFF",
-		"IndexerWorkerID":            "INDEXER_WORKER_ID",
-		"IndexerConfirmations":       "INDEXER_CONFIRMATIONS",
-		"ETHUSDSource":               "ETH_USD_SOURCE",
-		"CoinGeckoAPIKey":            "COINGECKO_API_KEY",
+		"ChainID":                       "CHAIN_ID",
+		"DeploymentID":                  "DEPLOYMENT_ID",
+		"RPCURL":                        "RPC_URL",
+		"DatabaseURL":                   "DATABASE_URL",
+		"PrivyAppID":                    "PRIVY_APP_ID",
+		"PrivyVerificationKey":          "PRIVY_VERIFICATION_KEY",
+		"LogLevel":                      "LOG_LEVEL",
+		"APIAddr":                       "API_ADDR",
+		"APIMetricsAddr":                "API_METRICS_ADDR",
+		"APIAllowedOrigins":             "API_ALLOWED_ORIGINS",
+		"APITrustedProxyCIDRs":          "API_TRUSTED_PROXY_CIDRS",
+		"APIRateLimitPerMinute":         "API_RATE_LIMIT_PER_MINUTE",
+		"APIRateLimitBurst":             "API_RATE_LIMIT_BURST",
+		"APISSEMaxPerClient":            "API_SSE_MAX_PER_CLIENT",
+		"DatabaseMaxConns":              "DATABASE_MAX_CONNS",
+		"IndexerHealthAddr":             "INDEXER_HEALTH_ADDR",
+		"IndexerChunkSize":              "INDEXER_CHUNK_SIZE",
+		"IndexerReorgSearchDepth":       "INDEXER_REORG_SEARCH_DEPTH",
+		"IndexerReorgRecoveryMode":      "INDEXER_REORG_RECOVERY_MODE",
+		"IndexerLogAddressBatchSize":    "INDEXER_LOG_ADDRESS_BATCH_SIZE",
+		"IndexerPollInterval":           "INDEXER_POLL_INTERVAL",
+		"RPCTimeout":                    "RPC_TIMEOUT",
+		"RPCMaxRetries":                 "RPC_MAX_RETRIES",
+		"RPCRetryBackoff":               "RPC_RETRY_BACKOFF",
+		"IndexerWorkerID":               "INDEXER_WORKER_ID",
+		"IndexerConfirmations":          "INDEXER_CONFIRMATIONS",
+		"ETHUSDSource":                  "ETH_USD_SOURCE",
+		"CoinGeckoAPIKey":               "COINGECKO_API_KEY",
+		"IndexerSenderBackfillInterval": "INDEXER_SENDER_BACKFILL_INTERVAL",
+		"IndexerSenderBackfillMaxTxs":   "INDEXER_SENDER_BACKFILL_MAX_TXS",
 	}
 
 	typeOfConfig := reflect.TypeFor[Config]()
@@ -209,6 +215,47 @@ func TestLoadUsesBoundedDefaults(t *testing.T) {
 	}
 	if got.IndexerConfirmations != nil {
 		t.Errorf("IndexerConfirmations = %v, want nil", got.IndexerConfirmations)
+	}
+	if got.IndexerSenderBackfillInterval != time.Minute {
+		t.Errorf("IndexerSenderBackfillInterval = %v, want 1m", got.IndexerSenderBackfillInterval)
+	}
+	if got.IndexerSenderBackfillMaxTxs != 500 {
+		t.Errorf("IndexerSenderBackfillMaxTxs = %d, want 500", got.IndexerSenderBackfillMaxTxs)
+	}
+}
+
+func TestSenderBackfillSettings(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{"0", "0s"} {
+		env := validEnvironment()
+		env["INDEXER_SENDER_BACKFILL_INTERVAL"] = value
+		got, err := Load(mapGetenv(env))
+		if err != nil || got.IndexerSenderBackfillInterval != 0 {
+			t.Errorf("interval %q = %v, %v; want disabled (0)", value, got.IndexerSenderBackfillInterval, err)
+		}
+	}
+	for _, test := range []struct{ interval, maxTxs string }{{"1s", "1"}, {"24h", "10000"}} {
+		env := validEnvironment()
+		env["INDEXER_SENDER_BACKFILL_INTERVAL"] = test.interval
+		env["INDEXER_SENDER_BACKFILL_MAX_TXS"] = test.maxTxs
+		if _, err := Load(mapGetenv(env)); err != nil {
+			t.Errorf("boundary %+v rejected: %v", test, err)
+		}
+	}
+	for _, test := range []struct{ field, value string }{
+		{"INDEXER_SENDER_BACKFILL_INTERVAL", "-1s"},
+		{"INDEXER_SENDER_BACKFILL_INTERVAL", "500ms"},
+		{"INDEXER_SENDER_BACKFILL_INTERVAL", "25h"},
+		{"INDEXER_SENDER_BACKFILL_INTERVAL", "soon"},
+		{"INDEXER_SENDER_BACKFILL_MAX_TXS", "0"},
+		{"INDEXER_SENDER_BACKFILL_MAX_TXS", "-5"},
+		{"INDEXER_SENDER_BACKFILL_MAX_TXS", "10001"},
+		{"INDEXER_SENDER_BACKFILL_MAX_TXS", "many"},
+	} {
+		env := validEnvironment()
+		env[test.field] = test.value
+		assertFieldError(t, Load, env, test.field, ErrInvalid)
 	}
 }
 

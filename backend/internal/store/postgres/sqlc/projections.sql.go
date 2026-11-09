@@ -596,17 +596,19 @@ SELECT tx_hash, block_number
 FROM pool_swaps
 WHERE chain_id = $1::bigint
   AND tx_from IS NULL
-  AND (block_number, tx_hash) > ($2::bigint, $3::bytea)
+  AND block_number <= $2::bigint
+  AND (block_number, tx_hash) > ($3::bigint, $4::bytea)
 GROUP BY tx_hash, block_number
 ORDER BY block_number, tx_hash
-LIMIT $4::int
+LIMIT $5::int
 `
 
 type ListUnattributedPoolSwapsParams struct {
-	ChainID    int64
-	AfterBlock int64
-	AfterHash  []byte
-	RowLimit   int32
+	ChainID      int64
+	ThroughBlock int64
+	AfterBlock   int64
+	AfterHash    []byte
+	RowLimit     int32
 }
 
 type ListUnattributedPoolSwapsRow struct {
@@ -615,10 +617,12 @@ type ListUnattributedPoolSwapsRow struct {
 }
 
 // Backfill cursor: distinct transactions that still have a pool swap without a sender, in
-// (block_number, tx_hash) order, strictly after the keyset position (after_block, after_hash).
+// blocks at or below through_block, in (block_number, tx_hash) order, strictly after the keyset
+// position (after_block, after_hash).
 func (q *Queries) ListUnattributedPoolSwaps(ctx context.Context, arg ListUnattributedPoolSwapsParams) ([]ListUnattributedPoolSwapsRow, error) {
 	rows, err := q.db.Query(ctx, listUnattributedPoolSwaps,
 		arg.ChainID,
+		arg.ThroughBlock,
 		arg.AfterBlock,
 		arg.AfterHash,
 		arg.RowLimit,

@@ -14,11 +14,12 @@ type UnattributedSwapTx struct {
 	BlockNumber int64
 }
 
-// ListUnattributedSwapTxs returns up to limit distinct transactions with a NULL tx_from swap,
-// ordered by (block_number, tx_hash) and strictly after the (afterBlock, afterHash) cursor.
-func (adapter *Adapter) ListUnattributedSwapTxs(ctx context.Context, chainID, afterBlock int64, afterHash common.Hash, limit int32) ([]UnattributedSwapTx, error) {
+// ListUnattributedSwapTxs returns up to limit distinct transactions with a NULL tx_from swap in
+// blocks at or below throughBlock, ordered by (block_number, tx_hash) and strictly after the
+// (afterBlock, afterHash) cursor.
+func (adapter *Adapter) ListUnattributedSwapTxs(ctx context.Context, chainID, throughBlock, afterBlock int64, afterHash common.Hash, limit int32) ([]UnattributedSwapTx, error) {
 	rows, err := adapter.queries.ListUnattributedPoolSwaps(ctx, sqlc.ListUnattributedPoolSwapsParams{
-		ChainID: chainID, AfterBlock: afterBlock, AfterHash: afterHash[:], RowLimit: limit,
+		ChainID: chainID, ThroughBlock: throughBlock, AfterBlock: afterBlock, AfterHash: afterHash[:], RowLimit: limit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list unattributed pool swaps: %w", err)

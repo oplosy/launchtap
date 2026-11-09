@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -14,13 +15,20 @@ type fakeStore struct {
 	rows     []SwapTx // ordered by (block, hash)
 	filled   map[common.Hash]common.Address
 	listings int
+	through  []int64 // throughBlock of every List call
+	limits   []int   // limit of every List call
 }
 
-func (s *fakeStore) List(_ context.Context, afterBlock int64, afterHash common.Hash, limit int) ([]SwapTx, error) {
+func (s *fakeStore) List(_ context.Context, throughBlock, afterBlock int64, afterHash common.Hash, limit int) ([]SwapTx, error) {
 	s.listings++
+	s.through = append(s.through, throughBlock)
+	s.limits = append(s.limits, limit)
 	var out []SwapTx
 	for _, row := range s.rows {
 		if _, done := s.filled[row.Hash]; done {
+			continue
+		}
+		if row.Block > throughBlock {
 			continue
 		}
 		if row.Block < afterBlock || (row.Block == afterBlock && string(row.Hash[:]) <= string(afterHash[:])) {
@@ -116,5 +124,53 @@ func TestRunPropagatesRPCFailure(t *testing.T) {
 	senders.err = errors.New("rpc down")
 	if _, err := Run(t.Context(), d, Options{Batch: 10}); err == nil || errors.Is(err, ErrSkipped) {
 		t.Fatalf("err = %v, want RPC failure", err)
+	}
+}
+
+func TestRunWithoutBoundListsEverything(t *testing.T) {
+	t.Parallel()
+	store, _, d := newDeps([]SwapTx{{hash(1), 5}}, map[common.Hash]common.Address{hash(1): {1}})
+	if _, err := Run(t.Context(), d, Options{Batch: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.through) == 0 || store.through[0] != math.MaxInt64 {
+		t.Fatalf("throughBlock = %v, want MaxInt64 without a bound", store.through)
+	}
+}
+
+func TestRunHonorsThroughBlock(t *testing.T) {
+	t.Parallel()
+	rows := []SwapTx{{hash(1), 5}, {hash(2), 6}, {hash(3), 9}}
+	known := map[common.Hash]common.Address{hash(1): {1}, hash(2): {2}, hash(3): {3}}
+	store, _, d := newDeps(rows, known)
+	through := int64(6)
+	summary, err := Run(t.Context(), d, Options{Batch: 10, ThroughBlock: &through})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, filled := store.filled[hash(3)]; filled || len(store.filled) != 2 || summary.Attributed != 2 {
+		t.Fatalf("summary=%+v filled=%v, want only blocks <= 6", summary, store.filled)
+	}
+	for _, got := range store.through {
+		if got != 6 {
+			t.Fatalf("throughBlock = %v, want 6 on every listing", store.through)
+		}
+	}
+}
+
+func TestRunCapsTransactionsPerPass(t *testing.T) {
+	t.Parallel()
+	rows := []SwapTx{{hash(1), 5}, {hash(2), 6}, {hash(3), 7}, {hash(4), 8}, {hash(5), 9}}
+	known := map[common.Hash]common.Address{hash(1): {1}, hash(2): {2}, hash(3): {3}, hash(4): {4}, hash(5): {5}}
+	store, _, d := newDeps(rows, known)
+	summary, err := Run(t.Context(), d, Options{Batch: 2, MaxTransactions: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Listed != 3 || summary.Attributed != 3 || len(store.filled) != 3 {
+		t.Fatalf("summary=%+v filled=%d, want 3 transactions", summary, len(store.filled))
+	}
+	if want := []int{2, 1}; len(store.limits) != 2 || store.limits[0] != want[0] || store.limits[1] != want[1] {
+		t.Fatalf("limits = %v, want %v", store.limits, want)
 	}
 }

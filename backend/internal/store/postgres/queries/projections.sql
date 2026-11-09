@@ -561,11 +561,13 @@ SELECT now()::timestamptz AS now;
 
 -- name: ListUnattributedPoolSwaps :many
 -- Backfill cursor: distinct transactions that still have a pool swap without a sender, in
--- (block_number, tx_hash) order, strictly after the keyset position (after_block, after_hash).
+-- blocks at or below through_block, in (block_number, tx_hash) order, strictly after the keyset
+-- position (after_block, after_hash).
 SELECT tx_hash, block_number
 FROM pool_swaps
 WHERE chain_id = sqlc.arg(chain_id)::bigint
   AND tx_from IS NULL
+  AND block_number <= sqlc.arg(through_block)::bigint
   AND (block_number, tx_hash) > (sqlc.arg(after_block)::bigint, sqlc.arg(after_hash)::bytea)
 GROUP BY tx_hash, block_number
 ORDER BY block_number, tx_hash

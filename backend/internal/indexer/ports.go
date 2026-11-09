@@ -70,8 +70,9 @@ type Settings struct {
 	// Senders is optional. When set, the engine attaches the transaction sender to every pool
 	// swap before the write transaction; when nil, PoolSwap.TxFrom stays nil.
 	Senders SenderSource
-	// OnSenderMisses receives, once per lookup batch, the number of pool swap transactions
-	// whose sender could not be resolved (stored with a nil TxFrom).
+	// OnSenderMisses receives, once per committed chunk, the number of pool swap transactions
+	// whose sender could not be resolved (stored with a nil TxFrom). A chunk whose write
+	// transaction fails reports nothing, so a retried step never double-counts.
 	OnSenderMisses func(misses int)
 }
 

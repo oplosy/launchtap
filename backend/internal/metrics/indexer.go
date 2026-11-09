@@ -15,6 +15,8 @@ type Indexer struct {
 	notification *prometheus.CounterVec
 	positionFail prometheus.Counter
 	senderMiss   prometheus.Counter
+	backfilled   prometheus.Counter
+	backfillFail prometheus.Counter
 }
 
 var (
@@ -47,8 +49,16 @@ func NewIndexer(reg prometheus.Registerer, snapshot func() indexer.Health) *Inde
 			Name: "launchpad_indexer_sender_lookup_misses_total",
 			Help: "Pool swap transactions stored without a sender (tx_from NULL) because the lookup failed or returned nothing.",
 		}),
+		backfilled: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "launchpad_indexer_sender_backfill_filled_total",
+			Help: "Pool swap transactions whose missing sender the indexer's automatic backfill filled.",
+		}),
+		backfillFail: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "launchpad_indexer_sender_backfill_errors_total",
+			Help: "Automatic sender backfill passes that failed (RPC or database error); the next pass retries.",
+		}),
 	}
-	reg.MustRegister(m.rpc, m.recomputed, m.notification, m.positionFail, m.senderMiss)
+	reg.MustRegister(m.rpc, m.recomputed, m.notification, m.positionFail, m.senderMiss, m.backfilled, m.backfillFail)
 	reg.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "launchpad_aggregation_position_dirty_backlog",
 		Help: "Pending wallet position recomputations (position_dirty rows for the chain).",
@@ -114,6 +124,18 @@ func (m *Indexer) SenderLookupMissed(count int) {
 	if count > 0 {
 		m.senderMiss.Add(float64(count))
 	}
+}
+
+// SenderBackfillFilled counts pool swap transactions whose sender the automatic backfill wrote.
+func (m *Indexer) SenderBackfillFilled(count int) {
+	if count > 0 {
+		m.backfilled.Add(float64(count))
+	}
+}
+
+// SenderBackfillFailed counts one failed automatic sender backfill pass.
+func (m *Indexer) SenderBackfillFailed() {
+	m.backfillFail.Inc()
 }
 
 // Notified counts one NOTIFY outcome. Unknown channels are ignored.

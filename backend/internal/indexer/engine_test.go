@@ -779,3 +779,31 @@ func TestEngineCountsFailedSenderCallAndRedactsURL(t *testing.T) {
 		t.Fatalf("log = %q, want a redacted warning with misses=2", out)
 	}
 }
+
+// A step whose write transaction fails is retried; the miss must be counted once, for the
+// committed attempt only.
+func TestEngineCountsSenderMissesOnlyAfterCommit(t *testing.T) {
+	logs := captureDefaultLog(t)
+	fake := &fakeSenders{senders: map[common.Hash]common.Address{}}
+	e, _, _ := newSwapEngine(t, fake, common.HexToHash("0x01"))
+	store := e.store.(*memoryStore)
+	var reported []int
+	e.settings.OnSenderMisses = func(misses int) { reported = append(reported, misses) }
+	store.unit.fail = true
+	if _, err := e.Step(t.Context()); err == nil {
+		t.Fatal("Step() succeeded with a failing write transaction")
+	}
+	if len(reported) != 0 || strings.Contains(logs.String(), "sender lookup missed") {
+		t.Fatalf("uncommitted step reported misses: calls=%v log=%q", reported, logs.String())
+	}
+	store.unit.fail = false
+	if advanced, err := e.Step(t.Context()); err != nil || !advanced {
+		t.Fatalf("retried Step() = %t, %v", advanced, err)
+	}
+	if len(reported) != 1 || reported[0] != 1 {
+		t.Fatalf("OnSenderMisses calls = %v, want [1] after the retried step commits", reported)
+	}
+	if got := strings.Count(logs.String(), "pool swap sender lookup missed"); got != 1 {
+		t.Fatalf("log = %q, want one warning", logs.String())
+	}
+}

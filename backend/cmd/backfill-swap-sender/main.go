@@ -20,7 +20,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/Contictus/launchtap/backend/deployments"
 	"github.com/Contictus/launchtap/backend/internal/chain"
@@ -32,8 +31,8 @@ import (
 )
 
 const (
-	defaultRate  = 5
-	defaultBatch = 50
+	defaultRate  = swapbackfill.DefaultRate
+	defaultBatch = swapbackfill.DefaultBatch
 	maxBatch     = 100
 	minRate      = 0.001
 )
@@ -95,7 +94,7 @@ func execute(ctx context.Context, args []string, getenv func(string) string) err
 		Store:   swapbackfill.PostgresStore{Pool: pool, ChainID: int64(c.ChainID), Factory: deployment.Factory},
 		Senders: source,
 		Log:     log,
-		Sleep:   rateSleeper(f.Rate),
+		Sleep:   swapbackfill.RateSleeper(f.Rate),
 	}
 	result, err := swapbackfill.Run(ctx, d, swapbackfill.Options{Batch: f.Batch, DryRun: f.DryRun})
 	log.Info("backfill finished", "dry_run", f.DryRun, "transactions_listed", result.Listed,
@@ -140,20 +139,6 @@ func seedPositions(ctx context.Context, databaseURL string, chainID int64, facto
 	}
 	slog.Info("position seed finished", "dry_run", dryRun, "pairs", seed.Pairs, "marked", seed.Marked)
 	return nil
-}
-
-func rateSleeper(rate float64) func(context.Context) error {
-	interval := time.Duration(float64(time.Second) / rate)
-	return func(ctx context.Context) error {
-		timer := time.NewTimer(interval)
-		defer timer.Stop()
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-timer.C:
-			return nil
-		}
-	}
 }
 
 func loadDeploymentRegistry() (*deployments.Registry, error) {

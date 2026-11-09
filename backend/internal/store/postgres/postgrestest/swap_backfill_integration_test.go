@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Contictus/launchtap/backend/internal/indexer"
+	"github.com/Contictus/launchtap/backend/internal/ledger"
+	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/Contictus/launchtap/backend/internal/swapbackfill"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -114,5 +117,69 @@ func TestBackfillSkipsUnresolved(t *testing.T) {
 	var stored []byte
 	if err := f.database.DB.QueryRowContext(ctx, `SELECT tx_from FROM pool_swaps WHERE chain_id = $1 AND tx_hash = $2`, walletChainID, hashBytes(0x62)).Scan(&stored); err != nil || stored != nil {
 		t.Fatalf("unresolved swap tx_from = %x, %v; want NULL", stored, err)
+	}
+}
+
+// One scheduler pass, bounded by the indexer's committed safe head, fills a swap ingested with
+// a NULL sender and marks its (sender, token) pair dirty; a swap above the safe head is left for
+// a later pass.
+func TestSchedulerPassFillsSwapsAtOrBelowSafeHead(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	f := newWalletSchemaFixture(t, ctx)
+	const deploymentID = "wallet-backfill-test"
+	store := swapbackfill.PostgresStore{Pool: f.pool, ChainID: walletChainID, Factory: common.BytesToAddress(addressBytes(0xc4)), DeploymentID: deploymentID}
+	if _, ok, err := store.SafeBlock(ctx); err != nil || ok {
+		t.Fatalf("SafeBlock() before any sync state = %t, %v; want no safe head", ok, err)
+	}
+	unsafeHash := hashBytes(0x22)
+	mustInsertBlock(t, ctx, f.database.DB, walletChainID, 11, unsafeHash, f.hash, f.at.Add(time.Second), "observed")
+	if err := f.ingest(t, ctx, f.swap(0x61, nil)); err != nil {
+		t.Fatal(err)
+	}
+	above := f.swap(0x62, nil)
+	above.BlockNumber, above.BlockHash, above.BlockTime = 11, common.BytesToHash(unsafeHash), f.at.Add(time.Second)
+	if err := f.ingest(t, ctx, above); err != nil {
+		t.Fatal(err)
+	}
+	safe := ledger.IndexedBlock{ChainID: walletChainID, BlockNumber: 10, BlockHash: common.BytesToHash(f.hash), BlockTime: f.at}
+	observed := ledger.IndexedBlock{ChainID: walletChainID, BlockNumber: 11, BlockHash: common.BytesToHash(unsafeHash), BlockTime: f.at.Add(time.Second)}
+	if err := storepostgres.NewAdapter(f.pool).WriteState(ctx, indexer.State{ChainID: walletChainID, DeploymentID: deploymentID, Observed: &observed, Safe: &safe, Finalized: &safe}); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok, err := store.SafeBlock(ctx); err != nil || !ok || got != 10 {
+		t.Fatalf("SafeBlock() = %d, %t, %v; want 10", got, ok, err)
+	}
+
+	senderA, senderB := common.BytesToAddress(addressBytes(0xc5)), common.BytesToAddress(addressBytes(0xc6))
+	var filled, failures int
+	scheduler := swapbackfill.Scheduler{
+		Deps: swapbackfill.Deps{
+			Store:   store,
+			Senders: mapSenders{common.BytesToHash(hashBytes(0x61)): senderA, common.BytesToHash(hashBytes(0x62)): senderB},
+			Log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Sleep:   func(context.Context) error { return nil },
+		},
+		Interval: time.Minute, Batch: swapbackfill.DefaultBatch, MaxTransactions: 100, SafeBlock: store.SafeBlock,
+		OnFilled: func(n int) { filled += n }, OnError: func() { failures++ },
+	}
+	scheduler.Pass(ctx)
+
+	if filled != 1 || failures != 0 {
+		t.Fatalf("filled = %d, failures = %d; want 1, 0", filled, failures)
+	}
+	var stored []byte
+	if err := f.database.DB.QueryRowContext(ctx, `SELECT tx_from FROM pool_swaps WHERE chain_id = $1 AND tx_hash = $2`, walletChainID, hashBytes(0x61)).Scan(&stored); err != nil || string(stored) != string(senderA.Bytes()) {
+		t.Fatalf("safe swap tx_from = %x, %v; want %x", stored, err, senderA.Bytes())
+	}
+	if err := f.database.DB.QueryRowContext(ctx, `SELECT tx_from FROM pool_swaps WHERE chain_id = $1 AND tx_hash = $2`, walletChainID, hashBytes(0x62)).Scan(&stored); err != nil || stored != nil {
+		t.Fatalf("swap above the safe head tx_from = %x, %v; want NULL", stored, err)
+	}
+	dirty := f.dirty(t, ctx)
+	if dirty[pairKey(0xc5, 0x10)].wallet == "" {
+		t.Fatalf("dirty = %v, want the filled sender's pair marked", keys(dirty))
+	}
+	if dirty[pairKey(0xc6, 0x10)].wallet != "" {
+		t.Fatalf("dirty = %v, the unsafe swap's sender must not be marked", keys(dirty))
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/Contictus/launchtap/backend/internal/metrics"
 	"github.com/Contictus/launchtap/backend/internal/stats"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
+	"github.com/Contictus/launchtap/backend/internal/swapbackfill"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -168,6 +169,22 @@ func run() error {
 		indexerMetrics.PositionFailed()
 		slog.Error("position compute failed", "chain_id", claim.ChainID, "error", err)
 	}}
+	// Retries sender lookups that missed during ingest, only up to the committed safe head. It
+	// uses the shared pool (never the ownership connection) and never stops ingest.
+	backfillStore := swapbackfill.PostgresStore{Pool: pool, ChainID: int64(c.ChainID), Factory: deployment.Factory, DeploymentID: c.DeploymentID}
+	senderBackfill := swapbackfill.Scheduler{
+		Deps: swapbackfill.Deps{
+			Store:   backfillStore,
+			Senders: source,
+			Log:     slog.Default(),
+			Sleep:   swapbackfill.RateSleeper(swapbackfill.DefaultRate),
+		},
+		Interval: c.IndexerSenderBackfillInterval, Batch: swapbackfill.DefaultBatch, MaxTransactions: int(c.IndexerSenderBackfillMaxTxs),
+		SafeBlock: backfillStore.SafeBlock,
+		OnFilled:  indexerMetrics.SenderBackfillFilled, OnError: indexerMetrics.SenderBackfillFailed,
+		Secrets: []string{c.RPCURL, c.DatabaseURL},
+	}
+	go func() { _ = senderBackfill.Run(ctx) }()
 	aggregationErrors := make(chan error, 2)
 	for _, worker := range []stats.Worker{aggregation, positions} {
 		go func() {

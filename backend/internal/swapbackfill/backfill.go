@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"sort"
 
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
@@ -23,6 +24,12 @@ var ErrSkipped = errors.New("some transactions could not be resolved")
 type Options struct {
 	Batch  int
 	DryRun bool
+	// ThroughBlock, when set, limits the run to swaps in blocks at or below it (the indexer
+	// passes its safe head so a pass never touches blocks that ingest may still reorg). nil
+	// means no upper bound.
+	ThroughBlock *int64
+	// MaxTransactions caps the transactions one run lists; 0 means no cap.
+	MaxTransactions int
 }
 
 // SwapTx is one transaction that still has a pool swap without a known sender.
@@ -33,8 +40,9 @@ type SwapTx struct {
 
 // Store is the database side of the backfill.
 type Store interface {
-	// List returns up to limit distinct NULL-sender transactions strictly after the cursor.
-	List(ctx context.Context, afterBlock int64, afterHash common.Hash, limit int) ([]SwapTx, error)
+	// List returns up to limit distinct NULL-sender transactions in blocks at or below
+	// throughBlock, strictly after the cursor.
+	List(ctx context.Context, throughBlock, afterBlock int64, afterHash common.Hash, limit int) ([]SwapTx, error)
 	// Attribute fills the senders and marks the affected positions dirty in one transaction.
 	// It returns the number of swap rows updated.
 	Attribute(ctx context.Context, senders map[common.Hash]common.Address) (int, error)
@@ -57,6 +65,7 @@ type Deps struct {
 // Summary counts what one run did.
 type Summary struct {
 	Listed      int
+	Attributed  int // transactions whose sender was written
 	Updated     int // swap rows written
 	WouldUpdate int // transactions resolved in dry-run mode
 	Skipped     int
@@ -69,11 +78,23 @@ func Run(ctx context.Context, d Deps, o Options) (Summary, error) {
 	var result Summary
 	var afterBlock int64 = -1
 	var afterHash common.Hash
+	throughBlock := int64(math.MaxInt64)
+	if o.ThroughBlock != nil {
+		throughBlock = *o.ThroughBlock
+	}
 	for {
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
-		batch, err := d.Store.List(ctx, afterBlock, afterHash, o.Batch)
+		limit := o.Batch
+		if o.MaxTransactions > 0 {
+			remaining := o.MaxTransactions - result.Listed
+			if remaining <= 0 {
+				break
+			}
+			limit = min(limit, remaining)
+		}
+		batch, err := d.Store.List(ctx, throughBlock, afterBlock, afterHash, limit)
 		if err != nil {
 			return result, err
 		}
@@ -114,6 +135,7 @@ func Run(ctx context.Context, d Deps, o Options) (Summary, error) {
 			if err != nil {
 				return result, err
 			}
+			result.Attributed += len(resolved)
 			result.Updated += updated
 			d.Log.Info("batch attributed", "transactions", len(resolved), "swaps_updated", updated, "block_number", last.Block)
 		}
@@ -133,10 +155,22 @@ type PostgresStore struct {
 	ChainID int64
 	// Factory is excluded from position marking (R4).
 	Factory common.Address
+	// DeploymentID selects the indexer sync state SafeBlock reads.
+	DeploymentID string
 }
 
-func (s PostgresStore) List(ctx context.Context, afterBlock int64, afterHash common.Hash, limit int) ([]SwapTx, error) {
-	rows, err := storepostgres.NewAdapter(s.Pool).ListUnattributedSwapTxs(ctx, s.ChainID, afterBlock, afterHash, int32(limit))
+// SafeBlock returns the indexer's committed safe block for the chain and deployment; ok is
+// false until the indexer has committed one.
+func (s PostgresStore) SafeBlock(ctx context.Context) (int64, bool, error) {
+	state, err := storepostgres.NewAdapter(s.Pool).ReadState(ctx, s.ChainID, s.DeploymentID)
+	if err != nil || state.Safe == nil {
+		return 0, false, err
+	}
+	return state.Safe.BlockNumber, true, nil
+}
+
+func (s PostgresStore) List(ctx context.Context, throughBlock, afterBlock int64, afterHash common.Hash, limit int) ([]SwapTx, error) {
+	rows, err := storepostgres.NewAdapter(s.Pool).ListUnattributedSwapTxs(ctx, s.ChainID, throughBlock, afterBlock, afterHash, int32(limit))
 	if err != nil {
 		return nil, err
 	}

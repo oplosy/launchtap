@@ -468,6 +468,8 @@ requires `DATABASE_URL`.
 | `INDEXER_REORG_RECOVERY_MODE`    | `false`                            | Must be `true` only with an explicitly larger search depth; see the deep-reorg runbook              |
 | `INDEXER_LOG_ADDRESS_BATCH_SIZE` | `500`                              | Addresses per log query batch; default 500, accepted range 1–2,000                                  |
 | `INDEXER_POLL_INTERVAL`          | `1s`                               | Positive polling duration; defaults to 1 second                                                     |
+| `INDEXER_SENDER_BACKFILL_INTERVAL` | `60s`                            | Automatic pool swap sender backfill period (safe blocks only); `0` disables, otherwise 1s–24h       |
+| `INDEXER_SENDER_BACKFILL_MAX_TXS`  | `500`                            | Transactions one automatic backfill pass looks up; default 500, accepted range 1–10,000             |
 | `RPC_TIMEOUT`                    | `10s`                              | Positive per-RPC timeout; defaults to 10 seconds                                                    |
 | `RPC_MAX_RETRIES`                | `3`                                | Retry count; defaults to 3, accepted range 0–20                                                     |
 | `RPC_RETRY_BACKOFF`              | `250ms`                            | Positive retry backoff; defaults to 250 milliseconds                                                |
