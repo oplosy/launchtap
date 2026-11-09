@@ -36,6 +36,7 @@ import {
   formatSignedEth,
   isWalletTrade,
   pnlTone,
+  pnlUsd,
   walletPath,
 } from "./wallet-model";
 
@@ -62,15 +63,12 @@ function safeDate(value: string) {
 function isTransfer(transferredIn: string) {
   return /^[1-9]\d*$/.test(transferredIn);
 }
-function absWei(wei: string) {
-  return wei.startsWith("-") ? wei.slice(1) : wei;
-}
-
 function Pnl({ wei }: { wei: string }) {
+  const usd = pnlUsd(wei);
   return (
     <span className={`pnl pnl-${pnlTone(wei)}`}>
       {formatSignedEth(wei)}
-      <UsdLine wei={absWei(wei)} />
+      <UsdLine wei={usd.wei} negative={usd.negative} />
     </span>
   );
 }

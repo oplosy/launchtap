@@ -4,15 +4,20 @@ import { formatUsd, parseCanonicalBaseUnits, parseDecimal } from "@/amounts";
 import { SafeExternalLink } from "@/components/primitives";
 import { useEthUsd } from "./eth-usd";
 
-/** Pure renderer: nothing unless there is a price and a valid non-negative amount. */
+/**
+ * Pure renderer: nothing unless there is a price and a valid non-negative amount. `negative`
+ * prefixes a minus sign, for a loss whose magnitude is passed as `wei`.
+ */
 export function UsdLineView({
   wei,
   price,
   decimals = 18,
+  negative = false,
 }: {
   wei: string | bigint;
   price: string | null;
   decimals?: number;
+  negative?: boolean;
 }) {
   if (!price) return null;
   let text: string;
@@ -25,13 +30,21 @@ export function UsdLineView({
   } catch {
     return null;
   }
-  return <span className="usd-line">≈ {text}</span>;
+  return <span className="usd-line">≈ {negative ? `−${text}` : text}</span>;
 }
 
 /** Secondary muted USD figure to place under an ETH amount (wei, 18 decimals). */
-export function UsdLine({ wei, decimals }: { wei: string | bigint; decimals?: number }) {
+export function UsdLine({
+  wei,
+  decimals,
+  negative,
+}: {
+  wei: string | bigint;
+  decimals?: number;
+  negative?: boolean;
+}) {
   const { price } = useEthUsd();
-  return <UsdLineView wei={wei} price={price} decimals={decimals} />;
+  return <UsdLineView wei={wei} price={price} decimals={decimals} negative={negative} />;
 }
 
 export function CoinGeckoAttribution() {

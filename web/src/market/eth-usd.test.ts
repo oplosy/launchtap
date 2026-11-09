@@ -125,4 +125,18 @@ describe("UsdLine", () => {
     );
     expect(html).toContain("$3,456.12");
   });
+  it("prefixes a minus sign for a loss", () => {
+    const loss = renderToStaticMarkup(
+      createElement(UsdLineView, {
+        wei: (10n ** 18n).toString(),
+        price: "3456.12",
+        negative: true,
+      }),
+    );
+    expect(loss).toContain("−$3,456.12");
+    const gain = renderToStaticMarkup(
+      createElement(UsdLineView, { wei: (10n ** 18n).toString(), price: "3456.12" }),
+    );
+    expect(gain).not.toContain("−");
+  });
 });

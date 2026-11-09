@@ -26,13 +26,22 @@ export function pnlTone(wei: string): "gain" | "loss" | "flat" {
   return value > 0n ? "gain" : "loss";
 }
 
-/** Signed ETH amount from a signed wei string; bigint math only, never a float. */
+/**
+ * Signed ETH amount from a signed wei string; bigint math only, never a float. A non-zero amount
+ * below display precision reads "+<0.0001 ETH" / "−<0.0001 ETH", never a signed zero.
+ */
 export function formatSignedEth(wei: string): string {
   const value = parseSigned(wei);
   if (value === null) return "Unavailable";
   if (value === 0n) return "0 ETH";
   const magnitude = formatDisplayAmount(value < 0n ? -value : value, 18, 4);
-  return `${value < 0n ? "−" : "+"}${magnitude} ETH`;
+  return `${value < 0n ? "−" : "+"}${magnitude === "0" ? "<0.0001" : magnitude} ETH`;
+}
+
+/** USD-line input for a signed PnL: the magnitude in wei and whether it is a loss. */
+export function pnlUsd(wei: string): { wei: string; negative: boolean } {
+  const negative = pnlTone(wei) === "loss";
+  return { wei: negative ? wei.slice(1) : wei, negative };
 }
 
 /** Runs `run` once, `ms` after the first trigger of a burst; later triggers join that run. */

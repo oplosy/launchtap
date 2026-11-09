@@ -6,6 +6,7 @@ import {
   formatSignedEth,
   isWalletTrade,
   pnlTone,
+  pnlUsd,
   walletPath,
 } from "./wallet-model";
 
@@ -66,12 +67,24 @@ describe("formatSignedEth and pnlTone", () => {
     expect(formatSignedEth("-500000000000000000")).toBe("−0.5 ETH");
     expect(formatSignedEth("0")).toBe("0 ETH");
   });
+  it("never renders a signed zero below display precision", () => {
+    expect(formatSignedEth("1")).toBe("+<0.0001 ETH");
+    expect(formatSignedEth("-99999999999999")).toBe("−<0.0001 ETH");
+    expect(formatSignedEth("100000000000000")).toBe("+0.0001 ETH");
+    expect(formatSignedEth("-100000000000000")).toBe("−0.0001 ETH");
+    expect(pnlTone("-1")).toBe("loss");
+  });
   it("keeps precision beyond float range", () => {
     expect(formatSignedEth("123456789012345678901234567890")).toBe("+123,456,789,012.3456 ETH");
   });
   it("falls back for malformed input", () => {
     expect(formatSignedEth("1.5")).toBe("Unavailable");
     expect(pnlTone("garbage")).toBe("flat");
+  });
+  it("splits a PnL into the USD magnitude and its sign", () => {
+    expect(pnlUsd("-500000000000000000")).toEqual({ wei: "500000000000000000", negative: true });
+    expect(pnlUsd("200000000000000000")).toEqual({ wei: "200000000000000000", negative: false });
+    expect(pnlUsd("0")).toEqual({ wei: "0", negative: false });
   });
   it("derives the tone from the sign", () => {
     expect(pnlTone("1")).toBe("gain");
