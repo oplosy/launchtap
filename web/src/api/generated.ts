@@ -539,6 +539,12 @@ export interface components {
             id: string;
             token: string;
         };
+        CommentEvent: {
+            /** Format: int64 */
+            chain_id: number;
+            deployment_id: string;
+            token: string;
+        };
         CommentListBody: {
             /**
              * Format: uri
@@ -1285,6 +1291,17 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": ({
+                        data: components["schemas"]["CommentEvent"];
+                        /**
+                         * @description The event name.
+                         * @constant
+                         */
+                        event: "comment";
+                        /** @description The event ID. */
+                        id?: number;
+                        /** @description The retry time in milliseconds. */
+                        retry?: number;
+                    } | {
                         data: components["schemas"]["FinalityFeedEvent"];
                         /**
                          * @description The event name.

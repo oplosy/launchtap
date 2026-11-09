@@ -279,6 +279,27 @@
         ],
         "type": "object"
       },
+      "CommentEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deployment_id": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_id",
+          "deployment_id",
+          "token"
+        ],
+        "type": "object"
+      },
       "CommentListBody": {
         "additionalProperties": false,
         "properties": {
@@ -2486,6 +2507,32 @@
                   "description": "Each oneOf object in the array represents one possible Server Sent Events (SSE) message, serialized as UTF-8 text according to the SSE specification.",
                   "items": {
                     "oneOf": [
+                      {
+                        "properties": {
+                          "data": {
+                            "$ref": "#/components/schemas/CommentEvent"
+                          },
+                          "event": {
+                            "const": "comment",
+                            "description": "The event name.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "The event ID.",
+                            "type": "integer"
+                          },
+                          "retry": {
+                            "description": "The retry time in milliseconds.",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "data",
+                          "event"
+                        ],
+                        "title": "Event comment",
+                        "type": "object"
+                      },
                       {
                         "properties": {
                           "data": {

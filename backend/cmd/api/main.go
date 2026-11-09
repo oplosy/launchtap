@@ -153,15 +153,7 @@ func loadDeploymentRegistry() (*deployments.Registry, error) {
 }
 
 func listenRefreshHints(ctx context.Context, pool *pgxpool.Pool, hub *realtime.Hub, tail *feed.Tail, chainID int64, deploymentID string) {
-	receive := func(payload []byte) {
-		event, err := realtime.Decode(payload)
-		if err != nil || event.ChainID != chainID || (event.DeploymentID != "" && event.DeploymentID != deploymentID) {
-			return
-		}
-		hub.Publish(event)
-		// Tail.Hint does no scope check, so it is called only after the filter above.
-		tail.Hint(event)
-	}
+	receive := refreshReceiver(hub, tail, chainID, deploymentID)
 	listen := func(ctx context.Context, ready chan<- struct{}) error {
 		return storepostgres.ListenAPIRefreshReady(ctx, pool, ready, receive)
 	}
@@ -199,6 +191,25 @@ func listenLoop(ctx context.Context, listen func(context.Context, chan<- struct{
 		case <-ctx.Done():
 			return
 		case <-time.After(backoff):
+		}
+	}
+}
+
+// tailHinter is the part of feed.Tail that refreshReceiver drives.
+type tailHinter interface{ Hint(realtime.Event) }
+
+// refreshReceiver decodes an api_refresh payload, drops other scopes, publishes it to the hub and wakes
+// the trade tail for chain events. A comment is not chain data, so it never wakes the tail.
+func refreshReceiver(hub *realtime.Hub, tail tailHinter, chainID int64, deploymentID string) func([]byte) {
+	return func(payload []byte) {
+		event, err := realtime.Decode(payload)
+		if err != nil || event.ChainID != chainID || (event.DeploymentID != "" && event.DeploymentID != deploymentID) {
+			return
+		}
+		hub.Publish(event)
+		// Tail.Hint does no scope check, so it is called only after the filter above.
+		if event.Type != "comment" {
+			tail.Hint(event)
 		}
 	}
 }

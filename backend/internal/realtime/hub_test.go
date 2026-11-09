@@ -60,3 +60,21 @@ func TestDecodeRejectsInvalidScopeAndType(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeCommentEvent(t *testing.T) {
+	event, err := Decode([]byte(`{"type":"comment","chain_id":1,"deployment_id":"d","token":"0x00000000000000000000000000000000000000aA"}`))
+	if err != nil || event.Type != "comment" || event.Token != "0x00000000000000000000000000000000000000aA" {
+		t.Fatalf("event=%+v err=%v", event, err)
+	}
+	for _, payload := range []string{
+		`{"type":"comment","chain_id":1,"deployment_id":"d"}`,
+		`{"type":"comment","chain_id":1,"deployment_id":"d","token":""}`,
+		`{"type":"comment","chain_id":1,"deployment_id":"d","token":"0x12"}`,
+		`{"type":"comment","chain_id":1,"deployment_id":"d","token":"00000000000000000000000000000000000000aa"}`,
+		`{"type":"comment","chain_id":1,"deployment_id":"d","token":"0xzz000000000000000000000000000000000000aa"}`,
+	} {
+		if _, err := Decode([]byte(payload)); err == nil {
+			t.Fatalf("accepted %s", payload)
+		}
+	}
+}

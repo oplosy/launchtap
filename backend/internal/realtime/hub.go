@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math/big"
+	"regexp"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -83,16 +84,21 @@ type Launch struct {
 	LogIndex       int32
 }
 
+var commentTokenPattern = regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
+
 func Decode(data []byte) (Event, error) {
 	var event Event
 	if err := json.Unmarshal(data, &event); err != nil {
 		return Event{}, err
 	}
-	if event.Type != "launch" && event.Type != "token" && event.Type != "reorg" {
+	if event.Type != "launch" && event.Type != "token" && event.Type != "reorg" && event.Type != "comment" {
 		return Event{}, errors.New("unknown refresh event type")
 	}
 	if event.ChainID <= 0 || event.DeploymentID == "" {
 		return Event{}, errors.New("refresh event scope is invalid")
+	}
+	if event.Type == "comment" && !commentTokenPattern.MatchString(event.Token) {
+		return Event{}, errors.New("comment event token is invalid")
 	}
 	return event, nil
 }

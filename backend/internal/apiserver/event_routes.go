@@ -18,7 +18,7 @@ type EventRoutes struct {
 	Heartbeat    time.Duration
 	// Streams caps concurrent streams per client; nil disables the per-client cap.
 	Streams *StreamLimiter
-	// Coalesce batches launch/token hints per stream; repeated hints for the same token within
+	// Coalesce batches launch/token/comment hints per stream; repeated hints for the same token within
 	// one window are delivered once. Zero uses the default window.
 	Coalesce time.Duration
 	shutdown <-chan struct{}
@@ -48,6 +48,12 @@ type tokenEvent struct {
 	AsOfBlockHash string `json:"as_of_block_hash,omitempty"`
 }
 
+type commentEvent struct {
+	ChainID      int64  `json:"chain_id"`
+	DeploymentID string `json:"deployment_id"`
+	Token        string `json:"token"`
+}
+
 type reorgEvent struct {
 	ChainID        int64  `json:"chain_id"`
 	DeploymentID   string `json:"deployment_id"`
@@ -58,7 +64,7 @@ type reorgEvent struct {
 
 func (r EventRoutes) Register(api huma.API) {
 	sse.Register(api, huma.Operation{OperationID: "events", Method: http.MethodGet, Path: "/events", Tags: []string{"events"}}, map[string]any{
-		"launch": launchEvent{}, "token": tokenEvent{}, "reorg": reorgEvent{},
+		"launch": launchEvent{}, "token": tokenEvent{}, "reorg": reorgEvent{}, "comment": commentEvent{},
 		"trade": tradeFeedItem{}, "graduation": graduationFeedEvent{}, "new_token": newTokenFeedEvent{},
 		"trade_burst": tradeBurstFeedEvent{}, "finality": finalityFeedEvent{},
 	}, r.stream)
@@ -171,7 +177,7 @@ func (r EventRoutes) stream(ctx context.Context, input *eventInput, send sse.Sen
 				if err := send(sse.Message{Data: payload}); err != nil {
 					return
 				}
-			case "launch", "token":
+			case "launch", "token", "comment":
 				if tokenFilter != "" && (event.Type == "launch" || strings.ToLower(event.Token) != tokenFilter) {
 					continue
 				}
@@ -192,6 +198,8 @@ func (r EventRoutes) payload(event realtime.Event) any {
 		return launchEvent{ChainID: event.ChainID, DeploymentID: scope, Token: event.Token, AsOfBlock: event.AsOfBlock, AsOfBlockHash: event.AsOfBlockHash}
 	case "token":
 		return tokenEvent{ChainID: event.ChainID, DeploymentID: scope, Token: event.Token, AsOfBlock: event.AsOfBlock, AsOfBlockHash: event.AsOfBlockHash}
+	case "comment":
+		return commentEvent{ChainID: event.ChainID, DeploymentID: scope, Token: event.Token}
 	default:
 		return reorgEvent{ChainID: event.ChainID, DeploymentID: scope, AsOfBlock: event.AsOfBlock, AsOfBlockHash: event.AsOfBlockHash, CommonAncestor: event.CommonAncestor}
 	}
