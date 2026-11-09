@@ -67,6 +67,9 @@ export default function AnalyticsPage() {
             Protocol activity across launches, trades, volume, and graduations. ETH-native values
             are shown without USD enrichment.
           </p>
+          <Link className="ui-button ui-button-secondary ui-button-md" href="/leaderboard">
+            View the leaderboard
+          </Link>
         </div>
       </section>
       {error ? (

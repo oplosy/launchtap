@@ -30,7 +30,8 @@ import {
   Skeleton,
   Tabs,
 } from "@/components/primitives";
-import { addressHue, shortAddress } from "./address";
+import { walletPath } from "@/portfolio/wallet-model";
+import { addressHue, parseTokenAddress, shortAddress } from "./address";
 import { transformCandles, type CandleChartPoint } from "./chart-data";
 import {
   appendTokenCollectionPage,
@@ -821,6 +822,7 @@ function Trades({
     <div className="history-table" role="table" aria-label="Recent trades">
       <div className="history-row history-heading" role="row">
         <span>Time</span>
+        <span>Trader</span>
         <span>Side</span>
         <span>Token volume</span>
         <span>ETH volume</span>
@@ -835,6 +837,9 @@ function Trades({
           data-pending={item.finality === "observed" ? "" : undefined}
         >
           <span className="mono">{safeDate(item.time)}</span>
+          <span className="mono">
+            <WalletLink address={item.trader} />
+          </span>
           <span className={item.side === "buy" ? "trade-buy" : "trade-sell"}>
             {item.side || "—"}
           </span>
@@ -895,7 +900,9 @@ function Holders({
       </div>
       {items.map((item) => (
         <div className="history-row holder-row" role="row" key={item.address}>
-          <span className="mono">{shortAddress(item.address)}</span>
+          <span className="mono">
+            <WalletLink address={item.address} />
+          </span>
           <span className="mono">{safeTokenAmount(item.balance)}</span>
           <span className="mono">
             {Number.isSafeInteger(item.first_acquired_block)
@@ -905,6 +912,16 @@ function Holders({
         </div>
       ))}
     </div>
+  );
+}
+/** Links an address to its wallet page; a missing or malformed address stays a dash. */
+function WalletLink({ address }: { address: string | null | undefined }) {
+  const parsed = parseTokenAddress(address);
+  if (!parsed) return <>—</>;
+  return (
+    <Link href={walletPath(parsed) as never} title={parsed}>
+      {shortAddress(parsed)}
+    </Link>
   );
 }
 function safeDate(value: string) {

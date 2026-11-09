@@ -1,6 +1,7 @@
 import type { components } from "@/api/generated";
 import type { ApiEvent, LiveEvent } from "@/api/types";
 import { formatCanonicalBaseUnits } from "@/amounts";
+import { walletPath } from "@/portfolio/wallet-model";
 import { parseTokenAddress, shortAddress } from "@/token/address";
 import { applyFeedEvent, FEED_MAX_ITEMS, type FeedItem } from "./feed-store";
 
@@ -18,6 +19,8 @@ export type StripItemView = {
   /** Raw wei for the optional USD line. */
   wei: string | null;
   trader: string;
+  /** Wallet page of the trader (or launch creator), or null when there is no valid address. */
+  traderHref: string | null;
   time: string;
   badge: "Launch" | "Graduated" | null;
   pending: boolean;
@@ -67,6 +70,11 @@ function traderLabel(trader: string | null | undefined): string {
   return short === "Unavailable" ? "—" : short;
 }
 
+function traderHref(trader: string | null | undefined): string | null {
+  const address = parseTokenAddress(trader);
+  return address ? walletPath(address) : null;
+}
+
 /** Client receive times (ms) for items that carry no chain timestamp, keyed by feed key. */
 export type ReceivedAt = Record<string, number>;
 
@@ -94,6 +102,7 @@ export function toStripItem(
       eth: formatted === null ? null : `${formatted} ETH`,
       wei: formatted === null ? null : item.eth_volume,
       trader: traderLabel(item.trader),
+      traderHref: traderHref(item.trader),
       time: relativeTime(item.time, now),
       badge: null,
     };
@@ -105,6 +114,7 @@ export function toStripItem(
     eth: null,
     wei: null,
     trader: item.kind === "launch" ? traderLabel(item.creator) : "—",
+    traderHref: item.kind === "launch" ? traderHref(item.creator) : null,
     time: relativeTime(receivedAt[item.key], now),
     badge: item.kind === "launch" ? "Launch" : "Graduated",
   };

@@ -15,6 +15,11 @@ export type EthUsdReference = components["schemas"]["EthUsdBody"];
 export type RecentTradesResponse = components["schemas"]["RecentTradesBody"];
 export type TokenHighlights = components["schemas"]["HighlightsBody"];
 export type WatchlistResponse = components["schemas"]["WatchlistBody"];
+export type WalletResponse = components["schemas"]["WalletDTO"];
+export type WalletPositionsResponse = components["schemas"]["WalletPositionsBody"];
+export type WalletTradesResponse = components["schemas"]["WalletTradesBody"];
+export type WalletCreatedResponse = components["schemas"]["WalletCreatedBody"];
+export type LeaderboardResponse = components["schemas"]["LeaderboardBody"];
 export type TokenListQuery = {
   age?: "all" | "24h" | "7d";
   phase?: string;
@@ -294,6 +299,55 @@ export class ApiClient {
     }
     return this.request<T>(
       `/v1/tokens/${encodeURIComponent(address)}/${resource}${query.size ? `?${query}` : ""}`,
+      { signal },
+    );
+  }
+
+  getWallet(address: string, signal?: AbortSignal) {
+    return this.request<WalletResponse>(`/v1/wallets/${encodeURIComponent(address)}`, { signal });
+  }
+
+  /** Open positions (`closed` false) come in one response and take no cursor. */
+  listWalletPositions(
+    address: string,
+    options: { closed?: boolean; cursor?: string; limit?: number } = {},
+    signal?: AbortSignal,
+  ) {
+    return this.getWalletCollection<WalletPositionsResponse>(address, "positions", options, signal);
+  }
+
+  listWalletTrades(
+    address: string,
+    options: { cursor?: string; limit?: number } = {},
+    signal?: AbortSignal,
+  ) {
+    return this.getWalletCollection<WalletTradesResponse>(address, "trades", options, signal);
+  }
+
+  listWalletCreated(
+    address: string,
+    options: { cursor?: string; limit?: number } = {},
+    signal?: AbortSignal,
+  ) {
+    return this.getWalletCollection<WalletCreatedResponse>(address, "created", options, signal);
+  }
+
+  getLeaderboard(limit = 100, signal?: AbortSignal) {
+    return this.request<LeaderboardResponse>(`/v1/leaderboard?limit=${limit}`, { signal });
+  }
+
+  private getWalletCollection<T>(
+    address: string,
+    resource: "positions" | "trades" | "created",
+    options: { closed?: boolean; cursor?: string; limit?: number },
+    signal?: AbortSignal,
+  ) {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(options)) {
+      if (value !== undefined && value !== "") query.set(key, String(value));
+    }
+    return this.request<T>(
+      `/v1/wallets/${encodeURIComponent(address)}/${resource}${query.size ? `?${query}` : ""}`,
       { signal },
     );
   }

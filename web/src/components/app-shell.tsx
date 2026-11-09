@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Sun,
   UserCircle,
+  Wallet,
 } from "./icons";
 import { SafeExternalLink, Sheet } from "./primitives";
 import {
@@ -25,7 +26,8 @@ import {
   useThemePreference,
   type ThemePreference,
 } from "./theme";
-import { WalletConnectButton } from "@/wallet/connection-context";
+import { walletPath } from "@/portfolio/wallet-model";
+import { WalletConnectButton, useWalletConnection } from "@/wallet/connection-context";
 import { publicConfiguration } from "@/config/public";
 import { NotificationBell } from "@/live/notifications";
 import { CoinGeckoAttribution } from "@/market/usd-line";
@@ -46,6 +48,14 @@ const noSubscription = () => () => undefined;
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const configuration = publicConfiguration();
+  // The lightweight connection context only: it reports an address once a wallet is connected.
+  const connection = useWalletConnection();
+  const navLinks: ReadonlyArray<{ href: string; label: string; icon: typeof Compass }> = [
+    ...navItems,
+    ...(connection.connected && connection.address
+      ? [{ href: walletPath(connection.address), label: "My wallet", icon: Wallet }]
+      : []),
+  ];
   const [menuOpen, setMenuOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteLoaded, setPaletteLoaded] = useState(false);
@@ -96,12 +106,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="brand-word">launchpad</span>
           </Link>
           <nav className="navbar-links" aria-label="Desktop primary navigation">
-            {navItems
+            {navLinks
               .filter(({ href }) => href !== "/profile")
               .map(({ href, label }) => (
                 <Link
                   key={href}
-                  href={href}
+                  href={href as never}
                   className={`navbar-link ${active(href) ? "is-active" : ""}`}
                   aria-current={active(href) ? "page" : undefined}
                 >
@@ -204,10 +214,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </main>
       <Sheet open={menuOpen} title="Navigate" onClose={() => setMenuOpen(false)}>
         <nav className="sheet-nav" aria-label="Mobile menu navigation">
-          {navItems.map(({ href, label, icon: Icon }, index) => (
+          {navLinks.map(({ href, label, icon: Icon }, index) => (
             <Link
               key={href}
-              href={href}
+              href={href as never}
               onClick={() => setMenuOpen(false)}
               className={active(href) ? "is-active" : ""}
               style={{ "--i": index } as React.CSSProperties}

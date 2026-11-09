@@ -124,16 +124,30 @@ function StripEntry({ view }: { view: StripItemView }) {
           {view.wei ? <UsdLine wei={view.wei} /> : null}
         </span>
       ) : null}
-      <span className="live-strip-trader mono">{view.trader}</span>
-      <span className="live-strip-time mono">{view.time}</span>
-      {view.pending ? <span className="sr-only">Updating</span> : null}
     </>
   );
-  return view.href ? (
-    <Link className="live-strip-link" href={view.href as never}>
-      {body}
-    </Link>
-  ) : (
-    <span className="live-strip-link">{body}</span>
+  // The token link and the trader link are siblings: anchors cannot nest.
+  return (
+    <span className="live-strip-link">
+      {view.href ? (
+        <Link className="live-strip-part" href={view.href as never}>
+          {body}
+        </Link>
+      ) : (
+        <span className="live-strip-part">{body}</span>
+      )}
+      {view.traderHref ? (
+        <Link
+          className="live-strip-trader live-strip-trader-link mono"
+          href={view.traderHref as never}
+        >
+          {view.trader}
+        </Link>
+      ) : (
+        <span className="live-strip-trader mono">{view.trader}</span>
+      )}
+      <span className="live-strip-time mono">{view.time}</span>
+      {view.pending ? <span className="sr-only">Updating</span> : null}
+    </span>
   );
 }

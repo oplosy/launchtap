@@ -42,8 +42,16 @@
   white-space: nowrap;
   text-decoration: none;
 }
-a.live-strip-link:hover {
-  background: var(--surface-hover);
+.live-strip-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+a.live-strip-part:hover,
+a.live-strip-trader-link:hover {
+  text-decoration: underline;
 }
 .live-strip-ticker {
   max-width: 12ch;

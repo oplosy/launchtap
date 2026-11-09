@@ -404,10 +404,10 @@
 }
 .history-row {
   display: grid;
-  grid-template-columns: 1.3fr 0.6fr 1fr 1fr 1.4fr 0.9fr;
+  grid-template-columns: 1.3fr 1fr 0.6fr 1fr 1fr 1.4fr 0.9fr;
   align-items: center;
   gap: 12px;
-  min-width: 720px;
+  min-width: 840px;
   border-bottom: 1px solid var(--line);
   padding: 12px 24px;
   font-size: 13.5px;

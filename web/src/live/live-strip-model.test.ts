@@ -70,6 +70,15 @@ describe("live strip model", () => {
     expect(reduceStripFeed([], ev(trade(1, { deployment_id: "x" })), scope)).toEqual([]);
   });
 
+  it("links a valid trader to its wallet page and nothing else", () => {
+    const linked = toStripItem(
+      tradeToFeedItem(trade(1, { trader: "0xAbCdEf0000000000000000000000000000000001" })),
+      NOW,
+    );
+    expect(linked.traderHref).toBe("/wallet/0xabcdef0000000000000000000000000000000001");
+    expect(toStripItem(tradeToFeedItem(trade(1, { trader: null })), NOW).traderHref).toBeNull();
+  });
+
   it("shows a dash for a null trader", () => {
     const view = toStripItem(tradeToFeedItem(trade(1, { trader: null })), NOW);
     expect(view.trader).toBe("—");
