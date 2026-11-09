@@ -46,4 +46,18 @@ describe("createCoalescedRefresh", () => {
     await tick();
     expect(runs).toBe(2);
   });
+
+  it("still runs a follow-up queued during a run that then throws", async () => {
+    let runs = 0;
+    let fail: (error: Error) => void = () => undefined;
+    const trigger = createCoalescedRefresh(async () => {
+      runs += 1;
+      if (runs === 1) await new Promise<void>((_resolve, reject) => (fail = reject));
+    });
+    trigger();
+    trigger(); // queued while the first run is in flight
+    fail(new DOMException("aborted", "AbortError"));
+    await tick();
+    expect(runs).toBe(2);
+  });
 });

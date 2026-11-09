@@ -17,10 +17,13 @@ export function createCoalescedRefresh(run: () => Promise<void>): () => void {
       try {
         do {
           again = false;
-          await run();
+          try {
+            await run();
+          } catch {
+            // See above: aborted by a newer load, or already shown by the loader that failed. A
+            // follow-up queued meanwhile still runs.
+          }
         } while (again);
-      } catch {
-        // See above: aborted by a newer load, or already shown by the loader that failed.
       } finally {
         running = false;
       }
