@@ -50,3 +50,21 @@ func (adapter *Adapter) AttributeSwapSender(ctx context.Context, chainID int64, 
 	}
 	return len(pairs), nil
 }
+
+// PositionSeed counts what SeedPositionDirty found and wrote.
+type PositionSeed struct {
+	Pairs  int64 // distinct (wallet, token) pairs in the ledger after the R4 exclusions
+	Marked int64 // position_dirty rows inserted or re-generated (0 in dry-run mode)
+}
+
+// SeedPositionDirty marks every (wallet, token) pair of the chain's existing ledger history
+// dirty (curve trades by trader, transfers from/to, attributed pool swaps), excluding the zero
+// address, the adapter's factory and every curve and pair (R4). It is one set-based statement
+// and idempotent; with dryRun it only counts.
+func (adapter *Adapter) SeedPositionDirty(ctx context.Context, chainID int64, dryRun bool) (PositionSeed, error) {
+	row, err := adapter.queries.SeedPositionDirty(ctx, sqlc.SeedPositionDirtyParams{ChainID: chainID, Factory: adapter.factory[:], DryRun: dryRun})
+	if err != nil {
+		return PositionSeed{}, fmt.Errorf("seed position dirty: %w", err)
+	}
+	return PositionSeed{Pairs: row.PairCount, Marked: row.Marked}, nil
+}

@@ -4,6 +4,10 @@
 // It is one-off and resumable: tx_from IS NULL is the cursor, so a rerun only touches what is
 // still missing. Transactions the RPC cannot resolve are skipped for the run and the command
 // exits non-zero.
+//
+// With -seed-positions it instead queues every (wallet, token) pair of the existing ledger
+// history in position_dirty, so wallet positions cover activity from before the position queue
+// existed. Run it after the sender backfill; it needs no RPC and is safe to rerun.
 package main
 
 import (
@@ -24,6 +28,7 @@ import (
 	"github.com/Contictus/launchtap/backend/internal/redact"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/Contictus/launchtap/backend/internal/swapbackfill"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 const (
@@ -34,9 +39,10 @@ const (
 )
 
 type flags struct {
-	Rate   float64
-	Batch  int
-	DryRun bool
+	Rate          float64
+	Batch         int
+	DryRun        bool
+	SeedPositions bool
 }
 
 func main() {
@@ -65,6 +71,9 @@ func execute(ctx context.Context, args []string, getenv func(string) string) err
 	deployment, err := registry.Resolve(c.ChainID, c.DeploymentID, c.IndexerConfirmations)
 	if err != nil {
 		return err
+	}
+	if f.SeedPositions {
+		return seedPositions(ctx, c.DatabaseURL, int64(c.ChainID), deployment.Factory, f.DryRun)
 	}
 	source, err := chain.Dial(ctx, c.RPCURL, chain.RPCConfig{Timeout: c.RPCTimeout, MaxRetries: c.RPCMaxRetries, RetryBackoff: c.RPCRetryBackoff})
 	if err != nil {
@@ -100,7 +109,8 @@ func parseFlags(args []string) (flags, error) {
 	set.SetOutput(io.Discard)
 	set.Float64Var(&f.Rate, "rate", defaultRate, "RPC requests per second")
 	set.IntVar(&f.Batch, "batch", defaultBatch, "transaction hashes per RPC call (1-100)")
-	set.BoolVar(&f.DryRun, "dry-run", false, "fetch and log senders, write nothing")
+	set.BoolVar(&f.DryRun, "dry-run", false, "fetch and log senders (or count seed pairs), write nothing")
+	set.BoolVar(&f.SeedPositions, "seed-positions", false, "queue every (wallet, token) pair of the existing ledger for position recompute instead of filling senders")
 	if err := set.Parse(args); err != nil {
 		return flags{}, fmt.Errorf("parse flags: %w", err)
 	}
@@ -114,6 +124,22 @@ func parseFlags(args []string) (flags, error) {
 		return flags{}, fmt.Errorf("-batch must be between 1 and %d", maxBatch)
 	}
 	return f, nil
+}
+
+// seedPositions queues every existing ledger (wallet, token) pair in one set-based statement
+// (excluding the zero address, the factory and every curve and pair). It is idempotent.
+func seedPositions(ctx context.Context, databaseURL string, chainID int64, factory common.Address, dryRun bool) error {
+	pool, err := storepostgres.OpenPool(ctx, databaseURL, storepostgres.PoolOptions{MaxConns: 2})
+	if err != nil {
+		return fmt.Errorf("open database pool: %w", err)
+	}
+	defer pool.Close()
+	seed, err := storepostgres.NewAdapter(pool).WithFactory(factory).SeedPositionDirty(ctx, chainID, dryRun)
+	if err != nil {
+		return err
+	}
+	slog.Info("position seed finished", "dry_run", dryRun, "pairs", seed.Pairs, "marked", seed.Marked)
+	return nil
 }
 
 func rateSleeper(rate float64) func(context.Context) error {

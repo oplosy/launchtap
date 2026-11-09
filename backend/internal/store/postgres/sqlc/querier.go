@@ -198,6 +198,12 @@ type Querier interface {
 	RefundCreditMatchesEvent(ctx context.Context, arg RefundCreditMatchesEventParams) (pgtype.Bool, error)
 	ReplaceTokenImage(ctx context.Context, arg ReplaceTokenImageParams) (int64, error)
 	ReplaceTokenMetadata(ctx context.Context, arg ReplaceTokenMetadataParams) (int64, error)
+	// One-off seed for ledger history that predates the position queue: every distinct
+	// (wallet, token) pair from curve trades by trader, transfers from/to, and attributed pool swaps
+	// on the token's own pair, with the R4 exclusions of ListPositionPairsAbove. Idempotent: a pair
+	// already queued only gets a new generation. With dry_run nothing is written; pair_count is the
+	// number of pairs either way and marked the number of rows inserted or re-generated.
+	SeedPositionDirty(ctx context.Context, arg SeedPositionDirtyParams) (SeedPositionDirtyRow, error)
 	// Fills the sender of every still-unattributed swap in one transaction and returns the pairs
 	// that need a position re-mark.
 	SetPoolSwapTxFrom(ctx context.Context, arg SetPoolSwapTxFromParams) ([]Address, error)

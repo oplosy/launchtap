@@ -579,3 +579,44 @@ WHERE chain_id = sqlc.arg(chain_id)::bigint
   AND tx_hash = sqlc.arg(tx_hash)::bytea
   AND tx_from IS NULL
 RETURNING pair_address;
+
+-- name: SeedPositionDirty :one
+-- One-off seed for ledger history that predates the position queue: every distinct
+-- (wallet, token) pair from curve trades by trader, transfers from/to, and attributed pool swaps
+-- on the token's own pair, with the R4 exclusions of ListPositionPairsAbove. Idempotent: a pair
+-- already queued only gets a new generation. With dry_run nothing is written; pair_count is the
+-- number of pairs either way and marked the number of rows inserted or re-generated.
+WITH pairs AS (
+    SELECT DISTINCT source.wallet, source.token_address FROM (
+        SELECT trade.trader AS wallet, trade.token_address FROM trades AS trade
+        WHERE trade.chain_id = sqlc.arg(chain_id)::bigint
+        UNION
+        SELECT swap.tx_from, token.token_address FROM pool_swaps AS swap
+        JOIN tokens AS token ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
+        WHERE swap.chain_id = sqlc.arg(chain_id)::bigint AND swap.tx_from IS NOT NULL
+        UNION
+        SELECT transfer.from_address, transfer.token_address FROM transfers AS transfer
+        WHERE transfer.chain_id = sqlc.arg(chain_id)::bigint
+        UNION
+        SELECT transfer.to_address, transfer.token_address FROM transfers AS transfer
+        WHERE transfer.chain_id = sqlc.arg(chain_id)::bigint
+    ) AS source
+    WHERE source.wallet <> decode(repeat('00', 20), 'hex')
+      AND source.wallet <> sqlc.arg(factory)::bytea
+      AND NOT EXISTS (
+        SELECT 1 FROM tokens AS excluded
+        WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.curve_address = source.wallet
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM tokens AS excluded
+        WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.lp_pair = source.wallet
+      )
+), marked AS (
+    INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
+    SELECT sqlc.arg(chain_id)::bigint, pairs.wallet, pairs.token_address, nextval('position_dirty_generation_seq')
+    FROM pairs
+    WHERE NOT sqlc.arg(dry_run)::boolean
+    ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq')
+    RETURNING 1
+)
+SELECT (SELECT count(*) FROM pairs)::bigint AS pair_count, (SELECT count(*) FROM marked)::bigint AS marked;

@@ -234,7 +234,8 @@ go run ./cmd/backfill-swap-sender            # fill and mark positions dirty
 |------|---------|---------|
 | `-rate` | `5` | RPC requests per second (one request per batch) |
 | `-batch` | `50` | transaction hashes per RPC call, 1 to 100 |
-| `-dry-run` | off | fetch and log what would change, write nothing |
+| `-dry-run` | off | fetch and log what would change, write nothing (with `-seed-positions`: count pairs only) |
+| `-seed-positions` | off | queue every existing ledger pair for position recompute instead of filling senders (see below) |
 
 - The command is resumable: `tx_from IS NULL` is the cursor, so a rerun touches only what is
   still missing. Each batch is one database transaction that fills the senders and marks the
@@ -242,6 +243,28 @@ go run ./cmd/backfill-swap-sender            # fill and mark positions dirty
 - A transaction the RPC cannot resolve is logged and skipped for that run, and the command exits
   non-zero after finishing. Rerun later (or against a better RPC) to retry the skipped ones.
 - Sender fetch failures during normal ingestion never stop the indexer; they only leave `NULL`.
+
+Seeding positions from existing history (upgrade procedure). The position queue starts empty,
+and ingestion marks only new events, so on a database that already holds trades, transfers or
+pool swaps from before this feature, every wallet that has not traded since has no position.
+When upgrading such a database:
+
+1. Apply the migrations and start the indexer as usual.
+2. Run the sender backfill above until it exits zero.
+3. Seed the queue from the whole ledger, with the same environment:
+
+   ```bash
+   go run ./cmd/backfill-swap-sender -seed-positions -dry-run   # count pairs, write nothing
+   go run ./cmd/backfill-swap-sender -seed-positions            # queue every pair
+   ```
+
+   It queues every distinct `(wallet, token)` from curve trades (by trader), transfers (both
+   sides) and attributed pool swaps, excluding the zero address, the factory and every curve and
+   pair. It is one database statement, needs no RPC, and is safe to rerun (a queued pair only
+   gets a new generation). It logs `pairs` and `marked`.
+4. Watch `launchpad_aggregation_position_dirty_backlog` drain to 0; wallet pages and the
+   leaderboard are complete after that. A fresh database (indexed from the start with this
+   feature) needs no seed.
 
 Reading `attribution_complete`: `GET /v1/wallets/{address}` returns `attribution_complete`,
 chain-wide. It is `true` only when no pool swap on the chain has `tx_from IS NULL`. While it is
