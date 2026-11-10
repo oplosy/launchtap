@@ -93,6 +93,7 @@ func run() error {
 	server.RegisterProfileRoutes(apiserver.ProfileRoutes{Reader: storepostgres.ProfileReader{Pool: pool, DeploymentID: c.DeploymentID}, Verifier: verifier, ChainID: int64(c.ChainID)})
 	server.RegisterWatchlistRoutes(apiserver.WatchlistRoutes{Verifier: verifier, Store: storepostgres.WatchlistStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterInboxRoutes(apiserver.InboxRoutes{Verifier: verifier, Store: storepostgres.InboxStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
+	server.RegisterForumRoutes(apiserver.ForumRoutes{Store: storepostgres.ForumStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterWatchersRoutes(apiserver.WatchersRoutes{Counter: storepostgres.WatchlistStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterCommentRoutes(apiserver.CommentRoutes{Verifier: verifier, Store: storepostgres.SocialStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterPublicProfileRoutes(apiserver.PublicProfileRoutes{Verifier: verifier, Store: storepostgres.ProfileStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})

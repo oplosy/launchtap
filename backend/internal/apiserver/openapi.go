@@ -25,6 +25,7 @@ func GenerateOpenAPI() ([]byte, error) {
 	s.RegisterCommentRoutes(CommentRoutes{})
 	s.RegisterWatchersRoutes(WatchersRoutes{})
 	s.RegisterInboxRoutes(InboxRoutes{})
+	s.RegisterForumRoutes(ForumRoutes{})
 	s.RegisterPublicProfileRoutes(PublicProfileRoutes{})
 	b, err := json.MarshalIndent(s.API.OpenAPI(), "", "  ")
 	if err != nil {

@@ -126,22 +126,28 @@ func (s SocialStore) List(ctx context.Context, sc social.Scope, token common.Add
 }
 
 func commentFromRow(row sqlc.ListTokenCommentsRow, token common.Address) (social.Comment, error) {
-	if !row.CreatedAt.Valid {
+	return commentFromParts(row.ID, token, row.Body, row.CreatedAt, row.Role, row.DisplayUsername, row.DisplayWallet)
+}
+
+// commentFromParts maps the read-time author display columns shared by the token comment list
+// and the forum feed.
+func commentFromParts(id int64, token common.Address, body string, createdAt pgtype.Timestamptz, role string, username pgtype.Text, wallet []byte) (social.Comment, error) {
+	if !createdAt.Valid {
 		return social.Comment{}, errors.New("comment has invalid created_at")
 	}
-	author := social.Author{Role: social.Role(row.Role)}
-	if row.DisplayUsername.Valid {
-		name := row.DisplayUsername.String
+	author := social.Author{Role: social.Role(role)}
+	if username.Valid {
+		name := username.String
 		author.Username = &name
 	}
-	if row.DisplayWallet != nil {
-		if len(row.DisplayWallet) != common.AddressLength {
+	if wallet != nil {
+		if len(wallet) != common.AddressLength {
 			return social.Comment{}, errors.New("comment wallet has invalid length")
 		}
-		w := common.BytesToAddress(row.DisplayWallet)
+		w := common.BytesToAddress(wallet)
 		author.Wallet = &w
 	}
-	return social.Comment{ID: row.ID, Token: token, Body: row.Body, CreatedAt: row.CreatedAt.Time, Author: author}, nil
+	return social.Comment{ID: id, Token: token, Body: body, CreatedAt: createdAt.Time, Author: author}, nil
 }
 
 func (s SocialStore) Eligibility(ctx context.Context, a social.Actor, token common.Address) (social.Eligibility, error) {

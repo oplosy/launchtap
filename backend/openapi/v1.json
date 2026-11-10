@@ -556,6 +556,132 @@
         ],
         "type": "object"
       },
+      "ForumCommunitiesBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/ForumCommunitiesBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ForumCommunityDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "ForumCommunityDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "comment_count": {
+            "description": "Visible comments in the sort's window.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_comment_at": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "name",
+          "symbol",
+          "comment_count",
+          "last_comment_at"
+        ],
+        "type": "object"
+      },
+      "ForumPostDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/CommentAuthorDTO"
+          },
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "id": {
+            "description": "Decimal string.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Token launch name; user-controlled text.",
+            "type": "string"
+          },
+          "symbol": {
+            "description": "Token launch symbol; user-controlled text.",
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "token",
+          "body",
+          "created_at",
+          "author",
+          "name",
+          "symbol"
+        ],
+        "type": "object"
+      },
+      "ForumPostsBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/ForumPostsBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ForumPostDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
       "GraduationFeedEvent": {
         "additionalProperties": false,
         "properties": {
@@ -3023,6 +3149,128 @@
         },
         "tags": [
           "events"
+        ]
+      }
+    },
+    "/forum/communities": {
+      "get": {
+        "operationId": "listForumCommunities",
+        "parameters": [
+          {
+            "description": "hot (default): visible comments in the last 24 hours; top: all time. Any other value is a 400 invalid_sort.",
+            "explode": false,
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "default": "hot",
+              "description": "hot (default): visible comments in the last 24 hours; top: all time. Any other value is a 400 invalid_sort.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Number of communities, 1-50; defaults to 20.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "description": "Number of communities, 1-50; defaults to 20.",
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForumCommunitiesBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "forum"
+        ]
+      }
+    },
+    "/forum/posts": {
+      "get": {
+        "operationId": "listForumPosts",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Number of posts, 1-50; defaults to 20.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "description": "Number of posts, 1-50; defaults to 20.",
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForumPostsBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "forum"
         ]
       }
     },

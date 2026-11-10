@@ -145,6 +145,14 @@ type Querier interface {
 	// Each row is keyed by its UTC-aligned group start (not the first stored source bucket), so
 	// sparse groups report a stable timestamp and the next-page cursor can skip a whole group.
 	ListCandlesAggregated(ctx context.Context, arg ListCandlesAggregatedParams) ([]ListCandlesAggregatedRow, error)
+	// Communities ranked by visible comments in the last window_hours by the database clock (NULL =
+	// all time), ties by newest comment.
+	// Same existence rule as the token comment list (TokenExists): a reorged token drops out.
+	ListForumCommunities(ctx context.Context, arg ListForumCommunitiesParams) ([]ListForumCommunitiesRow, error)
+	// Forum feed (spec P0-C5): visible comments across tokens that still exist, newest first, with
+	// the same read-time author display and ban filter as ListTokenComments.
+	// Same existence rule as the token comment list (TokenExists): a reorged token drops out.
+	ListForumPosts(ctx context.Context, arg ListForumPostsParams) ([]ListForumPostsRow, error)
 	ListGraduationsAfter(ctx context.Context, arg ListGraduationsAfterParams) ([]ListGraduationsAfterRow, error)
 	// Inbox page (spec P0-C4): events on the owner's watched tokens, at or after the watch started and
 	// within 30 days, strictly older than the cursor position, newest first. Each watched token
