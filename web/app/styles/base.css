@@ -86,6 +86,11 @@ button,
 select {
   text-transform: none;
 }
+option,
+optgroup {
+  background-color: var(--canvas);
+  color: var(--text);
+}
 button,
 [role="button"] {
   cursor: pointer;

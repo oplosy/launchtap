@@ -2,41 +2,8 @@
 
 import Link from "next/link";
 import { SafeExternalLink } from "./primitives";
-import { originOf, setThemePreference, useThemePreference, type ThemePreference } from "./theme";
 import { publicConfiguration } from "@/config/public";
 import { CoinGeckoAttribution } from "@/market/usd-line";
-
-const THEME_OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string }> = [
-  { value: "system", label: "System" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-];
-
-/** Three-way theme selector: one sliding pill under System / Light / Dark. */
-export function ThemeSwitcher() {
-  const preference = useThemePreference();
-  const index = THEME_OPTIONS.findIndex((option) => option.value === preference);
-  return (
-    <div
-      className="theme-switcher"
-      role="group"
-      aria-label="Color theme"
-      style={{ "--index": index } as React.CSSProperties}
-    >
-      <span className="theme-switcher-indicator" aria-hidden="true" />
-      {THEME_OPTIONS.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          aria-pressed={preference === option.value}
-          onClick={(event) => setThemePreference(option.value, originOf(event.currentTarget))}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 export function SiteFooter() {
   const explorerBase = publicConfiguration().deployment?.explorerBase;
@@ -72,7 +39,6 @@ export function SiteFooter() {
         </nav>
       </div>
       <div className="footer-bottom">
-        <ThemeSwitcher />
         <p className="footer-note">
           Non-custodial. Your selected wallet signs every transaction; Launchpad never takes
           custody.

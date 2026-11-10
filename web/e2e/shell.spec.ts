@@ -66,14 +66,52 @@ test("mobile menu opens a sheet with the same links", async ({ page }) => {
   await expect(sheet).toBeHidden();
 });
 
-test("footer lists the site's links and a theme selector", async ({ page }) => {
+test("footer lists the site's links and no theme control", async ({ page }) => {
   await page.goto("/forum");
   const footer = page.getByRole("contentinfo");
   for (const label of ["Explore", "Create", "Forum", "Leaderboard", "Analytics", "Docs"]) {
     await expect(footer.getByRole("link", { name: label, exact: true })).toBeAttached();
   }
-  const theme = footer.getByRole("group", { name: "Color theme" });
-  await expect(theme.getByRole("button", { name: "Light" })).toBeAttached();
-  await theme.getByRole("button", { name: "Light" }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(page.getByRole("group", { name: "Color theme" })).toHaveCount(0);
+  await expect(footer.getByRole("button", { name: /theme|light|dark|system/i })).toHaveCount(0);
+});
+
+test("one header button flips between the dark and light themes", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await context.addCookies([{ name: "launchpad-theme", value: "dark", url: baseURL! }]);
+  await page.goto("/forum");
+  const html = page.locator("html");
+  const toggle = page.getByRole("banner").getByRole("button", { name: "Switch to light theme" });
+  await expect(toggle).toBeVisible();
+  await toggle.click();
+  await expect(html).toHaveAttribute("data-theme", "light");
+  const back = page.getByRole("banner").getByRole("button", { name: "Switch to dark theme" });
+  await back.click();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await page.reload();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+});
+
+test("dropdown options follow the active theme", async ({ page, context, baseURL }) => {
+  for (const theme of ["dark", "light"] as const) {
+    await context.addCookies([{ name: "launchpad-theme", value: theme, url: baseURL! }]);
+    await page.goto("/explore");
+    const select = page.locator("select").first();
+    await expect(select).toBeAttached();
+    const colors = await select.evaluate((node) => {
+      const option = getComputedStyle(node.querySelector("option")!);
+      const body = getComputedStyle(document.body);
+      return {
+        optionBackground: option.backgroundColor,
+        optionText: option.color,
+        canvas: body.backgroundColor,
+        text: body.color,
+      };
+    });
+    expect(colors.optionBackground, theme).toBe(colors.canvas);
+    expect(colors.optionText, theme).toBe(colors.text);
+  }
 });

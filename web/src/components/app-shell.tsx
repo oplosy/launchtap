@@ -17,7 +17,8 @@ import { MagnifyingGlass } from "@phosphor-icons/react";
 import { List } from "./icons";
 import { Sheet } from "./primitives";
 import { MegaMenu, NAV_LINKS } from "./mega-menu";
-import { SiteFooter, ThemeSwitcher } from "./site-footer";
+import { SiteFooter } from "./site-footer";
+import { ThemeToggle } from "./theme-toggle";
 import { walletPath } from "@/portfolio/wallet-model";
 import { WalletConnectButton, useWalletConnection } from "@/wallet/connection-context";
 import { NotificationBell } from "@/live/notifications";
@@ -149,6 +150,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <MagnifyingGlass size={18} aria-hidden="true" />
             </button>
+            <ThemeToggle />
             <NotificationBell />
             <Link
               className="ui-button ui-button-secondary ui-button-sm navbar-create"
@@ -194,7 +196,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             Search
           </button>
-          <ThemeSwitcher />
         </div>
       </Sheet>
       {paletteLoaded ? (
