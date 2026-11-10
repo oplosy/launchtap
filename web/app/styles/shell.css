@@ -1,4 +1,4 @@
-﻿/* App frame: nav, mega menu, content column, footer, mobile sheet, command palette. */
+/* App frame: nav, mega menu, content column, footer, mobile sheet, command palette. */
 .app-frame {
   display: flex;
   min-height: 100dvh;
@@ -180,8 +180,13 @@
     display: inline-grid;
   }
 }
+/* Phones: the wallet button keeps its icon and its accessible name, not its visible label. */
 @media (max-width: 480px) {
-  .navbar-wallet > span {
+  .navbar-wallet.ui-button {
+    width: 36px;
+    padding: 0;
+  }
+  .navbar-wallet > span > span {
     display: none;
   }
 }

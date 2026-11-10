@@ -1,4 +1,4 @@
-﻿/**
+/**
  * The colour tokens that carry text and data meaning, per theme. `app/styles/tokens.css` uses the
  * same hex values; `contrast.test.ts` keeps them at WCAG AA (AAA for primary text).
  */

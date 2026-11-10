@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 /** The centred heading block every page opens with: one h1, an optional summary and actions. */

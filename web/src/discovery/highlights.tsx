@@ -183,9 +183,11 @@ export function KingOfTheHill({
 export function TrendingList({
   items,
   apiBaseUrl,
+  layout = "list",
 }: {
   items: readonly TrendingItem[];
   apiBaseUrl: string | null;
+  layout?: "list" | "grid";
 }) {
   if (items.length === 0)
     return (
@@ -197,7 +199,7 @@ export function TrendingList({
       </div>
     );
   return (
-    <div className="token-list" aria-live="polite">
+    <div className="token-list" data-layout={layout} aria-live="polite">
       {items.map((item) => (
         <TokenCard
           key={item.address}

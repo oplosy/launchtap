@@ -1,4 +1,4 @@
-﻿import { expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 const NAV = ["Explore", "Forum", "Leaderboard", "Analytics", "Docs"] as const;
 

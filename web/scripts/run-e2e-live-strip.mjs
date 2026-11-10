@@ -35,6 +35,7 @@ const result = spawnSync(
     "public-profile",
     "forum",
     "signed-in",
+    "explore",
     ...process.argv.slice(2),
   ],
   { stdio: "inherit", env },

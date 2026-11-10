@@ -322,8 +322,8 @@ test("mobile footer remains reachable below the final page content", async ({ pa
 test("reduced motion preserves route content without authored transition motion", async ({
   page,
 }, testInfo) => {
-  await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Explore launches." })).toBeVisible();
+  await page.goto("/explore");
+  await expect(page.getByRole("heading", { level: 1, name: "Explore" })).toBeVisible();
   await page.screenshot({
     path: path.resolve(
       process.cwd(),

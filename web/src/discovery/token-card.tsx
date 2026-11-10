@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import type { CSSProperties, PointerEvent, ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { resolveApiAssetUrl } from "@/api/client";
 import type { components } from "@/api/generated";
 import { formatDisplayAmount } from "@/amounts";
-import { Badge, SafeImage } from "@/components/primitives";
+import { SafeImage } from "@/components/primitives";
+import { relativeTime } from "@/live/live-strip-model";
 import { UsdLine } from "@/market/usd-line";
-import { addressHue, shortAddress } from "@/token/address";
+import { addressHue } from "@/token/address";
 import { StarButton } from "@/watchlist/star-button";
 
 export type TokenCardData = components["schemas"]["TokenDTO"];
@@ -24,13 +25,11 @@ export function tokenLabel(token: TokenCardData) {
   return token.name.trim() || token.symbol.trim() || "Unnamed token";
 }
 
-// Feeds the card's cursor-following highlight; CSS reads --mx/--my.
-export function trackSpotlight(event: PointerEvent<HTMLElement>) {
-  const box = event.currentTarget.getBoundingClientRect();
-  event.currentTarget.style.setProperty("--mx", `${event.clientX - box.left}px`);
-  event.currentTarget.style.setProperty("--my", `${event.clientY - box.top}px`);
-}
-
+/**
+ * One token in a list. The same markup is a ~72 px hairline row in a list and an image-first tile
+ * in a grid; the parent `.token-list[data-layout]` decides. The whole item is a link (the name's
+ * link stretches over it) while the star stays its own button above that link.
+ */
 export function TokenCard({
   token,
   apiBaseUrl,
@@ -42,34 +41,28 @@ export function TokenCard({
   extraMetrics?: ReactNode;
 }) {
   const label = tokenLabel(token);
+  // The age is read once when the item mounts; lists re-mount items on refresh.
+  const [now] = useState(Date.now);
   const imageUrl = resolveApiAssetUrl(
     apiBaseUrl,
     `/v1/tokens/${encodeURIComponent(token.address)}/image`,
   );
   return (
-    <article
-      className="token-card"
-      onPointerMove={trackSpotlight}
-      style={{ "--hue": addressHue(token.address) } as CSSProperties}
-    >
-      <div className="token-card-main">
-        <SafeImage
-          src={imageUrl}
-          alt={`${label} token`}
-          fallbackLabel="No artwork"
-          className="token-image"
-        />
-        <div className="token-identity">
-          <h3>
-            <Link href={`/token/${token.address}` as never}>{label}</Link>
-          </h3>
-          <p className="token-symbol">
-            <span>{token.symbol || "—"}</span>
-            <span className="mono token-address">{shortAddress(token.address, 4)}</span>
-          </p>
-        </div>
-        <Badge tone={token.phase === "graduated" ? "success" : "accent"}>{token.phase}</Badge>
-        <StarButton address={token.address} label={label} />
+    <article className="token-card" style={{ "--hue": addressHue(token.address) } as CSSProperties}>
+      <SafeImage
+        src={imageUrl}
+        alt={`${label} token`}
+        fallbackLabel="No artwork"
+        className="token-image"
+      />
+      <div className="token-identity">
+        <h3>
+          <Link href={`/token/${token.address}` as never}>{label}</Link>
+        </h3>
+        <p className="token-symbol">
+          <span>{token.symbol || "—"}</span>
+          {token.phase === "graduated" ? <span className="token-phase">Graduated</span> : null}
+        </p>
       </div>
       <dl className="token-metrics">
         <div>
@@ -91,7 +84,12 @@ export function TokenCard({
           <dd>{token.holder_count.toLocaleString("en-US")}</dd>
         </div>
         {extraMetrics}
+        <div>
+          <dt>Age</dt>
+          <dd>{relativeTime(token.launch_time, now)}</dd>
+        </div>
       </dl>
+      <StarButton address={token.address} label={label} />
     </article>
   );
 }

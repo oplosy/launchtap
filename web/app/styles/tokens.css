@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Design tokens (spec docs/specs/2026-11-10-frontend-rebuild-design.md). Dark is the default; light
  * applies when chosen explicitly or, with no saved choice, when the operating system prefers it.
  * UI chrome is monochrome; colour appears only as data (--up, --down, --progress). The text and

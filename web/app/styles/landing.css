@@ -527,3 +527,9 @@
     font-size: 0.92rem;
   }
 }
+
+.explore-hub-link {
+  display: flex;
+  justify-content: center;
+  padding: 48px 0;
+}

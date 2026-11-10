@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 
 const routes = [
   "/",
-  "/graduated",
+  "/explore",
   "/forum",
   "/create",
   "/analytics",
