@@ -38,6 +38,7 @@ const result = spawnSync(
     "explore",
     "home",
     "token-layout",
+    "create-layout",
     ...process.argv.slice(2),
   ],
   { stdio: "inherit", env },

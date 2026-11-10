@@ -1,10 +1,10 @@
-/* Create route: launch form with live preview, plus the creator metadata editor. */
+/* Create route: one centred 640 px column with numbered sections, plus the creator metadata editor. */
 .create-page {
-  gap: 20px;
+  gap: 24px;
   width: 100%;
-  max-width: 1040px;
+  max-width: var(--measure-form);
   margin-inline: auto;
-  padding-top: clamp(20px, 3vw, 36px);
+  padding: clamp(32px, 6vw, 72px) 0 96px;
 }
 .create-page-toolbar {
   display: flex;
@@ -16,9 +16,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--text-soft);
-  font-size: 14px;
-  transition: color 0.2s ease;
+  color: var(--text-2);
+  font: var(--type-label);
+  transition: color var(--dur-fast) linear;
 }
 .create-back-button:hover {
   color: var(--text);
@@ -26,16 +26,12 @@
 .create-back-button > span {
   font-size: 18px;
   line-height: 1;
-  transition: transform 0.3s var(--ease-out);
-}
-.create-back-button:hover > span {
-  transform: translateX(-3px);
 }
 .create-protocol-label {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--text-faint);
-  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  color: var(--text-3);
+  background: var(--fill);
+  padding: 4px 12px;
   font-size: 12px;
 }
 
@@ -45,35 +41,63 @@
   overflow: visible;
 }
 .launch-panel-head {
-  padding-bottom: 28px;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 8px 0 40px;
+  text-align: center;
 }
 .launch-panel-head h1 {
-  font-size: clamp(2.25rem, 4.6vw, 3.25rem);
+  font: var(--type-page);
+  letter-spacing: var(--tracking-page);
+}
+.launch-panel-head p {
+  max-width: 48ch;
+  color: var(--text-2);
+  font: var(--type-body);
+  letter-spacing: var(--tracking-body);
 }
 .launch-panel > .transaction-warning {
-  margin-bottom: 16px;
+  margin: 0 0 24px;
 }
 .launch-panel > .ui-state {
   margin: 0;
 }
-.launch-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  align-items: start;
-  gap: 24px;
-}
+.launch-layout,
 .launch-main {
   display: grid;
-  gap: 18px;
+  gap: 24px;
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  padding: 24px;
+}
+.launch-main > .transaction-form {
+  gap: 0;
 }
 .launch-main > .ui-button,
 .launch-wallet-button.ui-button {
   width: 100%;
+}
+.launch-section {
+  display: grid;
+  gap: 16px;
+  border-top: 1px solid var(--hairline);
+  padding: 28px 0;
+}
+.launch-section h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font: var(--type-section);
+}
+.launch-step {
+  color: var(--text-3);
+  font-family: var(--font-code);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.launch-section-hint {
+  margin-top: -8px;
+  color: var(--text-3);
+  font-size: 14px;
 }
 .launch-field-row {
   display: grid;
@@ -83,19 +107,16 @@
 .launch-image-preview {
   width: 88px;
   height: 88px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-media);
   object-fit: cover;
-  box-shadow: 0 0 0 1px var(--line);
 }
 .launch-advanced {
-  border-top: 1px solid var(--line);
-  padding-top: 14px;
-  color: var(--text-faint);
+  color: var(--text-3);
   font-size: 13px;
 }
 .launch-advanced summary {
   width: fit-content;
-  color: var(--text-soft);
+  color: var(--text-2);
   font-weight: 500;
   cursor: pointer;
 }
@@ -106,91 +127,75 @@
   margin-top: 8px;
 }
 .launch-main .transaction-confirmation h3 {
-  font-size: 15px;
+  font: var(--type-label);
 }
 
+/* Summary row: what will launch, with its fixed terms. */
 .launch-preview-card {
-  position: sticky;
-  top: calc(var(--nav-height) + 24px);
   display: grid;
-  justify-items: center;
-  gap: 4px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background:
-    radial-gradient(120% 60% at 50% 0%, var(--accent-wash), transparent 70%), var(--surface);
-  padding: 28px 22px 20px;
-  text-align: center;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px 20px;
+  border-radius: var(--radius-container);
+  background: var(--fill);
+  padding: 20px;
 }
 .launch-preview-image {
   display: grid;
-  width: 96px;
-  height: 96px;
-  margin-bottom: 14px;
+  width: 56px;
+  height: 56px;
   overflow: hidden;
-  border-radius: 26px;
-  color: var(--text-faint);
-  background: var(--surface-strong);
-  box-shadow: 0 0 0 1px var(--line);
+  border-radius: var(--radius-media);
+  color: var(--text-3);
+  background: var(--canvas);
   place-items: center;
-  font-size: 32px;
+  font-size: 22px;
 }
 .launch-preview-image img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-.launch-preview-card h2 {
-  max-width: 100%;
+.launch-preview-identity {
+  min-width: 0;
+}
+.launch-preview-name {
   overflow: hidden;
-  font-size: 1.3rem;
+  font: var(--type-section);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.launch-preview-card > .mono {
-  color: var(--text-faint);
+.launch-preview-identity > .mono {
+  color: var(--text-3);
   font-size: 13px;
 }
 .launch-preview-card dl {
   display: grid;
-  width: 100%;
-  margin-top: 18px;
-  border-top: 1px solid var(--line);
-  text-align: left;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 16px;
 }
 .launch-preview-card dl > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  border-bottom: 1px solid var(--line);
-  padding: 10px 0;
-  font-size: 13px;
-}
-.launch-preview-card dl > div:last-child {
-  border-bottom: 0;
+  min-width: 0;
 }
 .launch-preview-card dt {
-  color: var(--text-faint);
+  color: var(--text-3);
+  font-size: 12px;
 }
 .launch-preview-card dd {
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-@media (max-width: 900px) {
-  .launch-layout {
-    grid-template-columns: 1fr;
-  }
-  .launch-preview-card {
-    position: static;
-    order: -1;
-  }
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 @media (max-width: 560px) {
   .launch-field-row {
     grid-template-columns: 1fr;
   }
-  .launch-main {
-    padding: 18px;
+  .launch-preview-card dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
