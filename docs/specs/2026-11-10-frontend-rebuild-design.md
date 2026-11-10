@@ -75,9 +75,9 @@ between sections. Cards have no border and no shadow; tables have row hairlines 
 | Route | Change |
 |---|---|
 | `/` | New home (see §3) |
-| `/explore` | New. Hosts today's token list, tabs All · New · Trending · Graduated · Watchlist in the URL |
-| `/graduated` | Permanent redirect to `/explore?tab=graduated` |
-| `/?view=watchlist` | Redirect to `/explore?tab=watchlist`; in-app links updated |
+| `/explore` | New. Hosts today's token list; tabs Trending · New · Graduated · Watchlist in the existing `?view=` parameter; market cap and volume ordering move to the Sort control |
+| `/graduated` | Permanent redirect to `/explore?view=graduated` |
+| `/?view=…` | Redirect to `/explore` with the same view (legacy `marketcap`/`volume` become `view=trending` with the matching sort); in-app links updated |
 | `/token/[address]`, `/create`, `/forum`, `/leaderboard`, `/analytics`, `/docs`, `/wallet/[address]`, `/profile`, `/notifications` | Kept; recomposed |
 
 **Desktop nav.** Three zones on the centred column: the "Launchpad" wordmark at the start, text
