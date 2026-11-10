@@ -50,6 +50,10 @@ jobs:
       NEXT_PUBLIC_WEB_ORIGIN: ${{ vars.NEXT_PUBLIC_WEB_ORIGIN }}
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/launchpad_test?sslmode=disable
       INTEGRATION_REQUIRED: "true"
+      # The backend `task verify` step (uncached Go toolchain, race + integration tests, anvil
+      # e2e) takes 9-10 minutes on a hosted runner, at the edge of the 10-minute script default.
+      # The job's timeout-minutes stays the outer bound.
+      RELEASE_COMMAND_TIMEOUT_MS: "1200000"
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
