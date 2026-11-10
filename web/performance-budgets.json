@@ -19,7 +19,7 @@
   "routeClasses": {
     "read-only": {
       "description": "Routes that render without the Privy/wagmi wallet stack. Measured 2026-10-05: ~210 KB initial JS, ~258 KB transferred.",
-      "routes": ["/", "/graduated", "/analytics", "/docs", "/leaderboard"],
+      "routes": ["/", "/explore", "/analytics", "/docs", "/leaderboard"],
       "transferredBytes": 400000,
       "initialJavaScriptBytes": 300000
     },

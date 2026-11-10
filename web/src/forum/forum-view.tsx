@@ -10,6 +10,7 @@ import {
 } from "@/api/client";
 import { authorLabel } from "@/comments/comment-model";
 import { Badge, Button, EmptyState, ErrorState, Skeleton } from "@/components/primitives";
+import { SlidingIndicator } from "@/components/sliding-indicator";
 import { publicConfiguration } from "@/config/public";
 import { displayAmount } from "@/discovery/token-card";
 import { shortAddress } from "@/token/address";
@@ -49,17 +50,18 @@ function Loading({ label }: { label: string }) {
 
 export function ForumTabs({ active }: { active: ForumTab }) {
   return (
-    <nav className="discovery-filter-group forum-tabs" aria-label="Forum view">
+    <nav className="explore-tabs forum-tabs" aria-label="Forum view">
       {FORUM_TABS.map((tab) => (
         <Link
           key={tab}
           href={forumTabHref(tab) as never}
-          className={`discovery-filter ${tab === active ? "is-active" : ""}`}
+          className="explore-tab"
           aria-current={tab === active ? "page" : undefined}
         >
           {FORUM_TAB_LABELS[tab]}
         </Link>
       ))}
+      <SlidingIndicator />
     </nav>
   );
 }
@@ -98,14 +100,10 @@ function PostCard({ post }: { post: ForumPost }) {
       </div>
       <p className="forum-post-body">{post.body}</p>
       {href ? (
-        <div className="forum-post-actions">
-          <Link className="ui-button ui-button-quiet ui-button-sm" href={href as never}>
-            Discuss
-          </Link>
-          <Link className="ui-button ui-button-primary ui-button-sm" href={href as never}>
-            Trade {post.symbol.trim() || "token"}
-          </Link>
-        </div>
+        // Stretched over the row: the whole post is one target that opens the token.
+        <Link className="forum-post-open" href={href as never}>
+          Trade {post.symbol.trim() || "token"}
+        </Link>
       ) : null}
     </li>
   );
@@ -319,7 +317,7 @@ export function BiggestLaunches() {
   }, []);
 
   return (
-    <aside className="workspace-panel forum-sidebar" aria-labelledby="biggest-launches-title">
+    <aside className="forum-sidebar" aria-labelledby="biggest-launches-title">
       <h2 id="biggest-launches-title">Biggest launches</h2>
       {items === null ? (
         <Loading label="Loading launches" />
@@ -349,7 +347,7 @@ export function BiggestLaunches() {
           })}
         </ol>
       )}
-      <Link className="forum-browse" href="/">
+      <Link className="forum-browse" href="/explore">
         Browse the launchpad
       </Link>
     </aside>

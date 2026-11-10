@@ -324,6 +324,8 @@ test("a strip trader link opens that wallet page", async ({ page }) => {
   const strip = page.getByRole("region", { name: "Live activity" });
   const link = strip.locator(`a[href="/wallet/${WALLET}"]`).first();
   await expect(link).toBeVisible();
+  // The strip scrolls until a pointer or focus lands in it; focus pauses it like a hover does.
+  await link.focus();
   await link.click();
   await expect(page).toHaveURL(new RegExp(`/wallet/${WALLET}$`));
   await expect(page.getByRole("region", { name: "Wallet totals" })).toBeVisible();
@@ -377,6 +379,19 @@ test("the leaderboard lists ranks", async ({ page }) => {
     await expect(table.getByRole("row").nth(1)).toContainText("+1.5 ETH");
     await expect(table.getByRole("row").nth(2)).toContainText("−0.25 ETH");
     await expect(table.locator(`a[href="/wallet/${WALLET}"]`)).toBeVisible();
+    await page.screenshot({
+      path: "../.impeccable/review/rebuild-leaderboard.png",
+      fullPage: true,
+      animations: "disabled",
+    });
+    // Period tabs sit centred; ranks are end-aligned so their digits line up.
+    const tabs = page.getByRole("navigation", { name: "Leaderboard period" });
+    const box = (await tabs.boundingBox())!;
+    expect(Math.abs(box.x + box.width / 2 - page.viewportSize()!.width / 2)).toBeLessThanOrEqual(2);
+    const rank = table.getByRole("row").nth(1).locator(":scope > *").first();
+    expect(await rank.evaluate((node) => getComputedStyle(node).textAlign)).toMatch(
+      /^(right|end)$/,
+    );
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

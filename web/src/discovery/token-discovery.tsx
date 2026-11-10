@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus } from "@phosphor-icons/react";
 import { ApiClient, type TokenListQuery, type TokenListResponse } from "@/api/client";
 import { ApiProblem } from "@/api/problems";
 import { queryKeys, snapshotIdentity, type Snapshot } from "@/api/types";
@@ -15,85 +14,79 @@ import { WatchlistTab } from "@/watchlist/watchlist-tab";
 import {
   AGE_LABELS,
   EXPLORE_VIEWS,
+  SORT_LABELS,
   TOKEN_AGES,
   VIEW_LABELS,
   decodeExploreView,
   decodeTokenListQuery,
   defaultTokenListQuery,
   encodeTokenListQuery,
-  exploreViewSort,
+  exploreListQuery,
   mergeOwnedParams,
   normalizeTokenListQuery,
   sameTokenListQuery,
   tokenListFilters,
-  viewSupportsAge,
   type ExploreView,
   type TokenAge,
   type TokenListQueryState,
   type TokenPhase,
+  type TokenSort,
 } from "./query-state";
-import { KingOfTheHill, TrendingList, useHighlights } from "./highlights";
+import { TrendingList, useHighlights } from "./highlights";
 import { TokenCard } from "./token-card";
 import { loadTokenDiscoveryPage } from "./controller";
 import { Button, EmptyState, ErrorState, Input, Skeleton } from "@/components/primitives";
+import { SlidingIndicator } from "@/components/sliding-indicator";
 
 export type TokenListFetcher = (
   query: TokenListQuery,
   signal?: AbortSignal,
 ) => Promise<TokenListResponse>;
 
-type TokenDiscoveryProps = {
-  defaultPhase?: TokenPhase;
-  title: string;
-  summary: string;
-  fetchPage?: TokenListFetcher;
-  fixedPhase?: TokenPhase;
-  showHero?: boolean;
-  showSearch?: boolean;
-  /** Show the Trending/New/Market cap/Volume/Watchlist tabs, King of the hill and age filter. */
-  showViews?: boolean;
-  sectionLabel?: string;
-};
+type Layout = "list" | "grid";
+
+/** The Sort choices per view; "" is Trending's own ranking. Views without one hide the control. */
+const SORT_OPTIONS: Partial<Record<ExploreView, ReadonlyArray<{ value: string; label: string }>>> =
+  {
+    trending: [
+      { value: "", label: "Trending" },
+      { value: "market_cap", label: SORT_LABELS.market_cap },
+      { value: "volume_24h", label: SORT_LABELS.volume_24h },
+    ],
+    graduated: [
+      { value: "", label: "Newest" },
+      { value: "market_cap", label: SORT_LABELS.market_cap },
+      { value: "volume_24h", label: SORT_LABELS.volume_24h },
+    ],
+  };
 
 const DISCOVERY_REFRESH_INTERVAL_MS = 2_000;
 
-export function TokenDiscovery({
-  defaultPhase = "curve",
-  title,
-  summary,
-  fetchPage: injectedFetcher,
-  fixedPhase,
-  showHero = true,
-  showSearch = true,
-  showViews = false,
-  sectionLabel = "",
-}: TokenDiscoveryProps) {
+/** The /explore list: view tabs, one control row and the token list, all driven by the URL. */
+export function TokenDiscovery({ fetchPage: injectedFetcher }: { fetchPage?: TokenListFetcher }) {
   const configuration = publicConfiguration();
-  const phaseDefault = fixedPhase ?? defaultPhase;
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  // Each section reads only the params it owns, as primitives, so the other section's URL
-  // changes never re-create this section's state or refetch its list.
   const searchString = searchParams.toString();
-  const urlQ = decodeTokenListQuery(searchString, phaseDefault).q;
-  const urlAge: TokenAge = decodeTokenListQuery(searchString, phaseDefault).age;
-  const urlPhase: TokenPhase =
-    fixedPhase ??
-    normalizeTokenListQuery(decodeTokenListQuery(searchString, phaseDefault), phaseDefault).phase;
-  const view: ExploreView | null = showViews ? decodeExploreView(searchString) : null;
-  const viewSort = view ? exploreViewSort(view) : null;
-  const listSort = viewSort ?? "newest";
-  // The age param stays in the URL for views that do not use it, but only ranked lists apply it.
-  const listAge: TokenAge = view && viewSupportsAge(view) ? urlAge : "all";
-  const nextState: TokenListQueryState = { q: urlQ, phase: urlPhase, sort: listSort, age: listAge };
-  // Keep one object identity until a field this section reads changes, so another section's
-  // URL writes do not re-run this section's effects.
+  const view = decodeExploreView(searchString);
+  const listQuery = exploreListQuery(view, searchParams);
+  const urlQ = decodeTokenListQuery(searchString).q;
+  const urlAge: TokenAge = decodeTokenListQuery(searchString).age;
+  const listActive = listQuery !== null;
+  const nextState: TokenListQueryState = {
+    q: urlQ,
+    phase: listQuery?.phase ?? "curve",
+    sort: listQuery?.sort ?? "newest",
+    age: listActive ? urlAge : "all",
+  };
+  // Keep one object identity until a field the list reads changes, so unrelated URL writes do
+  // not re-run the list's effects.
   const [urlState, setUrlState] = useState(nextState);
   if (!sameTokenListQuery(urlState, nextState)) setUrlState(nextState);
-  const listActive = !showViews || viewSort !== null;
   const listActiveRef = useRef(listActive);
-  const highlights = useHighlights(showViews ? configuration.apiBaseUrl : null);
+  const highlights = useHighlights(view === "trending" ? configuration.apiBaseUrl : null);
+  const [layout, setLayout] = useState<Layout>("list");
   const [searchDraft, setSearchDraft] = useState(urlState.q);
   const [pages, setPages] = useState<TokenListResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,7 +98,6 @@ export function TokenDiscovery({
   const abortRef = useRef<AbortController | null>(null);
   const latestState = useRef(urlState);
   const searchEditedRef = useRef(false);
-  const chainSnapshotRef = useRef<Snapshot | undefined>(undefined);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -117,7 +109,7 @@ export function TokenDiscovery({
     setSearchDraft(urlState.q);
   }, [listActive, urlState]);
 
-  // Writes only the params this section owns; every other param is carried over untouched.
+  // Writes only the params a control owns; every other param is carried over untouched.
   const writeOwnedParams = useCallback(
     (owned: Record<string, string | null>) => {
       const query = mergeOwnedParams(searchParams, owned);
@@ -125,12 +117,6 @@ export function TokenDiscovery({
     },
     [pathname, router, searchParams],
   );
-
-  useEffect(() => {
-    if (fixedPhase || defaultPhase !== "graduated" || searchParams.get("phase") === null) return;
-    const query = encodeTokenListQuery(urlState, defaultPhase);
-    router.replace((query ? `${pathname}?${query}` : pathname) as never, { scroll: false });
-  }, [defaultPhase, fixedPhase, pathname, router, searchParams, urlState]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -164,7 +150,6 @@ export function TokenDiscovery({
         setLoading(true);
         setPages([]);
         pagesRef.current = [];
-        chainSnapshotRef.current = undefined;
       }
       const fetchPage = injectedFetcher
         ? injectedFetcher
@@ -180,7 +165,6 @@ export function TokenDiscovery({
         });
         if (controller.signal.aborted || currentRequest !== requestId.current) return;
         pagesRef.current = result.pages;
-        chainSnapshotRef.current = result.pages[0]?.snapshot;
         setPages(result.pages);
         setResetNotice(result.reset);
       } catch (cause) {
@@ -201,7 +185,7 @@ export function TokenDiscovery({
     [configuration.apiBaseUrl, configuration.status, injectedFetcher],
   );
   useEffect(() => {
-    // Trending and Watchlist are not paged token lists, so they do not fetch /v1/tokens.
+    // Trending's ranking and Watchlist are not paged token lists, so they do not fetch /v1/tokens.
     if (!listActive) {
       abortRef.current?.abort();
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -247,8 +231,7 @@ export function TokenDiscovery({
     [],
   );
 
-  const firstPage = pages[0];
-  const snapshot: Snapshot | undefined = firstPage?.snapshot;
+  const snapshot: Snapshot | undefined = pages[0]?.snapshot;
   const items = pages.flatMap((page) => page.items ?? []);
   const nextCursor = pages.at(-1)?.next_cursor;
   const queryKey = queryKeys.tokens(
@@ -258,40 +241,43 @@ export function TokenDiscovery({
     snapshot,
   );
 
-  const chooseView = (next: ExploreView) => {
-    if (next !== view) writeOwnedParams({ view: next === "trending" ? null : next, sort: null });
+  const viewHref = (next: ExploreView) => {
+    const query = mergeOwnedParams(searchParams, {
+      view: next === "trending" ? null : next,
+      sort: null,
+    });
+    return query ? `${pathname}?${query}` : pathname;
   };
   const chooseAge = (next: TokenAge) => {
     if (next !== urlAge) writeOwnedParams({ age: next === "all" ? null : next });
   };
+  const sortOptions = SORT_OPTIONS[view];
+  const sortValue = listQuery && listQuery.sort !== "newest" ? listQuery.sort : "";
   const retry = () => void loadPage(urlState);
-  const listTitleId = fixedPhase ? `${fixedPhase}-list-title` : "list-title";
 
   return (
-    <div
-      className={`${showHero ? "page-stack" : "discovery-section"} discovery-page`}
-      data-query-key={JSON.stringify(queryKey)}
-    >
-      {showHero ? (
-        <section className="page-hero" aria-labelledby="discovery-title">
-          <div>
-            <div className="section-kicker">Token ledger</div>
-            <h1 id="discovery-title">{title}</h1>
-            <p className="hero-summary">{summary}</p>
-          </div>
-          <div className="hero-aside">
-            <span className="hero-rule" />
-            <p>Follow each route from curve to graduation. Wallet actions stay in your control.</p>
-          </div>
-        </section>
-      ) : null}
+    <div className="explore" data-query-key={JSON.stringify(queryKey)}>
+      <nav className="explore-tabs" aria-label="Explore views">
+        {EXPLORE_VIEWS.map((option) => (
+          <Link
+            key={option}
+            href={viewHref(option) as never}
+            scroll={false}
+            className="explore-tab"
+            aria-current={view === option ? "page" : undefined}
+          >
+            {VIEW_LABELS[option]}
+          </Link>
+        ))}
+        <SlidingIndicator />
+      </nav>
 
-      {showSearch ? (
-        <div className="discovery-toolbar">
-          <div className="discovery-searchbar" role="search">
+      {view !== "watchlist" ? (
+        <div className="explore-controls">
+          <div className="explore-search" role="search">
             <Input
               label="Search tokens"
-              placeholder="Name or symbol"
+              placeholder="Search name or symbol"
               value={searchDraft}
               onChange={(event) => {
                 searchEditedRef.current = true;
@@ -301,65 +287,59 @@ export function TokenDiscovery({
               autoComplete="off"
             />
           </div>
-          <Link
-            className="ui-button ui-button-secondary ui-button-sm discovery-create-button"
-            href="/create"
-          >
-            <Plus aria-hidden="true" size={16} weight="bold" />
-            <span>Create</span>
-          </Link>
+          {sortOptions ? (
+            <label className="explore-sort">
+              <span>Sort</span>
+              <select
+                className="ui-input"
+                value={sortValue}
+                onChange={(event) =>
+                  writeOwnedParams({ sort: (event.target.value as TokenSort | "") || null })
+                }
+              >
+                {sortOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {listActive ? (
+            <div className="ui-segment" role="group" aria-label="Launch age">
+              {TOKEN_AGES.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={urlAge === option}
+                  onClick={() => chooseAge(option)}
+                >
+                  {AGE_LABELS[option]}
+                </button>
+              ))}
+              <SlidingIndicator />
+            </div>
+          ) : null}
+          <div className="ui-segment" role="group" aria-label="Layout">
+            {(["list", "grid"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={layout === option}
+                onClick={() => setLayout(option)}
+              >
+                {option === "list" ? "List" : "Grid"}
+              </button>
+            ))}
+            <SlidingIndicator />
+          </div>
         </div>
       ) : null}
 
-      <section className="discovery-panel" aria-labelledby={listTitleId}>
-        <div className="panel-head discovery-controls-head">
-          <div>
-            {sectionLabel ? <p className="panel-kicker">{sectionLabel}</p> : null}
-            <h2 id={listTitleId}>{title}</h2>
-            <p className="section-description">{summary}</p>
-            <CoinGeckoAttribution />
-          </div>
-        </div>
-        {showViews ? (
-          <>
-            {highlights.data?.king_of_the_hill ? (
-              <KingOfTheHill
-                king={highlights.data.king_of_the_hill}
-                apiBaseUrl={configuration.apiBaseUrl}
-              />
-            ) : null}
-            <div className="discovery-filter-groups" aria-label="Explore filters">
-              <div className="discovery-filter-group" role="group" aria-label="Explore view">
-                {EXPLORE_VIEWS.map((option) => (
-                  <button
-                    className={`discovery-filter ${view === option ? "is-active" : ""}`}
-                    key={option}
-                    type="button"
-                    aria-pressed={view === option}
-                    onClick={() => chooseView(option)}
-                  >
-                    {VIEW_LABELS[option]}
-                  </button>
-                ))}
-              </div>
-              {view && viewSupportsAge(view) ? (
-                <div className="discovery-filter-group" role="group" aria-label="Launch age">
-                  {TOKEN_AGES.map((option) => (
-                    <button
-                      className={`discovery-filter ${urlAge === option ? "is-active" : ""}`}
-                      key={option}
-                      type="button"
-                      aria-pressed={urlAge === option}
-                      onClick={() => chooseAge(option)}
-                    >
-                      {AGE_LABELS[option]}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </>
-        ) : null}
+      <section className="explore-results" aria-labelledby="explore-list-title">
+        <h2 id="explore-list-title" className="sr-only">
+          {VIEW_LABELS[view]} tokens
+        </h2>
         {resetNotice ? (
           <p className="discovery-notice" role="status">
             The list was refreshed with the latest available routes.
@@ -371,7 +351,7 @@ export function TokenDiscovery({
           </div>
         ) : view === "watchlist" ? (
           <WatchlistTab apiBaseUrl={configuration.apiBaseUrl} />
-        ) : view === "trending" ? (
+        ) : !listActive ? (
           highlights.failed ? (
             <div className="discovery-state">
               <ErrorState
@@ -379,7 +359,9 @@ export function TokenDiscovery({
                 description="Trending tokens could not be loaded. You can browse new launches instead."
                 action={
                   <>
-                    <Button onClick={() => chooseView("new")}>Show new launches</Button>
+                    <Button onClick={() => router.push(viewHref("new") as never)}>
+                      Show new launches
+                    </Button>
                     <Button variant="quiet" onClick={highlights.retry}>
                       Retry
                     </Button>
@@ -388,7 +370,7 @@ export function TokenDiscovery({
               />
             </div>
           ) : highlights.loading || !highlights.data ? (
-            <TokenListSkeleton />
+            <TokenListSkeleton layout={layout} />
           ) : (
             <>
               {highlights.stale ? (
@@ -399,6 +381,7 @@ export function TokenDiscovery({
               <TrendingList
                 items={highlights.data.trending ?? []}
                 apiBaseUrl={configuration.apiBaseUrl}
+                layout={layout}
               />
             </>
           )
@@ -415,7 +398,7 @@ export function TokenDiscovery({
             />
           </div>
         ) : loading ? (
-          <TokenListSkeleton />
+          <TokenListSkeleton layout={layout} />
         ) : items.length === 0 ? (
           <div className="discovery-state">
             <EmptyState
@@ -442,7 +425,12 @@ export function TokenDiscovery({
           </div>
         ) : (
           <>
-            <div className="token-list" aria-live="polite" aria-busy={loadingMore}>
+            <div
+              className="token-list"
+              data-layout={layout}
+              aria-live="polite"
+              aria-busy={loadingMore}
+            >
               {items.map((token) => (
                 <TokenCard
                   key={token.address}
@@ -457,6 +445,7 @@ export function TokenDiscovery({
               </span>
               {nextCursor ? (
                 <Button
+                  variant="secondary"
                   loading={loadingMore}
                   onClick={() => void loadPage(urlState, nextCursor, true)}
                 >
@@ -466,19 +455,27 @@ export function TokenDiscovery({
             </div>
           </>
         )}
+        <div className="explore-attribution">
+          <CoinGeckoAttribution />
+        </div>
       </section>
     </div>
   );
 }
 
-function TokenListSkeleton() {
+export function TokenListSkeleton({ layout = "list" }: { layout?: Layout }) {
   return (
-    <div className="token-list" role="region" aria-label="Loading token routes" aria-busy="true">
+    <div
+      className="token-list"
+      data-layout={layout}
+      role="region"
+      aria-label="Loading token routes"
+      aria-busy="true"
+    >
       {Array.from({ length: 4 }, (_, index) => (
         <div className="token-card token-card-skeleton" key={index}>
           <Skeleton className="token-image" />
           <div className="token-skeleton-copy">
-            <Skeleton />
             <Skeleton />
             <Skeleton />
           </div>

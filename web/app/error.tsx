@@ -25,7 +25,7 @@ export default function Error({
             <button className="ui-button ui-button-primary ui-button-md" onClick={reset}>
               Try again
             </button>
-            <Link className="ui-button ui-button-secondary ui-button-md" href="/">
+            <Link className="ui-button ui-button-secondary ui-button-md" href="/explore">
               Return to Explore
             </Link>
           </div>

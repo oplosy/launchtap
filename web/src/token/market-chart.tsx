@@ -130,13 +130,13 @@ function chartPalette(host: HTMLElement) {
   const style = getComputedStyle(host);
   const token = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
   return {
-    text: token("--text-faint", "#84848d"),
-    grid: token("--line", "rgba(255, 255, 255, 0.07)"),
-    crosshair: token("--line-bright", "rgba(255, 255, 255, 0.2)"),
-    label: token("--surface-hover", "#1e1e22"),
-    volume: token("--line-strong", "rgba(255, 255, 255, 0.11)"),
-    up: token("--accent-line", "#c8f54a"),
-    down: token("--danger", "#ff6f61"),
+    text: token("--text-3", "#8a8a8a"),
+    grid: token("--hairline", "rgba(255, 255, 255, 0.08)"),
+    crosshair: token("--hairline-bright", "rgba(255, 255, 255, 0.24)"),
+    label: token("--fill-hover", "#262626"),
+    volume: token("--hairline-strong", "rgba(255, 255, 255, 0.12)"),
+    up: token("--up", "#34c77b"),
+    down: token("--down", "#ff6461"),
     font: style.fontFamily,
   };
 }

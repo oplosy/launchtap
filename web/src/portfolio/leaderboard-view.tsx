@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { LeaderboardResponse } from "@/api/client";
 import { EmptyState } from "@/components/primitives";
+import { SlidingIndicator } from "@/components/sliding-indicator";
 import { shortAddress } from "@/token/address";
 import {
   LEADERBOARD_WINDOW_LABELS,
@@ -12,17 +13,18 @@ import { formatSignedEth, pnlTone, walletPath } from "./wallet-model";
 /** Window tabs as plain links, so the choice lives in the URL and works without JavaScript. */
 export function LeaderboardWindowTabs({ active }: { active: LeaderboardWindow }) {
   return (
-    <nav className="discovery-filter-group" aria-label="Leaderboard period">
+    <nav className="explore-tabs" aria-label="Leaderboard period">
       {LEADERBOARD_WINDOWS.map((option) => (
         <Link
           key={option}
-          className={`discovery-filter ${active === option ? "is-active" : ""}`}
+          className="explore-tab"
           href={(option === "all" ? "/leaderboard" : `/leaderboard?window=${option}`) as never}
           aria-current={active === option ? "page" : undefined}
         >
           {LEADERBOARD_WINDOW_LABELS[option]}
         </Link>
       ))}
+      <SlidingIndicator />
     </nav>
   );
 }
@@ -49,14 +51,14 @@ export function LeaderboardView({
   return (
     <div className="analytics-table" role="table" aria-label="Leaderboard">
       <div className="analytics-row leaderboard-row analytics-heading" role="row">
-        <span>Rank</span>
+        <span className="leaderboard-rank">Rank</span>
         <span>Wallet</span>
         <span>Realized PnL</span>
         <span>Tokens traded</span>
       </div>
       {items.map((item) => (
         <div className="analytics-row leaderboard-row" role="row" key={item.address}>
-          <span className="mono">{item.rank.toLocaleString("en-US")}</span>
+          <span className="mono leaderboard-rank">{item.rank.toLocaleString("en-US")}</span>
           <span className="mono">
             <Link
               href={walletPath(item.address) as never}

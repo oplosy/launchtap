@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
+import { PageHeader } from "@/components/layout";
 import { Skeleton } from "@/components/primitives";
 import { apiInternalBaseUrl } from "@/config/server";
 import {
@@ -39,17 +40,11 @@ export default async function LeaderboardPage({
   const period = parseLeaderboardWindow(query?.window);
   return (
     <div className="page-stack leaderboard-page">
-      <section className="page-hero">
-        <div>
-          <div className="section-kicker">Leaderboard</div>
-          <h1>{HEADINGS[period]}</h1>
-          <p className="hero-summary">
-            Wallets ranked by realized profit in ETH. Pool trades are attributed to the transaction
-            sender. Windows count profit booked by sells inside the period.
-          </p>
-        </div>
-      </section>
-      <section className="workspace-panel">
+      <PageHeader
+        title={HEADINGS[period]}
+        summary="Wallets ranked by realized profit in ETH. Pool trades are attributed to the transaction sender. Windows count profit booked by sells inside the period."
+      />
+      <section className="leaderboard-board" aria-label="Ranking">
         <LeaderboardWindowTabs active={period} />
         <Suspense
           key={period}
@@ -64,7 +59,7 @@ export default async function LeaderboardPage({
           <Board period={period} />
         </Suspense>
       </section>
-      <p className="ui-field-hint">
+      <p className="leaderboard-back">
         <Link href="/analytics">Back to Analytics</Link>
       </p>
     </div>

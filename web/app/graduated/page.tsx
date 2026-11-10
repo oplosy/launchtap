@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { permanentRedirect } from "next/navigation";
 
 export default function GraduatedPage() {
-  redirect("/");
+  permanentRedirect("/explore?view=graduated" as never);
 }

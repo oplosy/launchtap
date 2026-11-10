@@ -5,7 +5,7 @@ export const TOKEN_SORTS = ["newest", "oldest", "market_cap", "volume_24h"] as c
 export type TokenSort = (typeof TOKEN_SORTS)[number];
 export const TOKEN_AGES = ["all", "24h", "7d"] as const;
 export type TokenAge = (typeof TOKEN_AGES)[number];
-export const EXPLORE_VIEWS = ["trending", "new", "marketcap", "volume", "watchlist"] as const;
+export const EXPLORE_VIEWS = ["trending", "new", "graduated", "watchlist"] as const;
 export type ExploreView = (typeof EXPLORE_VIEWS)[number];
 export const DEFAULT_EXPLORE_VIEW: ExploreView = "trending";
 
@@ -19,8 +19,7 @@ export type TokenListQueryState = {
 export const VIEW_LABELS: Record<ExploreView, string> = {
   trending: "Trending",
   new: "New",
-  marketcap: "Market cap",
-  volume: "Volume",
+  graduated: "Graduated",
   watchlist: "Watchlist",
 };
 
@@ -69,28 +68,36 @@ export function decodeExploreView(input: string | URLSearchParams): ExploreView 
   return isView(raw) ? raw : DEFAULT_EXPLORE_VIEW;
 }
 
-/** The list sort a view maps to, or null for views that are not a paged token list. */
-export function exploreViewSort(view: ExploreView): TokenSort | null {
+/** The sorts that turn Trending from the highlights ranking into a ranked token list. */
+const TRENDING_LIST_SORTS: ReadonlyArray<TokenSort> = ["market_cap", "volume_24h"];
+
+/**
+ * The paged `/v1/tokens` list a view shows, or null when the view is not a paged list (Trending's
+ * highlights ranking, Watchlist). Trending becomes a curve list when sorted by market cap or
+ * volume (the old Market cap and Volume tabs) or while a search is active.
+ */
+export function exploreListQuery(
+  view: ExploreView,
+  params: URLSearchParams,
+): { phase: TokenPhase; sort: TokenSort } | null {
+  const rawSort = params.get("sort");
   switch (view) {
     case "new":
-      return "newest";
-    case "marketcap":
-      return "market_cap";
-    case "volume":
-      return "volume_24h";
+      return { phase: "curve", sort: "newest" };
+    case "graduated":
+      return { phase: "graduated", sort: isSort(rawSort) ? rawSort : "newest" };
+    case "trending":
+      if (isSort(rawSort) && TRENDING_LIST_SORTS.includes(rawSort))
+        return { phase: "curve", sort: rawSort };
+      return (params.get("q") ?? "").trim() ? { phase: "curve", sort: "newest" } : null;
     default:
       return null;
   }
 }
 
-/** True for the views whose age control narrows the list (the ranked token lists). */
-export function viewSupportsAge(view: ExploreView) {
-  return exploreViewSort(view) !== null;
-}
-
 /**
- * Merge the params one section owns into the current URL, leaving every other param untouched
- * so the Graduated and Explore sections never clobber each other. A null value removes a param.
+ * Merge the params a control owns into the current URL, leaving every other param untouched.
+ * A null value removes a param.
  */
 export function mergeOwnedParams(
   current: URLSearchParams | string,

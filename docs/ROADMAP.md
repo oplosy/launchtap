@@ -73,6 +73,14 @@ opt-in Compose `monitoring` profile with Prometheus and Alertmanager
   `main` in milestone PR #21.
 
 
+### Frontend rebuild — in review
+
+The web UI is rebuilt around a centred composition, a pure-black dark theme with a light theme,
+a monochrome interface with colour reserved for data, and a new information architecture
+(`/explore` replaces the old discovery routes, which redirect)
+([spec](specs/2026-11-10-frontend-rebuild-design.md), [plan](plans/2026-11-10-frontend-rebuild.md)).
+All nine plan tasks are on `task/frontend-rebuild`, opened as a PR into `dev`.
+
 ## Next
 
 No new feature scope is decided. Signed-in e2e coverage (a fixture-only test session) landed on

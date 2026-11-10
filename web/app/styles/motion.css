@@ -1,0 +1,254 @@
+/*
+ * Motion: one vocabulary for the whole site.
+ * - Choices (segments, tabs, chips) share one highlight that slides to the picked option.
+ * - Overlays (dialogs, sheets, panels, the docs contents) fade and drift in, and back out.
+ * Everything here stops under prefers-reduced-motion.
+ */
+
+/* Sliding selection indicator (src/components/sliding-indicator.tsx). */
+.slide-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  width: var(--w, 0);
+  height: var(--h, 0);
+  border-radius: var(--radius-pill);
+  pointer-events: none;
+  transform: translate(var(--x, 0), var(--y, 0));
+}
+.slide-indicator:not([data-placed]) {
+  opacity: 0;
+}
+.slide-indicator[data-ready] {
+  transition:
+    transform var(--dur-base) var(--ease-out),
+    width var(--dur-base) var(--ease-out),
+    height var(--dur-base) var(--ease-out);
+}
+
+/* Pill groups: the highlight is the lifted pill; the active button itself goes clear. */
+.ui-segment,
+.trade-tabs,
+.trade-chips {
+  position: relative;
+  isolation: isolate;
+}
+.ui-segment > button,
+.trade-tabs > button,
+.trade-chips > button {
+  position: relative;
+  z-index: 1;
+}
+.ui-segment > .slide-indicator {
+  background: var(--canvas);
+  box-shadow: 0 0 0 1px var(--hairline-strong);
+}
+.ui-segment:has(> .slide-indicator[data-placed]) > button[aria-pressed="true"] {
+  background: transparent;
+  box-shadow: none;
+}
+.trade-tabs > .slide-indicator,
+.trade-chips > .slide-indicator {
+  background: var(--text);
+}
+.trade-tabs:has(> .slide-indicator[data-placed]) > button.is-active,
+.trade-chips:has(> .slide-indicator[data-placed]) > button[aria-pressed="true"] {
+  background: transparent;
+}
+/* The slippage chips become one track, so the highlight has a surface to slide along. */
+.trade-chips {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 2px;
+  justify-self: start;
+  border-radius: var(--radius-pill);
+  background: var(--canvas);
+  padding: 3px;
+}
+.trade-chips > button.ui-chip {
+  background: transparent;
+}
+
+/* Underline groups: the highlight is a 1 px line under the active label. */
+.explore-tabs,
+.chart-toggle {
+  position: relative;
+}
+.explore-tabs > .slide-indicator,
+.chart-toggle > .slide-indicator {
+  top: auto;
+  bottom: 0;
+  height: 1px;
+  border-radius: 0;
+  background: var(--text);
+  transform: translateX(var(--x, 0));
+}
+.explore-tabs > .slide-indicator {
+  /* Matches the label's 14 px side padding. */
+  width: calc(var(--w, 0px) - 28px);
+  transform: translateX(calc(var(--x, 0px) + 14px));
+}
+.chart-toggle > .slide-indicator {
+  bottom: 2px;
+}
+.explore-tabs:has(> .slide-indicator[data-placed]) > .explore-tab::after,
+.chart-toggle:has(> .slide-indicator[data-placed]) > button.is-active::after {
+  display: none;
+}
+
+/* Dialogs and sheets (native <dialog>): animate in from @starting-style, out on close. */
+.ui-dialog {
+  opacity: 0;
+  scale: 0.97;
+  translate: 0 8px;
+  transition:
+    opacity var(--dur-base) var(--ease-out),
+    scale var(--dur-base) var(--ease-out),
+    translate var(--dur-base) var(--ease-out),
+    overlay var(--dur-base) allow-discrete,
+    display var(--dur-base) allow-discrete;
+}
+.ui-dialog[open] {
+  opacity: 1;
+  scale: 1;
+  translate: 0 0;
+}
+@starting-style {
+  .ui-dialog[open] {
+    opacity: 0;
+    scale: 0.97;
+    translate: 0 8px;
+  }
+}
+.ui-dialog:has(.ui-sheet-content) {
+  scale: 1;
+  translate: 32px 0;
+}
+.ui-dialog[open]:has(.ui-sheet-content) {
+  translate: 0 0;
+}
+@starting-style {
+  .ui-dialog[open]:has(.ui-sheet-content) {
+    translate: 32px 0;
+  }
+}
+.ui-dialog::backdrop {
+  opacity: 0;
+  transition:
+    opacity var(--dur-base) linear,
+    overlay var(--dur-base) allow-discrete,
+    display var(--dur-base) allow-discrete;
+}
+.ui-dialog[open]::backdrop {
+  opacity: 1;
+}
+@starting-style {
+  .ui-dialog[open]::backdrop {
+    opacity: 0;
+  }
+}
+
+/* Notification panel (mounted through usePresence, so it can leave). */
+.notify-panel {
+  transform-origin: top right;
+  transition:
+    opacity 200ms var(--ease-out),
+    scale 200ms var(--ease-out),
+    translate 200ms var(--ease-out);
+}
+.notify-panel[data-state="closed"] {
+  opacity: 0;
+  scale: 0.97;
+  translate: 0 -4px;
+  pointer-events: none;
+}
+@starting-style {
+  .notify-panel[data-state="open"] {
+    opacity: 0;
+    scale: 0.97;
+    translate: 0 -4px;
+  }
+}
+
+/* Docs contents behind the Contents button. */
+@media (max-width: 1023px) {
+  .docs-nav {
+    transition:
+      opacity var(--dur-base) var(--ease-out),
+      translate var(--dur-base) var(--ease-out),
+      display var(--dur-base) allow-discrete;
+  }
+  .docs-nav:not([data-open]) {
+    opacity: 0;
+    translate: 0 -6px;
+  }
+  @starting-style {
+    .docs-nav[data-open] {
+      opacity: 0;
+      translate: 0 -6px;
+    }
+  }
+}
+
+/* Token page trade sheet backdrop and toasts: fade in. */
+.token-sheet-backdrop,
+.ui-toast {
+  transition:
+    opacity var(--dur-base) var(--ease-out),
+    translate var(--dur-base) var(--ease-out);
+}
+@starting-style {
+  .token-sheet-backdrop {
+    opacity: 0;
+  }
+  .ui-toast {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+
+/* Theme button: the new icon turns in. */
+.navbar-theme svg {
+  transition:
+    rotate var(--dur-base) var(--ease-out),
+    opacity var(--dur-base) var(--ease-out);
+}
+@starting-style {
+  .navbar-theme svg {
+    opacity: 0;
+    rotate: -90deg;
+  }
+}
+
+/* Interactive press feedback. */
+.ui-button,
+.ui-icon-button,
+.ui-segment > button,
+.trade-tabs > button,
+.trade-chips > button {
+  transition-property: color, background-color, border-color, box-shadow, opacity, scale;
+  transition-duration: var(--dur-fast);
+  transition-timing-function: var(--ease-out);
+}
+.ui-button:active:not(:disabled),
+.ui-icon-button:active:not(:disabled) {
+  scale: 0.97;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slide-indicator[data-ready],
+  .ui-dialog,
+  .ui-dialog::backdrop,
+  .notify-panel,
+  .docs-nav,
+  .token-sheet-backdrop,
+  .ui-toast,
+  .navbar-theme svg {
+    transition: none;
+  }
+  .ui-button:active:not(:disabled),
+  .ui-icon-button:active:not(:disabled) {
+    scale: none;
+  }
+}
