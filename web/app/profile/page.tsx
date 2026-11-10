@@ -14,7 +14,9 @@ export default function ProfilePage() {
           </p>
         </div>
       </section>
-      {configuration.status === "ready" && configuration.privyAppId ? (
+      {/* The fixture build may sign in with a test session instead of Privy (src/e2e). */}
+      {configuration.status === "ready" &&
+      (configuration.privyAppId || process.env.NEXT_PUBLIC_E2E_FIXTURE === "1") ? (
         <ProfileView />
       ) : (
         <UnavailableState

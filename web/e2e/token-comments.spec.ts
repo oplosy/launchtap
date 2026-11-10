@@ -1,9 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
 // Every API call is mocked with page.route, so the page only needs the READY fixture
-// configuration (TASK6_ANVIL_* variables). The fixture build mounts no Privy provider, so these
-// specs cover the reader paths: listing, live refresh, hidden comments and plain-text rendering.
-// The signed-in composer paths are covered by the comment-model and comment-rules unit tests.
+// configuration (TASK6_ANVIL_* variables). These specs cover the reader paths: listing, live
+// refresh, hidden comments and plain-text rendering. The signed-in composer is in signed-in.spec.ts.
 test.skip(
   !process.env.TASK6_ANVIL_API_URL,
   "Needs the fixture build (TASK6_ANVIL_* variables) so the configuration is ready.",

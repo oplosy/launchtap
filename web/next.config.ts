@@ -7,6 +7,16 @@ const nextConfig: NextConfig = {
   // The web container has a read-only root filesystem: keep ISR entries (share cards) in memory
   // instead of flushing them to .next/server/app.
   experimental: { isrFlushToDisk: false },
+  // The test session provider (signed-in browser e2e) exists only in the fixture build; every
+  // other build resolves it to an inert stub so it never ships.
+  turbopack: {
+    resolveAlias: {
+      "launchpad-e2e-session":
+        process.env.NEXT_PUBLIC_E2E_FIXTURE === "1"
+          ? "./src/e2e/session-provider.tsx"
+          : "./src/e2e/session-provider.disabled.ts",
+    },
+  },
   async headers() {
     return [
       { source: "/(.*)", headers: securityHeaders() },

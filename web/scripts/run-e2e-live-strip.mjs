@@ -34,6 +34,7 @@ const result = spawnSync(
     "token-comments",
     "public-profile",
     "forum",
+    "signed-in",
     ...process.argv.slice(2),
   ],
   { stdio: "inherit", env },

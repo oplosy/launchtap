@@ -13,6 +13,11 @@ import {
   type PropsWithChildren,
 } from "react";
 import { publicConfiguration, type PublicConfiguration } from "@/config/public";
+import {
+  E2E_SESSION_KEY,
+  parseE2ESession,
+  type E2ESession,
+} from "@/e2e/session-context";
 import { LiveEventsProvider } from "@/live/live-events";
 import { NotificationIdentityBridge } from "@/live/notification-bridge";
 import { NotificationsProvider } from "@/live/notifications";
@@ -47,12 +52,42 @@ function walletStackAvailable(configuration: PublicConfiguration) {
  */
 export function Providers({ children }: PropsWithChildren) {
   return (
-    <LiveEventsProvider>
-      <NotificationsProvider>
-        <WalletProviders>{children}</WalletProviders>
-      </NotificationsProvider>
-    </LiveEventsProvider>
+    <E2ESessionSlot>
+      <LiveEventsProvider>
+        <NotificationsProvider>
+          <WalletProviders>{children}</WalletProviders>
+        </NotificationsProvider>
+      </LiveEventsProvider>
+    </E2ESessionSlot>
   );
+}
+
+type SessionProvider = ComponentType<PropsWithChildren<{ session: E2ESession }>>;
+
+/**
+ * Fixture build only: when a browser test set `window.__e2eSession`, load the test session
+ * provider and mount it above the app. In any other build the inlined fixture flag folds to
+ * `false`, so the import below is dead code and the provider never reaches a bundle.
+ */
+function E2ESessionSlot({ children }: PropsWithChildren) {
+  const [mounted, setMounted] = useState<{
+    Provider: SessionProvider;
+    session: E2ESession;
+  } | null>(null);
+  useEffect(() => {
+    // Inlined (not the shared constant) so the bundler folds it and drops the import.
+    if (process.env.NEXT_PUBLIC_E2E_FIXTURE === "1") {
+      const session = parseE2ESession((window as unknown as Record<string, unknown>)[E2E_SESSION_KEY]);
+      if (!session) return;
+      // Aliased in next.config.ts: the real provider in the fixture build, a stub elsewhere.
+      void import("launchpad-e2e-session").then((module) =>
+        setMounted({ Provider: module.E2ESessionProvider, session }),
+      );
+    }
+  }, []);
+  if (!mounted) return children;
+  const { Provider, session } = mounted;
+  return <Provider session={session}>{children}</Provider>;
 }
 
 function WalletProviders({ children }: PropsWithChildren) {

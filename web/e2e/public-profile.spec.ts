@@ -1,8 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// Every API call is mocked with page.route. The fixture build mounts no Privy provider, so the
-// settings form itself is covered by public-profile-model unit tests; these specs pin how a
-// published username is displayed on the wallet page.
+// Every API call is mocked with page.route. These specs pin how a published username is displayed
+// on the wallet page; the settings form itself is driven signed in by signed-in.spec.ts.
 test.skip(
   !process.env.TASK6_ANVIL_API_URL,
   "Needs the fixture build (TASK6_ANVIL_* variables) so the configuration is ready.",
