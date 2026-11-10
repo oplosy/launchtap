@@ -121,28 +121,20 @@
   deployment addresses. The monitoring owner and the real alert destination
   (`ALERTMANAGER_WEBHOOK_URL_FILE`, see the runbook "Monitoring" section) are also still unassigned.
 
-### P0-C2 parked review minors
+### P0-C2 signed-in e2e coverage
 
 - **Date:** 2026-11-10
-- **Reason:** scope decision (minors accepted during the P0-C2 task reviews, not blocking)
-- **Where it stopped:** P0-C2 shipped (`0b173a6..` on `dev`); these review findings were parked.
-  - Over-limit comment data (more than one page of rate-limit history) still answers 429 with a
-    generic `Retry-After` instead of the exact window end.
-  - `POST /tokens/{address}/comments` validates the body before the ban check, so a banned user
-    with an invalid body sees `invalid_comment` instead of `banned`.
-  - SSE comment hints: no test for a hint dropped while the subscriber is slow, for the
-    reconnect replay of comment hints, or for the hint after an operator hide.
-  - The global SSE stream (no `token` filter) also carries comment hints; clients ignore them,
-    but they cost bandwidth.
-  - No integration test races a ban against an in-flight post.
-  - The signed-in comment composer and the username form have no e2e coverage: the fixture
-    build mounts no Privy provider. They are covered by unit tests only.
-- **Related files:** `backend/internal/apiserver/comment_routes.go`,
-  `backend/internal/feed/`, `backend/internal/store/postgres/social_store.go`,
-  `web/src/comments/comment-panel.tsx`, `web/src/profile/public-profile-form.tsx`.
-- **Resume (next step):** pick the SSE test gaps first (cheapest, highest signal), then add a
-  Privy-mocked e2e build target if signed-in coverage is wanted.
-- **Pitfalls / notes:** none of these change data correctness; the server stays authoritative.
+- **Reason:** scope decision (needs a new test build target; the other P0-C2 review minors closed)
+- **Where it stopped:** the signed-in comment composer, the username form and the inbox list have
+  no browser e2e: the fixture build mounts no Privy provider. They are covered by unit and API
+  tests, and the server stays authoritative for every rule.
+- **Related files:** `web/src/comments/comment-panel.tsx`, `web/src/profile/public-profile-form.tsx`,
+  `web/src/notifications/inbox-view.tsx`, `web/playwright.config.ts`.
+- **Resume (next step):** add a Privy-mocked fixture build (a test-only auth provider that returns
+  a fixed identity token) and drive the composer, username form and inbox list against mocked API
+  routes.
+- **Pitfalls / notes:** the mock must never ship in a production bundle; gate it on the fixture
+  build variables like the other e2e fixtures.
 
 ### P0-C5 forum deferrals: ticker tape and votes
 
@@ -174,6 +166,28 @@
 ---
 
 ## Done
+
+### P0-C2 parked review minors
+
+- **Date:** 2026-11-10
+- **Commits:** `2a3d18c`, `77699b7` on `dev`, plus this backlog update.
+- **What closed:**
+  - Exact `Retry-After`: `CommentRateState`/`ReportRateState` return `release_at`, the cap-th
+    newest row in the window (cap+1 for reports, whose count includes the new row), so a window
+    holding more rows than the cap answers the true wait instead of the oldest row's.
+  - `POST /tokens/{address}/comments`: the store normalizes the body after the ban check, so a
+    banned caller always gets `banned`; `CommentStore.Post` now takes the raw body.
+  - SSE tests: comment hints on the unfiltered stream with a stalled subscriber evicted alone;
+    the operator hide notification decodes as a realtime comment hint; post/ban race in both
+    orders (`TestPostAndBanSerialize`).
+  - Rejected: removing comment hints from the unfiltered stream. The web opens one unfiltered
+    `/v1/events` stream per tab and the token page scopes comment hints to its token client-side,
+    so filtering them out would stop live comment refreshes. Reconnect replay is by design absent
+    (refresh-only stream); the token page refetches comments on reconnect.
+- **Verified:** `task verify` (unit/race, integration, openapi/sqlc/deployment/vector diffs,
+  build, govulncheck) passed; the anvil indexer e2e passed with Foundry on `PATH`; lint reports
+  only the known CRLF false positive in `deployments/registry_test.go`.
+- **Still open:** signed-in e2e, see Active "P0-C2 signed-in e2e coverage".
 
 ### P0-C5: forum (Memestock)
 
@@ -254,7 +268,7 @@
 - **Upgrade note:** migration `00020_social` Down drops all comments, reports, usernames and
   published wallets.
 - **Next sub-project:** P0-C3 (watchlist counts and 7d/30d leaderboards).
-- **Parked minors:** see Active "P0-C2 parked review minors".
+- **Parked minors:** closed, see Done "P0-C2 parked review minors".
 
 ### P0-B and P0-C1 follow-ups: live feed, wallet/PnL review minors
 
