@@ -3,6 +3,8 @@
   display: flex;
   min-height: 100dvh;
   flex-direction: column;
+  /* Clips full-bleed bands (100vw counts the scrollbar) without becoming a scroll container. */
+  overflow-x: clip;
 }
 .app-content {
   display: flex;
@@ -194,7 +196,7 @@
 /* Footer: link columns centred on the content column, theme and notes beneath. */
 .app-footer {
   width: 100%;
-  max-width: calc(1600px + 2 * var(--gutter));
+  max-width: calc(var(--measure-page) + 2 * var(--gutter));
   margin: var(--section-gap) auto 0;
   padding: 64px var(--gutter) 48px;
 }
@@ -316,6 +318,7 @@
 /* Right column: a short statement, start links, and the social accounts. */
 .footer-aside {
   display: grid;
+  justify-self: end;
   gap: 32px;
   padding-top: 8px;
   font-size: 14px;
@@ -380,6 +383,7 @@
     padding-top: 0;
   }
   .footer-aside {
+    justify-self: stretch;
     gap: 24px;
   }
   .footer-social {
