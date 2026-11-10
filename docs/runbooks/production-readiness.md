@@ -343,6 +343,13 @@ roll back only with that accepted. If inbox reads become slow at high volume, lo
 with many watched tokens of very active pools first (the 200-entry watchlist cap bounds the
 fan-out).
 
+Forum (P0-C5, migration `00023_forum_reads`). `/v1/forum/posts` and `/v1/forum/communities` are
+read-only views over `token_comments`: hiding a comment or banning a user with the moderation CLI
+removes it from the forum on the next read (after at most the 5 s / 15 s public cache). No worker
+or seed step. `sort=top` groups every visible comment of the deployment on each uncached read; if
+it becomes slow, add a per-token visible-comment count projection rather than widening the cache.
+Migration `00023` Down drops only the two partial indexes.
+
 Reading `attribution_complete`: `GET /v1/wallets/{address}` returns `attribution_complete`,
 chain-wide. It is `true` only when no pool swap on the chain has `tx_from IS NULL`. While it is
 `false`, DEX trades may be missing from every wallet's PnL and trade lists. Check progress with

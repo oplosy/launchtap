@@ -144,6 +144,24 @@
   Privy-mocked e2e build target if signed-in coverage is wanted.
 - **Pitfalls / notes:** none of these change data correctness; the server stays authoritative.
 
+### P0-C5 forum deferrals: ticker tape and votes
+
+- **Date:** 2026-11-10
+- **Reason:** scope decision (made while the owner was away; spec
+  `docs/specs/2026-11-10-p0c5-forum-memestock-design.md` non-goals)
+- **Where it stopped:** the forum shipped as read views over token comments. Two reference-screen
+  pieces were left out:
+  - The scrolling stock ticker tape. It needs a third-party equities quote feed (provider choice,
+    licence for redistribution, an API secret, a new external dependency). Owner input.
+  - Up/down votes and vote-ranked Hot. Needs a sybil rule (one Privy account per vote is cheap to
+    farm) and moderation of vote abuse before it is worth building.
+- **Related files:** `web/app/forum/page.tsx`, `web/src/forum/forum-view.tsx`,
+  `backend/internal/forum/`.
+- **Resume (next step):** owner picks an equities data provider (or drops the tape); for votes,
+  decide whether only holders may vote (reusing the C2 holder gate) before a spec.
+- **Pitfalls / notes:** the tape must stay a client-side widget with its own failure state so a
+  provider outage never blocks the forum.
+
 ### <short title>
 - **Date:** YYYY-MM-DD
 - **Reason:** time | limit (~__%) | scope decision
@@ -156,6 +174,27 @@
 ---
 
 ## Done
+
+### P0-C5: forum (Memestock)
+
+- **Date:** 2026-11-10
+- **Commits:** see `git log --grep "P0-C5"` on `dev` (spec
+  `docs/specs/2026-11-10-p0c5-forum-memestock-design.md`; its acceptance criteria served as the
+  plan).
+- **What shipped:** migration 00023 (partial indexes on visible comments);
+  `GET /v1/forum/posts` (cursor, limit 1-50, `public, max-age=5`) and
+  `GET /v1/forum/communities?sort=hot|top` (`public, max-age=15`, 400 `invalid_sort`), both with
+  C2's visibility, ban and author-display rules and the same token-existence rule; web `/forum`
+  with New / Hot / Top tabs in the URL, "Load more", Trade/Discuss links and a biggest-launches
+  sidebar; a Forum navbar link (Docs moved to the menu sheet and footer so the desktop bar fits).
+- **Gate evidence:** backend unit/race (`internal/forum`, forum routes), integration
+  (`TestForumFeedAndCommunities`: paging, hidden/banned/other-deployment exclusion, display rule,
+  24 h window, tie-break, reorged token; migration pins at 23), lint incl. integration tag,
+  openapi; web vitest 410, lint, typecheck, `test:e2e` (accessibility now covers `/forum` and
+  `/notifications`), `test:e2e:live` 74 passed (incl. hostile text, load more, tabs); the page
+  checked in a browser at 1280 px and 375 px (no horizontal overflow).
+- **Deferred:** ticker tape and votes (Active, "P0-C5 forum deferrals").
+- **Next:** the `dev` → `main` milestone PR.
 
 ### P0-C4: server-side notification inbox
 

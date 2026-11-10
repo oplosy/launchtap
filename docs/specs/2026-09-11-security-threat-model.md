@@ -142,8 +142,10 @@ flowchart LR
 - Compromise of a user's wallet, an authorized governance signer, the repository administrator,
   or the production host is outside the base attacker model; the audit still checks whether
   least privilege, blast-radius limits, and recovery controls reduce their consequences.
-- Forum/Memestock is not implemented and is outside this model except as future scope that must
-  receive a new persistence, authorization, moderation, and abuse model before implementation.
+- Forum/Memestock (P0-C5) adds no write path: it is a public read of P0-C2 token comments under
+  their existing persistence, authorization, moderation and rate-limit model, so it adds no new
+  attacker capability beyond cross-token visibility of already-public comments. Votes or a
+  separate post type would need their own abuse model before implementation.
 
 ## 3. Attack Surface, Mitigations, and Attacker Stories
 
