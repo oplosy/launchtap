@@ -365,6 +365,36 @@ function TradeSideTabs({
   );
 }
 
+const SLIPPAGE_PRESETS = ["1", "5", "10"] as const;
+
+/** Preset slippage values; they fill the same input, so its validation still applies. */
+function SlippageChips({
+  value,
+  disabled,
+  onPick,
+}: {
+  value: string;
+  disabled: boolean;
+  onPick: (value: string) => void;
+}) {
+  return (
+    <div className="trade-chips" role="group" aria-label="Slippage presets">
+      {SLIPPAGE_PRESETS.map((preset) => (
+        <button
+          key={preset}
+          type="button"
+          className="ui-chip"
+          aria-pressed={value.trim() === preset}
+          disabled={disabled}
+          onClick={() => onPick(preset)}
+        >
+          {preset}%
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function ReadinessGate({ children }: { children: React.ReactNode }) {
   const configuration = publicConfiguration();
   if (configuration.status !== "ready")
@@ -1050,7 +1080,6 @@ function TradingPanelReady({
     <section className="workspace-panel transaction-panel" aria-labelledby="trade-title">
       <div className="panel-head">
         <div>
-          <p className="panel-kicker">Wallet action</p>
           <h2 id="trade-title">Trade {token.symbol}</h2>
         </div>
         <Badge tone={token.phase === "graduated" ? "success" : "accent"}>{token.phase}</Badge>
@@ -1102,6 +1131,15 @@ function TradingPanelReady({
             }}
             inputMode="decimal"
             hint="Minimum output is rounded down on-chain. At most 50%."
+          />
+          <SlippageChips
+            value={slippage}
+            disabled={executionBusy}
+            onPick={(value) => {
+              setSlippage(value);
+              setConfirming(false);
+              setReviewIntent(null);
+            }}
           />
           {quoteError ? (
             <p className="transaction-error" role="alert">
@@ -1823,6 +1861,15 @@ function GraduatedSwapPanel({
             }}
             inputMode="decimal"
             hint="At most 50%."
+          />
+          <SlippageChips
+            value={slippage}
+            disabled={executionBusy}
+            onPick={(value) => {
+              setSlippage(value);
+              setConfirming(false);
+              setReviewIntent(null);
+            }}
           />
           {output !== null ? (
             <div className="quote-summary">

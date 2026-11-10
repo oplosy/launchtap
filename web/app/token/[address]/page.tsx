@@ -64,7 +64,7 @@ function TokenNotFound() {
           <p className="panel-kicker">Token route</p>
           <h1>Token not found</h1>
           <p>This address is not a valid EVM token address.</p>
-          <Link className="ui-button ui-button-secondary ui-button-md" href="/">
+          <Link className="ui-button ui-button-secondary ui-button-md" href="/explore">
             Return to Explore
           </Link>
         </div>
