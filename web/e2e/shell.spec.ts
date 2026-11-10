@@ -70,7 +70,10 @@ test("footer lists the site's links and no theme control", async ({ page }) => {
   await page.goto("/forum");
   const footer = page.getByRole("contentinfo");
   for (const label of ["Explore", "Create", "Forum", "Leaderboard", "Analytics", "Docs"]) {
-    await expect(footer.getByRole("link", { name: label, exact: true })).toBeAttached();
+    // Links sit inside closed sections: present in the page, hidden until opened.
+    await expect(
+      footer.getByRole("link", { name: label, exact: true, includeHidden: true }),
+    ).toBeAttached();
   }
   await expect(page.getByRole("group", { name: "Color theme" })).toHaveCount(0);
   await expect(footer.getByRole("button", { name: /theme|light|dark|system/i })).toHaveCount(0);
@@ -137,4 +140,24 @@ test("dropdowns open into a rounded, animated picker", async ({ page }) => {
   expect(style.appearance).toBe("base-select");
   expect(style.radius).toBeGreaterThanOrEqual(12);
   expect(style.transition).toContain("opacity");
+});
+
+test("the footer is a list of sections that open one by one", async ({ page }) => {
+  await page.goto("/docs");
+  const footer = page.getByRole("contentinfo");
+  const sections = ["Product", "Data", "Resources", "Account"];
+  for (const name of sections) {
+    const row = footer.locator("summary", { hasText: name });
+    await expect(row).toBeVisible();
+    await expect(row.locator("svg")).toBeAttached();
+  }
+  // Closed by default: links stay in the page but out of sight.
+  const explore = footer.getByRole("link", { name: "Explore", exact: true, includeHidden: true });
+  await expect(explore).toBeAttached();
+  await expect(explore).toBeHidden();
+  await footer.locator("summary", { hasText: "Product" }).click();
+  await expect(explore).toBeVisible();
+  await expect(footer.locator("details", { hasText: "Product" })).toHaveAttribute("open", "");
+  await footer.locator("summary", { hasText: "Product" }).click();
+  await expect(explore).toBeHidden();
 });

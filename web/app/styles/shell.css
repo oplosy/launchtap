@@ -196,35 +196,78 @@
   width: 100%;
   max-width: calc(var(--measure-page) + 2 * var(--gutter));
   margin: var(--section-gap) auto 0;
-  border-top: 1px solid var(--hairline);
   padding: 64px var(--gutter) 48px;
 }
-.footer-columns {
+/* Footer sections: hairline rows that open to their links. */
+.footer-sections {
+  border-top: 1px solid var(--hairline-strong);
+}
+.footer-section {
+  border-bottom: 1px solid var(--hairline-strong);
+  interpolate-size: allow-keywords;
+}
+.footer-section > summary {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 40px clamp(48px, 8vw, 120px);
-}
-.footer-column {
-  display: grid;
-  align-content: start;
-  gap: 10px;
-  min-width: 120px;
-}
-.footer-column > p {
-  margin-bottom: 4px;
-  color: var(--text);
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 52px;
+  color: var(--text-2);
   font: var(--type-label);
+  font-weight: 400;
+  list-style: none;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out);
 }
-.footer-column a,
-.footer-column .ui-disabled-link {
+.footer-section > summary::-webkit-details-marker {
+  display: none;
+}
+.footer-section > summary:hover,
+.footer-section[open] > summary {
+  color: var(--text);
+}
+.footer-section > summary svg {
+  flex: none;
+  color: var(--text-3);
+  transition: rotate var(--dur-base) var(--ease-out);
+}
+.footer-section[open] > summary svg {
+  rotate: 180deg;
+}
+.footer-section::details-content {
+  block-size: 0;
+  overflow: clip;
+  opacity: 0;
+  transition:
+    block-size var(--dur-base) var(--ease-out),
+    opacity var(--dur-base) var(--ease-out),
+    content-visibility var(--dur-base) allow-discrete;
+}
+.footer-section[open]::details-content {
+  block-size: auto;
+  opacity: 1;
+}
+.footer-section-links {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  padding: 4px 0 20px;
+}
+.footer-section-links a,
+.footer-section-links .ui-disabled-link {
   color: var(--text-2);
   font: var(--type-label);
   font-weight: 400;
   transition: color var(--dur-fast) var(--ease-out);
 }
-.footer-column a:hover {
+.footer-section-links a:hover {
   color: var(--text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .footer-section::details-content,
+  .footer-section > summary svg {
+    transition: none;
+  }
 }
 .footer-bottom {
   display: grid;

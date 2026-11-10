@@ -1,28 +1,41 @@
 "use client";
 
 import Link from "next/link";
+import { CaretDown } from "@phosphor-icons/react";
 import { SafeExternalLink } from "./primitives";
 import { publicConfiguration } from "@/config/public";
 import { CoinGeckoAttribution } from "@/market/usd-line";
+
+/** One footer row: a hairline-separated label that opens to its links. */
+function FooterSection({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <details className="footer-section">
+      <summary>
+        <span>{label}</span>
+        <CaretDown size={16} aria-hidden="true" />
+      </summary>
+      <nav className="footer-section-links" aria-label={label}>
+        {children}
+      </nav>
+    </details>
+  );
+}
 
 export function SiteFooter() {
   const explorerBase = publicConfiguration().deployment?.explorerBase;
   return (
     <footer className="app-footer">
-      <div className="footer-columns">
-        <nav className="footer-column" aria-labelledby="footer-product">
-          <p id="footer-product">Product</p>
+      <div className="footer-sections">
+        <FooterSection label="Product">
           <Link href={"/explore" as never}>Explore</Link>
           <Link href="/create">Create</Link>
           <Link href="/forum">Forum</Link>
-        </nav>
-        <nav className="footer-column" aria-labelledby="footer-data">
-          <p id="footer-data">Data</p>
+        </FooterSection>
+        <FooterSection label="Data">
           <Link href="/leaderboard">Leaderboard</Link>
           <Link href="/analytics">Analytics</Link>
-        </nav>
-        <nav className="footer-column" aria-labelledby="footer-resources">
-          <p id="footer-resources">Resources</p>
+        </FooterSection>
+        <FooterSection label="Resources">
           <Link href="/docs">Docs</Link>
           <Link href="/docs#risk">Risk and finality</Link>
           {explorerBase ? (
@@ -30,13 +43,12 @@ export function SiteFooter() {
           ) : (
             <span className="ui-disabled-link">Explorer unavailable</span>
           )}
-        </nav>
-        <nav className="footer-column" aria-labelledby="footer-account">
-          <p id="footer-account">Account</p>
+        </FooterSection>
+        <FooterSection label="Account">
           <Link href="/profile">Profile</Link>
           <Link href={"/explore?view=watchlist" as never}>Watchlist</Link>
           <Link href="/notifications">Notifications</Link>
-        </nav>
+        </FooterSection>
       </div>
       <div className="footer-bottom">
         <p className="footer-note">
