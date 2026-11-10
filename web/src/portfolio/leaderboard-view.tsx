@@ -2,15 +2,48 @@ import Link from "next/link";
 import type { LeaderboardResponse } from "@/api/client";
 import { EmptyState } from "@/components/primitives";
 import { shortAddress } from "@/token/address";
+import {
+  LEADERBOARD_WINDOW_LABELS,
+  LEADERBOARD_WINDOWS,
+  type LeaderboardWindow,
+} from "./leaderboard-data";
 import { formatSignedEth, pnlTone, walletPath } from "./wallet-model";
 
+/** Window tabs as plain links, so the choice lives in the URL and works without JavaScript. */
+export function LeaderboardWindowTabs({ active }: { active: LeaderboardWindow }) {
+  return (
+    <nav className="discovery-filter-group" aria-label="Leaderboard period">
+      {LEADERBOARD_WINDOWS.map((option) => (
+        <Link
+          key={option}
+          className={`discovery-filter ${active === option ? "is-active" : ""}`}
+          href={(option === "all" ? "/leaderboard" : `/leaderboard?window=${option}`) as never}
+          aria-current={active === option ? "page" : undefined}
+        >
+          {LEADERBOARD_WINDOW_LABELS[option]}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
 /** Ranked realized-PnL table; a plain server-renderable view with no hooks or client state. */
-export function LeaderboardView({ items }: { items: NonNullable<LeaderboardResponse["items"]> }) {
+export function LeaderboardView({
+  items,
+  period = "all",
+}: {
+  items: NonNullable<LeaderboardResponse["items"]>;
+  period?: LeaderboardWindow;
+}) {
   if (!items.length)
     return (
       <EmptyState
         title="No ranked wallets yet"
-        description="Wallets appear here once they have realized PnL."
+        description={
+          period === "all"
+            ? "Wallets appear here once they have realized PnL."
+            : `No wallet has a positive realized PnL in the last ${period === "7d" ? "7" : "30"} days.`
+        }
       />
     );
   return (

@@ -19,6 +19,7 @@ import { reviewedDeployments } from "@/contracts/generated";
 import { addressExplorerUrl } from "@/wallet/explorer";
 import { marketLinks } from "./market-links";
 import { StarButton, WatchlistToaster } from "@/watchlist/star-button";
+import { WatchCount } from "@/watchlist/watch-count";
 import { CommentPanel } from "@/comments/comment-panel";
 import { ShareActions } from "@/share/share-actions";
 import {
@@ -497,6 +498,13 @@ export function TokenDetail({
             <Badge tone={finalityTone(snapshot.finality)}>{finalityLabel(snapshot.finality)}</Badge>
           </div>
           <StarButton address={token.address} label={title} />
+          {!useFixture && configuration.status === "ready" && configuration.apiBaseUrl ? (
+            <WatchCount
+              key={tokenAddress}
+              address={token.address}
+              apiBaseUrl={configuration.apiBaseUrl}
+            />
+          ) : null}
           <ShareActions address={token.address} symbol={token.symbol} />
           {explorer ? (
             <SafeExternalLink

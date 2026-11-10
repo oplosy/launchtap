@@ -82,6 +82,7 @@ async function installApi(page: Page, state: State) {
     const json = (body: unknown, status = 200) =>
       route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     if (url.pathname.endsWith("/eth-usd") || url.pathname.endsWith("/image")) return json({}, 404);
+    if (url.pathname.endsWith(`/tokens/${TOKEN}/watchers`)) return json({ watch_count: 1234 });
     if (url.pathname.endsWith(`/tokens/${TOKEN}/comments`)) {
       const cursor = url.searchParams.get("cursor");
       if (!cursor) state.firstPageCalls.push(route.request().url());
@@ -174,6 +175,8 @@ test("a reader sees comments as plain text, loads more and gets live updates", a
   await expect(list(page).getByText("<script>window.__pwned = 1</script>")).toBeVisible();
   await expect(list(page).getByText("@alice")).toBeVisible();
   await expect(panel.getByText(/read-only|Sign in to comment/)).toBeVisible();
+  // P0-C3: the public watch count shows beside the star.
+  await expect(page.getByText("1,234 watching")).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as { __pwned?: number }).__pwned)).toBe(
     undefined,
   );

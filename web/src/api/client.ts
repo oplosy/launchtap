@@ -33,6 +33,7 @@ export type RevisionResponse = components["schemas"]["RevisionBody"];
 export type MetadataReadResponse = components["schemas"]["MetadataReadBody"];
 export type ProfileResponse = components["schemas"]["ProfileBody"];
 export type CommentListResponse = components["schemas"]["CommentListBody"];
+export type TokenWatchersResponse = components["schemas"]["WatchersBody"];
 export type CommentResponse = components["schemas"]["CommentDTO"];
 export type CommentEligibilityResponse = components["schemas"]["EligibilityBody"];
 export type ReportReason = "spam" | "scam" | "abuse" | "other";
@@ -242,6 +243,13 @@ export class ApiClient {
     return this.request<CommentListResponse>(
       `/v1/tokens/${encodeURIComponent(address)}/comments${suffix}`,
       init,
+    );
+  }
+
+  getTokenWatchers(address: string, signal?: AbortSignal) {
+    return this.request<TokenWatchersResponse>(
+      `/v1/tokens/${encodeURIComponent(address)}/watchers`,
+      { signal },
     );
   }
 
