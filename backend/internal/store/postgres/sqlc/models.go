@@ -114,6 +114,21 @@ type HolderBalance struct {
 	FirstAcquiredBlockNumber pgtype.Int8
 }
 
+type InboxEvent struct {
+	ChainID          int64
+	TokenAddress     Address
+	Kind             string
+	BlockNumber      int64
+	TransactionIndex int32
+	LogIndex         int32
+	BlockTime        pgtype.Timestamptz
+	TxHash           Hash
+	EthWei           pgtype.Numeric
+	SideBuy          pgtype.Bool
+	Trader           Address
+	Source           pgtype.Text
+}
+
 type IndexedBlock struct {
 	ChainID        int64
 	BlockNumber    int64
@@ -188,6 +203,16 @@ type ModerationAction struct {
 	Operator     string
 	Reason       string
 	CreatedAt    pgtype.Timestamptz
+}
+
+type NotificationRead struct {
+	ChainID      int64
+	DeploymentID string
+	PrivyDid     string
+	ReadBlock    int64
+	ReadTxIndex  int32
+	ReadLogIndex int32
+	UpdatedAt    pgtype.Timestamptz
 }
 
 type PoolBurn struct {

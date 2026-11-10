@@ -43,6 +43,8 @@ type Querier interface {
 	// Pool swaps still without a sender at or below through_block (the indexer's safe head); served
 	// by the partial index pool_swaps_tx_from_null_idx.
 	CountUnattributedPoolSwaps(ctx context.Context, arg CountUnattributedPoolSwapsParams) (int64, error)
+	// Unread events after the owner's read position, counted up to 100.
+	CountUnreadInboxEvents(ctx context.Context, arg CountUnreadInboxEventsParams) (int64, error)
 	CountVisibleComments(ctx context.Context, arg CountVisibleCommentsParams) (int64, error)
 	CountWalletCreated(ctx context.Context, arg CountWalletCreatedParams) (int64, error)
 	CountWatchlist(ctx context.Context, arg CountWatchlistParams) (int64, error)
@@ -144,6 +146,10 @@ type Querier interface {
 	// sparse groups report a stable timestamp and the next-page cursor can skip a whole group.
 	ListCandlesAggregated(ctx context.Context, arg ListCandlesAggregatedParams) ([]ListCandlesAggregatedRow, error)
 	ListGraduationsAfter(ctx context.Context, arg ListGraduationsAfterParams) ([]ListGraduationsAfterRow, error)
+	// Inbox page (spec P0-C4): events on the owner's watched tokens, at or after the watch started and
+	// within 30 days, strictly older than the cursor position, newest first. Each watched token
+	// contributes at most page_size rows through its own ordered index scan.
+	ListInboxEvents(ctx context.Context, arg ListInboxEventsParams) ([]ListInboxEventsRow, error)
 	ListLaunchesAfter(ctx context.Context, arg ListLaunchesAfterParams) ([]ListLaunchesAfterRow, error)
 	// R4 at read time: the zero address and every curve or pair address are never ranked. The factory
 	// is never marked dirty, so it never has totals.
@@ -212,6 +218,8 @@ type Querier interface {
 	LockWalletTotals(ctx context.Context, arg LockWalletTotalsParams) error
 	// Serializes cap check + insert per owner. The key is hashed in SQL.
 	LockWatchlistOwner(ctx context.Context, ownerKey string) error
+	// Moves the read position forward only; an older position leaves the row unchanged.
+	MarkInboxRead(ctx context.Context, arg MarkInboxReadParams) error
 	MarkPairTokenDirty(ctx context.Context, arg MarkPairTokenDirtyParams) error
 	// A NULL tx_from (sender not yet known) is a no-op.
 	MarkPoolSwapPositionDirty(ctx context.Context, arg MarkPoolSwapPositionDirtyParams) error

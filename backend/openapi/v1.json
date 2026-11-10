@@ -728,6 +728,139 @@
         ],
         "type": "object"
       },
+      "InboxBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/InboxBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InboxItemDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "unread_count": {
+            "description": "Unread notifications, at most 100.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "unread_count"
+        ],
+        "type": "object"
+      },
+      "InboxItemDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "block_time": {
+            "type": "string"
+          },
+          "eth_wei": {
+            "description": "Gross trade amount, or the ETH moved to the pool at graduation.",
+            "type": "string"
+          },
+          "id": {
+            "description": "\u003cblock\u003e-\u003ctx_index\u003e-\u003clog_index\u003e; also usable as a cursor and a read position.",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "graduation",
+              "large_trade"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "side_buy": {
+            "description": "large_trade only.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "source": {
+            "description": "large_trade only.",
+            "enum": [
+              "curve",
+              "dex"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "trader": {
+            "description": "large_trade only; null when the pool-swap sender is unknown.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tx_hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "token",
+          "name",
+          "symbol",
+          "block_time",
+          "tx_hash",
+          "eth_wei",
+          "side_buy",
+          "trader",
+          "source"
+        ],
+        "type": "object"
+      },
+      "InboxReadInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/InboxReadInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "through": {
+            "description": "Mark every notification up to and including this id as read.",
+            "maxLength": 64,
+            "type": "string"
+          }
+        },
+        "required": [
+          "through"
+        ],
+        "type": "object"
+      },
       "KingDTO": {
         "additionalProperties": false,
         "properties": {
@@ -2976,6 +3109,124 @@
         },
         "tags": [
           "stats"
+        ]
+      }
+    },
+    "/me/notifications": {
+      "get": {
+        "operationId": "listNotifications",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "next_cursor of the previous page.",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "next_cursor of the previous page.",
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Number of notifications, 1-50; defaults to 20.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "description": "Number of notifications, 1-50; defaults to 20.",
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/me/notifications/read": {
+      "put": {
+        "operationId": "markNotificationsRead",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboxReadInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "notifications"
         ]
       }
     },
