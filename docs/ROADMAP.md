@@ -75,9 +75,10 @@ opt-in Compose `monitoring` profile with Prometheus and Alertmanager
 
 ## Next
 
-No new feature scope is decided. Open work is tracked in [`backlog.md`](../backlog.md) → Active:
-signed-in e2e coverage (a Privy-mocked fixture build) and the forum ticker tape and votes, which
-need an owner decision.
+No new feature scope is decided. Signed-in e2e coverage (a fixture-only test session) landed on
+`dev` and goes to `main` with the next milestone PR. The only open feature work in
+[`backlog.md`](../backlog.md) → Active is the forum ticker tape and votes, which need an owner
+decision.
 
 ## Deferred operational work
 
