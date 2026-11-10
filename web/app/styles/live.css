@@ -266,37 +266,47 @@ a.live-strip-trader-link:hover {
 .inbox-list {
   display: grid;
   width: 100%;
-  gap: 2px;
   margin: 0;
   padding: 0;
   list-style: none;
+  border-top: 1px solid var(--hairline);
 }
 .inbox-item {
   display: flex;
   align-items: baseline;
   gap: 12px;
-  border-radius: var(--radius-sm);
-  padding: 10px 8px;
-  font-size: 14px;
-}
-.inbox-item.is-unread {
-  background: var(--surface-strong);
+  min-height: 56px;
+  border-bottom: 1px solid var(--hairline);
+  padding: 16px 4px;
+  font-size: 15px;
 }
 .inbox-item-text {
   flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
+  color: var(--text-2);
+}
+.inbox-item.is-unread .inbox-item-text {
   color: var(--text);
 }
 a.inbox-item-text:hover {
   text-decoration: underline;
 }
 .inbox-new {
+  display: inline-flex;
   flex: none;
-  color: var(--accent-text);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+}
+.inbox-new::before {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--progress);
+  content: "";
 }
 .inbox-time {
   flex: none;
