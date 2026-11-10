@@ -121,21 +121,6 @@
   deployment addresses. The monitoring owner and the real alert destination
   (`ALERTMANAGER_WEBHOOK_URL_FILE`, see the runbook "Monitoring" section) are also still unassigned.
 
-### P0-C2 signed-in e2e coverage
-
-- **Date:** 2026-11-10
-- **Reason:** scope decision (needs a new test build target; the other P0-C2 review minors closed)
-- **Where it stopped:** the signed-in comment composer, the username form and the inbox list have
-  no browser e2e: the fixture build mounts no Privy provider. They are covered by unit and API
-  tests, and the server stays authoritative for every rule.
-- **Related files:** `web/src/comments/comment-panel.tsx`, `web/src/profile/public-profile-form.tsx`,
-  `web/src/notifications/inbox-view.tsx`, `web/playwright.config.ts`.
-- **Resume (next step):** add a Privy-mocked fixture build (a test-only auth provider that returns
-  a fixed identity token) and drive the composer, username form and inbox list against mocked API
-  routes.
-- **Pitfalls / notes:** the mock must never ship in a production bundle; gate it on the fixture
-  build variables like the other e2e fixtures.
-
 ### P0-C5 forum deferrals: ticker tape and votes
 
 - **Date:** 2026-11-10
@@ -167,6 +152,27 @@
 
 ## Done
 
+### P0-C2 signed-in e2e coverage
+
+- **Date:** 2026-11-10
+- **What closed:** a test-only session for the fixture build. A browser test sets
+  `window.__e2eSession` before load; `Providers` then loads `src/e2e/session-provider.tsx`, which
+  feeds `WatchlistAuthContext` (comment composer, inbox) and `E2ESessionContext` (`ProfileView`)
+  with fixed tokens instead of Privy. `/profile` and `/notifications` render their views in the
+  fixture build; without Privy or a test session `ProfileView` still shows "Account unavailable".
+  `web/e2e/signed-in.spec.ts` (in `test:e2e:live`) drives the composer (wallet choice, client
+  rule, plain-text render, 429 message keeps the draft), the holder-less note, the username form
+  (client rule, 409 `username_taken`, save with a published wallet) and the inbox (plain-text
+  names, New marker, mark-read `through`, load more); every mock asserts the session's
+  `Authorization` and `privy-id-token` headers.
+- **Never ships:** the provider is imported as `launchpad-e2e-session`, aliased in
+  `web/next.config.ts` to the real module only when `NEXT_PUBLIC_E2E_FIXTURE=1` and to an inert stub
+  otherwise. Checked: a build with the flag forced to `0` contains no provider code (a dead-branch
+  `import()` alone still emitted the chunk under Turbopack). Note `web/.env.local` sets the
+  fixture flag, so a local "production" check must override it in the process environment.
+- **Verified:** web typecheck, lint, vitest 410, `test:e2e` 79 passed, `test:e2e:live` 78 passed
+  (74 + 4 new).
+
 ### P0-C2 parked review minors
 
 - **Date:** 2026-11-10
@@ -187,7 +193,7 @@
 - **Verified:** `task verify` (unit/race, integration, openapi/sqlc/deployment/vector diffs,
   build, govulncheck) passed; the anvil indexer e2e passed with Foundry on `PATH`; lint reports
   only the known CRLF false positive in `deployments/registry_test.go`.
-- **Still open:** signed-in e2e, see Active "P0-C2 signed-in e2e coverage".
+- **Still open:** none (signed-in e2e closed, see "P0-C2 signed-in e2e coverage").
 
 ### P0-C5: forum (Memestock)
 
