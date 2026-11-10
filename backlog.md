@@ -121,6 +121,29 @@
   deployment addresses. The monitoring owner and the real alert destination
   (`ALERTMANAGER_WEBHOOK_URL_FILE`, see the runbook "Monitoring" section) are also still unassigned.
 
+### P0-C2 parked review minors
+
+- **Date:** 2026-11-10
+- **Reason:** scope decision (minors accepted during the P0-C2 task reviews, not blocking)
+- **Where it stopped:** P0-C2 shipped (`0b173a6..` on `dev`); these review findings were parked.
+  - Over-limit comment data (more than one page of rate-limit history) still answers 429 with a
+    generic `Retry-After` instead of the exact window end.
+  - `POST /tokens/{address}/comments` validates the body before the ban check, so a banned user
+    with an invalid body sees `invalid_comment` instead of `banned`.
+  - SSE comment hints: no test for a hint dropped while the subscriber is slow, for the
+    reconnect replay of comment hints, or for the hint after an operator hide.
+  - The global SSE stream (no `token` filter) also carries comment hints; clients ignore them,
+    but they cost bandwidth.
+  - No integration test races a ban against an in-flight post.
+  - The signed-in comment composer and the username form have no e2e coverage: the fixture
+    build mounts no Privy provider. They are covered by unit tests only.
+- **Related files:** `backend/internal/apiserver/comment_routes.go`,
+  `backend/internal/feed/`, `backend/internal/store/postgres/social_store.go`,
+  `web/src/comments/comment-panel.tsx`, `web/src/profile/public-profile-form.tsx`.
+- **Resume (next step):** pick the SSE test gaps first (cheapest, highest signal), then add a
+  Privy-mocked e2e build target if signed-in coverage is wanted.
+- **Pitfalls / notes:** none of these change data correctness; the server stays authoritative.
+
 ### <short title>
 - **Date:** YYYY-MM-DD
 - **Reason:** time | limit (~__%) | scope decision
@@ -133,6 +156,23 @@
 ---
 
 ## Done
+
+### P0-C2: token comments, usernames and moderation
+
+- **Date:** 2026-11-10
+- **Commits:** `0b173a6..5f2d9a7` on `dev` (plan `docs/plans/2026-11-09-p0c2-comments-usernames.md`,
+  spec `docs/specs/2026-11-09-p0c2-comments-usernames-design.md`), plus the Task 9 docs commit.
+- **What shipped:** holder- or creator-gated token comments with per-user rate limits, reports,
+  operator hide/ban (`cmd/moderate`, runbook "Moderating comments"), SSE comment hints, usernames
+  with a 7-day change interval and a 30-day release hold, published wallets (at most 5) shown on
+  comments, the wallet page and the leaderboard.
+- **Gate evidence:** see the Task 9 commit message: backend build, unit/race, integration,
+  sqlc/openapi/migration checks and the Anvil indexer E2E; web vitest, lint, typecheck,
+  `test:e2e:live` and `test:anvil`. Only the known Windows CRLF false positives failed locally.
+- **Upgrade note:** migration `00020_social` Down drops all comments, reports, usernames and
+  published wallets.
+- **Next sub-project:** P0-C3 (watchlist counts and 7d/30d leaderboards).
+- **Parked minors:** see Active "P0-C2 parked review minors".
 
 ### P0-B and P0-C1 follow-ups: live feed, wallet/PnL review minors
 

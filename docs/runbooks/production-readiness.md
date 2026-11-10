@@ -98,10 +98,14 @@ The response must be successful, the chain/deployment metadata must match the ma
 the logs must contain no credentials, cookies, signatures, private RPC material, or raw access
 tokens. Confirm indexer head/finality lag, database connectivity, RPC error rate, HTTP 5xx,
 write rejection rate, and notification/reconciliation activity against the agreed alert policy.
+Comment moderation (hide, ban, reports) is an operator task; see
+[Moderating comments](#moderating-comments).
 
 The rollback owner first stops or pauses new transaction-capable traffic when compatibility is
 uncertain, then rolls the web/API/indexer deployment back to the last passing commit. Do not
-roll back a database migration independently; deploy a forward-compatible fix. Preserve the
+roll back a database migration independently; deploy a forward-compatible fix. In particular,
+migration `00020_social` Down drops every username, published wallet, comment, report and
+moderation record; never run it against a database with real users. Preserve the
 incident timeline, manifest digest, gate output, health responses, and scrubbed request IDs.
 
 ## Monitoring
