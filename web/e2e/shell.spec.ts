@@ -104,8 +104,12 @@ test("dropdown options follow the active theme", async ({ page, context, baseURL
     const colors = await select.evaluate((node) => {
       const option = getComputedStyle(node.querySelector("option")!);
       const body = getComputedStyle(document.body);
+      // A customizable select draws its own panel; the native list paints each option.
+      const panel = CSS.supports("appearance", "base-select")
+        ? getComputedStyle(node, "::picker(select)")
+        : option;
       return {
-        optionBackground: option.backgroundColor,
+        optionBackground: panel.backgroundColor,
         optionText: option.color,
         canvas: body.backgroundColor,
         text: body.color,
@@ -114,4 +118,23 @@ test("dropdown options follow the active theme", async ({ page, context, baseURL
     expect(colors.optionBackground, theme).toBe(colors.canvas);
     expect(colors.optionText, theme).toBe(colors.text);
   }
+});
+
+test("dropdowns open into a rounded, animated picker", async ({ page }) => {
+  await page.goto("/explore");
+  const select = page.locator("select").first();
+  await expect(select).toBeAttached();
+  const style = await select.evaluate((node) => {
+    const picker = getComputedStyle(node, "::picker(select)");
+    return {
+      supported: CSS.supports("appearance", "base-select"),
+      appearance: getComputedStyle(node).appearance,
+      radius: parseFloat(picker.borderTopLeftRadius),
+      transition: picker.transitionProperty,
+    };
+  });
+  test.skip(!style.supported, "This browser draws the native list.");
+  expect(style.appearance).toBe("base-select");
+  expect(style.radius).toBeGreaterThanOrEqual(12);
+  expect(style.transition).toContain("opacity");
 });
