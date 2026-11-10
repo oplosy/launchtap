@@ -3,7 +3,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import { useIdentityToken, usePrivy } from "@privy-io/react-auth";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ApiClient, type ProfileResponse } from "@/api/client";
 import { formatBaseUnits } from "@/amounts";
 import { CoinGeckoAttribution, UsdLine } from "@/market/usd-line";
@@ -12,6 +12,7 @@ import { Button, Badge } from "@/components/primitives";
 import { useWalletReadiness } from "@/wallet/readiness";
 import { WalletConnectButton } from "@/wallet/connection-context";
 import { shortAddress } from "@/token/address";
+import { PublicProfileForm } from "./public-profile-form";
 
 type ProfileAction = NonNullable<ProfileResponse["items"]>[number];
 
@@ -26,6 +27,10 @@ export function ProfileView() {
   const email = user?.linkedAccounts?.find((item) => item.type === "email") as
     { address?: string } | undefined;
   const linked = readiness.linkedWallets;
+  const getAuth = useCallback(async () => {
+    const accessToken = await getAccessToken();
+    return accessToken && identityToken ? { accessToken, identityToken } : null;
+  }, [getAccessToken, identityToken]);
   useEffect(() => {
     let cancelled = false;
     if (
@@ -130,6 +135,13 @@ export function ProfileView() {
           Sign out
         </Button>
       </section>
+      {configuration.status === "ready" && configuration.apiBaseUrl && identityToken ? (
+        <PublicProfileForm
+          apiBaseUrl={configuration.apiBaseUrl}
+          linkedWallets={linked.map((wallet) => wallet.address)}
+          getAuth={getAuth}
+        />
+      ) : null}
       <section className="workspace-panel" aria-labelledby="profile-wallets-title">
         <div className="panel-head">
           <div>

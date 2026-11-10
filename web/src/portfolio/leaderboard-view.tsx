@@ -25,8 +25,11 @@ export function LeaderboardView({ items }: { items: NonNullable<LeaderboardRespo
         <div className="analytics-row leaderboard-row" role="row" key={item.address}>
           <span className="mono">{item.rank.toLocaleString("en-US")}</span>
           <span className="mono">
-            <Link href={walletPath(item.address) as never} title={item.address}>
-              {shortAddress(item.address)}
+            <Link
+              href={walletPath(item.address) as never}
+              title={item.username ? shortAddress(item.address) : item.address}
+            >
+              {item.username ? `@${item.username}` : shortAddress(item.address)}
             </Link>
           </span>
           <span className={`mono pnl pnl-${pnlTone(item.realized_pnl_wei)}`}>

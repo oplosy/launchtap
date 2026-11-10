@@ -704,3 +704,31 @@
 .comment-reported {
   margin-left: auto;
 }
+
+/* Public profile (username) settings */
+.public-profile-form {
+  display: grid;
+  gap: 14px;
+}
+.public-profile-wallets {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.public-profile-wallets legend {
+  margin-bottom: 6px;
+  color: var(--text-soft);
+  font-size: 14px;
+}
+.public-profile-wallet {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.public-profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}

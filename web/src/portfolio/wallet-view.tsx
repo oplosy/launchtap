@@ -254,9 +254,15 @@ export function WalletView({ address }: { address: string }) {
       <section className="page-hero">
         <div>
           <div className="section-kicker">Wallet</div>
-          <h1 className="mono wallet-title" title={address}>
-            {shortAddress(address)}
-          </h1>
+          {overview?.username ? (
+            <h1 className="wallet-title" title={address}>
+              @{overview.username}
+            </h1>
+          ) : (
+            <h1 className="mono wallet-title" title={address}>
+              {shortAddress(address)}
+            </h1>
+          )}
           <div className="wallet-actions">
             <CopyAddress address={address} />
             <WalletShare address={address} />

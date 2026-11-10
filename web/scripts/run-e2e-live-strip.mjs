@@ -32,6 +32,7 @@ const result = spawnSync(
     "notifications",
     "release-hardening",
     "token-comments",
+    "public-profile",
     ...process.argv.slice(2),
   ],
   { stdio: "inherit", env },
