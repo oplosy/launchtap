@@ -247,7 +247,11 @@ describe("SSE invalidation", () => {
       refetchSnapshot: async () => undefined,
     });
     stream.start();
-    const data = { chain_id: 1, deployment_id: "local", token: "0x00000000000000000000000000000000000000aa" };
+    const data = {
+      chain_id: 1,
+      deployment_id: "local",
+      token: "0x00000000000000000000000000000000000000aa",
+    };
     harness.emit("comment", data);
     expect(seen).toEqual([{ event: "comment", data }]);
     expect(invalidated).toHaveLength(0);
