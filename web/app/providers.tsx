@@ -13,11 +13,7 @@ import {
   type PropsWithChildren,
 } from "react";
 import { publicConfiguration, type PublicConfiguration } from "@/config/public";
-import {
-  E2E_SESSION_KEY,
-  parseE2ESession,
-  type E2ESession,
-} from "@/e2e/session-context";
+import { E2E_SESSION_KEY, parseE2ESession, type E2ESession } from "@/e2e/session-context";
 import { LiveEventsProvider } from "@/live/live-events";
 import { NotificationIdentityBridge } from "@/live/notification-bridge";
 import { NotificationsProvider } from "@/live/notifications";
@@ -77,7 +73,9 @@ function E2ESessionSlot({ children }: PropsWithChildren) {
   useEffect(() => {
     // Inlined (not the shared constant) so the bundler folds it and drops the import.
     if (process.env.NEXT_PUBLIC_E2E_FIXTURE === "1") {
-      const session = parseE2ESession((window as unknown as Record<string, unknown>)[E2E_SESSION_KEY]);
+      const session = parseE2ESession(
+        (window as unknown as Record<string, unknown>)[E2E_SESSION_KEY],
+      );
       if (!session) return;
       // Aliased in next.config.ts: the real provider in the fixture build, a stub elsewhere.
       void import("launchpad-e2e-session").then((module) =>

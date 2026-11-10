@@ -174,9 +174,7 @@ test("a signed-in holder posts a comment as the chosen wallet", async ({ page })
   // A server rejection shows its message and keeps the draft.
   await composer.fill("again");
   await post.click();
-  await expect(panel.getByRole("alert")).toHaveText(
-    "You are posting too fast. Try again shortly.",
-  );
+  await expect(panel.getByRole("alert")).toHaveText("You are posting too fast. Try again shortly.");
   await expect(composer).toHaveValue("again");
   expect(unauthenticated).toEqual([]);
 });
