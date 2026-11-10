@@ -386,6 +386,13 @@ html[data-theme="light"] .ui-image-fallback {
   outline: 2px solid var(--text);
   outline-offset: 2px;
 }
+/* Public watch count beside the token page star. */
+.watch-count {
+  color: var(--text-faint);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .token-card-main:has(.star-button) {
   grid-template-columns: auto minmax(0, 1fr) auto auto;
 }

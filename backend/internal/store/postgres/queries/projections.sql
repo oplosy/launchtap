@@ -300,16 +300,29 @@ WITH token AS (
     JOIN token ON swap.pair_address = token.lp_pair
     WHERE swap.chain_id = sqlc.arg(chain_id)::bigint AND swap.tx_from = sqlc.arg(wallet)::bytea
     GROUP BY swap.tx_hash, swap.block_number, swap.transaction_index
+), legs AS (
+    SELECT
+        COALESCE(transfer_legs.block_number, trade_legs.block_number, swap_legs.block_number) AS block_number,
+        COALESCE(transfer_legs.transaction_index, trade_legs.transaction_index, swap_legs.transaction_index) AS transaction_index,
+        COALESCE(transfer_legs.token_delta, 0) AS token_delta,
+        COALESCE(trade_legs.eth_paid, 0) + COALESCE(swap_legs.eth_paid, 0) AS eth_paid,
+        COALESCE(trade_legs.eth_received, 0) + COALESCE(swap_legs.eth_received, 0) AS eth_received
+    FROM transfer_legs
+    FULL OUTER JOIN trade_legs ON trade_legs.tx_hash = transfer_legs.tx_hash
+    FULL OUTER JOIN swap_legs ON swap_legs.tx_hash = COALESCE(transfer_legs.tx_hash, trade_legs.tx_hash)
 )
+-- Every leg's block is an indexed canonical block (ledger rows reference indexed_blocks), so the
+-- inner join drops nothing; it supplies the block time the windowed leaderboard filters on.
 SELECT
-    COALESCE(transfer_legs.block_number, trade_legs.block_number, swap_legs.block_number)::bigint AS leg_block_number,
-    COALESCE(transfer_legs.transaction_index, trade_legs.transaction_index, swap_legs.transaction_index)::integer AS leg_transaction_index,
-    COALESCE(transfer_legs.token_delta, 0)::numeric AS leg_token_delta,
-    (COALESCE(trade_legs.eth_paid, 0) + COALESCE(swap_legs.eth_paid, 0))::numeric AS leg_eth_paid,
-    (COALESCE(trade_legs.eth_received, 0) + COALESCE(swap_legs.eth_received, 0))::numeric AS leg_eth_received
-FROM transfer_legs
-FULL OUTER JOIN trade_legs ON trade_legs.tx_hash = transfer_legs.tx_hash
-FULL OUTER JOIN swap_legs ON swap_legs.tx_hash = COALESCE(transfer_legs.tx_hash, trade_legs.tx_hash)
+    legs.block_number::bigint AS leg_block_number,
+    legs.transaction_index::integer AS leg_transaction_index,
+    legs.token_delta::numeric AS leg_token_delta,
+    legs.eth_paid::numeric AS leg_eth_paid,
+    legs.eth_received::numeric AS leg_eth_received,
+    block.block_time AS leg_block_time
+FROM legs
+JOIN indexed_blocks AS block
+  ON block.chain_id = sqlc.arg(chain_id)::bigint AND block.block_number = legs.block_number
 ORDER BY leg_block_number, leg_transaction_index;
 
 -- Serializes the wallet_totals recompute of one wallet across concurrent position computes, so
@@ -334,6 +347,14 @@ ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET
 
 -- name: DeleteWalletPosition :exec
 DELETE FROM wallet_positions WHERE chain_id = $1 AND wallet = $2 AND token_address = $3;
+
+-- name: DeleteWalletRealizedLegs :exec
+DELETE FROM wallet_realized_legs WHERE chain_id = $1 AND wallet = $2 AND token_address = $3;
+
+-- name: InsertWalletRealizedLeg :exec
+INSERT INTO wallet_realized_legs (chain_id, wallet, token_address, block_number, transaction_index, block_time, realized_pnl)
+VALUES (sqlc.arg(chain_id), sqlc.arg(wallet), sqlc.arg(token_address), sqlc.arg(block_number),
+    sqlc.arg(transaction_index), sqlc.arg(block_time), sqlc.arg(realized_pnl));
 
 -- Rebuilds one wallet's totals from its positions; the row is deleted when none remain.
 -- name: RecomputeWalletTotals :exec

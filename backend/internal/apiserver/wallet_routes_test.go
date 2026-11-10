@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Contictus/launchtap/backend/internal/pagination"
@@ -15,10 +16,11 @@ import (
 )
 
 type walletReaderStub struct {
-	err         error
-	truncated   bool
-	positionsQ  wallet.PositionsQuery
-	leaderLimit int
+	err          error
+	truncated    bool
+	positionsQ   wallet.PositionsQuery
+	leaderLimit  int
+	leaderWindow wallet.LeaderboardWindow
 }
 
 func (s *walletReaderStub) stamp() wallet.Stamp {
@@ -58,8 +60,9 @@ func (s *walletReaderStub) ListCreated(context.Context, wallet.CreatedQuery) (wa
 	return wallet.CreatedPage{Stamp: s.stamp()}, nil
 }
 
-func (s *walletReaderStub) Leaderboard(_ context.Context, _ int64, limit int) (wallet.LeaderboardPage, error) {
+func (s *walletReaderStub) Leaderboard(_ context.Context, _ int64, window wallet.LeaderboardWindow, limit int) (wallet.LeaderboardPage, error) {
 	s.leaderLimit = limit
+	s.leaderWindow = window
 	if s.err != nil {
 		return wallet.LeaderboardPage{}, s.err
 	}
@@ -172,6 +175,62 @@ func TestWalletOpenPositionsRejectCursorAndReportTruncated(t *testing.T) {
 		var body map[string]any
 		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || rec.Code != http.StatusOK || body["truncated"] != truncated || body["next_cursor"] != nil {
 			t.Fatalf("truncated=%t: code=%d body=%s", truncated, rec.Code, rec.Body)
+		}
+	}
+}
+
+func TestWalletAndLeaderboardUsernameField(t *testing.T) {
+	s := walletServer(&walletReaderStub{})
+	var body map[string]any
+	if err := json.Unmarshal(walletGet(s, "/wallets/"+walletAddr).Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if v, present := body["username"]; !present || v != nil {
+		t.Fatalf("wallet username = %v (present=%v); want explicit null", v, present)
+	}
+
+	name := "alice"
+	s = walletServer(&namedLeaderboardStub{name: &name})
+	var board struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(walletGet(s, "/leaderboard").Body.Bytes(), &board); err != nil {
+		t.Fatal(err)
+	}
+	if len(board.Items) != 1 || board.Items[0]["username"] != "alice" {
+		t.Fatalf("leaderboard items = %v", board.Items)
+	}
+}
+
+type namedLeaderboardStub struct {
+	walletReaderStub
+	name *string
+}
+
+func (s *namedLeaderboardStub) Leaderboard(ctx context.Context, chainID int64, window wallet.LeaderboardWindow, limit int) (wallet.LeaderboardPage, error) {
+	page, err := s.walletReaderStub.Leaderboard(ctx, chainID, window, limit)
+	for i := range page.Items {
+		page.Items[i].Username = s.name
+	}
+	return page, err
+}
+
+// TestLeaderboardWindow pins spec C3 AC3 at the HTTP layer.
+func TestLeaderboardWindow(t *testing.T) {
+	stub := &walletReaderStub{}
+	s := walletServer(stub)
+	for query, want := range map[string]wallet.LeaderboardWindow{
+		"": wallet.WindowAll, "?window=all": wallet.WindowAll, "?window=7d": wallet.Window7d, "?window=30d": wallet.Window30d,
+	} {
+		stub.leaderWindow = -1
+		if rec := walletGet(s, "/leaderboard"+query); rec.Code != http.StatusOK || stub.leaderWindow != want {
+			t.Fatalf("%q: status=%d window=%d, want %d", query, rec.Code, stub.leaderWindow, want)
+		}
+	}
+	for _, bad := range []string{"bad", "1d", "7D", "24h"} {
+		rec := walletGet(s, "/leaderboard?window="+bad)
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "urn:launchpad:problem:invalid_window") {
+			t.Fatalf("window=%s: status=%d body=%s", bad, rec.Code, rec.Body.String())
 		}
 	}
 }

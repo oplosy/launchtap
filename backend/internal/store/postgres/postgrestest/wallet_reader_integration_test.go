@@ -387,7 +387,7 @@ func TestLeaderboardRanksAndExcludesProtocol(t *testing.T) {
 	f.ledger.exec(`INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
 		VALUES ($1, decode(repeat('00', 20), 'hex'), 7777, 1, 0, 10, 12)`, walletChainID)
 
-	page, err := f.reader.Leaderboard(ctx, walletChainID, 100)
+	page, err := f.reader.Leaderboard(ctx, walletChainID, wallet.WindowAll, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,11 +407,11 @@ func TestLeaderboardRanksAndExcludesProtocol(t *testing.T) {
 	if page.Items[0].TokensTraded != 2 {
 		t.Fatalf("tokens traded = %d", page.Items[0].TokensTraded)
 	}
-	limited, err := f.reader.Leaderboard(ctx, walletChainID, 2)
+	limited, err := f.reader.Leaderboard(ctx, walletChainID, wallet.WindowAll, 2)
 	if err != nil || len(limited.Items) != 2 || limited.Snapshot.BlockNumber != 12 {
 		t.Fatalf("limited = %+v %v", limited, err)
 	}
-	if _, err := f.reader.Leaderboard(ctx, walletChainID, 101); err == nil {
+	if _, err := f.reader.Leaderboard(ctx, walletChainID, wallet.WindowAll, 101); err == nil {
 		t.Fatal("limit 101 accepted by reader")
 	}
 	server := apiserver.New(apiserver.DefaultConfig(), apiserver.ReadyFunc(func(context.Context) error { return nil }), nil)
@@ -429,4 +429,69 @@ func (f walletReaderFixture) curveTrade(block int64, txHash, trader byte) {
 		token_address, trader, is_buy, eth_gross, eth_refund, token_amount, protocol_fee, creator_fee, new_eth_reserve, new_token_reserve)
 		VALUES ($1, $2, $3, $4, 0, $5, 1, $6, $7, true, 100, 0, 50, 1, 1, 1000, 1000)`,
 		walletChainID, block, f.ledger.blockHash(block), f.ledger.blockTime(block), hashBytes(txHash), addressBytes(walletTokenC), addressBytes(trader))
+}
+
+// realizedLeg inserts one wallet_realized_legs row whose block time is `age` before the database
+// clock, so window tests do not depend on the host clock.
+func (f walletReaderFixture) realizedLeg(wallet, token byte, block int64, age string, pnl int64) {
+	f.ledger.exec(`INSERT INTO wallet_realized_legs (chain_id, wallet, token_address, block_number, transaction_index, block_time, realized_pnl)
+		VALUES ($1, $2, $3, $4, 0, now() - $5::interval, $6)`, walletChainID, addressBytes(wallet), addressBytes(token), block, age, pnl)
+}
+
+// Spec C3 AC3: rolling windows by database clock, same exclusions, positive-only rule and
+// tie-break as the all-time board; tokens_traded counts distinct tokens in the window.
+func TestLeaderboardWindows(t *testing.T) {
+	ctx, cancel := walletCtx(t)
+	defer cancel()
+	f := newWalletReaderFixture(t, ctx)
+	// 0xb1: +300 two days ago on A, +200 on B ten days ago, -1000 forty days ago.
+	f.realizedLeg(0xb1, walletTokenA, 11, "2 days", 300)
+	f.realizedLeg(0xb1, walletTokenB, 12, "10 days", 200)
+	f.realizedLeg(0xb1, walletTokenB, 10, "40 days", -1000)
+	// 0xb2: +300 within 7 days (ties 0xb1, loses on address), -400 twenty days ago.
+	f.realizedLeg(0xb2, walletTokenA, 11, "1 day", 300)
+	f.realizedLeg(0xb2, walletTokenC, 12, "20 days", -400)
+	// 0xb3: +50 just outside 7 days.
+	f.realizedLeg(0xb3, walletTokenA, 11, "7 days 1 minute", 50)
+	// Protocol addresses never rank: pair of A, curve of B, the zero address.
+	f.realizedLeg(0x31, walletTokenA, 11, "1 hour", 9999)
+	f.realizedLeg(0x42, walletTokenB, 11, "1 hour", 8888)
+	f.ledger.exec(`INSERT INTO wallet_realized_legs (chain_id, wallet, token_address, block_number, transaction_index, block_time, realized_pnl)
+		VALUES ($1, decode(repeat('00', 20), 'hex'), $2, 11, 0, now(), 7777)`, walletChainID, addressBytes(walletTokenA))
+
+	type want struct {
+		addr   byte
+		pnl    int64
+		tokens int64
+	}
+	check := func(window wallet.LeaderboardWindow, wants []want) {
+		t.Helper()
+		page, err := f.reader.Leaderboard(ctx, walletChainID, window, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page.Items) != len(wants) {
+			t.Fatalf("window %d items = %+v, want %+v", window, page.Items, wants)
+		}
+		for i, w := range wants {
+			got := page.Items[i]
+			if got.Rank != i+1 || got.Address != wantAddr(w.addr) || got.RealizedPnL.Cmp(big.NewInt(w.pnl)) != 0 || got.TokensTraded != w.tokens {
+				t.Fatalf("window %d rank %d = %+v, want %+v", window, i+1, got, w)
+			}
+		}
+		if page.Snapshot.BlockNumber != 12 {
+			t.Fatalf("window %d snapshot = %+v", window, page.Stamp)
+		}
+	}
+	check(wallet.Window7d, []want{{0xb1, 300, 1}, {0xb2, 300, 1}})
+	// 30 days: 0xb1 = 500 over two tokens, 0xb3 = 50, 0xb2 = -100 (not ranked).
+	check(wallet.Window30d, []want{{0xb1, 500, 2}, {0xb3, 50, 1}})
+
+	limited, err := f.reader.Leaderboard(ctx, walletChainID, wallet.Window30d, 1)
+	if err != nil || len(limited.Items) != 1 || limited.Items[0].Address != wantAddr(0xb1) {
+		t.Fatalf("limited = %+v %v", limited, err)
+	}
+	if _, err := f.reader.Leaderboard(ctx, walletChainID, wallet.LeaderboardWindow(1), 10); err == nil {
+		t.Fatal("unsupported window accepted by reader")
+	}
 }

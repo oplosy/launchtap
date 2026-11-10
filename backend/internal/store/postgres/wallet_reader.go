@@ -72,6 +72,14 @@ func (r WalletReader) GetWallet(ctx context.Context, chainID int64, address comm
 		if out.CreatedCount, err = a.queries.CountWalletCreated(ctx, sqlc.CountWalletCreatedParams{ChainID: chainID, Wallet: sqlc.Address(address)}); err != nil {
 			return err
 		}
+		name, err := a.queries.GetWalletUsername(ctx, sqlc.GetWalletUsernameParams{ChainID: chainID, DeploymentID: r.DeploymentID, Wallet: sqlc.Address(address)})
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+		case err != nil:
+			return err
+		default:
+			out.Username = &name
+		}
 		out.AttributionComplete, err = a.queries.WalletAttributionComplete(ctx, chainID)
 		return err
 	})
@@ -301,24 +309,58 @@ func (r WalletReader) ListCreated(ctx context.Context, q wallet.CreatedQuery) (w
 
 // Leaderboard ranks wallets with a positive realized PnL (highest first, ties by address),
 // excluding the zero address and every curve and pair address. It may return fewer than limit.
-func (r WalletReader) Leaderboard(ctx context.Context, chainID int64, limit int) (wallet.LeaderboardPage, error) {
+// WindowAll ranks wallet_totals; Window7d/Window30d sum wallet_realized_legs inside the window.
+func (r WalletReader) Leaderboard(ctx context.Context, chainID int64, window wallet.LeaderboardWindow, limit int) (wallet.LeaderboardPage, error) {
 	if err := checkWalletLimit(limit); err != nil {
 		return wallet.LeaderboardPage{}, err
 	}
+	if window != wallet.WindowAll && window != wallet.Window7d && window != wallet.Window30d {
+		return wallet.LeaderboardPage{}, fmt.Errorf("leaderboard window %d is not supported", window)
+	}
+	type rankedRow struct {
+		wallet       common.Address
+		realized     pgtype.Numeric
+		tokensTraded int64
+		username     pgtype.Text
+	}
 	var out wallet.LeaderboardPage
 	err := withReadSnapshotBeginner(ctx, r.Pool, chainID, r.DeploymentID, func(ctx context.Context, a *Adapter, s ReadSnapshot) error {
-		rows, err := a.queries.ListLeaderboard(ctx, sqlc.ListLeaderboardParams{ChainID: chainID, PageSize: int32(limit)})
-		if err != nil {
-			return err
+		var rows []rankedRow
+		if window == wallet.WindowAll {
+			all, err := a.queries.ListLeaderboard(ctx, sqlc.ListLeaderboardParams{DeploymentID: r.DeploymentID, ChainID: chainID, PageSize: int32(limit)})
+			if err != nil {
+				return err
+			}
+			for _, row := range all {
+				rows = append(rows, rankedRow{common.Address(row.Wallet), row.RealizedPnl, row.TokensTraded, row.Username})
+			}
+		} else {
+			windowed, err := a.queries.ListLeaderboardWindow(ctx, sqlc.ListLeaderboardWindowParams{
+				ChainID: chainID, DeploymentID: r.DeploymentID, PageSize: int32(limit), WindowDays: int32(window),
+			})
+			if err != nil {
+				return err
+			}
+			for _, row := range windowed {
+				if len(row.Wallet) != common.AddressLength {
+					return fmt.Errorf("leaderboard wallet has %d bytes", len(row.Wallet))
+				}
+				rows = append(rows, rankedRow{common.BytesToAddress(row.Wallet), row.RealizedPnl, row.TokensTraded, row.Username})
+			}
 		}
 		out.Stamp = walletStamp(s)
 		out.Items = make([]wallet.Ranked, 0, len(rows))
 		for i, row := range rows {
-			realized, err := signedBigInt("wallet realized pnl", row.RealizedPnl)
+			realized, err := signedBigInt("wallet realized pnl", row.realized)
 			if err != nil {
 				return err
 			}
-			out.Items = append(out.Items, wallet.Ranked{Rank: i + 1, Address: common.Address(row.Wallet), RealizedPnL: realized, TokensTraded: row.TokensTraded})
+			ranked := wallet.Ranked{Rank: i + 1, Address: row.wallet, RealizedPnL: realized, TokensTraded: row.tokensTraded}
+			if row.username.Valid {
+				name := row.username.String
+				ranked.Username = &name
+			}
+			out.Items = append(out.Items, ranked)
 		}
 		return nil
 	})

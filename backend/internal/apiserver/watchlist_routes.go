@@ -8,13 +8,14 @@ import (
 	"net/http"
 
 	"github.com/Contictus/launchtap/backend/internal/privyauth"
+	"github.com/Contictus/launchtap/backend/internal/social"
 	"github.com/Contictus/launchtap/backend/internal/watchlist"
 	"github.com/danielgtaylor/huma/v2"
 )
 
 // maxPrivyDIDBytes bounds the verified DID before it becomes part of a database key. A real
 // Privy DID is short, so an oversized one is treated as an invalid credential.
-const maxPrivyDIDBytes = 255
+const maxPrivyDIDBytes = social.MaxDIDBytes
 
 type WatchlistRoutes struct {
 	Verifier     privyauth.Verifier
@@ -62,13 +63,9 @@ func (r WatchlistRoutes) owner(ctx context.Context, in WatchlistAuthInput) (watc
 	if r.Store == nil || r.Verifier == nil {
 		return watchlist.Owner{}, huma.Error503ServiceUnavailable("watchlist unavailable")
 	}
-	access, err := privyauth.ParseBearer(in.Authorization)
+	principal, err := authenticatePrivy(ctx, r.Verifier, in)
 	if err != nil {
-		return watchlist.Owner{}, apiProblem(http.StatusUnauthorized, "authentication_failed", "Authentication failed")
-	}
-	principal, err := r.Verifier.Verify(ctx, access, in.IdentityToken)
-	if err != nil || principal.PrivyDID == "" || len(principal.PrivyDID) > maxPrivyDIDBytes {
-		return watchlist.Owner{}, apiProblem(http.StatusUnauthorized, "authentication_failed", "Authentication failed")
+		return watchlist.Owner{}, err
 	}
 	return watchlist.Owner{ChainID: r.ChainID, DeploymentID: r.DeploymentID, PrivyDID: principal.PrivyDID}, nil
 }

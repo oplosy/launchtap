@@ -374,3 +374,40 @@ func TestEventStreamStalledSubscriberEvicted(t *testing.T) {
 		t.Fatalf("stalled subscriber held %d events at eviction, want 64", buffered)
 	}
 }
+
+func TestEventsCommentFilteredAndCoalesced(t *testing.T) {
+	hub := realtime.NewHub(4, 32)
+	server := New(DefaultConfig(), ReadyFunc(func(context.Context) error { return nil }), nil)
+	server.RegisterEventRoutes(EventRoutes{Hub: hub, ChainID: 46630, DeploymentID: "testnet", Heartbeat: time.Hour, Coalesce: 50 * time.Millisecond})
+	httpServer := httptest.NewServer(server.Handler)
+	defer httpServer.Close()
+
+	tokenA := "0x00000000000000000000000000000000000000aa"
+	tokenB := "0x00000000000000000000000000000000000000bb"
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, httpServer.URL+"/v1/events?token="+tokenA, nil)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = response.Body.Close() })
+	reader := bufio.NewReader(response.Body)
+	readUntil(t, reader, "refresh-only", time.Second)
+	for deadline := time.Now().Add(time.Second); hub.Active() != 1 && time.Now().Before(deadline); {
+		time.Sleep(time.Millisecond)
+	}
+	hub.Publish(realtime.Event{Type: "comment", ChainID: 46630, DeploymentID: "testnet", Token: tokenB})
+	for range 3 {
+		hub.Publish(realtime.Event{Type: "comment", ChainID: 46630, DeploymentID: "testnet", Token: tokenA})
+	}
+	// A token hint in the same window marks the end of the batch.
+	hub.Publish(realtime.Event{Type: "token", ChainID: 46630, DeploymentID: "testnet", Token: tokenA, AsOfBlock: 9})
+	batch := readUntil(t, reader, `"as_of_block":9`, time.Second)
+	if strings.Count(batch, "event: comment") != 1 || strings.Contains(batch, tokenB) {
+		t.Fatalf("batch=%q", batch)
+	}
+	if !strings.Contains(batch, `"token":"`+tokenA+`"`) || !strings.Contains(batch, `"deployment_id":"testnet"`) {
+		t.Fatalf("comment payload=%q", batch)
+	}
+}

@@ -92,6 +92,11 @@ func run() error {
 	server.RegisterMetadataRoutes(apiserver.MetadataRoutes{Store: storepostgres.MetadataStore{Pool: pool, DeploymentID: c.DeploymentID}, Verifier: verifier, ChainID: int64(c.ChainID)})
 	server.RegisterProfileRoutes(apiserver.ProfileRoutes{Reader: storepostgres.ProfileReader{Pool: pool, DeploymentID: c.DeploymentID}, Verifier: verifier, ChainID: int64(c.ChainID)})
 	server.RegisterWatchlistRoutes(apiserver.WatchlistRoutes{Verifier: verifier, Store: storepostgres.WatchlistStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
+	server.RegisterInboxRoutes(apiserver.InboxRoutes{Verifier: verifier, Store: storepostgres.InboxStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
+	server.RegisterForumRoutes(apiserver.ForumRoutes{Store: storepostgres.ForumStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
+	server.RegisterWatchersRoutes(apiserver.WatchersRoutes{Counter: storepostgres.WatchlistStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
+	server.RegisterCommentRoutes(apiserver.CommentRoutes{Verifier: verifier, Store: storepostgres.SocialStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
+	server.RegisterPublicProfileRoutes(apiserver.PublicProfileRoutes{Verifier: verifier, Store: storepostgres.ProfileStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterEventRoutes(apiserver.EventRoutes{Hub: hub, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, Streams: apiserver.NewStreamLimiter(int(c.APISSEMaxPerClient))})
 	feedReader := storepostgres.FeedReader{Pool: pool, DeploymentID: c.DeploymentID}
 	server.RegisterFeedRoutes(apiserver.FeedRoutes{Reader: feedReader, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
@@ -152,15 +157,7 @@ func loadDeploymentRegistry() (*deployments.Registry, error) {
 }
 
 func listenRefreshHints(ctx context.Context, pool *pgxpool.Pool, hub *realtime.Hub, tail *feed.Tail, chainID int64, deploymentID string) {
-	receive := func(payload []byte) {
-		event, err := realtime.Decode(payload)
-		if err != nil || event.ChainID != chainID || (event.DeploymentID != "" && event.DeploymentID != deploymentID) {
-			return
-		}
-		hub.Publish(event)
-		// Tail.Hint does no scope check, so it is called only after the filter above.
-		tail.Hint(event)
-	}
+	receive := refreshReceiver(hub, tail, chainID, deploymentID)
 	listen := func(ctx context.Context, ready chan<- struct{}) error {
 		return storepostgres.ListenAPIRefreshReady(ctx, pool, ready, receive)
 	}
@@ -198,6 +195,25 @@ func listenLoop(ctx context.Context, listen func(context.Context, chan<- struct{
 		case <-ctx.Done():
 			return
 		case <-time.After(backoff):
+		}
+	}
+}
+
+// tailHinter is the part of feed.Tail that refreshReceiver drives.
+type tailHinter interface{ Hint(realtime.Event) }
+
+// refreshReceiver decodes an api_refresh payload, drops other scopes, publishes it to the hub and wakes
+// the trade tail for chain events. A comment is not chain data, so it never wakes the tail.
+func refreshReceiver(hub *realtime.Hub, tail tailHinter, chainID int64, deploymentID string) func([]byte) {
+	return func(payload []byte) {
+		event, err := realtime.Decode(payload)
+		if err != nil || event.ChainID != chainID || (event.DeploymentID != "" && event.DeploymentID != deploymentID) {
+			return
+		}
+		hub.Publish(event)
+		// Tail.Hint does no scope check, so it is called only after the filter above.
+		if event.Type != "comment" {
+			tail.Hint(event)
 		}
 	}
 }

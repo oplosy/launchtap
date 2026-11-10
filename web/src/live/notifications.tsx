@@ -13,9 +13,11 @@ import {
   useSyncExternalStore,
   type PropsWithChildren,
 } from "react";
+import { ApiClient, type AuthHeaders } from "@/api/client";
 import type { LiveEvent } from "@/api/types";
 import { BellSimple, X } from "@/components/icons";
 import { publicConfiguration } from "@/config/public";
+import { formatUnreadCount } from "@/notifications/inbox-model";
 import { parseTokenAddress } from "@/token/address";
 import {
   applyHoldingsResult,
@@ -46,6 +48,8 @@ export type NotificationIdentity = {
   /** Lowercase watched token addresses. */
   watched: readonly string[];
   wallet?: string;
+  /** Privy credentials for the server inbox; not part of the identity's equality. */
+  getAuth?: () => Promise<AuthHeaders | null>;
 };
 
 export const NO_IDENTITY: NotificationIdentity = { signedIn: false, watched: [] };
@@ -57,6 +61,8 @@ type NotificationsContextValue = {
   store: ReturnType<typeof createNotificationStore>;
   identity: NotificationIdentity;
   setIdentity: (identity: NotificationIdentity) => void;
+  /** Credentials of the current identity, read at call time. */
+  inboxAuth: () => Promise<AuthHeaders | null>;
 };
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
@@ -91,7 +97,11 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
 
   const setIdentity = useCallback(
     (next: NotificationIdentity) => {
-      if (identityKey(next) === identityKey(identityRef.current)) return;
+      if (identityKey(next) === identityKey(identityRef.current)) {
+        // Same identity, maybe a fresh credentials getter: keep it without a re-render.
+        identityRef.current = next;
+        return;
+      }
       // Notifications and pending own trades belong to the identity that earned them.
       if (identityChanged(identityRef.current, next)) {
         ruleState.current = createRuleState();
@@ -147,7 +157,11 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
     };
   }, [connectedWallet, refreshHoldings]);
 
-  const value = useMemo(() => ({ store, identity, setIdentity }), [store, identity, setIdentity]);
+  const inboxAuth = useCallback(async () => (await identityRef.current.getAuth?.()) ?? null, []);
+  const value = useMemo(
+    () => ({ store, identity, setIdentity, inboxAuth }),
+    [store, identity, setIdentity, inboxAuth],
+  );
   return (
     <NotificationsContext.Provider value={value}>
       {children}
@@ -255,6 +269,34 @@ export function NotificationBell() {
     };
   }, [open]);
 
+  const signedIn = context?.identity.signedIn ?? false;
+  const inboxAuth = context?.inboxAuth;
+  const [inboxUnread, setInboxUnread] = useState<number | null>(null);
+  useEffect(() => {
+    // The server inbox count is fetched each time the menu opens (spec P0-C4); a failure just
+    // leaves the link without a count.
+    if (!open || !signedIn || !inboxAuth) return;
+    const configuration = publicConfiguration();
+    if (configuration.status !== "ready" || !configuration.apiBaseUrl) return;
+    const baseUrl = configuration.apiBaseUrl;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const auth = await inboxAuth();
+        if (!auth || controller.signal.aborted) return;
+        const page = await new ApiClient({ baseUrl }).getNotifications(
+          auth,
+          { limit: 1 },
+          controller.signal,
+        );
+        if (!controller.signal.aborted) setInboxUnread(page.unread_count);
+      } catch {
+        if (!controller.signal.aborted) setInboxUnread(null);
+      }
+    })();
+    return () => controller.abort();
+  }, [inboxAuth, open, signedIn]);
+
   // While the menu is open everything in it counts as read, including items that arrive later.
   const newestId = snapshot.items[0]?.id;
   useEffect(() => {
@@ -320,6 +362,20 @@ export function NotificationBell() {
               })}
             </ul>
           )}
+          {signedIn ? (
+            <Link
+              href={"/notifications" as never}
+              className="notify-inbox-link"
+              onClick={() => setOpen(false)}
+            >
+              <span>Inbox</span>
+              {inboxUnread !== null && inboxUnread > 0 ? (
+                <span className="notify-inbox-count" aria-label={`${inboxUnread} unread`}>
+                  {formatUnreadCount(inboxUnread)}
+                </span>
+              ) : null}
+            </Link>
+          ) : null}
         </section>
       ) : null}
     </div>

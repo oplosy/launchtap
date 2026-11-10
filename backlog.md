@@ -121,6 +121,47 @@
   deployment addresses. The monitoring owner and the real alert destination
   (`ALERTMANAGER_WEBHOOK_URL_FILE`, see the runbook "Monitoring" section) are also still unassigned.
 
+### P0-C2 parked review minors
+
+- **Date:** 2026-11-10
+- **Reason:** scope decision (minors accepted during the P0-C2 task reviews, not blocking)
+- **Where it stopped:** P0-C2 shipped (`0b173a6..` on `dev`); these review findings were parked.
+  - Over-limit comment data (more than one page of rate-limit history) still answers 429 with a
+    generic `Retry-After` instead of the exact window end.
+  - `POST /tokens/{address}/comments` validates the body before the ban check, so a banned user
+    with an invalid body sees `invalid_comment` instead of `banned`.
+  - SSE comment hints: no test for a hint dropped while the subscriber is slow, for the
+    reconnect replay of comment hints, or for the hint after an operator hide.
+  - The global SSE stream (no `token` filter) also carries comment hints; clients ignore them,
+    but they cost bandwidth.
+  - No integration test races a ban against an in-flight post.
+  - The signed-in comment composer and the username form have no e2e coverage: the fixture
+    build mounts no Privy provider. They are covered by unit tests only.
+- **Related files:** `backend/internal/apiserver/comment_routes.go`,
+  `backend/internal/feed/`, `backend/internal/store/postgres/social_store.go`,
+  `web/src/comments/comment-panel.tsx`, `web/src/profile/public-profile-form.tsx`.
+- **Resume (next step):** pick the SSE test gaps first (cheapest, highest signal), then add a
+  Privy-mocked e2e build target if signed-in coverage is wanted.
+- **Pitfalls / notes:** none of these change data correctness; the server stays authoritative.
+
+### P0-C5 forum deferrals: ticker tape and votes
+
+- **Date:** 2026-11-10
+- **Reason:** scope decision (made while the owner was away; spec
+  `docs/specs/2026-11-10-p0c5-forum-memestock-design.md` non-goals)
+- **Where it stopped:** the forum shipped as read views over token comments. Two reference-screen
+  pieces were left out:
+  - The scrolling stock ticker tape. It needs a third-party equities quote feed (provider choice,
+    licence for redistribution, an API secret, a new external dependency). Owner input.
+  - Up/down votes and vote-ranked Hot. Needs a sybil rule (one Privy account per vote is cheap to
+    farm) and moderation of vote abuse before it is worth building.
+- **Related files:** `web/app/forum/page.tsx`, `web/src/forum/forum-view.tsx`,
+  `backend/internal/forum/`.
+- **Resume (next step):** owner picks an equities data provider (or drops the tape); for votes,
+  decide whether only holders may vote (reusing the C2 holder gate) before a spec.
+- **Pitfalls / notes:** the tape must stay a client-side widget with its own failure state so a
+  provider outage never blocks the forum.
+
 ### <short title>
 - **Date:** YYYY-MM-DD
 - **Reason:** time | limit (~__%) | scope decision
@@ -133,6 +174,87 @@
 ---
 
 ## Done
+
+### P0-C5: forum (Memestock)
+
+- **Date:** 2026-11-10
+- **Commits:** see `git log --grep "P0-C5"` on `dev` (spec
+  `docs/specs/2026-11-10-p0c5-forum-memestock-design.md`; its acceptance criteria served as the
+  plan).
+- **What shipped:** migration 00023 (partial indexes on visible comments);
+  `GET /v1/forum/posts` (cursor, limit 1-50, `public, max-age=5`) and
+  `GET /v1/forum/communities?sort=hot|top` (`public, max-age=15`, 400 `invalid_sort`), both with
+  C2's visibility, ban and author-display rules and the same token-existence rule; web `/forum`
+  with New / Hot / Top tabs in the URL, "Load more", Trade/Discuss links and a biggest-launches
+  sidebar; a Forum navbar link (Docs moved to the menu sheet and footer so the desktop bar fits).
+- **Gate evidence:** backend unit/race (`internal/forum`, forum routes), integration
+  (`TestForumFeedAndCommunities`: paging, hidden/banned/other-deployment exclusion, display rule,
+  24 h window, tie-break, reorged token; migration pins at 23), lint incl. integration tag,
+  openapi; web vitest 410, lint, typecheck, `test:e2e` (accessibility now covers `/forum` and
+  `/notifications`), `test:e2e:live` 74 passed (incl. hostile text, load more, tabs); the page
+  checked in a browser at 1280 px and 375 px (no horizontal overflow).
+- **Deferred:** ticker tape and votes (Active, "P0-C5 forum deferrals").
+- **Next:** the `dev` → `main` milestone PR.
+
+### P0-C4: server-side notification inbox
+
+- **Date:** 2026-11-10
+- **Commits:** see `git log --grep "P0-C4"` on `dev` (spec
+  `docs/specs/2026-11-10-p0c4-notification-inbox-design.md`; its acceptance criteria served as
+  the plan).
+- **What shipped:** view `inbox_events` and table `notification_reads` (migration 00022);
+  `GET /v1/me/notifications` (cursor, limit 1-50, unread count capped at 100) and
+  `PUT /v1/me/notifications/read` (forward-only), both Privy-authenticated and `private,
+  no-store`; web `/notifications` page with "Load more", "New" markers and mark-read on view; an
+  "Inbox" link with the server unread count in the bell panel.
+- **Gate evidence:** backend unit/race (`internal/inbox`, inbox routes), integration
+  (`TestInboxDerivedFromWatchlistAndLedger` incl. pagination, scoping, forward-only reads and a
+  reorg; `TestInboxIgnoresEventsOlderThan30Days`; migration up/down pins at 22), lint incl.
+  integration tag, openapi; web vitest 406 (incl. the 0.5 ETH threshold pinned against the
+  migration), lint, typecheck, `test:e2e:live` 68 passed.
+- **Not covered end to end:** the signed-in inbox list and the bell's Inbox link are not driven
+  in a browser, because the fixture build has no real Privy session; the e2e covers the
+  signed-out prompt and asserts no inbox request is sent without credentials. The list is covered
+  by the API, client and model tests.
+- **Next sub-project:** Forum (Memestock).
+
+### P0-C3: watch counts and 7d/30d leaderboards
+
+- **Date:** 2026-11-10
+- **Commits:** `91fd3e3..` on `dev` (spec
+  `docs/specs/2026-11-10-p0c3-watch-counts-windowed-leaderboards-design.md`; small enough that
+  the spec's acceptance criteria served as the plan).
+- **What shipped:** the position worker writes per-leg realized PnL (`wallet_realized_legs`,
+  migration 00021); `GET /v1/leaderboard?window=all|7d|30d` (400 `invalid_window`);
+  `GET /v1/tokens/{address}/watchers`; web leaderboard period tabs in the URL and "N watching"
+  beside the token star.
+- **Gate evidence:** backend unit/race, integration (incl. `TestRealizedLegsMatchLedger`,
+  `TestLeaderboardWindows`, `TestCountWatchersScopedToDeployment`, reorg equality now covering
+  realized legs), `task verify`; web vitest 401, lint, typecheck, `test:e2e:live` 65 passed;
+  leaderboard tabs checked in the browser against a stub API (desktop and 375 px).
+- **Not covered end to end:** no Anvil-gate assertion for the windowed board (Anvil block
+  timestamps of a pinned fork are not guaranteed to be within 7 days of the DB clock); the window
+  math is covered by the integration tests.
+- **Upgrade step:** run `backfill-swap-sender -seed-positions` once (runbook "Windowed
+  leaderboards (P0-C3)").
+- **Next sub-project:** C4 (server-side notification inbox), then Forum (Memestock). C4 shipped; see above.
+
+### P0-C2: token comments, usernames and moderation
+
+- **Date:** 2026-11-10
+- **Commits:** `0b173a6..5f2d9a7` on `dev` (plan `docs/plans/2026-11-09-p0c2-comments-usernames.md`,
+  spec `docs/specs/2026-11-09-p0c2-comments-usernames-design.md`), plus the Task 9 docs commit.
+- **What shipped:** holder- or creator-gated token comments with per-user rate limits, reports,
+  operator hide/ban (`cmd/moderate`, runbook "Moderating comments"), SSE comment hints, usernames
+  with a 7-day change interval and a 30-day release hold, published wallets (at most 5) shown on
+  comments, the wallet page and the leaderboard.
+- **Gate evidence:** see the Task 9 commit message: backend build, unit/race, integration,
+  sqlc/openapi/migration checks and the Anvil indexer E2E; web vitest, lint, typecheck,
+  `test:e2e:live` and `test:anvil`. Only the known Windows CRLF false positives failed locally.
+- **Upgrade note:** migration `00020_social` Down drops all comments, reports, usernames and
+  published wallets.
+- **Next sub-project:** P0-C3 (watchlist counts and 7d/30d leaderboards).
+- **Parked minors:** see Active "P0-C2 parked review minors".
 
 ### P0-B and P0-C1 follow-ups: live feed, wallet/PnL review minors
 

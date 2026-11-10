@@ -98,10 +98,14 @@ The response must be successful, the chain/deployment metadata must match the ma
 the logs must contain no credentials, cookies, signatures, private RPC material, or raw access
 tokens. Confirm indexer head/finality lag, database connectivity, RPC error rate, HTTP 5xx,
 write rejection rate, and notification/reconciliation activity against the agreed alert policy.
+Comment moderation (hide, ban, reports) is an operator task; see
+[Moderating comments](#moderating-comments).
 
 The rollback owner first stops or pauses new transaction-capable traffic when compatibility is
 uncertain, then rolls the web/API/indexer deployment back to the last passing commit. Do not
-roll back a database migration independently; deploy a forward-compatible fix. Preserve the
+roll back a database migration independently; deploy a forward-compatible fix. In particular,
+migration `00020_social` Down drops every username, published wallet, comment, report and
+moderation record; never run it against a database with real users. Preserve the
 incident timeline, manifest digest, gate output, health responses, and scrubbed request IDs.
 
 ## Monitoring
@@ -320,6 +324,32 @@ When upgrading such a database:
    leaderboard are complete after that. A fresh database (indexed from the start with this
    feature) needs no seed.
 
+Windowed leaderboards (P0-C3, migration `00021_windowed_leaderboard`). The 7d/30d boards read
+`wallet_realized_legs`, which the position worker writes on each pair recompute. The migration
+creates the table empty, so on a database with history run step 3 above (`-seed-positions`) once
+after upgrading; until the backlog drains, the 7d/30d boards miss pairs that have not been
+recomputed (the all-time board is unaffected). Window reads sum the legs inside the window on
+each request (the web page is cached 60 s); if `GET /v1/leaderboard?window=30d` becomes slow at
+high volume, add a daily rollup rather than widening the cache. Migration `00021` Down drops the
+table and the watch-count index; nothing user-owned is lost.
+
+Notification inbox (P0-C4, migration `00022_notification_inbox`). `GET /v1/me/notifications` is
+derived at read time from the `inbox_events` view (graduations and market trades of at least
+0.5 ETH) joined with the caller's watchlist, so it needs no worker, backfill or seed step, and a
+reorg removes an event on the next read. The only stored state is `notification_reads`, one
+forward-only read position per account. Migration `00022` Down drops that table and the view: it
+loses every account's read position (all events in the last 30 days show as unread again), so
+roll back only with that accepted. If inbox reads become slow at high volume, look at accounts
+with many watched tokens of very active pools first (the 200-entry watchlist cap bounds the
+fan-out).
+
+Forum (P0-C5, migration `00023_forum_reads`). `/v1/forum/posts` and `/v1/forum/communities` are
+read-only views over `token_comments`: hiding a comment or banning a user with the moderation CLI
+removes it from the forum on the next read (after at most the 5 s / 15 s public cache). No worker
+or seed step. `sort=top` groups every visible comment of the deployment on each uncached read; if
+it becomes slow, add a per-token visible-comment count projection rather than widening the cache.
+Migration `00023` Down drops only the two partial indexes.
+
 Reading `attribution_complete`: `GET /v1/wallets/{address}` returns `attribution_complete`,
 chain-wide. It is `true` only when no pool swap on the chain has `tx_from IS NULL`. While it is
 `false`, DEX trades may be missing from every wallet's PnL and trade lists. Check progress with
@@ -328,6 +358,52 @@ chain-wide. It is `true` only when no pool swap on the chain has `tx_from IS NUL
 backfill exits zero), independent of the `position_dirty` queue. Wallet PnL is current only once
 the position worker has also drained the queue (`launchpad_aggregation_position_dirty_backlog`
 back to 0).
+
+## Moderating comments
+
+Comment moderation is an operator CLI, `backend/cmd/moderate`. It writes straight to PostgreSQL;
+there is no HTTP admin endpoint. **The `DATABASE_URL` credential is the access control**: whoever
+holds it can moderate, so run the CLI only from a host or tunnel that already has database
+access and never put the URL in a ticket, chat or shell history (export it from the secret
+store for the session). Reports are only filed by authenticated users and trigger nothing
+automatically.
+
+Every command takes the deployment scope and the operator name that is written to the audit log:
+
+```sh
+cd backend
+export DATABASE_URL=...   # from the secret store, not typed inline
+go run ./cmd/moderate <command> -chain-id N -deployment-id ID -operator NAME [flags]
+```
+
+| Command | Flags | Effect |
+| --- | --- | --- |
+| `reports` | `-limit` (default 50) | Open reports grouped by comment, newest report first: comment id, token, report count, reasons, author DID, posting wallet, body (control characters escaped). |
+| `hide` | `-comment ID -reason TEXT` | Hides the comment and resolves its open reports as `actioned`. |
+| `unhide` | `-comment ID -reason TEXT` | Shows the comment again. |
+| `ban` | `-did DID` or `-comment ID`, `-reason TEXT` | Bans the author: all their comments and their username disappear from public reads; their open reports resolve as `actioned`. `-comment` bans the comment's author. |
+| `unban` | `-did DID -reason TEXT` | Lifts the ban; comments and username return. |
+| `resolve` | `-comment ID -resolution dismissed\|actioned -reason TEXT` | Closes the comment's open reports without hiding it. |
+
+`-operator` is 1-64 bytes and `-reason` is 1-500 bytes. Every mutation runs in one transaction and
+appends a `moderation_actions` row. `hide`, `unhide`, `ban` and `unban` also send one `comment`
+refresh hint per affected token so open token pages update; `resolve` changes nothing public and
+sends no hint. An unknown comment or DID exits non-zero and writes nothing. Reasons
+and the audit log are never public.
+
+Example session:
+
+```sh
+go run ./cmd/moderate reports -chain-id 46630 -deployment-id prod-1 -operator alice
+# comment=412  token=0x...  reports=3  reasons=scam,spam  author_did="did:privy:..."  body="buy now ..."
+go run ./cmd/moderate hide -chain-id 46630 -deployment-id prod-1 -operator alice -comment 412 -reason "scam link"
+# hid comment 412
+go run ./cmd/moderate ban -chain-id 46630 -deployment-id prod-1 -operator alice -comment 412 -reason "repeat scam links"
+# banned author; 2 token(s) affected: 0x...,0x...
+```
+
+Review history with `SELECT created_at, action, operator, comment_id, reason FROM
+moderation_actions ORDER BY id DESC;`.
 
 ## Audit evidence checklist
 

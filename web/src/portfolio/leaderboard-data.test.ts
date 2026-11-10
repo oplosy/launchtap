@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { LEADERBOARD_TIMEOUT_MS, loadLeaderboard } from "./leaderboard-data";
+import {
+  LEADERBOARD_TIMEOUT_MS,
+  loadLeaderboard,
+  parseLeaderboardWindow,
+} from "./leaderboard-data";
 
 const BASE = "http://api:8080";
 const snapshot = { chain_id: 1, as_of_block: 1, as_of_block_hash: "0xabc", finality: "safe" };
@@ -44,5 +48,27 @@ describe("loadLeaderboard", () => {
     await expect(loadLeaderboard(fetcher as unknown as typeof fetch, BASE)).rejects.toThrow(
       "leaderboard: malformed response",
     );
+  });
+});
+
+describe("leaderboard windows", () => {
+  it("parses only the supported window values", () => {
+    expect(parseLeaderboardWindow("7d")).toBe("7d");
+    expect(parseLeaderboardWindow("30d")).toBe("30d");
+    expect(parseLeaderboardWindow("all")).toBe("all");
+    for (const raw of [undefined, "", "24h", "7D", ["7d", "30d"]]) {
+      expect(parseLeaderboardWindow(raw)).toBe("all");
+    }
+  });
+
+  it("asks the API for the window, and omits it for all time", async () => {
+    const fetcher = vi.fn(async () => Response.json({ snapshot, items: [] }));
+    await loadLeaderboard(fetcher as unknown as typeof fetch, BASE, "30d");
+    await loadLeaderboard(fetcher as unknown as typeof fetch, BASE, "all");
+    const urls = fetcher.mock.calls.map((call) => (call as unknown as [string])[0]);
+    expect(urls).toEqual([
+      `${BASE}/v1/leaderboard?limit=100&window=30d`,
+      `${BASE}/v1/leaderboard?limit=100`,
+    ]);
   });
 });

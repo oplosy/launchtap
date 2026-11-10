@@ -9,6 +9,7 @@ import {
   ArrowSquareOut,
   BookOpenText,
   ChartLineUp,
+  ChatsCircle,
   Compass,
   List,
   Moon,
@@ -37,6 +38,7 @@ const CommandPalette = lazy(() => import("./command-palette"));
 
 const navItems = [
   { href: "/", label: "Explore", icon: Compass },
+  { href: "/forum", label: "Forum", icon: ChatsCircle },
   { href: "/create", label: "Create", icon: Plus },
   { href: "/analytics", label: "Analytics", icon: ChartLineUp },
   { href: "/docs", label: "Docs", icon: BookOpenText },
@@ -106,8 +108,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="brand-word">launchpad</span>
           </Link>
           <nav className="navbar-links" aria-label="Desktop primary navigation">
+            {/* Profile has its own icon; Docs stays in the menu sheet and the footer so the
+                desktop bar fits Explore / Forum / Create / Analytics beside the wallet button. */}
             {navLinks
-              .filter(({ href }) => href !== "/profile")
+              .filter(({ href }) => href !== "/profile" && href !== "/docs")
               .map(({ href, label }) => (
                 <Link
                   key={href}
@@ -181,6 +185,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <nav className="footer-navigation" aria-label="Footer navigation">
               <span>Product</span>
               <Link href="/">Explore</Link>
+              <Link href="/forum">Forum</Link>
               <Link href="/create">Create</Link>
               <Link href="/analytics">Analytics</Link>
               <Link href="/profile">Profile</Link>

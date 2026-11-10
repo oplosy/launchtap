@@ -160,6 +160,7 @@ const API_EVENT_NAMES: readonly ApiEventName[] = [
   "launch",
   "token",
   "reorg",
+  "comment",
   "trade",
   "graduation",
   "new_token",

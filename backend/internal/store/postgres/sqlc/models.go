@@ -31,6 +31,17 @@ type Candle struct {
 	TradeCount      int32
 }
 
+type CommentReport struct {
+	CommentID    int64
+	ChainID      int64
+	DeploymentID string
+	ReporterDid  string
+	Reason       string
+	CreatedAt    pgtype.Timestamptz
+	ResolvedAt   pgtype.Timestamptz
+	Resolution   pgtype.Text
+}
+
 type CreatorFeeClaim struct {
 	ChainID          int64
 	BlockNumber      int64
@@ -103,6 +114,21 @@ type HolderBalance struct {
 	FirstAcquiredBlockNumber pgtype.Int8
 }
 
+type InboxEvent struct {
+	ChainID          int64
+	TokenAddress     Address
+	Kind             string
+	BlockNumber      int64
+	TransactionIndex int32
+	LogIndex         int32
+	BlockTime        pgtype.Timestamptz
+	TxHash           Hash
+	EthWei           pgtype.Numeric
+	SideBuy          pgtype.Bool
+	Trader           Address
+	Source           pgtype.Text
+}
+
 type IndexedBlock struct {
 	ChainID        int64
 	BlockNumber    int64
@@ -165,6 +191,28 @@ type MarketTrade struct {
 	GrossEthVolume    Uint256
 	TokenVolume       Uint256
 	Finality          string
+}
+
+type ModerationAction struct {
+	ID           int64
+	ChainID      int64
+	DeploymentID string
+	Action       string
+	CommentID    pgtype.Int8
+	TargetDid    pgtype.Text
+	Operator     string
+	Reason       string
+	CreatedAt    pgtype.Timestamptz
+}
+
+type NotificationRead struct {
+	ChainID      int64
+	DeploymentID string
+	PrivyDid     string
+	ReadBlock    int64
+	ReadTxIndex  int32
+	ReadLogIndex int32
+	UpdatedAt    pgtype.Timestamptz
 }
 
 type PoolBurn struct {
@@ -275,6 +323,13 @@ type ProtocolStat struct {
 	UpdatedAt           pgtype.Timestamptz
 }
 
+type PublicWalletUsername struct {
+	ChainID      int64
+	DeploymentID string
+	Wallet       Address
+	Username     pgtype.Text
+}
+
 type RefundClaim struct {
 	ChainID          int64
 	BlockNumber      int64
@@ -299,6 +354,26 @@ type RefundCredit struct {
 	TokenAddress     Address
 	Account          Address
 	Amount           Uint256
+}
+
+type SocialPublicWallet struct {
+	ChainID      int64
+	DeploymentID string
+	Wallet       Address
+	PrivyDid     string
+	CreatedAt    pgtype.Timestamptz
+}
+
+type SocialUser struct {
+	ChainID           int64
+	DeploymentID      string
+	PrivyDid          string
+	Username          pgtype.Text
+	UsernameChangedAt pgtype.Timestamptz
+	BannedAt          pgtype.Timestamptz
+	BanReason         pgtype.Text
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
 }
 
 type SyncState struct {
@@ -348,6 +423,20 @@ type Token struct {
 	TokenIsToken0         bool
 	SortMarketCapEthWad   Uint256
 	SortVolume24hEthWad   Uint256
+}
+
+type TokenComment struct {
+	ID           int64
+	ChainID      int64
+	DeploymentID string
+	TokenAddress Address
+	PrivyDid     string
+	Wallet       Address
+	AuthorRole   string
+	Body         string
+	CreatedAt    pgtype.Timestamptz
+	HiddenAt     pgtype.Timestamptz
+	HiddenReason pgtype.Text
 }
 
 type TokenImage struct {
@@ -485,6 +574,14 @@ type Transfer struct {
 	Value            Uint256
 }
 
+type UsernameRelease struct {
+	ChainID      int64
+	DeploymentID string
+	Username     string
+	PrivyDid     string
+	ReleasedAt   pgtype.Timestamptz
+}
+
 type WalletPosition struct {
 	ChainID          int64
 	Wallet           Address
@@ -498,6 +595,16 @@ type WalletPosition struct {
 	TradeCount       int64
 	FirstBlockNumber int64
 	LastBlockNumber  int64
+}
+
+type WalletRealizedLeg struct {
+	ChainID          int64
+	Wallet           Address
+	TokenAddress     Address
+	BlockNumber      int64
+	TransactionIndex int32
+	BlockTime        pgtype.Timestamptz
+	RealizedPnl      pgtype.Numeric
 }
 
 type WalletTotal struct {

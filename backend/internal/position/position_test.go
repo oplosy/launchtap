@@ -152,3 +152,41 @@ func TestComputeErrors(t *testing.T) {
 		})
 	}
 }
+
+// TestComputeLegRealized pins spec C3 AC1: LegRealized is aligned with the input legs and its sum
+// equals RealizedPnL.
+func TestComputeLegRealized(t *testing.T) {
+	z := big.NewInt(0)
+	n := big.NewInt
+	e18 := pow10(1, 18)
+	in := legs(
+		tr(n(1000), e18, z),          // buy: no realized change
+		tr(n(-400), z, pow10(6, 17)), // sell 40% for 0.6: +0.2
+		tr(z, e18, pow10(9, 17)),     // round trip in one tx: -0.1
+		tr(n(-600), z, pow10(5, 17)), // sell rest for 0.5 with 0.6 cost: -0.1
+		tr(n(10), z, z),              // transfer in: no change
+	)
+	p, err := Compute(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []*big.Int{z, pow10(2, 17), pow10(-1, 17), pow10(-1, 17), z}
+	if len(p.LegRealized) != len(in) {
+		t.Fatalf("LegRealized has %d entries, want %d", len(p.LegRealized), len(in))
+	}
+	sum := new(big.Int)
+	for i, got := range p.LegRealized {
+		if got.Cmp(want[i]) != 0 {
+			t.Errorf("leg %d realized = %s, want %s", i, got, want[i])
+		}
+		sum.Add(sum, got)
+	}
+	if sum.Cmp(p.RealizedPnL) != 0 {
+		t.Errorf("sum of legs = %s, RealizedPnL = %s", sum, p.RealizedPnL)
+	}
+	// The returned values are not aliased to the running total (which is 0.2 - 0.1 - 0.1 = 0).
+	p.LegRealized[1].SetInt64(42)
+	if p.RealizedPnL.Sign() != 0 {
+		t.Fatalf("RealizedPnL = %s after mutating a leg value, want 0", p.RealizedPnL)
+	}
+}

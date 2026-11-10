@@ -33,6 +33,8 @@ type Overview struct {
 	FirstBlock          *int64
 	LastBlock           *int64
 	AttributionComplete bool
+	// Username is shown only for a published wallet of an unbanned user with a username.
+	Username *string
 }
 
 type Position struct {
@@ -113,7 +115,21 @@ type Ranked struct {
 	Address      common.Address
 	RealizedPnL  *big.Int
 	TokensTraded int64
+	// Username follows the same rule as Overview.Username.
+	Username *string
 }
+
+// LeaderboardWindow selects the realized-PnL period a leaderboard ranks over.
+type LeaderboardWindow int
+
+const (
+	// WindowAll ranks by all-time realized PnL (wallet_totals).
+	WindowAll LeaderboardWindow = 0
+	// Window7d and Window30d rank by realized PnL booked in legs whose block time is within the
+	// last 7 or 30 days of the database clock.
+	Window7d  LeaderboardWindow = 7
+	Window30d LeaderboardWindow = 30
+)
 
 type LeaderboardPage struct {
 	Stamp
@@ -125,5 +141,5 @@ type Reader interface {
 	ListPositions(ctx context.Context, q PositionsQuery) (PositionsPage, error)
 	ListTrades(ctx context.Context, q TradesQuery) (TradesPage, error)
 	ListCreated(ctx context.Context, q CreatedQuery) (CreatedPage, error)
-	Leaderboard(ctx context.Context, chainID int64, limit int) (LeaderboardPage, error)
+	Leaderboard(ctx context.Context, chainID int64, window LeaderboardWindow, limit int) (LeaderboardPage, error)
 }

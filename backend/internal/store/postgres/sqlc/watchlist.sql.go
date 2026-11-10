@@ -11,6 +11,27 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countTokenWatchers = `-- name: CountTokenWatchers :one
+SELECT count(*)::BIGINT
+FROM watchlist_entries
+WHERE chain_id = $1
+  AND deployment_id = $2
+  AND token_address = $3
+`
+
+type CountTokenWatchersParams struct {
+	ChainID      int64
+	DeploymentID string
+	TokenAddress Address
+}
+
+func (q *Queries) CountTokenWatchers(ctx context.Context, arg CountTokenWatchersParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countTokenWatchers, arg.ChainID, arg.DeploymentID, arg.TokenAddress)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countWatchlist = `-- name: CountWatchlist :one
 SELECT count(*)::BIGINT
 FROM watchlist_entries

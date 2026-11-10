@@ -6,6 +6,7 @@ export type TokenList = components["schemas"]["TokenDTO"];
 export type ApiEvent =
   | { event: "launch"; data: components["schemas"]["LaunchEvent"] }
   | { event: "reorg"; data: components["schemas"]["ReorgEvent"] }
+  | { event: "comment"; data: components["schemas"]["CommentEvent"] }
   | { event: "token"; data: components["schemas"]["TokenEvent"] }
   | { event: "trade"; data: TradeFeedItem }
   | { event: "graduation"; data: components["schemas"]["GraduationFeedEvent"] }

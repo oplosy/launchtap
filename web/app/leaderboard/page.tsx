@@ -3,8 +3,12 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Skeleton } from "@/components/primitives";
 import { apiInternalBaseUrl } from "@/config/server";
-import { loadLeaderboard } from "@/portfolio/leaderboard-data";
-import { LeaderboardView } from "@/portfolio/leaderboard-view";
+import {
+  loadLeaderboard,
+  parseLeaderboardWindow,
+  type LeaderboardWindow,
+} from "@/portfolio/leaderboard-data";
+import { LeaderboardView, LeaderboardWindowTabs } from "@/portfolio/leaderboard-view";
 
 export const revalidate = 60;
 export const metadata: Metadata = { title: "Leaderboard" };
@@ -15,26 +19,40 @@ export const metadata: Metadata = { title: "Leaderboard" };
  * the page shell streams first and a failure reaches the error boundary without turning the
  * document into an HTTP 500.
  */
-async function Board() {
-  const board = await loadLeaderboard(fetch, apiInternalBaseUrl());
-  return <LeaderboardView items={board.items ?? []} />;
+async function Board({ period }: { period: LeaderboardWindow }) {
+  const board = await loadLeaderboard(fetch, apiInternalBaseUrl(), period);
+  return <LeaderboardView items={board.items ?? []} period={period} />;
 }
 
-export default function LeaderboardPage() {
+const HEADINGS: Record<LeaderboardWindow, string> = {
+  all: "Top realized PnL.",
+  "7d": "Top realized PnL, last 7 days.",
+  "30d": "Top realized PnL, last 30 days.",
+};
+
+export default async function LeaderboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ window?: string | string[] }>;
+}) {
+  const query = searchParams ? await searchParams : undefined;
+  const period = parseLeaderboardWindow(query?.window);
   return (
     <div className="page-stack leaderboard-page">
       <section className="page-hero">
         <div>
           <div className="section-kicker">Leaderboard</div>
-          <h1>Top realized PnL.</h1>
+          <h1>{HEADINGS[period]}</h1>
           <p className="hero-summary">
             Wallets ranked by realized profit in ETH. Pool trades are attributed to the transaction
-            sender.
+            sender. Windows count profit booked by sells inside the period.
           </p>
         </div>
       </section>
       <section className="workspace-panel">
+        <LeaderboardWindowTabs active={period} />
         <Suspense
+          key={period}
           fallback={
             <div className="history-state">
               <Skeleton />
@@ -43,7 +61,7 @@ export default function LeaderboardPage() {
             </div>
           }
         >
-          <Board />
+          <Board period={period} />
         </Suspense>
       </section>
       <p className="ui-field-hint">

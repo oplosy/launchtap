@@ -188,3 +188,44 @@ func TestWatchlistIsolatedByDeployment(t *testing.T) {
 		t.Fatalf("removal from another deployment affected this one: %v err=%v", entries, err)
 	}
 }
+
+// Spec C3 AC4: the watch count follows inserts and deletes for one chain and deployment only.
+func TestCountWatchersScopedToDeployment(t *testing.T) {
+	database := NewMigrated(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	pool := openPool(t, ctx, database.URL)
+	store := storepostgres.WatchlistStore{Pool: pool}
+	token := common.BytesToAddress(addressBytes(0x77))
+	insert := func(chainID int64, deployment, did string) {
+		t.Helper()
+		if _, err := database.DB.ExecContext(ctx, `INSERT INTO watchlist_entries (chain_id, deployment_id, privy_did, token_address) VALUES ($1, $2, $3, $4)`,
+			chainID, deployment, did, token.Bytes()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	count := func() int64 {
+		t.Helper()
+		n, err := store.CountWatchers(ctx, 46630, "dep", token)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if n := count(); n != 0 {
+		t.Fatalf("empty count = %d", n)
+	}
+	insert(46630, "dep", "did:a")
+	insert(46630, "dep", "did:b")
+	insert(46630, "other-dep", "did:c")
+	insert(1, "dep", "did:d")
+	if n := count(); n != 2 {
+		t.Fatalf("count = %d, want 2", n)
+	}
+	if err := store.Remove(ctx, watchlist.Owner{ChainID: 46630, DeploymentID: "dep", PrivyDID: "did:a"}, token); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(); n != 1 {
+		t.Fatalf("count after remove = %d, want 1", n)
+	}
+}

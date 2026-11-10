@@ -32,6 +32,18 @@ export type AuthHeaders = { accessToken?: string; identityToken?: string };
 export type RevisionResponse = components["schemas"]["RevisionBody"];
 export type MetadataReadResponse = components["schemas"]["MetadataReadBody"];
 export type ProfileResponse = components["schemas"]["ProfileBody"];
+export type CommentListResponse = components["schemas"]["CommentListBody"];
+export type TokenWatchersResponse = components["schemas"]["WatchersBody"];
+export type CommentResponse = components["schemas"]["CommentDTO"];
+export type CommentEligibilityResponse = components["schemas"]["EligibilityBody"];
+export type ReportReason = "spam" | "scam" | "abuse" | "other";
+export type PublicProfileResponse = components["schemas"]["PublicProfileDTO"];
+export type InboxResponse = components["schemas"]["InboxBody"];
+export type InboxItem = components["schemas"]["InboxItemDTO"];
+export type ForumPostsResponse = components["schemas"]["ForumPostsBody"];
+export type ForumPost = components["schemas"]["ForumPostDTO"];
+export type ForumCommunitiesResponse = components["schemas"]["ForumCommunitiesBody"];
+export type ForumCommunity = components["schemas"]["ForumCommunityDTO"];
 
 /** Resolve API-owned relative image paths without allowing a metadata URL to change origin. */
 export function resolveApiAssetUrl(
@@ -224,6 +236,97 @@ export class ApiClient {
     return this.request<TokenHighlights>("/v1/tokens/highlights", { signal });
   }
 
+  listTokenComments(
+    address: string,
+    query: { cursor?: string; limit?: number } = {},
+    init: { signal?: AbortSignal; cache?: RequestCache } = {},
+  ) {
+    const params = new URLSearchParams();
+    if (query.cursor) params.set("cursor", query.cursor);
+    if (query.limit) params.set("limit", String(query.limit));
+    const encoded = params.toString();
+    const suffix = encoded ? `?${encoded}` : "";
+    return this.request<CommentListResponse>(
+      `/v1/tokens/${encodeURIComponent(address)}/comments${suffix}`,
+      init,
+    );
+  }
+
+  getTokenWatchers(address: string, signal?: AbortSignal) {
+    return this.request<TokenWatchersResponse>(
+      `/v1/tokens/${encodeURIComponent(address)}/watchers`,
+      { signal },
+    );
+  }
+
+  getCommentEligibility(address: string, auth: AuthHeaders, signal?: AbortSignal) {
+    return this.request<CommentEligibilityResponse>(
+      `/v1/tokens/${encodeURIComponent(address)}/comments/eligibility`,
+      { signal, cache: "no-store" },
+      auth,
+    );
+  }
+
+  postTokenComment(
+    address: string,
+    body: { body: string; wallet: string },
+    auth: AuthHeaders,
+    signal?: AbortSignal,
+  ) {
+    return this.request<CommentResponse>(
+      `/v1/tokens/${encodeURIComponent(address)}/comments`,
+      {
+        method: "POST",
+        signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      auth,
+    );
+  }
+
+  reportComment(id: string, reason: ReportReason, auth: AuthHeaders, signal?: AbortSignal) {
+    return this.requestNoContent(
+      `/v1/comments/${encodeURIComponent(id)}/report`,
+      {
+        method: "PUT",
+        signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      },
+      auth,
+    );
+  }
+
+  getPublicProfile(auth: AuthHeaders, signal?: AbortSignal) {
+    return this.request<PublicProfileResponse>(
+      "/v1/me/public-profile",
+      { signal, cache: "no-store" },
+      auth,
+    );
+  }
+
+  putPublicProfile(
+    body: { username?: string; public_wallets: string[] },
+    auth: AuthHeaders,
+    signal?: AbortSignal,
+  ) {
+    return this.request<PublicProfileResponse>(
+      "/v1/me/public-profile",
+      {
+        method: "PUT",
+        signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      auth,
+    );
+  }
+
+  deletePublicProfile(auth: AuthHeaders, signal?: AbortSignal) {
+    return this.requestNoContent("/v1/me/public-profile", { method: "DELETE", signal }, auth);
+  }
+
   getWatchlist(auth: AuthHeaders, signal?: AbortSignal) {
     return this.request<WatchlistResponse>("/v1/me/watchlist", { signal }, auth);
   }
@@ -240,6 +343,57 @@ export class ApiClient {
     return this.requestNoContent(
       `/v1/me/watchlist/${encodeURIComponent(address)}`,
       { method: "DELETE", signal },
+      auth,
+    );
+  }
+
+  /** Visible comments across tokens, newest first (spec P0-C5). */
+  getForumPosts(query: { cursor?: string; limit?: number } = {}, signal?: AbortSignal) {
+    const params = new URLSearchParams();
+    if (query.cursor) params.set("cursor", query.cursor);
+    if (query.limit) params.set("limit", String(query.limit));
+    const encoded = params.toString();
+    return this.request<ForumPostsResponse>(`/v1/forum/posts${encoded ? `?${encoded}` : ""}`, {
+      signal,
+    });
+  }
+
+  /** Communities ranked by visible comments: `hot` (24 hours) or `top` (all time). */
+  getForumCommunities(sort: "hot" | "top", limit?: number, signal?: AbortSignal) {
+    const params = new URLSearchParams({ sort });
+    if (limit) params.set("limit", String(limit));
+    return this.request<ForumCommunitiesResponse>(`/v1/forum/communities?${params.toString()}`, {
+      signal,
+    });
+  }
+
+  /** Newest first; `cursor` is the `next_cursor` of the previous page (spec P0-C4). */
+  getNotifications(
+    auth: AuthHeaders,
+    query: { cursor?: string; limit?: number } = {},
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams();
+    if (query.cursor) params.set("cursor", query.cursor);
+    if (query.limit) params.set("limit", String(query.limit));
+    const encoded = params.toString();
+    return this.request<InboxResponse>(
+      `/v1/me/notifications${encoded ? `?${encoded}` : ""}`,
+      { signal, cache: "no-store" },
+      auth,
+    );
+  }
+
+  /** Marks every notification up to and including `through` as read; never moves backwards. */
+  markNotificationsRead(through: string, auth: AuthHeaders, signal?: AbortSignal) {
+    return this.requestNoContent(
+      "/v1/me/notifications/read",
+      {
+        method: "PUT",
+        signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ through }),
+      },
       auth,
     );
   }

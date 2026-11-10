@@ -23,6 +23,9 @@ type Position struct {
 	ETHPaid, ETHReceived                               *big.Int
 	TradeCount                                         int64 // legs with ETHPaid>0 or ETHReceived>0
 	FirstBlock, LastBlock                              int64
+	// LegRealized[i] is the change of RealizedPnL caused by legs[i]; the values sum to
+	// RealizedPnL. Windowed leaderboards sum the legs whose block falls inside the window.
+	LegRealized []*big.Int
 }
 
 var (
@@ -60,6 +63,7 @@ func Compute(legs []Leg) (Position, error) {
 		TransferredIn: new(big.Int),
 		ETHPaid:       new(big.Int),
 		ETHReceived:   new(big.Int),
+		LegRealized:   make([]*big.Int, 0, len(legs)),
 	}
 	for i, l := range legs {
 		if l.TokenDelta == nil || l.ETHPaid == nil || l.ETHReceived == nil ||
@@ -76,6 +80,7 @@ func Compute(legs []Leg) (Position, error) {
 			p.FirstBlock = l.Block
 		}
 		p.LastBlock = l.Block
+		before := new(big.Int).Set(p.RealizedPnL)
 
 		attributed := l.ETHPaid.Sign() > 0 || l.ETHReceived.Sign() > 0
 		net := new(big.Int).Sub(l.ETHPaid, l.ETHReceived)
@@ -117,6 +122,7 @@ func Compute(legs []Leg) (Position, error) {
 		default:
 			p.RealizedPnL.Sub(p.RealizedPnL, net)
 		}
+		p.LegRealized = append(p.LegRealized, before.Sub(p.RealizedPnL, before))
 	}
 	return p, nil
 }

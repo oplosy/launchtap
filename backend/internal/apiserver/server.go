@@ -152,6 +152,39 @@ func (s *Server) RegisterWatchlistRoutes(r WatchlistRoutes) {
 	}
 	r.Register(s.API)
 }
+func (s *Server) RegisterInboxRoutes(r InboxRoutes) {
+	if r.Logger == nil {
+		r.Logger = s.logger
+	}
+	r.Register(s.API)
+}
+
+func (s *Server) RegisterForumRoutes(r ForumRoutes) {
+	if r.Logger == nil {
+		r.Logger = s.logger
+	}
+	r.Register(s.API)
+}
+
+func (s *Server) RegisterWatchersRoutes(r WatchersRoutes) {
+	if r.Logger == nil {
+		r.Logger = s.logger
+	}
+	r.Register(s.API)
+}
+func (s *Server) RegisterCommentRoutes(r CommentRoutes) {
+	if r.Logger == nil {
+		r.Logger = s.logger
+	}
+	r.Register(s.API)
+}
+
+func (s *Server) RegisterPublicProfileRoutes(r PublicProfileRoutes) {
+	if r.Logger == nil {
+		r.Logger = s.logger
+	}
+	r.Register(s.API)
+}
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.shutdownOnce.Do(func() { close(s.streamShutdown) })
@@ -274,7 +307,7 @@ func cors(w http.ResponseWriter, origins []string, r *http.Request) bool {
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization,Content-Type,privy-id-token,If-Match,If-None-Match")
-			w.Header().Set("Access-Control-Expose-Headers", "ETag, X-Revision")
+			w.Header().Set("Access-Control-Expose-Headers", "ETag, X-Revision, Retry-After")
 			return true
 		}
 	}

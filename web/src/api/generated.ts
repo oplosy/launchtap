@@ -1,4 +1,20 @@
 export interface paths {
+    "/comments/{id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["reportComment"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events": {
         parameters: {
             query?: never;
@@ -7,6 +23,38 @@ export interface paths {
             cookie?: never;
         };
         get: operations["events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/forum/communities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listForumCommunities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/forum/posts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listForumPosts"];
         put?: never;
         post?: never;
         delete?: never;
@@ -42,6 +90,54 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["markNotificationsRead"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/public-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPublicProfile"];
+        put: operations["putPublicProfile"];
+        post?: never;
+        delete: operations["deletePublicProfile"];
         options?: never;
         head?: never;
         patch?: never;
@@ -183,6 +279,54 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getTokenHighlights"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tokens/{address}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listTokenComments"];
+        put?: never;
+        post: operations["postTokenComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tokens/{address}/comments/eligibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCommentEligibility"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tokens/{address}/watchers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getTokenWatchers"];
         put?: never;
         post?: never;
         delete?: never;
@@ -469,6 +613,62 @@ export interface components {
             snapshot: components["schemas"]["SnapshotDTO"];
             tx_hash: string;
         };
+        CommentAuthorDTO: {
+            /** @enum {string} */
+            role: "creator" | "holder";
+            /** @description Lowercase username, or null when the author has none or is not public. */
+            username: string | null;
+            /** @description Checksummed posting wallet, or null when the author shows a username only. */
+            wallet: string | null;
+        };
+        CommentDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/CommentDTO.json
+             */
+            readonly $schema?: string;
+            author: components["schemas"]["CommentAuthorDTO"];
+            body: string;
+            created_at: string;
+            /** @description Decimal string. */
+            id: string;
+            token: string;
+        };
+        CommentEvent: {
+            /** Format: int64 */
+            chain_id: number;
+            deployment_id: string;
+            token: string;
+        };
+        CommentListBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/CommentListBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            comment_count: number;
+            items: components["schemas"]["CommentDTO"][] | null;
+            next_cursor?: string;
+        };
+        EligibilityBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/EligibilityBody.json
+             */
+            readonly $schema?: string;
+            banned: boolean;
+            eligible_wallets: components["schemas"]["EligibleWalletDTO"][] | null;
+            username: string | null;
+        };
+        EligibleWalletDTO: {
+            address: string;
+            /** @enum {string} */
+            role: "creator" | "holder";
+        };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
             location?: string;
@@ -541,6 +741,48 @@ export interface components {
             /** Format: int64 */
             safe_block: number;
         };
+        ForumCommunitiesBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/ForumCommunitiesBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["ForumCommunityDTO"][] | null;
+        };
+        ForumCommunityDTO: {
+            /**
+             * Format: int64
+             * @description Visible comments in the sort's window.
+             */
+            comment_count: number;
+            last_comment_at: string;
+            name: string;
+            symbol: string;
+            token: string;
+        };
+        ForumPostDTO: {
+            author: components["schemas"]["CommentAuthorDTO"];
+            body: string;
+            created_at: string;
+            /** @description Decimal string. */
+            id: string;
+            /** @description Token launch name; user-controlled text. */
+            name: string;
+            /** @description Token launch symbol; user-controlled text. */
+            symbol: string;
+            token: string;
+        };
+        ForumPostsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/ForumPostsBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["ForumPostDTO"][] | null;
+            next_cursor?: string;
+        };
         GraduationFeedEvent: {
             /** Format: int64 */
             block_number: number;
@@ -593,6 +835,53 @@ export interface components {
             next_cursor?: string;
             snapshot: components["schemas"]["SnapshotDTO"];
         };
+        InboxBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/InboxBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["InboxItemDTO"][] | null;
+            next_cursor?: string;
+            /**
+             * Format: int64
+             * @description Unread notifications, at most 100.
+             */
+            unread_count: number;
+        };
+        InboxItemDTO: {
+            block_time: string;
+            /** @description Gross trade amount, or the ETH moved to the pool at graduation. */
+            eth_wei: string;
+            /** @description <block>-<tx_index>-<log_index>; also usable as a cursor and a read position. */
+            id: string;
+            /** @enum {string} */
+            kind: "graduation" | "large_trade";
+            name: string;
+            /** @description large_trade only. */
+            side_buy: boolean | null;
+            /**
+             * @description large_trade only.
+             * @enum {string|null}
+             */
+            source: "curve" | "dex" | null;
+            symbol: string;
+            token: string;
+            /** @description large_trade only; null when the pool-swap sender is unknown. */
+            trader: string | null;
+            tx_hash: string;
+        };
+        InboxReadInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/InboxReadInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Mark every notification up to and including this id as read. */
+            through: string;
+        };
         KingDTO: {
             address: string;
             /** Format: int32 */
@@ -636,6 +925,8 @@ export interface components {
             realized_pnl_wei: string;
             /** Format: int64 */
             tokens_traded: number;
+            /** @description Username published on this wallet, or null. */
+            username: string | null;
         };
         MetadataBody: {
             /**
@@ -673,6 +964,18 @@ export interface components {
             symbol: string;
             token: string;
             tx_hash: string;
+        };
+        PostCommentInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/PostCommentInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Comment text, at most 500 code points after normalization. */
+            body: string;
+            /** @description Linked wallet that posts; must be the token creator or a holder. */
+            wallet: string;
         };
         ProfileActionDTO: {
             creator_fees: string;
@@ -737,6 +1040,33 @@ export interface components {
             trades: number;
             volume_eth: string;
         };
+        PublicProfileDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/PublicProfileDTO.json
+             */
+            readonly $schema?: string;
+            banned: boolean;
+            /** @description Null when a username change is allowed now. */
+            next_username_change_at: string | null;
+            /** @description Checksummed wallets the username is published on. */
+            public_wallets: string[] | null;
+            username: string | null;
+            username_changed_at: string | null;
+        };
+        PutPublicProfileInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/PutPublicProfileInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Linked wallets to publish the username on, at most 5. */
+            public_wallets: string[] | null;
+            /** @description New username; omit to keep the current one. */
+            username?: string;
+        };
         QuoteBody: {
             /**
              * Format: uri
@@ -790,6 +1120,16 @@ export interface components {
             /** Format: int64 */
             common_ancestor: number;
             deployment_id: string;
+        };
+        ReportCommentInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/ReportCommentInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description One of spam, scam, abuse, other. */
+            reason: string;
         };
         RevisionBody: {
             /**
@@ -1022,6 +1362,8 @@ export interface components {
             /** Format: int64 */
             tokens_traded: number;
             unrealized_pnl_wei: string;
+            /** @description Username published on this wallet, or null. */
+            username: string | null;
         };
         WalletPositionDTO: {
             average_cost_wad: string | null;
@@ -1085,6 +1427,19 @@ export interface components {
             next_cursor?: string;
             snapshot: components["schemas"]["SnapshotDTO"];
         };
+        WatchersBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/WatchersBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Number of signed-in users watching this token in this deployment.
+             */
+            watch_count: number;
+        };
         WatchlistBody: {
             /**
              * Format: uri
@@ -1108,6 +1463,42 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    reportComment: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportCommentInputBody"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     events: {
         parameters: {
             query?: {
@@ -1129,6 +1520,17 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": ({
+                        data: components["schemas"]["CommentEvent"];
+                        /**
+                         * @description The event name.
+                         * @constant
+                         */
+                        event: "comment";
+                        /** @description The event ID. */
+                        id?: number;
+                        /** @description The retry time in milliseconds. */
+                        retry?: number;
+                    } | {
                         data: components["schemas"]["FinalityFeedEvent"];
                         /**
                          * @description The event name.
@@ -1230,6 +1632,75 @@ export interface operations {
             };
         };
     };
+    listForumCommunities: {
+        parameters: {
+            query?: {
+                /** @description hot (default): visible comments in the last 24 hours; top: all time. Any other value is a 400 invalid_sort. */
+                sort?: string;
+                /** @description Number of communities, 1-50; defaults to 20. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForumCommunitiesBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    listForumPosts: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                /** @description Number of posts, 1-50; defaults to 20. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForumPostsBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     healthz: {
         parameters: {
             query?: never;
@@ -1262,6 +1733,8 @@ export interface operations {
     getLeaderboard: {
         parameters: {
             query?: {
+                /** @description Ranking period: all (default, all-time realized PnL), 7d or 30d (realized PnL booked in the last 7 or 30 days). Any other value is a 400 invalid_window. */
+                window?: string;
                 /** @description Maximum number of wallets, 1-100. Only wallets with a positive realized PnL are ranked, so fewer may be returned. */
                 limit?: number;
             };
@@ -1279,6 +1752,175 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LeaderboardBody"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    listNotifications: {
+        parameters: {
+            query?: {
+                /** @description next_cursor of the previous page. */
+                cursor?: string;
+                /** @description Number of notifications, 1-50; defaults to 20. */
+                limit?: number;
+            };
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    markNotificationsRead: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InboxReadInputBody"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getPublicProfile: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicProfileDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    putPublicProfile: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutPublicProfileInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicProfileDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    deletePublicProfile: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {
@@ -1592,6 +2234,146 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HighlightsBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    listTokenComments: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                /** @description Number of comments, 1-50; defaults to 20. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentListBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    postTokenComment: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PostCommentInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getCommentEligibility: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EligibilityBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getTokenWatchers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchersBody"];
                 };
             };
             /** @description Error */

@@ -519,6 +519,13 @@ SELECT NOT EXISTS (
     SELECT 1 FROM pool_swaps WHERE chain_id = sqlc.arg(chain_id) AND tx_from IS NULL
 ) AS complete;
 
+-- The only username a wallet read may show: from public_wallet_usernames (published wallet of an
+-- unbanned user with a username).
+-- name: GetWalletUsername :one
+SELECT username::text AS username
+FROM public_wallet_usernames
+WHERE chain_id = sqlc.arg(chain_id) AND deployment_id = sqlc.arg(deployment_id) AND wallet = sqlc.arg(wallet);
+
 -- name: CountWalletCreated :one
 SELECT count(*)::bigint FROM tokens
 WHERE chain_id = sqlc.arg(chain_id) AND creator = sqlc.arg(wallet);
@@ -601,12 +608,37 @@ LIMIT sqlc.arg(page_size)::integer;
 -- name: ListLeaderboard :many
 -- Only wallets with a positive realized PnL rank; fewer than page_size rows is normal. Ties are
 -- broken by wallet address, so the order is deterministic.
-SELECT w.wallet, w.realized_pnl, w.tokens_traded
+SELECT w.wallet, w.realized_pnl, w.tokens_traded, pu.username
 FROM wallet_totals AS w
+LEFT JOIN public_wallet_usernames AS pu
+  ON pu.chain_id = w.chain_id AND pu.deployment_id = sqlc.arg(deployment_id)::text AND pu.wallet = w.wallet
 WHERE w.chain_id = sqlc.arg(chain_id)
   AND w.realized_pnl > 0
   AND w.wallet <> decode(repeat('00', 20), 'hex')
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.curve_address = w.wallet)
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.lp_pair = w.wallet)
+ORDER BY w.realized_pnl DESC, w.wallet
+LIMIT sqlc.arg(page_size)::integer;
+
+-- name: ListLeaderboardWindow :many
+-- Rolling-window variant of ListLeaderboard: sums the realized PnL of legs whose block time is
+-- within window_days of the transaction's clock (now()). Same exclusions, positive-only rule and
+-- tie-break. tokens_traded counts distinct tokens with a realized leg in the window.
+WITH windowed AS (
+    SELECT l.wallet, sum(l.realized_pnl) AS realized_pnl, count(DISTINCT l.token_address) AS tokens_traded
+    FROM wallet_realized_legs AS l
+    WHERE l.chain_id = sqlc.arg(chain_id)
+      AND l.block_time >= now() - make_interval(days => sqlc.arg(window_days)::integer)
+    GROUP BY l.wallet
+)
+SELECT w.wallet::bytea AS wallet, w.realized_pnl::numeric AS realized_pnl,
+       w.tokens_traded::bigint AS tokens_traded, pu.username
+FROM windowed AS w
+LEFT JOIN public_wallet_usernames AS pu
+  ON pu.chain_id = sqlc.arg(chain_id) AND pu.deployment_id = sqlc.arg(deployment_id)::text AND pu.wallet = w.wallet
+WHERE w.realized_pnl > 0
+  AND w.wallet <> decode(repeat('00', 20), 'hex')
+  AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = sqlc.arg(chain_id) AND t.curve_address = w.wallet)
+  AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = sqlc.arg(chain_id) AND t.lp_pair = w.wallet)
 ORDER BY w.realized_pnl DESC, w.wallet
 LIMIT sqlc.arg(page_size)::integer;
