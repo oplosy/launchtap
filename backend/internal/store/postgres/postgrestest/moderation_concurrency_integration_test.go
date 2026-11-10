@@ -11,6 +11,7 @@ import (
 
 	"github.com/Contictus/launchtap/backend/internal/social"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
+	"github.com/Contictus/launchtap/backend/internal/store/postgres/sqlc"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -172,5 +173,94 @@ func TestModerateScopesAreIsolated(t *testing.T) {
 	}
 	if n := countRows(t, ctx, database, `SELECT count(*) FROM token_comments WHERE id = $1 AND hidden_at IS NULL`, idB); n != 1 {
 		t.Fatal("scope-B comment hidden by scope-A hide")
+	}
+}
+
+// A post and a ban of the same user serialize on the user row: a post that starts while a ban is
+// in flight is rejected once the ban commits, and a ban that starts while a post is in flight
+// waits for it and then removes that post from every listing. Either order leaves no visible comment by a banned user.
+func TestPostAndBanSerialize(t *testing.T) {
+	database := NewMigrated(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	defer cancel()
+	mod, soc := newModerationStore(t, ctx, database)
+	pool := openPool(t, ctx, database.URL)
+	token := seedSocialToken(t, ctx, database, 0x10)
+
+	// Ban in flight, then post.
+	insertSocialUser(t, ctx, database.DB, socialDep, "did:first", nil, false)
+	tx := pendingModeration(t, ctx, pool, `UPDATE social_users SET banned_at = now(), ban_reason = 'x' WHERE privy_did = 'did:first'`)
+	// The subject lock Ban takes before it writes.
+	if err := sqlc.New(tx).LockSocialSubject(ctx, sqlc.LockSocialSubjectParams{ChainID: socialChainID, DeploymentID: socialDep, SubjectKey: "did:first"}); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := soc.Post(ctx, socialActor("did:first", socialHolder), token, socialHolder, "racing")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		t.Fatalf("post did not wait for the in-flight ban (err=%v)", err)
+	case <-time.After(1500 * time.Millisecond):
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, social.ErrBanned) {
+			t.Fatalf("post vs ban err = %v; want ErrBanned", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("post still blocked after the ban commit")
+	}
+	if n := countRows(t, ctx, database, `SELECT count(*) FROM token_comments WHERE privy_did = 'did:first'`); n != 0 {
+		t.Fatalf("comments by the banned user = %d", n)
+	}
+
+	// Post in flight (holding the user row as Post does), then ban.
+	insertSocialUser(t, ctx, database.DB, socialDep, "did:second", nil, false)
+	post, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = post.Rollback(context.Background()) })
+	// The same subject lock SocialStore.Post takes first.
+	if err := sqlc.New(post).LockSocialSubject(ctx, sqlc.LockSocialSubjectParams{ChainID: socialChainID, DeploymentID: socialDep, SubjectKey: "did:second"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := post.Exec(ctx, `
+		INSERT INTO token_comments (chain_id, deployment_id, token_address, privy_did, wallet, author_role, body)
+		VALUES ($1, $2, $3, 'did:second', $4, 'holder', 'in flight')`, socialChainID, socialDep, token.Bytes(), socialHolder.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	banned := make(chan error, 1)
+	go func() {
+		_, err := mod.Ban(ctx, modScope, "did:second", "ops", "spam")
+		banned <- err
+	}()
+	select {
+	case err := <-banned:
+		t.Fatalf("ban did not wait for the in-flight post (err=%v)", err)
+	case <-time.After(1500 * time.Millisecond):
+	}
+	if err := post.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-banned:
+		if err != nil {
+			t.Fatalf("ban: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("ban still blocked after the post commit")
+	}
+	// Bans apply at read time: the committed post exists but is not listed.
+	if n := countRows(t, ctx, database, `SELECT count(*) FROM token_comments WHERE privy_did = 'did:second'`); n != 1 {
+		t.Fatalf("comments by the second user = %d; want the in-flight post committed", n)
+	}
+	if ids := listIDs(t, ctx, soc, token); len(ids) != 0 {
+		t.Fatalf("visible comments = %v", ids)
 	}
 }
