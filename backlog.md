@@ -15,18 +15,17 @@
 
 ## Active
 
-### Frontend rebuild: plan Tasks 5–9
+### Frontend rebuild: plan Tasks 7–9
 
 - **Date:** 2026-11-10
 - **Reason:** checkpoint for owner review of the new look before the remaining pages
 - **Where it stopped:** branch `task/frontend-rebuild` (pushed). Tasks 1–4 of
   `docs/plans/2026-11-10-frontend-rebuild.md` are committed and verified: tokens/primitives
   (`1783ef4`), shell + mega menu + footer (`26c4f2e`), `/explore` + legacy redirects (`55bd6ec`),
-  home (`63b0365`). Ledger with every ruling: `.superpowers/sdd/2026-11-10-frontend-rebuild/progress.md`
+  home (`63b0365`), token page + trade card (`1ce0404`), create (`dae48c8`). Ledger with every ruling: `.superpowers/sdd/2026-11-10-frontend-rebuild/progress.md`
   (git-ignored).
 - **Related files:** `web/app/styles/`, `web/src/components/`, `web/src/discovery/`, `web/src/home/`
-- **Resume (next step):** Task 5 (token page + sticky trade card + mobile Buy/Sell sheet), then
-  6 create, 7 forum/leaderboard/analytics, 8 wallet/profile/notifications/docs/states, 9 alias
+- **Resume (next step):** Task 7 forum/leaderboard/analytics, then 8 wallet/profile/notifications/docs/states, 9 alias
   removal + axe light/dark + visual QA + PR into `dev`. Gates per task: vitest, lint, typecheck,
   `test:e2e`, `test:e2e:live`, browser check.
 - **Pitfalls / notes:** Windows PowerShell 5.1 `Set-Content -Encoding utf8` writes a BOM and
