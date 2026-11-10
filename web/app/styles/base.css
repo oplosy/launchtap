@@ -3,7 +3,7 @@
 *::before,
 *::after {
   box-sizing: border-box;
-  border: 0 solid var(--line);
+  border: 0 solid var(--hairline);
 }
 html {
   min-width: 320px;
@@ -111,7 +111,7 @@ kbd {
 hr {
   height: 0;
   border-top-width: 1px;
-  border-color: var(--line);
+  border-color: var(--hairline);
 }
 table {
   border-collapse: collapse;

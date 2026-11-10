@@ -205,7 +205,7 @@
 }
 .metadata-editor-note {
   max-width: 72ch;
-  color: var(--text-faint);
+  color: var(--text-3);
   padding: 0 24px;
   font-size: 13.5px;
   line-height: 1.6;
@@ -221,9 +221,9 @@
   justify-content: space-between;
   gap: 12px;
   margin: 16px 24px 0;
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius-md);
-  color: var(--text-soft);
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--radius-input);
+  color: var(--text-2);
   padding: 16px;
   font-size: 14px;
 }
@@ -243,19 +243,19 @@
   display: grid;
   align-content: start;
   gap: 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--canvas-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-input);
+  background: var(--canvas);
   padding: 16px;
   font-size: 13.5px;
 }
 .metadata-preview > p:not(.panel-kicker) {
-  color: var(--text-soft);
+  color: var(--text-2);
   overflow-wrap: anywhere;
 }
 .metadata-preview > .mono {
   overflow: hidden;
-  color: var(--text-faint);
+  color: var(--text-3);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;

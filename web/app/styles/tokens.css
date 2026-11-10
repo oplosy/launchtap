@@ -89,36 +89,3 @@ html[data-theme="light"] {
   }
 }
 
-/*
- * Legacy names, kept only while pages move to the tokens above (plan Task 9 deletes this block).
- * They resolve per theme because they reference the themed tokens.
- */
-:root {
-  --canvas-soft: var(--canvas);
-  --surface: var(--canvas);
-  --surface-strong: var(--fill);
-  --surface-hover: var(--fill-hover);
-  --line: var(--hairline);
-  --line-strong: var(--hairline-strong);
-  --line-bright: var(--hairline-bright);
-  --text-soft: var(--text-2);
-  --text-faint: var(--text-3);
-  --primary: var(--text);
-  --on-primary: var(--canvas);
-  --accent: var(--progress);
-  --accent-ink: var(--canvas);
-  --accent-text: var(--text);
-  --accent-wash: var(--fill);
-  --accent-line: var(--progress);
-  --danger: var(--down);
-  --danger-wash: color-mix(in srgb, var(--down) 10%, transparent);
-  --warning-wash: color-mix(in srgb, var(--warning) 10%, transparent);
-  --veil: var(--backdrop);
-  --shadow-pop: 0 0 0 1px var(--hairline);
-  --shadow-soft: none;
-  --radius-sm: var(--radius-media);
-  --radius-md: var(--radius-input);
-  --radius-lg: var(--radius-container);
-  --radius-xl: var(--radius-container);
-  --content-width: var(--measure-page);
-}

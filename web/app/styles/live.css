@@ -3,13 +3,13 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  border-block: 1px solid var(--line);
+  border-block: 1px solid var(--hairline);
   padding: 10px 0;
   min-width: 0;
 }
 .live-strip-label {
   flex: none;
-  color: var(--accent-text);
+  color: var(--text);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -34,8 +34,8 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-media);
   padding: 6px 10px;
   color: var(--text);
   font-size: 13px;
@@ -76,16 +76,16 @@ a.live-strip-trader-link:hover {
   white-space: nowrap;
 }
 .live-strip-arrow[data-side="buy"] {
-  color: var(--accent-text);
+  color: var(--text);
 }
 .live-strip-arrow[data-side="sell"] {
-  color: var(--danger);
+  color: var(--down);
 }
 .live-strip-badge {
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--hairline-strong);
   border-radius: 999px;
   padding: 0 8px;
-  color: var(--text-soft);
+  color: var(--text-2);
   font-size: 11px;
   text-transform: uppercase;
 }
@@ -95,7 +95,7 @@ a.live-strip-trader-link:hover {
 }
 .live-strip-trader,
 .live-strip-time {
-  color: var(--text-faint);
+  color: var(--text-3);
 }
 /* Observed (not yet safe) items read as provisional until finality. */
 .live-strip-item[data-pending] .live-strip-link,
@@ -144,8 +144,8 @@ a.live-strip-trader-link:hover {
   min-width: 16px;
   border-radius: 8px;
   padding: 0 4px;
-  color: var(--accent-ink);
-  background: var(--accent);
+  color: var(--canvas);
+  background: var(--progress);
   font-size: 10px;
   font-weight: 700;
   line-height: 16px;
@@ -159,10 +159,10 @@ a.live-strip-trader-link:hover {
   width: min(320px, calc(100vw - 32px));
   max-height: 360px;
   overflow-y: auto;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-input);
   padding: 8px;
-  background: var(--surface);
-  box-shadow: var(--shadow-pop);
+  background: var(--canvas);
+  box-shadow: 0 0 0 1px var(--hairline);
 }
 .notify-list {
   display: grid;
@@ -176,7 +176,7 @@ a.live-strip-trader-link:hover {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-media);
   padding: 8px;
   font-size: 13px;
 }
@@ -192,13 +192,13 @@ a.live-strip-trader-link:hover {
 }
 .notify-time {
   flex: none;
-  color: var(--text-faint);
+  color: var(--text-3);
   font-size: 11px;
 }
 .notify-empty {
   margin: 0;
   padding: 12px 8px;
-  color: var(--text-soft);
+  color: var(--text-2);
   font-size: 13px;
 }
 .notify-toasts {
@@ -214,10 +214,10 @@ a.live-strip-trader-link:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-input);
   padding: 8px 8px 8px 14px;
-  background: var(--surface-strong);
-  box-shadow: var(--shadow-pop);
+  background: var(--fill);
+  box-shadow: 0 0 0 1px var(--hairline);
   font-size: 13px;
 }
 .notify-toast-text {
@@ -237,7 +237,7 @@ a.live-strip-trader-link:hover {
   justify-content: space-between;
   gap: 8px;
   margin-top: 4px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--hairline);
   padding: 10px 8px 4px;
   color: var(--text);
   font-size: 13px;
@@ -250,8 +250,8 @@ a.live-strip-trader-link:hover {
   min-width: 20px;
   border-radius: 10px;
   padding: 0 6px;
-  color: var(--accent-ink);
-  background: var(--accent);
+  color: var(--canvas);
+  background: var(--progress);
   font-size: 11px;
   line-height: 18px;
   text-align: center;
@@ -310,12 +310,12 @@ a.inbox-item-text:hover {
 }
 .inbox-time {
   flex: none;
-  color: var(--text-faint);
+  color: var(--text-3);
   font-size: 12px;
 }
 .inbox-more-error {
   margin: 0;
-  color: var(--danger);
+  color: var(--down);
   font-size: 13px;
 }
 @media (max-width: 560px) {

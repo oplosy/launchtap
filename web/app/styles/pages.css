@@ -7,7 +7,7 @@
 .hero-aside {
   display: grid;
   gap: 14px;
-  color: var(--text-faint);
+  color: var(--text-3);
   font-size: 14px;
   line-height: 1.55;
 }
@@ -16,17 +16,12 @@
   width: 40px;
   height: 2px;
   border-radius: 2px;
-  background: var(--accent-line);
+  background: var(--progress);
 }
 @media (max-width: 760px) {
   .page-hero:has(.hero-aside) {
     grid-template-columns: 1fr;
   }
-}
-.discovery-filter-groups {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
 }
 .discovery-count {
   font-variant-numeric: tabular-nums;
@@ -49,15 +44,15 @@
   margin-inline: 24px;
 }
 .profile-layout > .workspace-panel > p:not(.ui-field-hint, .discovery-notice) {
-  color: var(--text-soft);
+  color: var(--text-2);
 }
 .profile-layout > .workspace-panel > * + :not(.panel-head) {
   margin-top: 14px;
 }
 .profile-details {
   display: grid;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-input);
 }
 .profile-details > div {
   display: flex;
@@ -67,10 +62,10 @@
   font-size: 14px;
 }
 .profile-details > div + div {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--hairline);
 }
 .profile-details dt {
-  color: var(--text-faint);
+  color: var(--text-3);
 }
 .profile-details dd {
   min-width: 0;
@@ -82,8 +77,8 @@
 .wallet-list,
 .profile-action-list {
   display: grid;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-input);
   list-style: none;
 }
 .wallet-list li,
@@ -98,10 +93,10 @@
 }
 .wallet-list li + li,
 .profile-action-list li + li {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--hairline);
 }
 .wallet-list li > span:last-child {
-  color: var(--text-faint);
+  color: var(--text-3);
 }
 .profile-action-list li > div:first-child {
   display: grid;
@@ -118,16 +113,16 @@
   display: grid;
   justify-items: end;
   gap: 2px;
-  color: var(--text-soft);
+  color: var(--text-2);
   font-size: 12.5px;
 }
 .profile-wallet-empty {
   display: grid;
   justify-items: start;
   gap: 12px;
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius-md);
-  color: var(--text-soft);
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--radius-input);
+  color: var(--text-2);
   padding: 18px;
 }
 .profile-auth {
@@ -141,7 +136,7 @@
   font-size: 1.35rem;
 }
 .profile-auth p {
-  color: var(--text-soft);
+  color: var(--text-2);
 }
 @media (max-width: 760px) {
   .profile-layout {
@@ -467,14 +462,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--canvas-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-input);
+  background: var(--canvas);
   padding: 12px 14px;
   font-size: 14px;
 }
 .wallet-picker-current > span {
-  color: var(--text-faint);
+  color: var(--text-3);
 }
 .wallet-picker-list {
   display: grid;
@@ -484,15 +479,15 @@
   justify-content: flex-start;
   width: 100%;
   height: 52px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-input);
   padding: 0 16px;
 }
 .wallet-picker-error {
-  color: var(--text-soft);
+  color: var(--text-2);
   font-size: 13.5px;
 }
 .wallet-picker-error[role="alert"] {
-  color: var(--danger);
+  color: var(--down);
 }
 
 /* Route-level error and not-found actions */
@@ -519,8 +514,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: 4px 12px;
-  border: 1px solid var(--warning, var(--line-strong));
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--warning, var(--hairline-strong));
+  border-radius: var(--radius-media);
   padding: 12px 16px;
   font-size: 13.5px;
 }
@@ -528,10 +523,10 @@
   display: block;
 }
 .pnl-gain {
-  color: var(--accent-text);
+  color: var(--text);
 }
 .pnl-loss {
-  color: var(--danger);
+  color: var(--down);
 }
 .pnl .usd-line {
   display: block;
@@ -545,7 +540,7 @@
   align-items: center;
   gap: 8px;
   padding: 12px 24px 0;
-  color: var(--text-soft);
+  color: var(--text-2);
   font-size: 13px;
 }
 .wallet-token-cell {
@@ -615,10 +610,10 @@
 }
 .comment-note,
 .comment-empty {
-  color: var(--text-soft);
+  color: var(--text-2);
 }
 .comment-error {
-  color: var(--danger);
+  color: var(--down);
 }
 .comment-composer {
   display: grid;
@@ -627,10 +622,10 @@
 .comment-composer textarea,
 .comment-wallet-select select {
   width: 100%;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--hairline-strong);
   border-radius: 10px;
   color: var(--text);
-  background: var(--surface);
+  background: var(--canvas);
   padding: 10px 14px;
   font: inherit;
   font-size: 15px;
@@ -642,16 +637,16 @@
 .comment-composer textarea:focus-visible,
 .comment-wallet-select select:focus-visible {
   outline: none;
-  border-color: var(--text-faint);
+  border-color: var(--text-3);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--text) 8%, transparent);
 }
 .comment-composer textarea[aria-invalid="true"] {
-  border-color: var(--danger);
+  border-color: var(--down);
 }
 .comment-wallet-select {
   display: grid;
   gap: 6px;
-  color: var(--text-soft);
+  color: var(--text-2);
   font-size: 14px;
 }
 .comment-composer-foot {
@@ -664,13 +659,13 @@
   margin-left: auto;
 }
 .comment-counter {
-  color: var(--text-faint);
+  color: var(--text-3);
   font-variant-numeric: tabular-nums;
   font-size: 13px;
 }
 .comment-counter.is-over,
 .comment-rule {
-  color: var(--danger);
+  color: var(--down);
   font-size: 13px;
 }
 .comment-list {
@@ -683,7 +678,7 @@
   display: grid;
   gap: 6px;
   padding: 12px 0;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--hairline);
   min-width: 0;
 }
 .comment-meta {
@@ -692,7 +687,7 @@
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: var(--text-faint);
+  color: var(--text-3);
 }
 .comment-meta a,
 .comment-meta > span:first-child {
@@ -722,9 +717,9 @@
   z-index: 5;
   display: grid;
   min-width: 120px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--surface);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-input);
+  background: var(--canvas);
   padding: 4px;
 }
 .comment-report [role="menu"] button {
@@ -758,7 +753,7 @@
 }
 .public-profile-wallets legend {
   margin-bottom: 6px;
-  color: var(--text-soft);
+  color: var(--text-2);
   font-size: 14px;
 }
 .public-profile-wallet {
@@ -910,6 +905,10 @@
 .forum-sidebar h2 {
   margin: 0;
   font: var(--type-section);
+  text-align: center;
+}
+.forum-sidebar .forum-error,
+.forum-sidebar .forum-muted {
   text-align: center;
 }
 .forum-launch-list li {

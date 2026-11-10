@@ -144,3 +144,16 @@ test("forum tabs are centred and a whole post row opens its token", async ({ pag
   await page.mouse.click(body.x + body.width / 2, body.y + body.height / 2);
   await expect(page).toHaveURL(new RegExp(`/token/${TOKEN}$`, "i"));
 });
+
+test("a failed Biggest launches load reads as a centred line", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "small-laptop", "One viewport is enough.");
+  await page.route("**/v1/**", (route) =>
+    new URL(route.request().url()).pathname.endsWith("/tokens")
+      ? route.fulfill({ status: 500, contentType: "application/json", body: "{}" })
+      : route.fulfill({ status: 200, contentType: "application/json", body: '{"items":[]}' }),
+  );
+  await page.goto("/forum");
+  const error = page.getByText("Launches could not be loaded.");
+  await expect(error).toBeVisible();
+  expect(await error.evaluate((node) => getComputedStyle(node).textAlign)).toBe("center");
+});
