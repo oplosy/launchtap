@@ -18,6 +18,8 @@ export class ApiProblem extends Error {
     readonly status: number,
     code: ProblemCode,
     readonly detail: string | null = null,
+    /** The API's own problem code (the last segment of the problem `type`), or "". */
+    readonly apiCode: string = "",
   ) {
     super(
       {
@@ -61,7 +63,12 @@ export function mapProblem(status: number, body: unknown): ApiProblem {
                     : status >= 500
                       ? "service_unavailable"
                       : "unknown";
-  return new ApiProblem(status, code, typeof model?.detail === "string" ? model.detail : null);
+  return new ApiProblem(
+    status,
+    code,
+    typeof model?.detail === "string" ? model.detail : null,
+    type,
+  );
 }
 
 function isErrorModel(value: unknown): value is components["schemas"]["ErrorModel"] {

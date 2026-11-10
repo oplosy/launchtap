@@ -31,6 +31,7 @@ const result = spawnSync(
     "wallet-page",
     "notifications",
     "release-hardening",
+    "token-comments",
     ...process.argv.slice(2),
   ],
   { stdio: "inherit", env },

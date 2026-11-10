@@ -32,6 +32,11 @@ export type AuthHeaders = { accessToken?: string; identityToken?: string };
 export type RevisionResponse = components["schemas"]["RevisionBody"];
 export type MetadataReadResponse = components["schemas"]["MetadataReadBody"];
 export type ProfileResponse = components["schemas"]["ProfileBody"];
+export type CommentListResponse = components["schemas"]["CommentListBody"];
+export type CommentResponse = components["schemas"]["CommentDTO"];
+export type CommentEligibilityResponse = components["schemas"]["EligibilityBody"];
+export type ReportReason = "spam" | "scam" | "abuse" | "other";
+export type PublicProfileResponse = components["schemas"]["PublicProfileDTO"];
 
 /** Resolve API-owned relative image paths without allowing a metadata URL to change origin. */
 export function resolveApiAssetUrl(
@@ -222,6 +227,90 @@ export class ApiClient {
 
   getHighlights(signal?: AbortSignal) {
     return this.request<TokenHighlights>("/v1/tokens/highlights", { signal });
+  }
+
+  listTokenComments(
+    address: string,
+    query: { cursor?: string; limit?: number } = {},
+    init: { signal?: AbortSignal; cache?: RequestCache } = {},
+  ) {
+    const params = new URLSearchParams();
+    if (query.cursor) params.set("cursor", query.cursor);
+    if (query.limit) params.set("limit", String(query.limit));
+    const encoded = params.toString();
+    const suffix = encoded ? `?${encoded}` : "";
+    return this.request<CommentListResponse>(
+      `/v1/tokens/${encodeURIComponent(address)}/comments${suffix}`,
+      init,
+    );
+  }
+
+  getCommentEligibility(address: string, auth: AuthHeaders, signal?: AbortSignal) {
+    return this.request<CommentEligibilityResponse>(
+      `/v1/tokens/${encodeURIComponent(address)}/comments/eligibility`,
+      { signal, cache: "no-store" },
+      auth,
+    );
+  }
+
+  postTokenComment(
+    address: string,
+    body: { body: string; wallet: string },
+    auth: AuthHeaders,
+    signal?: AbortSignal,
+  ) {
+    return this.request<CommentResponse>(
+      `/v1/tokens/${encodeURIComponent(address)}/comments`,
+      {
+        method: "POST",
+        signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      auth,
+    );
+  }
+
+  reportComment(id: string, reason: ReportReason, auth: AuthHeaders, signal?: AbortSignal) {
+    return this.requestNoContent(
+      `/v1/comments/${encodeURIComponent(id)}/report`,
+      {
+        method: "PUT",
+        signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      },
+      auth,
+    );
+  }
+
+  getPublicProfile(auth: AuthHeaders, signal?: AbortSignal) {
+    return this.request<PublicProfileResponse>(
+      "/v1/me/public-profile",
+      { signal, cache: "no-store" },
+      auth,
+    );
+  }
+
+  putPublicProfile(
+    body: { username?: string; public_wallets: string[] },
+    auth: AuthHeaders,
+    signal?: AbortSignal,
+  ) {
+    return this.request<PublicProfileResponse>(
+      "/v1/me/public-profile",
+      {
+        method: "PUT",
+        signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      auth,
+    );
+  }
+
+  deletePublicProfile(auth: AuthHeaders, signal?: AbortSignal) {
+    return this.requestNoContent("/v1/me/public-profile", { method: "DELETE", signal }, auth);
   }
 
   getWatchlist(auth: AuthHeaders, signal?: AbortSignal) {

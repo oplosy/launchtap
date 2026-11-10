@@ -19,6 +19,7 @@ import { reviewedDeployments } from "@/contracts/generated";
 import { addressExplorerUrl } from "@/wallet/explorer";
 import { marketLinks } from "./market-links";
 import { StarButton, WatchlistToaster } from "@/watchlist/star-button";
+import { CommentPanel } from "@/comments/comment-panel";
 import { ShareActions } from "@/share/share-actions";
 import {
   Badge,
@@ -334,9 +335,20 @@ export function TokenDetail({
   // Hints that arrive during a refresh collapse into one follow-up refresh; an abort (a reconnect
   // reload cancelled it) is swallowed there, not surfaced as an unhandled rejection.
   const refreshAllRef = useRef<(() => void) | null>(null);
+  // Bumped on each `comment` hint for this token and on reconnect; the panel coalesces refetches.
+  const [commentSignal, setCommentSignal] = useState(0);
   const onLiveEvent = useCallback(
     (event: LiveEvent) => {
       if (useFixture || configuration.status !== "ready") return;
+      if (event.event === "comment") {
+        if (
+          event.data.chain_id === configuration.chainId &&
+          event.data.deployment_id === configuration.deploymentId &&
+          isTokenEventForAddress(event, tokenAddress)
+        )
+          setCommentSignal((n) => n + 1);
+        return;
+      }
       let refreshKind: ReturnType<typeof liveRefreshKind> = null;
       if (configuration.chainId !== null && configuration.deploymentId !== null) {
         // Trades prepend client-side from the shared stream; no refetch is needed.
@@ -353,6 +365,8 @@ export function TokenDetail({
         });
       }
       if (refreshKind === "reconnected") {
+        // The stream has no replay: a comment published while disconnected needs a refetch.
+        setCommentSignal((n) => n + 1);
         // The recovery fetch ran before the stream reopened; reload trades to close that gap.
         const loaders = loadersRef.current;
         if (loaders && tokenRef.current)
@@ -694,6 +708,15 @@ export function TokenDetail({
             </div>
           ) : null}
         </section>
+
+        {!useFixture && configuration.status === "ready" && configuration.apiBaseUrl ? (
+          <CommentPanel
+            key={tokenAddress}
+            tokenAddress={tokenAddress}
+            apiBaseUrl={configuration.apiBaseUrl}
+            liveSignal={commentSignal}
+          />
+        ) : null}
 
         <section className="workspace-panel token-metadata" aria-labelledby="metadata-title">
           <div className="panel-head">
