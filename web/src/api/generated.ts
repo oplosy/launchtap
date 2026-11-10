@@ -63,6 +63,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/public-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPublicProfile"];
+        put: operations["putPublicProfile"];
+        post?: never;
+        delete: operations["deletePublicProfile"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/watchlist": {
         parameters: {
             query?: never;
@@ -855,6 +871,33 @@ export interface components {
             trades: number;
             volume_eth: string;
         };
+        PublicProfileDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/PublicProfileDTO.json
+             */
+            readonly $schema?: string;
+            banned: boolean;
+            /** @description Null when a username change is allowed now. */
+            next_username_change_at: string | null;
+            /** @description Checksummed wallets the username is published on. */
+            public_wallets: string[] | null;
+            username: string | null;
+            username_changed_at: string | null;
+        };
+        PutPublicProfileInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/PutPublicProfileInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Linked wallets to publish the username on, at most 5. */
+            public_wallets: string[] | null;
+            /** @description New username; omit to keep the current one. */
+            username?: string;
+        };
         QuoteBody: {
             /**
              * Format: uri
@@ -1456,6 +1499,104 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LeaderboardBody"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getPublicProfile: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicProfileDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    putPublicProfile: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutPublicProfileInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicProfileDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    deletePublicProfile: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

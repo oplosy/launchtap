@@ -1201,6 +1201,94 @@
         ],
         "type": "object"
       },
+      "PublicProfileDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/PublicProfileDTO.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "banned": {
+            "type": "boolean"
+          },
+          "next_username_change_at": {
+            "description": "Null when a username change is allowed now.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "public_wallets": {
+            "description": "Checksummed wallets the username is published on.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username_changed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "username",
+          "username_changed_at",
+          "next_username_change_at",
+          "public_wallets",
+          "banned"
+        ],
+        "type": "object"
+      },
+      "PutPublicProfileInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/PutPublicProfileInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "public_wallets": {
+            "description": "Linked wallets to publish the username on, at most 5.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "username": {
+            "description": "New username; omit to keep the current one.",
+            "maxLength": 64,
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_wallets"
+        ],
+        "type": "object"
+      },
       "QuoteBody": {
         "additionalProperties": false,
         "properties": {
@@ -2855,6 +2943,143 @@
         },
         "tags": [
           "stats"
+        ]
+      }
+    },
+    "/me/public-profile": {
+      "delete": {
+        "operationId": "deletePublicProfile",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "profile"
+        ]
+      },
+      "get": {
+        "operationId": "getPublicProfile",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProfileDTO"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "profile"
+        ]
+      },
+      "put": {
+        "operationId": "putPublicProfile",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutPublicProfileInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProfileDTO"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "profile"
         ]
       }
     },
