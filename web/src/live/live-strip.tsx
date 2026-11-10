@@ -94,10 +94,6 @@ export function LiveStrip() {
   const duration = `${Math.max(views.length, 4) * 5}s`;
   return (
     <section className="live-strip" aria-label="Live activity">
-      <span className="live-strip-label">
-        <span className="live-strip-dot" aria-hidden="true" />
-        Live
-      </span>
       <div className="live-strip-viewport">
         <div className="live-strip-rail" style={{ "--live-duration": duration } as CSSProperties}>
           <ul className="live-strip-track">
