@@ -60,8 +60,13 @@ Inputs: 12 px. Large containers (trade card, dialogs, sheets): 20 px.
 **Buttons.** Primary: white pill, black text. Secondary: dark grey pill. Tertiary: text only.
 All 14 px / 500, height 36 px (40 px in forms and the trade card). No shadows, no gradients.
 
-**Layout.** 1200 px content width, 12-column grid, `clamp(16px, 4vw, 40px)` gutter, 96–160 px
-vertical rhythm between sections. Cards have no border and no shadow; tables have row hairlines only.
+**Layout: centred composition.** Everything sits on a centred axis: a centred 1200 px content
+column (12-column grid, `clamp(16px, 4vw, 40px)` gutter), with narrower centred measures for
+reading and forms (720 px text, 640 px forms). Heroes, page headings, their one-line summaries,
+section intros, empty states and the primary actions under a heading are centre-aligned. Inside a
+list row or table cell, text stays start-aligned and numbers end-aligned, because ragged centred
+rows are hard to scan; the rows themselves span the centred column. 96–160 px vertical rhythm
+between sections. Cards have no border and no shadow; tables have row hairlines only.
 
 ## 2. Information architecture and navigation
 
@@ -75,51 +80,57 @@ vertical rhythm between sections. Cards have no border and no shadow; tables hav
 | `/?view=watchlist` | Redirect to `/explore?tab=watchlist`; in-app links updated |
 | `/token/[address]`, `/create`, `/forum`, `/leaderboard`, `/analytics`, `/docs`, `/wallet/[address]`, `/profile`, `/notifications` | Kept; recomposed |
 
-**Desktop nav.** Left: the "Launchpad" wordmark. Then text links Explore, Forum, Leaderboard,
-Analytics, Docs (14–15 px; active white, others grey). Hovering or focusing Explore opens a
-full-width mega menu over a dimmed, blurred page: large links (New, Trending, Graduated) on the left,
-a small resources list (Watchlist, Leaderboard, Docs) on the right. Right side: search icon (the
+**Desktop nav.** Three zones on the centred column: the "Launchpad" wordmark at the start, text
+links Explore, Forum, Leaderboard, Analytics, Docs centred (14–15 px; active white, others grey),
+actions at the end. Hovering or focusing Explore opens a
+full-width mega menu over a dimmed, blurred page; its content sits on the centred column: large
+links (New, Trending, Graduated) in one group, a small resources list (Watchlist, Leaderboard,
+Docs) beside it. Action zone: search icon (the
 existing command palette, ⌘K), the notification bell when signed in, "Create" (dark pill),
 "Connect" or the account (white pill). The mega menu is keyboard operable and closes on Escape and
 on focus leaving it.
 
 **Mobile nav.** Wordmark, "Connect", menu icon. The menu opens a full-screen sheet of large links.
 
-**In-site direction.** "View all →" at the top right of each home section; tabs live in the URL;
-whole list rows are links and hover changes text tone, not background; left-aligned 48 px page
-headings; no breadcrumbs.
+**In-site direction.** Each home section has a centred heading with a centred "View all →" link
+beneath it; tab bars are centred and live in the URL; whole list rows are links and hover changes
+text tone, not background; centred 48 px page headings; no breadcrumbs.
 
-**Footer.** Multi-column link list: Product (Explore, Create, Forum), Data (Leaderboard,
-Analytics), Resources (Docs), Account; a bottom row with the theme selector and a "Non-custodial"
-note.
+**Footer.** Multi-column link list centred on the content column: Product (Explore, Create,
+Forum), Data (Leaderboard, Analytics), Resources (Docs), Account; a bottom row with the theme
+selector and a "Non-custodial" note.
 
 ## 3. Page compositions
 
-Shared: every page opens with a left-aligned 48 px heading and one grey line of summary; generous
-spacing; borderless tables with row hairlines and right-aligned mono numbers.
+Shared: every page opens with a centred 48 px heading and one centred grey line of summary;
+generous spacing; content on the centred column; borderless tables with row hairlines and
+end-aligned mono numbers.
 
-- **Home `/`.** Quiet hero: short headline and two buttons ("Create a token" primary, "Explore"
-  secondary). Featured band: large king-of-the-hill card on the left (8 columns), two or three
-  smaller items on the right (4 columns). Then sections "Trending", "Just graduated", "From the
-  forum" as hairline-separated rows with "View all →". Footer.
-- **Explore `/explore`.** Text tabs; Filter and Sort on the right; list/grid toggle. List rows
+- **Home `/`.** Centred hero: short headline and, centred beneath it, two buttons ("Create a token"
+  primary, "Explore" secondary). Featured band on the centred column: large king-of-the-hill card
+  (8 columns) beside two or three smaller items (4 columns). Then sections "Trending", "Just
+  graduated", "From the forum": centred heading and "View all →", hairline-separated rows beneath.
+  Footer.
+- **Explore `/explore`.** Centred heading and centred text tabs; Filter and Sort and the
+  list/grid toggle on one centred control row beneath. List rows
   (~72 px): image, name and symbol, market cap, 24 h change, progress bar, age. Grid: 3–4 columns,
   4 px image radius, name and one meta line beneath. "Load more" as a secondary pill.
-- **Token `/token/[address]`.** Header band: image (4 px radius), name (48 px), symbol and phase;
-  right side: price, 24 h change, watch star, share. Body 8 + 4 columns. Left: borderless chart with
+- **Token `/token/[address]`.** Centred header: image (4 px radius) above the name (48 px), symbol
+  and phase; beneath, centred, price and 24 h change, then watch star and share. Body 8 + 4 columns
+  on the centred column. Left: borderless chart with
   text-tab ranges; stats row (market cap, liquidity, volume, holders: grey label over large number);
   thin curve progress bar (the one `--progress` use); text tabs for Trades · Holders · Comments;
   About (description, links, contract). Right: sticky trade card (20 px radius, pill Buy/Sell
   segment, large amount input, preset chips, grey quote rows, full-width white action). Dialogs:
   centred, 20 px radius, blurred backdrop. Mobile: chart → stats → tabs, with a bottom "Buy / Sell"
   bar that opens a full-screen sheet.
-- **Create `/create`.** Single column, max 640 px; numbered sections (01 Image, 02 Name and symbol,
+- **Create `/create`.** Single centred column, max 640 px; numbered sections (01 Image, 02 Name and symbol,
   03 Description and links, 04 Initial buy); 12 px inputs with hairline border that turns white on
   focus; summary row and full-width primary action; same confirmation and status dialogs as trading.
 - **Forum `/forum`.** Research-index style rows: token and time on the left, comment in the middle,
-  Trade and Discuss links on the right; New · Hot · Top text tabs; "Biggest launches" as a plain
+  Trade and Discuss links on the right; centred New · Hot · Top text tabs; "Biggest launches" as a plain
   list in the side column.
-- **Leaderboard `/leaderboard`.** 7d · 30d · All text tabs; borderless table; large grey rank,
+- **Leaderboard `/leaderboard`.** Centred 7d · 30d · All text tabs; borderless table; large grey rank,
   white wallet or username.
 - **Analytics `/analytics`.** Four large-number KPIs, then borderless charts; colour only in data.
 - **Wallet `/wallet/[address]`.** Address or username heading; totals as four large numbers;
@@ -127,8 +138,9 @@ spacing; borderless tables with row hairlines and right-aligned mono numbers.
 - **Profile `/profile`.** Sections (Account, Username, Linked wallets, Claims and refunds)
   separated by hairlines, no cards.
 - **Notifications `/notifications`.** Row list; unread rows white with a dot, read rows grey.
-- **Docs `/docs`.** Reading layout: sticky table of contents on the left, max 720 px column of
-  17/28 body text.
+- **Docs `/docs`.** Reading layout: centred 720 px column of 17/28 body text with a centred
+  heading; the table of contents sits in the margin beside it on wide screens and collapses into a
+  centred menu above the text below 1024 px.
 - **Empty, error, loading.** Centred short title, one sentence, at most one button. Skeletons are
   flat grey blocks with a gentle opacity pulse, no shimmer.
 
