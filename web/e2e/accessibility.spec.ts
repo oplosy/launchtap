@@ -22,6 +22,18 @@ for (const theme of ["light", "dark"] as const) {
     for (const route of routes) {
       const response = await page.goto(route);
       expect(response?.status(), `${route} should load successfully`).toBe(200);
+      // Reveal and fade-in motion would otherwise be measured mid-fade as low contrast.
+      await page.evaluate(() =>
+        Promise.all(
+          document
+            .getAnimations()
+            .filter((animation) => {
+              const end = animation.effect?.getComputedTiming().endTime;
+              return typeof end === "number" && Number.isFinite(end);
+            })
+            .map((animation) => animation.finished.catch(() => undefined)),
+        ),
+      );
       const results = await new AxeBuilder({ page }).analyze();
       const seriousOrCritical = results.violations.filter((violation) =>
         ["serious", "critical"].includes(violation.impact ?? ""),
