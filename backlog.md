@@ -157,6 +157,27 @@
 
 ## Done
 
+### P0-C3: watch counts and 7d/30d leaderboards
+
+- **Date:** 2026-11-10
+- **Commits:** `91fd3e3..` on `dev` (spec
+  `docs/specs/2026-11-10-p0c3-watch-counts-windowed-leaderboards-design.md`; small enough that
+  the spec's acceptance criteria served as the plan).
+- **What shipped:** the position worker writes per-leg realized PnL (`wallet_realized_legs`,
+  migration 00021); `GET /v1/leaderboard?window=all|7d|30d` (400 `invalid_window`);
+  `GET /v1/tokens/{address}/watchers`; web leaderboard period tabs in the URL and "N watching"
+  beside the token star.
+- **Gate evidence:** backend unit/race, integration (incl. `TestRealizedLegsMatchLedger`,
+  `TestLeaderboardWindows`, `TestCountWatchersScopedToDeployment`, reorg equality now covering
+  realized legs), `task verify`; web vitest 401, lint, typecheck, `test:e2e:live` 65 passed;
+  leaderboard tabs checked in the browser against a stub API (desktop and 375 px).
+- **Not covered end to end:** no Anvil-gate assertion for the windowed board (Anvil block
+  timestamps of a pinned fork are not guaranteed to be within 7 days of the DB clock); the window
+  math is covered by the integration tests.
+- **Upgrade step:** run `backfill-swap-sender -seed-positions` once (runbook "Windowed
+  leaderboards (P0-C3)").
+- **Next sub-project:** C4 (server-side notification inbox), then Forum (Memestock).
+
 ### P0-C2: token comments, usernames and moderation
 
 - **Date:** 2026-11-10

@@ -324,6 +324,15 @@ When upgrading such a database:
    leaderboard are complete after that. A fresh database (indexed from the start with this
    feature) needs no seed.
 
+Windowed leaderboards (P0-C3, migration `00021_windowed_leaderboard`). The 7d/30d boards read
+`wallet_realized_legs`, which the position worker writes on each pair recompute. The migration
+creates the table empty, so on a database with history run step 3 above (`-seed-positions`) once
+after upgrading; until the backlog drains, the 7d/30d boards miss pairs that have not been
+recomputed (the all-time board is unaffected). Window reads sum the legs inside the window on
+each request (the web page is cached 60 s); if `GET /v1/leaderboard?window=30d` becomes slow at
+high volume, add a daily rollup rather than widening the cache. Migration `00021` Down drops the
+table and the watch-count index; nothing user-owned is lost.
+
 Reading `attribution_complete`: `GET /v1/wallets/{address}` returns `attribution_complete`,
 chain-wide. It is `true` only when no pool swap on the chain has `tx_from IS NULL`. While it is
 `false`, DEX trades may be missing from every wallet's PnL and trade lists. Check progress with
