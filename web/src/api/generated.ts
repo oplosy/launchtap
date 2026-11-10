@@ -63,6 +63,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["markNotificationsRead"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/public-profile": {
         parameters: {
             query?: never;
@@ -728,6 +760,53 @@ export interface components {
             items: components["schemas"]["HolderDTO"][] | null;
             next_cursor?: string;
             snapshot: components["schemas"]["SnapshotDTO"];
+        };
+        InboxBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/InboxBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["InboxItemDTO"][] | null;
+            next_cursor?: string;
+            /**
+             * Format: int64
+             * @description Unread notifications, at most 100.
+             */
+            unread_count: number;
+        };
+        InboxItemDTO: {
+            block_time: string;
+            /** @description Gross trade amount, or the ETH moved to the pool at graduation. */
+            eth_wei: string;
+            /** @description <block>-<tx_index>-<log_index>; also usable as a cursor and a read position. */
+            id: string;
+            /** @enum {string} */
+            kind: "graduation" | "large_trade";
+            name: string;
+            /** @description large_trade only. */
+            side_buy: boolean | null;
+            /**
+             * @description large_trade only.
+             * @enum {string|null}
+             */
+            source: "curve" | "dex" | null;
+            symbol: string;
+            token: string;
+            /** @description large_trade only; null when the pool-swap sender is unknown. */
+            trader: string | null;
+            tx_hash: string;
+        };
+        InboxReadInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/InboxReadInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Mark every notification up to and including this id as read. */
+            through: string;
         };
         KingDTO: {
             address: string;
@@ -1530,6 +1609,77 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LeaderboardBody"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    listNotifications: {
+        parameters: {
+            query?: {
+                /** @description next_cursor of the previous page. */
+                cursor?: string;
+                /** @description Number of notifications, 1-50; defaults to 20. */
+                limit?: number;
+            };
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    markNotificationsRead: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InboxReadInputBody"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

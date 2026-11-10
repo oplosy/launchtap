@@ -113,6 +113,20 @@ test("a visitor sees no notification bell", async ({ page }) => {
   await expect(page.getByRole("button", { name: /^Notifications/ })).toHaveCount(0);
 });
 
+test("a signed-out reader of the inbox gets a sign-in prompt and no inbox request", async ({
+  page,
+}) => {
+  const inboxRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/v1/me/notifications")) inboxRequests.push(request.url());
+  });
+  await installApi(page);
+  await page.goto("/notifications");
+  await expect(page.getByRole("heading", { name: "Your notifications." })).toBeVisible();
+  await expect(page.getByText(/Sign in to see your inbox|Inbox unavailable/).first()).toBeVisible();
+  expect(inboxRequests).toEqual([]);
+});
+
 test("own trade reaching safe finality toasts and lists, with keyboard-accessible bell", async ({
   page,
 }) => {

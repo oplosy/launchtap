@@ -231,3 +231,88 @@ a.live-strip-trader-link:hover {
   width: 28px;
   height: 28px;
 }
+.notify-inbox-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  padding: 10px 8px 4px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.notify-inbox-link:hover {
+  text-decoration: underline;
+}
+.notify-inbox-count {
+  min-width: 20px;
+  border-radius: 10px;
+  padding: 0 6px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* Server inbox page (P0-C4). */
+.inbox {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+.inbox-list {
+  display: grid;
+  width: 100%;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.inbox-item {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  border-radius: var(--radius-sm);
+  padding: 10px 8px;
+  font-size: 14px;
+}
+.inbox-item.is-unread {
+  background: var(--surface-strong);
+}
+.inbox-item-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+a.inbox-item-text:hover {
+  text-decoration: underline;
+}
+.inbox-new {
+  flex: none;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.inbox-time {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+.inbox-more-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+@media (max-width: 560px) {
+  .inbox-item {
+    flex-wrap: wrap;
+  }
+  .inbox-time {
+    flex-basis: 100%;
+  }
+}

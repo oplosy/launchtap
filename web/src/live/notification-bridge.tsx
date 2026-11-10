@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
-import { useWatchlist } from "@/watchlist/use-watchlist";
+import { useContext, useEffect, useMemo } from "react";
+import { useWatchlist, WatchlistAuthContext } from "@/watchlist/use-watchlist";
 import { useWalletConnection } from "@/wallet/connection-context";
 import { NO_IDENTITY, useNotificationIdentity } from "./notifications";
 
@@ -13,6 +13,7 @@ export function NotificationIdentityBridge() {
   const setIdentity = useNotificationIdentity();
   const wallet = useWalletConnection();
   const watchlist = useWatchlist();
+  const { getAuth } = useContext(WatchlistAuthContext);
   const watchedKey = useMemo(
     () =>
       [...watchlist.addresses]
@@ -29,8 +30,9 @@ export function NotificationIdentityBridge() {
       signedIn,
       watched: signedIn && watchedKey ? watchedKey.split(",") : [],
       wallet: address,
+      getAuth,
     });
-  }, [address, setIdentity, signedIn, watchedKey]);
+  }, [address, getAuth, setIdentity, signedIn, watchedKey]);
   useEffect(() => () => setIdentity?.(NO_IDENTITY), [setIdentity]);
   return null;
 }

@@ -136,6 +136,43 @@ describe("generated API wrapper", () => {
     });
   });
 
+  it("reads and marks the notification inbox with both auth headers", async () => {
+    const seen: Array<{ url: string; method: string; body: unknown; id: string | null }> = [];
+    const client = new ApiClient({
+      baseUrl: "https://api.example",
+      fetch: async (input, init) => {
+        const headers = new Headers(init?.headers);
+        seen.push({
+          url: String(input),
+          method: init?.method ?? "GET",
+          body: init?.body ? JSON.parse(String(init.body)) : null,
+          id: headers.get("privy-id-token"),
+        });
+        if (init?.method === "PUT") return new Response(null, { status: 204 });
+        return new Response(JSON.stringify({ items: [], unread_count: 0 }), { status: 200 });
+      },
+    });
+    const auth = { accessToken: "a", identityToken: "i" };
+    await client.getNotifications(auth);
+    await client.getNotifications(auth, { cursor: "12-1-0", limit: 5 });
+    await client.markNotificationsRead("15-0-1", auth);
+    expect(seen).toEqual([
+      { url: "https://api.example/v1/me/notifications", method: "GET", body: null, id: "i" },
+      {
+        url: "https://api.example/v1/me/notifications?cursor=12-1-0&limit=5",
+        method: "GET",
+        body: null,
+        id: "i",
+      },
+      {
+        url: "https://api.example/v1/me/notifications/read",
+        method: "PUT",
+        body: { through: "15-0-1" },
+        id: "i",
+      },
+    ]);
+  });
+
   it("keeps metadata and image revision validators independent", async () => {
     const requests: Array<{ path: string; ifMatch: string | null }> = [];
     const client = new ApiClient({

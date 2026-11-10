@@ -38,6 +38,8 @@ export type CommentResponse = components["schemas"]["CommentDTO"];
 export type CommentEligibilityResponse = components["schemas"]["EligibilityBody"];
 export type ReportReason = "spam" | "scam" | "abuse" | "other";
 export type PublicProfileResponse = components["schemas"]["PublicProfileDTO"];
+export type InboxResponse = components["schemas"]["InboxBody"];
+export type InboxItem = components["schemas"]["InboxItemDTO"];
 
 /** Resolve API-owned relative image paths without allowing a metadata URL to change origin. */
 export function resolveApiAssetUrl(
@@ -337,6 +339,37 @@ export class ApiClient {
     return this.requestNoContent(
       `/v1/me/watchlist/${encodeURIComponent(address)}`,
       { method: "DELETE", signal },
+      auth,
+    );
+  }
+
+  /** Newest first; `cursor` is the `next_cursor` of the previous page (spec P0-C4). */
+  getNotifications(
+    auth: AuthHeaders,
+    query: { cursor?: string; limit?: number } = {},
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams();
+    if (query.cursor) params.set("cursor", query.cursor);
+    if (query.limit) params.set("limit", String(query.limit));
+    const encoded = params.toString();
+    return this.request<InboxResponse>(
+      `/v1/me/notifications${encoded ? `?${encoded}` : ""}`,
+      { signal, cache: "no-store" },
+      auth,
+    );
+  }
+
+  /** Marks every notification up to and including `through` as read; never moves backwards. */
+  markNotificationsRead(through: string, auth: AuthHeaders, signal?: AbortSignal) {
+    return this.requestNoContent(
+      "/v1/me/notifications/read",
+      {
+        method: "PUT",
+        signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ through }),
+      },
       auth,
     );
   }
