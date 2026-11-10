@@ -333,6 +333,16 @@ each request (the web page is cached 60 s); if `GET /v1/leaderboard?window=30d` 
 high volume, add a daily rollup rather than widening the cache. Migration `00021` Down drops the
 table and the watch-count index; nothing user-owned is lost.
 
+Notification inbox (P0-C4, migration `00022_notification_inbox`). `GET /v1/me/notifications` is
+derived at read time from the `inbox_events` view (graduations and market trades of at least
+0.5 ETH) joined with the caller's watchlist, so it needs no worker, backfill or seed step, and a
+reorg removes an event on the next read. The only stored state is `notification_reads`, one
+forward-only read position per account. Migration `00022` Down drops that table and the view: it
+loses every account's read position (all events in the last 30 days show as unread again), so
+roll back only with that accepted. If inbox reads become slow at high volume, look at accounts
+with many watched tokens of very active pools first (the 200-entry watchlist cap bounds the
+fan-out).
+
 Reading `attribution_complete`: `GET /v1/wallets/{address}` returns `attribution_complete`,
 chain-wide. It is `true` only when no pool swap on the chain has `tx_from IS NULL`. While it is
 `false`, DEX trades may be missing from every wallet's PnL and trade lists. Check progress with

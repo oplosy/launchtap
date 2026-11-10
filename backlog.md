@@ -157,6 +157,28 @@
 
 ## Done
 
+### P0-C4: server-side notification inbox
+
+- **Date:** 2026-11-10
+- **Commits:** see `git log --grep "P0-C4"` on `dev` (spec
+  `docs/specs/2026-11-10-p0c4-notification-inbox-design.md`; its acceptance criteria served as
+  the plan).
+- **What shipped:** view `inbox_events` and table `notification_reads` (migration 00022);
+  `GET /v1/me/notifications` (cursor, limit 1-50, unread count capped at 100) and
+  `PUT /v1/me/notifications/read` (forward-only), both Privy-authenticated and `private,
+  no-store`; web `/notifications` page with "Load more", "New" markers and mark-read on view; an
+  "Inbox" link with the server unread count in the bell panel.
+- **Gate evidence:** backend unit/race (`internal/inbox`, inbox routes), integration
+  (`TestInboxDerivedFromWatchlistAndLedger` incl. pagination, scoping, forward-only reads and a
+  reorg; `TestInboxIgnoresEventsOlderThan30Days`; migration up/down pins at 22), lint incl.
+  integration tag, openapi; web vitest 406 (incl. the 0.5 ETH threshold pinned against the
+  migration), lint, typecheck, `test:e2e:live` 68 passed.
+- **Not covered end to end:** the signed-in inbox list and the bell's Inbox link are not driven
+  in a browser, because the fixture build has no real Privy session; the e2e covers the
+  signed-out prompt and asserts no inbox request is sent without credentials. The list is covered
+  by the API, client and model tests.
+- **Next sub-project:** Forum (Memestock).
+
 ### P0-C3: watch counts and 7d/30d leaderboards
 
 - **Date:** 2026-11-10
@@ -176,7 +198,7 @@
   math is covered by the integration tests.
 - **Upgrade step:** run `backfill-swap-sender -seed-positions` once (runbook "Windowed
   leaderboards (P0-C3)").
-- **Next sub-project:** C4 (server-side notification inbox), then Forum (Memestock).
+- **Next sub-project:** C4 (server-side notification inbox), then Forum (Memestock). C4 shipped; see above.
 
 ### P0-C2: token comments, usernames and moderation
 
