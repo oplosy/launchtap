@@ -1,31 +1,59 @@
-/* Live trade strip (Explore) and live rows on the token page. */
+/* Live trade strip (home) and live rows on the token page. */
+/* Full bleed: the strip spans the viewport, not the content column (.app-frame clips the
+   scrollbar's width that 100vw includes). */
 .live-strip {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 14px;
-  border-block: 1px solid var(--hairline);
-  padding: 10px 0;
+  width: 100vw;
   min-width: 0;
+  margin-inline: calc(50% - 50vw);
+  border-block: 1px solid var(--hairline);
+  padding: 12px 0;
 }
 .live-strip-label {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
   flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px 0 var(--gutter);
+  background: var(--canvas);
   color: var(--text);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.live-strip-track {
+.live-strip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--up);
+}
+.live-strip-viewport {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  mask-image: linear-gradient(90deg, transparent, #000 48px, #000 calc(100% - 96px), transparent);
+}
+.live-strip-rail {
+  display: flex;
+  width: max-content;
+}
+.live-strip-track,
+.live-strip-clone {
   position: relative; /* contains the absolutely positioned .sr-only labels */
   display: flex;
-  flex: 1;
-  gap: 8px;
-  min-width: 0;
+  flex: none;
   margin: 0;
   padding: 0;
   list-style: none;
-  overflow-x: auto;
-  scrollbar-width: thin;
+}
+.live-strip-track > .live-strip-item,
+.live-strip-clone > .live-strip-item {
+  padding-right: 8px;
 }
 .live-strip-item {
   flex: none;
@@ -108,25 +136,58 @@ a.live-strip-trader-link:hover {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .live-strip-item:first-child {
-    animation: live-strip-in 240ms ease-out;
+  .live-strip-rail {
+    animation: live-strip-marquee var(--live-duration, 40s) linear infinite;
+  }
+  .live-strip:hover .live-strip-rail,
+  .live-strip:focus-within .live-strip-rail {
+    animation-play-state: paused;
+  }
+  .live-strip-dot {
+    animation: live-strip-pulse 1.6s ease-in-out infinite;
+  }
+  .live-strip-track > .live-strip-item:first-child {
+    animation: live-strip-in 320ms var(--ease-out);
+  }
+}
+@keyframes live-strip-marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+@keyframes live-strip-pulse {
+  50% {
+    opacity: 0.35;
   }
 }
 @keyframes live-strip-in {
   from {
-    transform: translateX(-12px);
-  }
-  to {
-    transform: none;
+    opacity: 0;
+    transform: translateX(-16px);
   }
 }
+/* Reduced motion: one static, scrollable row and no copy. */
 @media (prefers-reduced-motion: reduce) {
+  .live-strip-rail,
+  .live-strip-dot,
   .live-strip-item,
   .live-strip-item:first-child {
     animation: none;
   }
+  .live-strip-clone {
+    display: none;
+  }
+  .live-strip-viewport {
+    mask-image: none;
+  }
+  .live-strip-rail {
+    width: auto;
+  }
   .live-strip-track {
+    flex: 1;
+    min-width: 0;
     overflow-x: auto;
+    scrollbar-width: thin;
   }
 }
 

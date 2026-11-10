@@ -324,6 +324,8 @@ test("a strip trader link opens that wallet page", async ({ page }) => {
   const strip = page.getByRole("region", { name: "Live activity" });
   const link = strip.locator(`a[href="/wallet/${WALLET}"]`).first();
   await expect(link).toBeVisible();
+  // The strip scrolls until a pointer or focus lands in it; focus pauses it like a hover does.
+  await link.focus();
   await link.click();
   await expect(page).toHaveURL(new RegExp(`/wallet/${WALLET}$`));
   await expect(page.getByRole("region", { name: "Wallet totals" })).toBeVisible();
