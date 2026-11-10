@@ -13,8 +13,9 @@ type CommentStore interface {
 	List(ctx context.Context, s Scope, token common.Address, cursor string, limit int) (CommentPage, error)
 	// Eligibility lists the caller's linked wallets that may comment on the token.
 	Eligibility(ctx context.Context, a Actor, token common.Address) (Eligibility, error)
-	// Post stores a normalized body. It returns ErrBanned, ErrUnknownToken, ErrWalletNotLinked,
-	// ErrNotHolder or *RateLimitedError.
+	// Post normalizes the raw body with NormalizeBody after the ban check and stores it. It
+	// returns ErrBanned, *BodyError, ErrUnknownToken, ErrWalletNotLinked, ErrNotHolder or
+	// *RateLimitedError.
 	Post(ctx context.Context, a Actor, token, wallet common.Address, body string) (Comment, error)
 	// Report is idempotent per (comment, reporter). It returns ErrBanned, ErrCommentNotFound,
 	// ErrOwnComment or *RateLimitedError.

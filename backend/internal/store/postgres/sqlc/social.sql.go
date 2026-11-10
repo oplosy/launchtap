@@ -40,7 +40,15 @@ func (q *Queries) ClaimPublicWallet(ctx context.Context, arg ClaimPublicWalletPa
 const commentRateState = `-- name: CommentRateState :one
 SELECT max(created_at)::timestamptz AS last_created_at,
        (count(*) FILTER (WHERE created_at > now() - make_interval(secs => $1::double precision)))::BIGINT AS count_in_window,
-       (min(created_at) FILTER (WHERE created_at > now() - make_interval(secs => $1::double precision)))::timestamptz AS oldest_in_window,
+       (SELECT r.created_at
+        FROM token_comments AS r
+        WHERE r.chain_id = $2
+          AND r.deployment_id = $3
+          AND r.privy_did = $4
+          AND r.created_at > now() - make_interval(secs => $1::double precision)
+        ORDER BY r.created_at DESC
+        OFFSET $5::integer - 1
+        LIMIT 1)::timestamptz AS release_at,
        now()::timestamptz AS db_now
 FROM token_comments
 WHERE chain_id = $2
@@ -53,28 +61,33 @@ type CommentRateStateParams struct {
 	ChainID       int64
 	DeploymentID  string
 	PrivyDid      string
+	HourlyLimit   int32
 }
 
 type CommentRateStateRow struct {
-	LastCreatedAt  pgtype.Timestamptz
-	CountInWindow  int64
-	OldestInWindow pgtype.Timestamptz
-	DbNow          pgtype.Timestamptz
+	LastCreatedAt pgtype.Timestamptz
+	CountInWindow int64
+	ReleaseAt     pgtype.Timestamptz
+	DbNow         pgtype.Timestamptz
 }
 
 // Windows are measured on the database clock; window_seconds is a policy constant.
+// release_at is the hourly_limit-th newest comment inside the window: once it leaves the window
+// fewer than hourly_limit remain, so it is the exact end of an hourly block even when the
+// window holds more rows than the limit.
 func (q *Queries) CommentRateState(ctx context.Context, arg CommentRateStateParams) (CommentRateStateRow, error) {
 	row := q.db.QueryRow(ctx, commentRateState,
 		arg.WindowSeconds,
 		arg.ChainID,
 		arg.DeploymentID,
 		arg.PrivyDid,
+		arg.HourlyLimit,
 	)
 	var i CommentRateStateRow
 	err := row.Scan(
 		&i.LastCreatedAt,
 		&i.CountInWindow,
-		&i.OldestInWindow,
+		&i.ReleaseAt,
 		&i.DbNow,
 	)
 	return i, err
@@ -560,7 +573,15 @@ func (q *Queries) ReleaseUsername(ctx context.Context, arg ReleaseUsernameParams
 
 const reportRateState = `-- name: ReportRateState :one
 SELECT count(*)::BIGINT AS count_in_window,
-       min(created_at)::timestamptz AS oldest_in_window,
+       (SELECT r.created_at
+        FROM comment_reports AS r
+        WHERE r.chain_id = $1
+          AND r.deployment_id = $2
+          AND r.reporter_did = $3
+          AND r.created_at > now() - make_interval(secs => $4::double precision)
+        ORDER BY r.created_at DESC
+        OFFSET $5::integer - 1
+        LIMIT 1)::timestamptz AS release_at,
        now()::timestamptz AS db_now
 FROM comment_reports
 WHERE chain_id = $1
@@ -574,23 +595,26 @@ type ReportRateStateParams struct {
 	DeploymentID  string
 	ReporterDid   string
 	WindowSeconds float64
+	HourlyLimit   int32
 }
 
 type ReportRateStateRow struct {
-	CountInWindow  int64
-	OldestInWindow pgtype.Timestamptz
-	DbNow          pgtype.Timestamptz
+	CountInWindow int64
+	ReleaseAt     pgtype.Timestamptz
+	DbNow         pgtype.Timestamptz
 }
 
+// release_at: the hourly_limit-th newest report in the window (see CommentRateState).
 func (q *Queries) ReportRateState(ctx context.Context, arg ReportRateStateParams) (ReportRateStateRow, error) {
 	row := q.db.QueryRow(ctx, reportRateState,
 		arg.ChainID,
 		arg.DeploymentID,
 		arg.ReporterDid,
 		arg.WindowSeconds,
+		arg.HourlyLimit,
 	)
 	var i ReportRateStateRow
-	err := row.Scan(&i.CountInWindow, &i.OldestInWindow, &i.DbNow)
+	err := row.Scan(&i.CountInWindow, &i.ReleaseAt, &i.DbNow)
 	return i, err
 }
 

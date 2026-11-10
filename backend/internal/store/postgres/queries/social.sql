@@ -32,9 +32,20 @@ ORDER BY w.wallet;
 
 -- Windows are measured on the database clock; window_seconds is a policy constant.
 -- name: CommentRateState :one
+-- release_at is the hourly_limit-th newest comment inside the window: once it leaves the window
+-- fewer than hourly_limit remain, so it is the exact end of an hourly block even when the
+-- window holds more rows than the limit.
 SELECT max(created_at)::timestamptz AS last_created_at,
        (count(*) FILTER (WHERE created_at > now() - make_interval(secs => sqlc.arg(window_seconds)::double precision)))::BIGINT AS count_in_window,
-       (min(created_at) FILTER (WHERE created_at > now() - make_interval(secs => sqlc.arg(window_seconds)::double precision)))::timestamptz AS oldest_in_window,
+       (SELECT r.created_at
+        FROM token_comments AS r
+        WHERE r.chain_id = sqlc.arg(chain_id)
+          AND r.deployment_id = sqlc.arg(deployment_id)
+          AND r.privy_did = sqlc.arg(privy_did)
+          AND r.created_at > now() - make_interval(secs => sqlc.arg(window_seconds)::double precision)
+        ORDER BY r.created_at DESC
+        OFFSET sqlc.arg(hourly_limit)::integer - 1
+        LIMIT 1)::timestamptz AS release_at,
        now()::timestamptz AS db_now
 FROM token_comments
 WHERE chain_id = sqlc.arg(chain_id)
@@ -104,8 +115,17 @@ VALUES (sqlc.arg(comment_id), sqlc.arg(chain_id), sqlc.arg(deployment_id), sqlc.
 ON CONFLICT DO NOTHING;
 
 -- name: ReportRateState :one
+-- release_at: the hourly_limit-th newest report in the window (see CommentRateState).
 SELECT count(*)::BIGINT AS count_in_window,
-       min(created_at)::timestamptz AS oldest_in_window,
+       (SELECT r.created_at
+        FROM comment_reports AS r
+        WHERE r.chain_id = sqlc.arg(chain_id)
+          AND r.deployment_id = sqlc.arg(deployment_id)
+          AND r.reporter_did = sqlc.arg(reporter_did)
+          AND r.created_at > now() - make_interval(secs => sqlc.arg(window_seconds)::double precision)
+        ORDER BY r.created_at DESC
+        OFFSET sqlc.arg(hourly_limit)::integer - 1
+        LIMIT 1)::timestamptz AS release_at,
        now()::timestamptz AS db_now
 FROM comment_reports
 WHERE chain_id = sqlc.arg(chain_id)

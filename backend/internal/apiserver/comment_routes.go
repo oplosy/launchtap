@@ -240,11 +240,8 @@ func (r CommentRoutes) post(ctx context.Context, in *postCommentInput) (*postCom
 	if err != nil {
 		return nil, err
 	}
-	body, err := social.NormalizeBody(in.Body.Body)
-	if err != nil {
-		return nil, r.fail(ctx, err)
-	}
-	c, err := r.Store.Post(ctx, actor, token, wallet, body)
+	// The store validates the body after its ban check, so a banned caller always sees `banned`.
+	c, err := r.Store.Post(ctx, actor, token, wallet, in.Body.Body)
 	if err != nil {
 		return nil, r.fail(ctx, err)
 	}

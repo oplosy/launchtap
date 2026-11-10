@@ -53,11 +53,18 @@ func (s *commentStoreStub) Eligibility(_ context.Context, a social.Actor, _ comm
 	return s.elig, s.eligErr
 }
 
+// Post mirrors the store contract's order: the ban check comes before body validation.
 func (s *commentStoreStub) Post(_ context.Context, a social.Actor, _, _ common.Address, body string) (social.Comment, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.actors = append(s.actors, a)
 	s.bodies = append(s.bodies, body)
+	if errors.Is(s.postErr, social.ErrBanned) {
+		return social.Comment{}, s.postErr
+	}
+	if _, err := social.NormalizeBody(body); err != nil {
+		return social.Comment{}, err
+	}
 	return s.posted, s.postErr
 }
 
@@ -146,6 +153,9 @@ func TestCommentRoutesStatusTable(t *testing.T) {
 		{"post wallet not linked", func(s *commentStoreStub) { s.postErr = social.ErrWalletNotLinked }, postReq, 403, "wallet_not_linked"},
 		{"post not holder", func(s *commentStoreStub) { s.postErr = social.ErrNotHolder }, postReq, 403, "not_holder"},
 		{"post banned", func(s *commentStoreStub) { s.postErr = social.ErrBanned }, postReq, 403, "banned"},
+		{"post banned with invalid body", func(s *commentStoreStub) { s.postErr = social.ErrBanned }, func() *http.Request {
+			return commentRequest("POST", tokenPath, `{"body":"   ","wallet":"`+commentWalletHex+`"}`, true)
+		}, 403, "banned"},
 		{"post rate limited", func(s *commentStoreStub) { s.postErr = &social.RateLimitedError{RetryAfter: time.Second} }, postReq, 429, "rate_limited"},
 		{"post internal", func(s *commentStoreStub) { s.postErr = errors.New("boom " + commentTestDID) }, postReq, 500, "internal_error"},
 		{"report unauthenticated", nil, func() *http.Request {
@@ -189,13 +199,14 @@ func TestPostCommentInvalidBodyDetailNamesRule(t *testing.T) {
 	}
 }
 
-func TestPostCommentPassesNormalizedBodyAndDedupedWallets(t *testing.T) {
+// The handler passes the raw body: the store normalizes it after the ban check.
+func TestPostCommentPassesRawBodyAndDedupedWallets(t *testing.T) {
 	store := &commentStoreStub{posted: social.Comment{ID: 1}}
 	w := serveComment(newCommentServer(store, nil), commentRequest("POST", "/v1/tokens/"+commentTokenHex+"/comments", `{"body":"  gm\r\nfren  ","wallet":"`+commentWalletHex+`"}`, true))
 	if w.Code != 201 {
 		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 	}
-	if len(store.bodies) != 1 || store.bodies[0] != "gm\nfren" {
+	if len(store.bodies) != 1 || store.bodies[0] != "  gm\r\nfren  " {
 		t.Fatalf("bodies = %q", store.bodies)
 	}
 	a := store.actors[0]
