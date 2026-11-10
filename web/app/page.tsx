@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { ExploreHub } from "@/discovery/explore-hub";
 import { legacyExploreTarget } from "@/discovery/legacy-routes";
+import { HomeView } from "@/home/home-view";
 
 export default async function HomePage({
   searchParams,
@@ -15,5 +15,5 @@ export default async function HomePage({
   }
   const target = legacyExploreTarget(params);
   if (target) redirect(target as never);
-  return <ExploreHub />;
+  return <HomeView />;
 }
