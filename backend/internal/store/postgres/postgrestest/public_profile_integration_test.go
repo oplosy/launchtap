@@ -11,6 +11,7 @@ import (
 
 	"github.com/Contictus/launchtap/backend/internal/social"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
+	"github.com/Contictus/launchtap/backend/internal/wallet"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -202,7 +203,7 @@ func TestWalletAndLeaderboardUsername(t *testing.T) {
 	}
 	board := func() map[common.Address]*string {
 		t.Helper()
-		page, err := f.reader.Leaderboard(ctx, walletChainID, 100)
+		page, err := f.reader.Leaderboard(ctx, walletChainID, wallet.WindowAll, 100)
 		if err != nil {
 			t.Fatal(err)
 		}

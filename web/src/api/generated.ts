@@ -255,6 +255,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tokens/{address}/watchers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getTokenWatchers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tokens/{token}": {
         parameters: {
             query?: never;
@@ -1258,6 +1274,19 @@ export interface components {
             next_cursor?: string;
             snapshot: components["schemas"]["SnapshotDTO"];
         };
+        WatchersBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/WatchersBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Number of signed-in users watching this token in this deployment.
+             */
+            watch_count: number;
+        };
         WatchlistBody: {
             /**
              * Format: uri
@@ -1482,6 +1511,8 @@ export interface operations {
     getLeaderboard: {
         parameters: {
             query?: {
+                /** @description Ranking period: all (default, all-time realized PnL), 7d or 30d (realized PnL booked in the last 7 or 30 days). Any other value is a 400 invalid_window. */
+                window?: string;
                 /** @description Maximum number of wallets, 1-100. Only wallets with a positive realized PnL are ranked, so fewer may be returned. */
                 limit?: number;
             };
@@ -2018,6 +2049,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EligibilityBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getTokenWatchers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchersBody"];
                 };
             };
             /** @description Error */

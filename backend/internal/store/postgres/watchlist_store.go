@@ -18,7 +18,19 @@ type WatchlistStore struct {
 	Pool *pgxpool.Pool
 }
 
-var _ watchlist.Store = WatchlistStore{}
+var (
+	_ watchlist.Store          = WatchlistStore{}
+	_ watchlist.WatcherCounter = WatchlistStore{}
+)
+
+// CountWatchers counts the watchlist entries for token t in one chain and deployment.
+func (s WatchlistStore) CountWatchers(ctx context.Context, chainID int64, deploymentID string, t common.Address) (int64, error) {
+	n, err := sqlc.New(s.Pool).CountTokenWatchers(ctx, sqlc.CountTokenWatchersParams{ChainID: chainID, DeploymentID: deploymentID, TokenAddress: sqlc.Address(t)})
+	if err != nil {
+		return 0, fmt.Errorf("count token watchers: %w", err)
+	}
+	return n, nil
+}
 
 // ownerLockKey is the advisory-lock key for one owner. The 0x1f separator cannot appear in a
 // numeric chain id, so distinct owners never share a key by concatenation.

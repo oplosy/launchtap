@@ -319,6 +319,9 @@ func dumpPositionProjection(t *testing.T, ctx context.Context, db *sql.DB) strin
 		`SELECT encode(wallet, 'hex'), '', realized_pnl::text, tokens_traded::text, held_count::text, first_block_number::text,
 			last_block_number::text, '', '', '', ''
 		 FROM wallet_totals WHERE chain_id = $1 ORDER BY wallet`,
+		`SELECT encode(wallet, 'hex'), encode(token_address, 'hex'), block_number::text, transaction_index::text,
+			to_char(block_time AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'), realized_pnl::text, '', '', '', '', ''
+		 FROM wallet_realized_legs WHERE chain_id = $1 ORDER BY wallet, token_address, block_number, transaction_index`,
 	} {
 		rows, err := db.QueryContext(ctx, query, walletChainID)
 		if err != nil {
@@ -442,5 +445,81 @@ func TestPositionDirtyLeaseGuardsStaleCompletion(t *testing.T) {
 	}
 	if n := len(f.dirty(t, ctx)); n != 0 {
 		t.Fatalf("position_dirty rows = %d, want 0", n)
+	}
+}
+
+// Spec C3 AC2: a recompute writes exactly the non-zero realized legs with their block times, and
+// their sum equals the position's realized PnL; recomputing to no legs deletes them.
+func TestRealizedLegsMatchLedger(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	f := newCurvePositionFixture(t, ctx)
+	l := positionLedger{t: t, ctx: ctx, f: f}
+	seedTradingLedger(l)
+	l.mark(0xc1)
+	drainPositions(t, ctx, f)
+
+	want := mustCompute(t, leg(11, 0, 500, 1000, 0), leg(12, 1, -200, 0, 395), leg(14, 0, -100, 0, 150))
+	type legRow struct {
+		block   int64
+		txIndex int32
+		at      time.Time
+		pnl     string
+	}
+	readLegs := func() []legRow {
+		rows, err := f.database.DB.QueryContext(ctx, `SELECT block_number, transaction_index, block_time, realized_pnl::text
+			FROM wallet_realized_legs WHERE chain_id = $1 AND wallet = $2 AND token_address = $3 ORDER BY block_number, transaction_index`,
+			walletChainID, addressBytes(0xc1), positionToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var out []legRow
+		for rows.Next() {
+			var r legRow
+			if err := rows.Scan(&r.block, &r.txIndex, &r.at, &r.pnl); err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, r)
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	got := readLegs()
+	wantRows := []legRow{
+		{12, 1, l.blockTime(12), want.LegRealized[1].String()},
+		{14, 0, l.blockTime(14), want.LegRealized[2].String()},
+	}
+	if want.LegRealized[0].Sign() != 0 || len(got) != len(wantRows) {
+		t.Fatalf("legs = %+v, want %+v (buy leg realized %s)", got, wantRows, want.LegRealized[0])
+	}
+	sum := new(big.Int)
+	for i := range wantRows {
+		if got[i].block != wantRows[i].block || got[i].txIndex != wantRows[i].txIndex || !got[i].at.Equal(wantRows[i].at) || got[i].pnl != wantRows[i].pnl {
+			t.Fatalf("leg %d = %+v, want %+v", i, got[i], wantRows[i])
+		}
+		v, _ := new(big.Int).SetString(got[i].pnl, 10)
+		sum.Add(sum, v)
+	}
+	if sum.Cmp(want.RealizedPnL) != 0 {
+		t.Fatalf("sum of legs = %s, realized = %s", sum, want.RealizedPnL)
+	}
+
+	// A pair with no ledger at all (wallet 0xc9 never touched the token) loses stale leg rows on
+	// recompute, like TestPositionEmptyLegsDeletesRow does for its position row.
+	l.exec(`INSERT INTO wallet_realized_legs (chain_id, wallet, token_address, block_number, transaction_index, block_time, realized_pnl)
+		VALUES ($1, $2, $3, 12, 0, $4, 77)`, walletChainID, addressBytes(0xc9), positionToken, l.blockTime(12))
+	l.mark(0xc9)
+	drainPositions(t, ctx, f)
+	var stale int
+	if err := f.database.DB.QueryRowContext(ctx, `SELECT count(*) FROM wallet_realized_legs WHERE chain_id = $1 AND wallet = $2`,
+		walletChainID, addressBytes(0xc9)).Scan(&stale); err != nil || stale != 0 {
+		t.Fatalf("stale legs after empty recompute = %d (%v)", stale, err)
+	}
+	// 0xc1's legs are untouched by another pair's recompute.
+	if rest := readLegs(); len(rest) != len(wantRows) {
+		t.Fatalf("legs after another pair's recompute = %+v", rest)
 	}
 }

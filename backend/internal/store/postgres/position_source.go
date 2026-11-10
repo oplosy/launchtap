@@ -71,11 +71,16 @@ func (adapter *Adapter) recomputePosition(ctx context.Context, claim stats.Claim
 	if err := adapter.queries.LockWalletTotals(ctx, sqlc.LockWalletTotalsParams{ChainID: claim.ChainID, Wallet: wallet}); err != nil {
 		return fmt.Errorf("lock wallet totals: %w", err)
 	}
-	legs, err := adapter.positionLegs(ctx, claim.ChainID, wallet, token)
+	legs, times, err := adapter.positionLegs(ctx, claim.ChainID, wallet, token)
 	if err != nil {
 		return err
 	}
 	key := sqlc.DeleteWalletPositionParams{ChainID: claim.ChainID, Wallet: sqlc.Address(claim.Wallet), TokenAddress: sqlc.Address(claim.Token)}
+	// The pair's realized legs are replaced wholesale, so a reorged or re-ordered history never
+	// leaves a stale row behind (spec C3 AC2).
+	if err := adapter.queries.DeleteWalletRealizedLegs(ctx, sqlc.DeleteWalletRealizedLegsParams(key)); err != nil {
+		return fmt.Errorf("delete wallet realized legs: %w", err)
+	}
 	if len(legs) == 0 {
 		if err := adapter.queries.DeleteWalletPosition(ctx, key); err != nil {
 			return fmt.Errorf("delete wallet position: %w", err)
@@ -92,6 +97,9 @@ func (adapter *Adapter) recomputePosition(ctx context.Context, claim stats.Claim
 		if err := adapter.queries.UpsertWalletPosition(ctx, arg); err != nil {
 			return fmt.Errorf("upsert wallet position: %w", err)
 		}
+		if err := adapter.insertRealizedLegs(ctx, key, legs, times, computed.LegRealized); err != nil {
+			return err
+		}
 	}
 	if err := adapter.queries.RecomputeWalletTotals(ctx, sqlc.RecomputeWalletTotalsParams{ChainID: claim.ChainID, Wallet: wallet}); err != nil {
 		return fmt.Errorf("recompute wallet totals: %w", err)
@@ -99,30 +107,59 @@ func (adapter *Adapter) recomputePosition(ctx context.Context, claim stats.Claim
 	return nil
 }
 
-// positionLegs loads the per-transaction legs of ListPositionLegs. Sign checks are left to
-// position.Compute (ErrInvalidLeg), which rejects a negative ETH value.
-func (adapter *Adapter) positionLegs(ctx context.Context, chainID int64, wallet, token []byte) ([]position.Leg, error) {
+// insertRealizedLegs writes one wallet_realized_legs row per leg whose realized PnL change is
+// non-zero; legs, times and realized are aligned.
+func (adapter *Adapter) insertRealizedLegs(ctx context.Context, key sqlc.DeleteWalletPositionParams, legs []position.Leg, times []pgtype.Timestamptz, realized []*big.Int) error {
+	if len(realized) != len(legs) || len(times) != len(legs) {
+		return fmt.Errorf("realized legs: %d legs, %d times, %d values", len(legs), len(times), len(realized))
+	}
+	for i, value := range realized {
+		if value.Sign() == 0 {
+			continue
+		}
+		amount, err := signedNumeric("leg realized PnL", value)
+		if err != nil {
+			return err
+		}
+		if err := adapter.queries.InsertWalletRealizedLeg(ctx, sqlc.InsertWalletRealizedLegParams{
+			ChainID: key.ChainID, Wallet: key.Wallet, TokenAddress: key.TokenAddress,
+			BlockNumber: legs[i].Block, TransactionIndex: legs[i].TxIndex, BlockTime: times[i], RealizedPnl: amount,
+		}); err != nil {
+			return fmt.Errorf("insert wallet realized leg: %w", err)
+		}
+	}
+	return nil
+}
+
+// positionLegs loads the per-transaction legs of ListPositionLegs and their block times. Sign
+// checks are left to position.Compute (ErrInvalidLeg), which rejects a negative ETH value.
+func (adapter *Adapter) positionLegs(ctx context.Context, chainID int64, wallet, token []byte) ([]position.Leg, []pgtype.Timestamptz, error) {
 	rows, err := adapter.queries.ListPositionLegs(ctx, sqlc.ListPositionLegsParams{ChainID: chainID, TokenAddress: token, Wallet: wallet})
 	if err != nil {
-		return nil, fmt.Errorf("list position legs: %w", err)
+		return nil, nil, fmt.Errorf("list position legs: %w", err)
 	}
 	legs := make([]position.Leg, len(rows))
+	times := make([]pgtype.Timestamptz, len(rows))
 	for i, row := range rows {
 		delta, err := signedBigInt("position leg token delta", row.LegTokenDelta)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		paid, err := signedBigInt("position leg ETH paid", row.LegEthPaid)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		received, err := signedBigInt("position leg ETH received", row.LegEthReceived)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
+		}
+		if !row.LegBlockTime.Valid {
+			return nil, nil, fmt.Errorf("position leg at block %d has no block time", row.LegBlockNumber)
 		}
 		legs[i] = position.Leg{Block: row.LegBlockNumber, TxIndex: row.LegTransactionIndex, TokenDelta: delta, ETHPaid: paid, ETHReceived: received}
+		times[i] = row.LegBlockTime
 	}
-	return legs, nil
+	return legs, times, nil
 }
 
 func walletPositionParams(key sqlc.DeleteWalletPositionParams, p position.Position) (sqlc.UpsertWalletPositionParams, error) {

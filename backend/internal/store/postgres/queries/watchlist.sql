@@ -46,3 +46,10 @@ WHERE w.chain_id = sqlc.arg(chain_id)
   AND w.privy_did = sqlc.arg(privy_did)
 ORDER BY w.created_at DESC, w.token_address
 LIMIT sqlc.arg(row_limit)::integer;
+
+-- name: CountTokenWatchers :one
+SELECT count(*)::BIGINT
+FROM watchlist_entries
+WHERE chain_id = sqlc.arg(chain_id)
+  AND deployment_id = sqlc.arg(deployment_id)
+  AND token_address = sqlc.arg(token_address);

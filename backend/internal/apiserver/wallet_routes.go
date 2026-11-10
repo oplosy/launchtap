@@ -42,7 +42,8 @@ type walletPositionsInput struct {
 }
 
 type leaderboardInput struct {
-	Limit int `query:"limit" minimum:"1" maximum:"100" default:"100" doc:"Maximum number of wallets, 1-100. Only wallets with a positive realized PnL are ranked, so fewer may be returned."`
+	Window string `query:"window" doc:"Ranking period: all (default, all-time realized PnL), 7d or 30d (realized PnL booked in the last 7 or 30 days). Any other value is a 400 invalid_window."`
+	Limit  int    `query:"limit" minimum:"1" maximum:"100" default:"100" doc:"Maximum number of wallets, 1-100. Only wallets with a positive realized PnL are ranked, so fewer may be returned."`
 }
 
 // walletDTO amounts are wei decimal strings; the PnL fields are signed.
@@ -284,8 +285,16 @@ func (r WalletRoutes) created(ctx context.Context, in *walletPageInput) (*wallet
 	return &walletCreatedOutput{Body: body}, nil
 }
 
+var leaderboardWindows = map[string]wallet.LeaderboardWindow{
+	"": wallet.WindowAll, "all": wallet.WindowAll, "7d": wallet.Window7d, "30d": wallet.Window30d,
+}
+
 func (r WalletRoutes) leaderboard(ctx context.Context, in *leaderboardInput) (*leaderboardOutput, error) {
-	page, err := r.Reader.Leaderboard(ctx, r.ChainID, pageLimit(in.Limit, defaultLeaderboard))
+	window, ok := leaderboardWindows[in.Window]
+	if !ok {
+		return nil, apiProblem(http.StatusBadRequest, "invalid_window", "Unsupported leaderboard window")
+	}
+	page, err := r.Reader.Leaderboard(ctx, r.ChainID, window, pageLimit(in.Limit, defaultLeaderboard))
 	if err != nil {
 		return nil, walletReadError(ctx, err)
 	}

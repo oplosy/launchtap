@@ -821,6 +821,74 @@ func (q *Queries) ListLeaderboard(ctx context.Context, arg ListLeaderboardParams
 	return items, nil
 }
 
+const listLeaderboardWindow = `-- name: ListLeaderboardWindow :many
+WITH windowed AS (
+    SELECT l.wallet, sum(l.realized_pnl) AS realized_pnl, count(DISTINCT l.token_address) AS tokens_traded
+    FROM wallet_realized_legs AS l
+    WHERE l.chain_id = $1
+      AND l.block_time >= now() - make_interval(days => $4::integer)
+    GROUP BY l.wallet
+)
+SELECT w.wallet::bytea AS wallet, w.realized_pnl::numeric AS realized_pnl,
+       w.tokens_traded::bigint AS tokens_traded, pu.username
+FROM windowed AS w
+LEFT JOIN public_wallet_usernames AS pu
+  ON pu.chain_id = $1 AND pu.deployment_id = $2::text AND pu.wallet = w.wallet
+WHERE w.realized_pnl > 0
+  AND w.wallet <> decode(repeat('00', 20), 'hex')
+  AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = $1 AND t.curve_address = w.wallet)
+  AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = $1 AND t.lp_pair = w.wallet)
+ORDER BY w.realized_pnl DESC, w.wallet
+LIMIT $3::integer
+`
+
+type ListLeaderboardWindowParams struct {
+	ChainID      int64
+	DeploymentID string
+	PageSize     int32
+	WindowDays   int32
+}
+
+type ListLeaderboardWindowRow struct {
+	Wallet       []byte
+	RealizedPnl  pgtype.Numeric
+	TokensTraded int64
+	Username     pgtype.Text
+}
+
+// Rolling-window variant of ListLeaderboard: sums the realized PnL of legs whose block time is
+// within window_days of the transaction's clock (now()). Same exclusions, positive-only rule and
+// tie-break. tokens_traded counts distinct tokens with a realized leg in the window.
+func (q *Queries) ListLeaderboardWindow(ctx context.Context, arg ListLeaderboardWindowParams) ([]ListLeaderboardWindowRow, error) {
+	rows, err := q.db.Query(ctx, listLeaderboardWindow,
+		arg.ChainID,
+		arg.DeploymentID,
+		arg.PageSize,
+		arg.WindowDays,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLeaderboardWindowRow{}
+	for rows.Next() {
+		var i ListLeaderboardWindowRow
+		if err := rows.Scan(
+			&i.Wallet,
+			&i.RealizedPnl,
+			&i.TokensTraded,
+			&i.Username,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMarketTrades = `-- name: ListMarketTrades :many
 SELECT source, COALESCE(encode(trader, 'hex'), '')::text AS trader_hex,
        side_buy, execution_price_wad, spot_price_wad,

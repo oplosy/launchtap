@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Contictus/launchtap/backend/internal/pagination"
@@ -15,10 +16,11 @@ import (
 )
 
 type walletReaderStub struct {
-	err         error
-	truncated   bool
-	positionsQ  wallet.PositionsQuery
-	leaderLimit int
+	err          error
+	truncated    bool
+	positionsQ   wallet.PositionsQuery
+	leaderLimit  int
+	leaderWindow wallet.LeaderboardWindow
 }
 
 func (s *walletReaderStub) stamp() wallet.Stamp {
@@ -58,8 +60,9 @@ func (s *walletReaderStub) ListCreated(context.Context, wallet.CreatedQuery) (wa
 	return wallet.CreatedPage{Stamp: s.stamp()}, nil
 }
 
-func (s *walletReaderStub) Leaderboard(_ context.Context, _ int64, limit int) (wallet.LeaderboardPage, error) {
+func (s *walletReaderStub) Leaderboard(_ context.Context, _ int64, window wallet.LeaderboardWindow, limit int) (wallet.LeaderboardPage, error) {
 	s.leaderLimit = limit
+	s.leaderWindow = window
 	if s.err != nil {
 		return wallet.LeaderboardPage{}, s.err
 	}
@@ -204,10 +207,30 @@ type namedLeaderboardStub struct {
 	name *string
 }
 
-func (s *namedLeaderboardStub) Leaderboard(ctx context.Context, chainID int64, limit int) (wallet.LeaderboardPage, error) {
-	page, err := s.walletReaderStub.Leaderboard(ctx, chainID, limit)
+func (s *namedLeaderboardStub) Leaderboard(ctx context.Context, chainID int64, window wallet.LeaderboardWindow, limit int) (wallet.LeaderboardPage, error) {
+	page, err := s.walletReaderStub.Leaderboard(ctx, chainID, window, limit)
 	for i := range page.Items {
 		page.Items[i].Username = s.name
 	}
 	return page, err
+}
+
+// TestLeaderboardWindow pins spec C3 AC3 at the HTTP layer.
+func TestLeaderboardWindow(t *testing.T) {
+	stub := &walletReaderStub{}
+	s := walletServer(stub)
+	for query, want := range map[string]wallet.LeaderboardWindow{
+		"": wallet.WindowAll, "?window=all": wallet.WindowAll, "?window=7d": wallet.Window7d, "?window=30d": wallet.Window30d,
+	} {
+		stub.leaderWindow = -1
+		if rec := walletGet(s, "/leaderboard"+query); rec.Code != http.StatusOK || stub.leaderWindow != want {
+			t.Fatalf("%q: status=%d window=%d, want %d", query, rec.Code, stub.leaderWindow, want)
+		}
+	}
+	for _, bad := range []string{"bad", "1d", "7D", "24h"} {
+		rec := walletGet(s, "/leaderboard?window="+bad)
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "urn:launchpad:problem:invalid_window") {
+			t.Fatalf("window=%s: status=%d body=%s", bad, rec.Code, rec.Body.String())
+		}
+	}
 }

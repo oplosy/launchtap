@@ -39,6 +39,7 @@ type Querier interface {
 	CompleteAggregationDirty(ctx context.Context, arg CompleteAggregationDirtyParams) (int64, error)
 	CompleteIndexerReorg(ctx context.Context, reorgID int64) (CompleteIndexerReorgRow, error)
 	CompletePositionDirty(ctx context.Context, arg CompletePositionDirtyParams) (int64, error)
+	CountTokenWatchers(ctx context.Context, arg CountTokenWatchersParams) (int64, error)
 	// Pool swaps still without a sender at or below through_block (the indexer's safe head); served
 	// by the partial index pool_swaps_tx_from_null_idx.
 	CountUnattributedPoolSwaps(ctx context.Context, arg CountUnattributedPoolSwapsParams) (int64, error)
@@ -69,6 +70,7 @@ type Querier interface {
 	DeleteTradingPauseEventsAbove(ctx context.Context, arg DeleteTradingPauseEventsAboveParams) (int64, error)
 	DeleteTransfersAbove(ctx context.Context, arg DeleteTransfersAboveParams) (int64, error)
 	DeleteWalletPosition(ctx context.Context, arg DeleteWalletPositionParams) error
+	DeleteWalletRealizedLegs(ctx context.Context, arg DeleteWalletRealizedLegsParams) error
 	DeleteWatchlistEntry(ctx context.Context, arg DeleteWatchlistEntryParams) (int64, error)
 	EngineConfigurationMatchesEvent(ctx context.Context, arg EngineConfigurationMatchesEventParams) (pgtype.Bool, error)
 	EnsureSocialUser(ctx context.Context, arg EnsureSocialUserParams) error
@@ -132,6 +134,7 @@ type Querier interface {
 	InsertTrade(ctx context.Context, arg InsertTradeParams) (int64, error)
 	InsertTradingPauseEvent(ctx context.Context, arg InsertTradingPauseEventParams) (int64, error)
 	InsertTransfer(ctx context.Context, arg InsertTransferParams) (int64, error)
+	InsertWalletRealizedLeg(ctx context.Context, arg InsertWalletRealizedLegParams) error
 	InsertWatchlistEntry(ctx context.Context, arg InsertWatchlistEntryParams) (int64, error)
 	IsPublicWallet(ctx context.Context, arg IsPublicWalletParams) (bool, error)
 	LaunchFeeClaimMatchesEvent(ctx context.Context, arg LaunchFeeClaimMatchesEventParams) (pgtype.Bool, error)
@@ -147,6 +150,10 @@ type Querier interface {
 	// Only wallets with a positive realized PnL rank; fewer than page_size rows is normal. Ties are
 	// broken by wallet address, so the order is deterministic.
 	ListLeaderboard(ctx context.Context, arg ListLeaderboardParams) ([]ListLeaderboardRow, error)
+	// Rolling-window variant of ListLeaderboard: sums the realized PnL of legs whose block time is
+	// within window_days of the transaction's clock (now()). Same exclusions, positive-only rule and
+	// tie-break. tokens_traded counts distinct tokens with a realized leg in the window.
+	ListLeaderboardWindow(ctx context.Context, arg ListLeaderboardWindowParams) ([]ListLeaderboardWindowRow, error)
 	ListMarketTrades(ctx context.Context, arg ListMarketTradesParams) ([]ListMarketTradesRow, error)
 	ListMarketTradesAfter(ctx context.Context, arg ListMarketTradesAfterParams) ([]ListMarketTradesAfterRow, error)
 	// Comments with open reports, newest open report first. Policy: none; limit is the caller's.
@@ -156,6 +163,8 @@ type Querier interface {
 	// token_delta is the wallet's net transfers in the tx (a self-transfer nets to 0); ETH comes only
 	// from trades attributed to the wallet: curve trades by trader, pool swaps by tx_from on the
 	// token's own pair, valued on the pair's WETH side.
+	// Every leg's block is an indexed canonical block (ledger rows reference indexed_blocks), so the
+	// inner join drops nothing; it supplies the block time the windowed leaderboard filters on.
 	ListPositionLegs(ctx context.Context, arg ListPositionLegsParams) ([]ListPositionLegsRow, error)
 	// Run before DeleteCanonicalAbove: the rows (and a launched token's own row) are still present.
 	// Excluded wallets (R4) are dropped here because a deleted token's curve and pair are not

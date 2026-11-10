@@ -33,6 +33,12 @@ type Entry struct {
 	Summary *token.Summary
 }
 
+// WatcherCounter counts how many owners in one chain and deployment watch a token. It is a
+// public read: the count reveals no owner.
+type WatcherCounter interface {
+	CountWatchers(ctx context.Context, chainID int64, deploymentID string, t common.Address) (int64, error)
+}
+
 type Store interface {
 	// Add is idempotent. It returns ErrUnknownToken or ErrFull when it cannot add.
 	Add(ctx context.Context, o Owner, t common.Address) error

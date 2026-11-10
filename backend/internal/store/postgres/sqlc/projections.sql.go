@@ -505,6 +505,21 @@ func (q *Queries) DeleteWalletPosition(ctx context.Context, arg DeleteWalletPosi
 	return err
 }
 
+const deleteWalletRealizedLegs = `-- name: DeleteWalletRealizedLegs :exec
+DELETE FROM wallet_realized_legs WHERE chain_id = $1 AND wallet = $2 AND token_address = $3
+`
+
+type DeleteWalletRealizedLegsParams struct {
+	ChainID      int64
+	Wallet       Address
+	TokenAddress Address
+}
+
+func (q *Queries) DeleteWalletRealizedLegs(ctx context.Context, arg DeleteWalletRealizedLegsParams) error {
+	_, err := q.db.Exec(ctx, deleteWalletRealizedLegs, arg.ChainID, arg.Wallet, arg.TokenAddress)
+	return err
+}
+
 const hasCanonicalLaunch = `-- name: HasCanonicalLaunch :one
 SELECT EXISTS(SELECT 1 FROM token_launches WHERE chain_id=$1 AND token_address=$2)
 `
@@ -519,6 +534,35 @@ func (q *Queries) HasCanonicalLaunch(ctx context.Context, arg HasCanonicalLaunch
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const insertWalletRealizedLeg = `-- name: InsertWalletRealizedLeg :exec
+INSERT INTO wallet_realized_legs (chain_id, wallet, token_address, block_number, transaction_index, block_time, realized_pnl)
+VALUES ($1, $2, $3, $4,
+    $5, $6, $7)
+`
+
+type InsertWalletRealizedLegParams struct {
+	ChainID          int64
+	Wallet           Address
+	TokenAddress     Address
+	BlockNumber      int64
+	TransactionIndex int32
+	BlockTime        pgtype.Timestamptz
+	RealizedPnl      pgtype.Numeric
+}
+
+func (q *Queries) InsertWalletRealizedLeg(ctx context.Context, arg InsertWalletRealizedLegParams) error {
+	_, err := q.db.Exec(ctx, insertWalletRealizedLeg,
+		arg.ChainID,
+		arg.Wallet,
+		arg.TokenAddress,
+		arg.BlockNumber,
+		arg.TransactionIndex,
+		arg.BlockTime,
+		arg.RealizedPnl,
+	)
+	return err
 }
 
 const listPositionLegs = `-- name: ListPositionLegs :many
@@ -556,16 +600,27 @@ WITH token AS (
     JOIN token ON swap.pair_address = token.lp_pair
     WHERE swap.chain_id = $1::bigint AND swap.tx_from = $3::bytea
     GROUP BY swap.tx_hash, swap.block_number, swap.transaction_index
+), legs AS (
+    SELECT
+        COALESCE(transfer_legs.block_number, trade_legs.block_number, swap_legs.block_number) AS block_number,
+        COALESCE(transfer_legs.transaction_index, trade_legs.transaction_index, swap_legs.transaction_index) AS transaction_index,
+        COALESCE(transfer_legs.token_delta, 0) AS token_delta,
+        COALESCE(trade_legs.eth_paid, 0) + COALESCE(swap_legs.eth_paid, 0) AS eth_paid,
+        COALESCE(trade_legs.eth_received, 0) + COALESCE(swap_legs.eth_received, 0) AS eth_received
+    FROM transfer_legs
+    FULL OUTER JOIN trade_legs ON trade_legs.tx_hash = transfer_legs.tx_hash
+    FULL OUTER JOIN swap_legs ON swap_legs.tx_hash = COALESCE(transfer_legs.tx_hash, trade_legs.tx_hash)
 )
 SELECT
-    COALESCE(transfer_legs.block_number, trade_legs.block_number, swap_legs.block_number)::bigint AS leg_block_number,
-    COALESCE(transfer_legs.transaction_index, trade_legs.transaction_index, swap_legs.transaction_index)::integer AS leg_transaction_index,
-    COALESCE(transfer_legs.token_delta, 0)::numeric AS leg_token_delta,
-    (COALESCE(trade_legs.eth_paid, 0) + COALESCE(swap_legs.eth_paid, 0))::numeric AS leg_eth_paid,
-    (COALESCE(trade_legs.eth_received, 0) + COALESCE(swap_legs.eth_received, 0))::numeric AS leg_eth_received
-FROM transfer_legs
-FULL OUTER JOIN trade_legs ON trade_legs.tx_hash = transfer_legs.tx_hash
-FULL OUTER JOIN swap_legs ON swap_legs.tx_hash = COALESCE(transfer_legs.tx_hash, trade_legs.tx_hash)
+    legs.block_number::bigint AS leg_block_number,
+    legs.transaction_index::integer AS leg_transaction_index,
+    legs.token_delta::numeric AS leg_token_delta,
+    legs.eth_paid::numeric AS leg_eth_paid,
+    legs.eth_received::numeric AS leg_eth_received,
+    block.block_time AS leg_block_time
+FROM legs
+JOIN indexed_blocks AS block
+  ON block.chain_id = $1::bigint AND block.block_number = legs.block_number
 ORDER BY leg_block_number, leg_transaction_index
 `
 
@@ -581,12 +636,15 @@ type ListPositionLegsRow struct {
 	LegTokenDelta       pgtype.Numeric
 	LegEthPaid          pgtype.Numeric
 	LegEthReceived      pgtype.Numeric
+	LegBlockTime        pgtype.Timestamptz
 }
 
 // One leg per transaction that touched (wallet, token), ordered by (block, tx index) (R1):
 // token_delta is the wallet's net transfers in the tx (a self-transfer nets to 0); ETH comes only
 // from trades attributed to the wallet: curve trades by trader, pool swaps by tx_from on the
 // token's own pair, valued on the pair's WETH side.
+// Every leg's block is an indexed canonical block (ledger rows reference indexed_blocks), so the
+// inner join drops nothing; it supplies the block time the windowed leaderboard filters on.
 func (q *Queries) ListPositionLegs(ctx context.Context, arg ListPositionLegsParams) ([]ListPositionLegsRow, error) {
 	rows, err := q.db.Query(ctx, listPositionLegs, arg.ChainID, arg.TokenAddress, arg.Wallet)
 	if err != nil {
@@ -602,6 +660,7 @@ func (q *Queries) ListPositionLegs(ctx context.Context, arg ListPositionLegsPara
 			&i.LegTokenDelta,
 			&i.LegEthPaid,
 			&i.LegEthReceived,
+			&i.LegBlockTime,
 		); err != nil {
 			return nil, err
 		}

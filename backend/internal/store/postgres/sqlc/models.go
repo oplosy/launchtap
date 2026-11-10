@@ -572,6 +572,16 @@ type WalletPosition struct {
 	LastBlockNumber  int64
 }
 
+type WalletRealizedLeg struct {
+	ChainID          int64
+	Wallet           Address
+	TokenAddress     Address
+	BlockNumber      int64
+	TransactionIndex int32
+	BlockTime        pgtype.Timestamptz
+	RealizedPnl      pgtype.Numeric
+}
+
 type WalletTotal struct {
 	ChainID          int64
 	Wallet           Address
