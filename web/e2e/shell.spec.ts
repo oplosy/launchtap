@@ -158,6 +158,54 @@ test("the footer is a list of sections that open one by one", async ({ page }) =
   await footer.locator("summary", { hasText: "Product" }).click();
   await expect(explore).toBeVisible();
   await expect(footer.locator("details", { hasText: "Product" })).toHaveAttribute("open", "");
-  await footer.locator("summary", { hasText: "Product" }).click();
+  // Open, the chevron (or the label) closes it again.
+  await footer.locator("summary", { hasText: "Product" }).locator("svg").click();
   await expect(explore).toBeHidden();
+});
+
+test("an open footer section lists its links beside the label, one per row", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "small-laptop", "Wide layout only.");
+  await page.goto("/docs");
+  const footer = page.getByRole("contentinfo");
+  const row = footer.locator("summary", { hasText: "Product" });
+  await row.click();
+  const label = (await row.locator("span").first().boundingBox())!;
+  const links = footer.getByRole("navigation", { name: "Product" }).getByRole("link");
+  await expect(links).toHaveCount(3);
+  const first = (await links.first().boundingBox())!;
+  // Same row as the label, in the column to its right.
+  expect(Math.abs(first.y + first.height / 2 - (label.y + label.height / 2))).toBeLessThanOrEqual(
+    4,
+  );
+  expect(first.x).toBeGreaterThan(label.x + label.width + 40);
+  const second = (await links.nth(1).boundingBox())!;
+  expect(second.y - first.y).toBeGreaterThanOrEqual(44);
+  // The chevron still closes it.
+  await row.locator("svg").click();
+  await expect(links.first()).toBeHidden();
+});
+
+test("the footer frames the sections with the brand and a side column", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "small-laptop", "Wide layout only.");
+  await page.goto("/docs");
+  const footer = page.getByRole("contentinfo");
+  const brand = footer.getByRole("link", { name: "Launchpad home" });
+  const sections = footer.locator(".footer-sections");
+  const side = footer.locator(".footer-aside");
+  await expect(brand).toBeVisible();
+  await expect(side.getByText("Launchpad never takes custody")).toBeVisible();
+  const [b, s, a] = [
+    (await brand.boundingBox())!,
+    (await sections.boundingBox())!,
+    (await side.boundingBox())!,
+  ];
+  expect(b.x + b.width).toBeLessThan(s.x);
+  expect(s.x + s.width).toBeLessThan(a.x);
+  const social = footer.getByRole("list", { name: "Social media" }).getByRole("img");
+  expect(await social.count()).toBeGreaterThanOrEqual(10);
+  await expect(social.first()).toHaveAccessibleName(/X/);
 });

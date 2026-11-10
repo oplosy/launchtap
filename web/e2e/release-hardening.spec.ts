@@ -315,7 +315,8 @@ test("mobile footer remains reachable below the final page content", async ({ pa
     const footer = document.querySelector(".app-footer")?.getBoundingClientRect();
     return { footerTop: footer?.top ?? -1, footerBottom: footer?.bottom ?? Infinity };
   });
-  expect(geometry.footerTop).toBeGreaterThanOrEqual(0);
+  // The footer can be taller than a phone screen; what matters is that its end is reachable.
+  expect(geometry.footerBottom).toBeGreaterThan(0);
   expect(geometry.footerBottom).toBeLessThanOrEqual(801);
 });
 

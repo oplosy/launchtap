@@ -1,12 +1,49 @@
 "use client";
 
 import Link from "next/link";
-import { CaretDown } from "@phosphor-icons/react";
+import {
+  ArrowUpRight,
+  CaretDown,
+  DiscordLogo,
+  FacebookLogo,
+  GithubLogo,
+  InstagramLogo,
+  LinkedinLogo,
+  MediumLogo,
+  RedditLogo,
+  TelegramLogo,
+  ThreadsLogo,
+  TiktokLogo,
+  TwitchLogo,
+  XLogo,
+  YoutubeLogo,
+  type Icon,
+} from "@phosphor-icons/react";
 import { SafeExternalLink } from "./primitives";
 import { publicConfiguration } from "@/config/public";
 import { CoinGeckoAttribution } from "@/market/usd-line";
 
-/** One footer row: a hairline-separated label that opens to its links. */
+/** Accounts are not set up yet: the icons are shown, not linked. */
+const SOCIAL: ReadonlyArray<{ label: string; icon: Icon }> = [
+  { label: "X", icon: XLogo },
+  { label: "Telegram", icon: TelegramLogo },
+  { label: "Discord", icon: DiscordLogo },
+  { label: "GitHub", icon: GithubLogo },
+  { label: "YouTube", icon: YoutubeLogo },
+  { label: "Instagram", icon: InstagramLogo },
+  { label: "TikTok", icon: TiktokLogo },
+  { label: "Reddit", icon: RedditLogo },
+  { label: "LinkedIn", icon: LinkedinLogo },
+  { label: "Facebook", icon: FacebookLogo },
+  { label: "Threads", icon: ThreadsLogo },
+  { label: "Twitch", icon: TwitchLogo },
+  { label: "Medium", icon: MediumLogo },
+];
+
+/**
+ * One footer row: a hairline-separated label. Open, its links fill the column to the right of
+ * the label, one per row, with the chevron kept on the first row.
+ */
 function FooterSection({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <details className="footer-section">
@@ -25,36 +62,67 @@ export function SiteFooter() {
   const explorerBase = publicConfiguration().deployment?.explorerBase;
   return (
     <footer className="app-footer">
-      <div className="footer-sections">
-        <FooterSection label="Product">
-          <Link href={"/explore" as never}>Explore</Link>
-          <Link href="/create">Create</Link>
-          <Link href="/forum">Forum</Link>
-        </FooterSection>
-        <FooterSection label="Data">
-          <Link href="/leaderboard">Leaderboard</Link>
-          <Link href="/analytics">Analytics</Link>
-        </FooterSection>
-        <FooterSection label="Resources">
-          <Link href="/docs">Docs</Link>
-          <Link href="/docs#risk">Risk and finality</Link>
-          {explorerBase ? (
-            <SafeExternalLink href={explorerBase}>Block explorer ↗</SafeExternalLink>
-          ) : (
-            <span className="ui-disabled-link">Explorer unavailable</span>
-          )}
-        </FooterSection>
-        <FooterSection label="Account">
-          <Link href="/profile">Profile</Link>
-          <Link href={"/explore?view=watchlist" as never}>Watchlist</Link>
-          <Link href="/notifications">Notifications</Link>
-        </FooterSection>
+      <div className="footer-main">
+        <Link href="/" className="footer-brand" aria-label="Launchpad home">
+          Launchpad
+        </Link>
+        <div className="footer-sections">
+          <FooterSection label="Product">
+            <Link href={"/explore" as never}>Explore</Link>
+            <Link href="/create">Create</Link>
+            <Link href="/forum">Forum</Link>
+          </FooterSection>
+          <FooterSection label="Data">
+            <Link href="/leaderboard">Leaderboard</Link>
+            <Link href="/analytics">Analytics</Link>
+          </FooterSection>
+          <FooterSection label="Resources">
+            <Link href="/docs">Docs</Link>
+            <Link href="/docs#risk">Risk and finality</Link>
+            {explorerBase ? (
+              <SafeExternalLink href={explorerBase}>Block explorer ↗</SafeExternalLink>
+            ) : (
+              <span className="ui-disabled-link">Explorer unavailable</span>
+            )}
+          </FooterSection>
+          <FooterSection label="Account">
+            <Link href="/profile">Profile</Link>
+            <Link href={"/explore?view=watchlist" as never}>Watchlist</Link>
+            <Link href="/notifications">Notifications</Link>
+          </FooterSection>
+        </div>
+        <aside className="footer-aside" aria-label="About Launchpad">
+          <div className="footer-aside-block">
+            <h2>Non-custodial</h2>
+            <p>
+              Fixed-supply launches on Robinhood Chain. Your selected wallet signs every
+              transaction; Launchpad never takes custody.
+            </p>
+          </div>
+          <div className="footer-aside-block">
+            <h2>Get started</h2>
+            <Link href="/create">
+              Launch a token <ArrowUpRight size={12} aria-hidden="true" />
+            </Link>
+            <Link href={"/explore" as never}>
+              Explore launches <ArrowUpRight size={12} aria-hidden="true" />
+            </Link>
+          </div>
+          <div className="footer-aside-block">
+            <h2>Follow</h2>
+            <ul className="footer-social" aria-label="Social media">
+              {SOCIAL.map(({ label, icon: SocialIcon }) => (
+                <li key={label}>
+                  <span role="img" aria-label={`${label} (coming soon)`} title={label}>
+                    <SocialIcon size={18} aria-hidden="true" />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </aside>
       </div>
       <div className="footer-bottom">
-        <p className="footer-note">
-          Non-custodial. Your selected wallet signs every transaction; Launchpad never takes
-          custody.
-        </p>
         <p className="footer-meta">
           © 2026 Launchpad <CoinGeckoAttribution />
         </p>

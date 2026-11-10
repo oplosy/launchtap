@@ -194,20 +194,48 @@
 /* Footer: link columns centred on the content column, theme and notes beneath. */
 .app-footer {
   width: 100%;
-  max-width: calc(var(--measure-page) + 2 * var(--gutter));
+  max-width: calc(1600px + 2 * var(--gutter));
   margin: var(--section-gap) auto 0;
   padding: 64px var(--gutter) 48px;
 }
+/* Brand | sections | about, as three columns; stacked below 1024 px. */
+.footer-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2.4fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 64px;
+}
+.footer-brand {
+  justify-self: start;
+  padding-top: 12px;
+  color: var(--text);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
 /* Footer sections: hairline rows that open to their links. */
 .footer-sections {
   border-top: 1px solid var(--hairline-strong);
 }
 .footer-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
   border-bottom: 1px solid var(--hairline-strong);
   interpolate-size: allow-keywords;
 }
+/*
+ * The summary spans the whole row (label left, chevron right) and sits above the open links;
+ * only its label and chevron take clicks, so the first link under it stays clickable.
+ */
 .footer-section > summary {
+  position: relative;
+  z-index: 1;
   display: flex;
+  grid-row: 1;
+  grid-column: 1 / -1;
+  align-self: start;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -219,6 +247,13 @@
   cursor: pointer;
   transition: color var(--dur-fast) var(--ease-out);
 }
+/* Open, the row lets clicks through to the first link; the label and chevron still close it. */
+.footer-section[open] > summary {
+  pointer-events: none;
+}
+.footer-section[open] > summary > * {
+  pointer-events: auto;
+}
 .footer-section > summary::-webkit-details-marker {
   display: none;
 }
@@ -226,8 +261,12 @@
 .footer-section[open] > summary {
   color: var(--text);
 }
+.footer-section[open] > summary {
+  font-weight: 500;
+}
 .footer-section > summary svg {
   flex: none;
+  margin-right: 4px;
   color: var(--text-3);
   transition: rotate var(--dur-base) var(--ease-out);
 }
@@ -235,6 +274,8 @@
   rotate: 180deg;
 }
 .footer-section::details-content {
+  grid-row: 1;
+  grid-column: 2;
   block-size: 0;
   overflow: clip;
   opacity: 0;
@@ -249,19 +290,117 @@
 }
 .footer-section-links {
   display: grid;
-  justify-items: start;
-  gap: 12px;
-  padding: 4px 0 20px;
 }
-.footer-section-links a,
-.footer-section-links .ui-disabled-link {
-  color: var(--text-2);
+.footer-section-links > a,
+.footer-section-links > .ui-disabled-link {
+  display: flex;
+  align-items: center;
+  min-height: 52px;
+  border-bottom: 1px solid var(--hairline-strong);
+  padding-right: 40px;
+  color: var(--text);
   font: var(--type-label);
   font-weight: 400;
   transition: color var(--dur-fast) var(--ease-out);
 }
-.footer-section-links a:hover {
+.footer-section-links > :last-child {
+  border-bottom: 0;
+}
+.footer-section-links > a:hover {
+  color: var(--text-2);
+}
+.footer-section-links > .ui-disabled-link {
+  color: var(--text-3);
+}
+
+/* Right column: a short statement, start links, and the social accounts. */
+.footer-aside {
+  display: grid;
+  gap: 32px;
+  padding-top: 8px;
+  font-size: 14px;
+  line-height: 20px;
+}
+.footer-aside-block {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+.footer-aside h2 {
+  margin-bottom: 2px;
   color: var(--text);
+  font: var(--type-label);
+}
+.footer-aside p {
+  max-width: 300px;
+  color: var(--text-2);
+}
+.footer-aside a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.footer-aside a:hover {
+  color: var(--text-2);
+}
+.footer-aside a svg {
+  color: var(--text-3);
+}
+.footer-social {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  max-width: 260px;
+  margin: 4px 0 0;
+  padding: 0;
+  color: var(--text-2);
+  list-style: none;
+}
+.footer-social span {
+  display: inline-grid;
+  place-items: center;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.footer-social span:hover {
+  color: var(--text);
+}
+
+@media (max-width: 1023px) {
+  .app-footer {
+    padding-top: 48px;
+    padding-bottom: 32px;
+  }
+  .footer-main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+  .footer-brand {
+    padding-top: 0;
+  }
+  .footer-aside {
+    gap: 24px;
+  }
+  .footer-social {
+    max-width: none;
+  }
+  .app-footer .footer-bottom {
+    margin-top: 40px;
+  }
+}
+/* Phones: links open under their label instead of beside it. */
+@media (max-width: 640px) {
+  .footer-section {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .footer-section::details-content {
+    grid-row: 2;
+    grid-column: 1;
+  }
+  .footer-section-links {
+    padding-left: 16px;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .footer-section::details-content,
