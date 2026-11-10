@@ -20,7 +20,7 @@ test("mobile shell keeps primary routes keyboard reachable", async ({ page }) =>
   await page.getByRole("button", { name: "Open navigation" }).click();
   const drawer = page.getByRole("dialog", { name: "Navigate" });
   await expect(drawer).toBeVisible();
-  for (const label of ["Explore", "Create", "Analytics", "Docs", "Profile"]) {
+  for (const label of ["Explore", "Forum", "Create", "Analytics", "Docs", "Profile"]) {
     await expect(drawer.getByRole("link", { name: label })).toBeVisible();
   }
 });

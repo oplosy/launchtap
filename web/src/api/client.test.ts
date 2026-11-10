@@ -173,6 +173,25 @@ describe("generated API wrapper", () => {
     ]);
   });
 
+  it("requests the public forum reads without credentials", async () => {
+    const seen: Array<{ url: string; auth: string | null }> = [];
+    const client = new ApiClient({
+      baseUrl: "https://api.example",
+      fetch: async (input, init) => {
+        seen.push({ url: String(input), auth: new Headers(init?.headers).get("Authorization") });
+        return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      },
+    });
+    await client.getForumPosts();
+    await client.getForumPosts({ cursor: "abc", limit: 10 });
+    await client.getForumCommunities("top", 5);
+    expect(seen).toEqual([
+      { url: "https://api.example/v1/forum/posts", auth: null },
+      { url: "https://api.example/v1/forum/posts?cursor=abc&limit=10", auth: null },
+      { url: "https://api.example/v1/forum/communities?sort=top&limit=5", auth: null },
+    ]);
+  });
+
   it("keeps metadata and image revision validators independent", async () => {
     const requests: Array<{ path: string; ifMatch: string | null }> = [];
     const client = new ApiClient({

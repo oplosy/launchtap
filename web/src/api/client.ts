@@ -40,6 +40,10 @@ export type ReportReason = "spam" | "scam" | "abuse" | "other";
 export type PublicProfileResponse = components["schemas"]["PublicProfileDTO"];
 export type InboxResponse = components["schemas"]["InboxBody"];
 export type InboxItem = components["schemas"]["InboxItemDTO"];
+export type ForumPostsResponse = components["schemas"]["ForumPostsBody"];
+export type ForumPost = components["schemas"]["ForumPostDTO"];
+export type ForumCommunitiesResponse = components["schemas"]["ForumCommunitiesBody"];
+export type ForumCommunity = components["schemas"]["ForumCommunityDTO"];
 
 /** Resolve API-owned relative image paths without allowing a metadata URL to change origin. */
 export function resolveApiAssetUrl(
@@ -341,6 +345,26 @@ export class ApiClient {
       { method: "DELETE", signal },
       auth,
     );
+  }
+
+  /** Visible comments across tokens, newest first (spec P0-C5). */
+  getForumPosts(query: { cursor?: string; limit?: number } = {}, signal?: AbortSignal) {
+    const params = new URLSearchParams();
+    if (query.cursor) params.set("cursor", query.cursor);
+    if (query.limit) params.set("limit", String(query.limit));
+    const encoded = params.toString();
+    return this.request<ForumPostsResponse>(`/v1/forum/posts${encoded ? `?${encoded}` : ""}`, {
+      signal,
+    });
+  }
+
+  /** Communities ranked by visible comments: `hot` (24 hours) or `top` (all time). */
+  getForumCommunities(sort: "hot" | "top", limit?: number, signal?: AbortSignal) {
+    const params = new URLSearchParams({ sort });
+    if (limit) params.set("limit", String(limit));
+    return this.request<ForumCommunitiesResponse>(`/v1/forum/communities?${params.toString()}`, {
+      signal,
+    });
   }
 
   /** Newest first; `cursor` is the `next_cursor` of the previous page (spec P0-C4). */

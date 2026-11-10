@@ -31,6 +31,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/forum/communities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listForumCommunities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/forum/posts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listForumPosts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -708,6 +740,48 @@ export interface components {
             finalized_block: number;
             /** Format: int64 */
             safe_block: number;
+        };
+        ForumCommunitiesBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/ForumCommunitiesBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["ForumCommunityDTO"][] | null;
+        };
+        ForumCommunityDTO: {
+            /**
+             * Format: int64
+             * @description Visible comments in the sort's window.
+             */
+            comment_count: number;
+            last_comment_at: string;
+            name: string;
+            symbol: string;
+            token: string;
+        };
+        ForumPostDTO: {
+            author: components["schemas"]["CommentAuthorDTO"];
+            body: string;
+            created_at: string;
+            /** @description Decimal string. */
+            id: string;
+            /** @description Token launch name; user-controlled text. */
+            name: string;
+            /** @description Token launch symbol; user-controlled text. */
+            symbol: string;
+            token: string;
+        };
+        ForumPostsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/ForumPostsBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["ForumPostDTO"][] | null;
+            next_cursor?: string;
         };
         GraduationFeedEvent: {
             /** Format: int64 */
@@ -1545,6 +1619,75 @@ export interface operations {
                         /** @description The retry time in milliseconds. */
                         retry?: number;
                     })[];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    listForumCommunities: {
+        parameters: {
+            query?: {
+                /** @description hot (default): visible comments in the last 24 hours; top: all time. Any other value is a 400 invalid_sort. */
+                sort?: string;
+                /** @description Number of communities, 1-50; defaults to 20. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForumCommunitiesBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    listForumPosts: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                /** @description Number of posts, 1-50; defaults to 20. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForumPostsBody"];
                 };
             };
             /** @description Error */

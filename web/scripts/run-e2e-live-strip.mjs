@@ -33,6 +33,7 @@ const result = spawnSync(
     "release-hardening",
     "token-comments",
     "public-profile",
+    "forum",
     ...process.argv.slice(2),
   ],
   { stdio: "inherit", env },
