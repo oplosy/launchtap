@@ -49,6 +49,7 @@ import {
   SafeImage,
   UnavailableState,
 } from "@/components/primitives";
+import { SlidingIndicator } from "@/components/sliding-indicator";
 
 const DEFAULT_TTL = 900n;
 type Address = `0x${string}`;
@@ -351,6 +352,7 @@ function TradeSideTabs({
             {value === "buy" ? "Buy" : "Sell"}
           </button>
         ))}
+        <SlidingIndicator />
       </div>
       <div
         id={panelId}
@@ -391,6 +393,7 @@ function SlippageChips({
           {preset}%
         </button>
       ))}
+      <SlidingIndicator />
     </div>
   );
 }

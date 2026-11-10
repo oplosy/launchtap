@@ -10,6 +10,7 @@ import {
 } from "@/api/client";
 import { authorLabel } from "@/comments/comment-model";
 import { Badge, Button, EmptyState, ErrorState, Skeleton } from "@/components/primitives";
+import { SlidingIndicator } from "@/components/sliding-indicator";
 import { publicConfiguration } from "@/config/public";
 import { displayAmount } from "@/discovery/token-card";
 import { shortAddress } from "@/token/address";
@@ -60,6 +61,7 @@ export function ForumTabs({ active }: { active: ForumTab }) {
           {FORUM_TAB_LABELS[tab]}
         </Link>
       ))}
+      <SlidingIndicator />
     </nav>
   );
 }

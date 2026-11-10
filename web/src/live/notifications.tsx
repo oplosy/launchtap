@@ -13,6 +13,7 @@ import {
   useSyncExternalStore,
   type PropsWithChildren,
 } from "react";
+import { usePresence } from "@/components/use-presence";
 import { ApiClient, type AuthHeaders } from "@/api/client";
 import type { LiveEvent } from "@/api/types";
 import { BellSimple, X } from "@/components/icons";
@@ -303,6 +304,7 @@ export function NotificationBell() {
     if (open) store?.markAllRead();
   }, [open, newestId, store]);
 
+  const panelMounted = usePresence(open);
   if (
     !context ||
     !bellVisible({
@@ -337,8 +339,14 @@ export function NotificationBell() {
           </span>
         ) : null}
       </button>
-      {open ? (
-        <section className="notify-panel" id={panelId} aria-label="Notifications">
+      {panelMounted ? (
+        <section
+          className="notify-panel"
+          id={panelId}
+          aria-label="Notifications"
+          data-state={open ? "open" : "closed"}
+          inert={!open}
+        >
           {snapshot.items.length === 0 ? (
             <p className="notify-empty">No notifications this session.</p>
           ) : (

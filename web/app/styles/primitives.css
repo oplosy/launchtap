@@ -482,12 +482,6 @@ input[type="file"].ui-input::file-selector-button {
   background: var(--backdrop);
   backdrop-filter: blur(12px);
 }
-.ui-dialog[open] {
-  animation: dialog-in var(--dur-base) var(--ease-out);
-}
-.ui-dialog[open]::backdrop {
-  animation: fade-in var(--dur-base) linear;
-}
 .ui-dialog-inner {
   padding: 24px;
 }
@@ -516,26 +510,6 @@ input[type="file"].ui-input::file-selector-button {
   margin: 0 0 0 auto;
   border-width: 0 0 0 1px;
   border-radius: 0;
-}
-.ui-dialog[open]:has(.ui-sheet-content) {
-  animation: sheet-in var(--dur-base) var(--ease-out);
-}
-@keyframes dialog-in {
-  from {
-    opacity: 0;
-    transform: scale(0.98);
-  }
-}
-@keyframes sheet-in {
-  from {
-    opacity: 0;
-    transform: translateX(24px);
-  }
-}
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
 }
 
 /* Loading: flat blocks with a gentle opacity pulse. */

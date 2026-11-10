@@ -32,6 +32,7 @@ import {
   Skeleton,
   Tabs,
 } from "@/components/primitives";
+import { SlidingIndicator } from "@/components/sliding-indicator";
 import { walletPath } from "@/portfolio/wallet-model";
 import { addressHue, parseTokenAddress, shortAddress } from "./address";
 import { transformCandles, type CandleChartPoint } from "./chart-data";
@@ -649,6 +650,7 @@ export function TokenDetail({
                 >
                   Candles
                 </button>
+                <SlidingIndicator />
               </div>
             </div>
             {chartLoading ? (

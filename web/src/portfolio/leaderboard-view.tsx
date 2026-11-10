@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { LeaderboardResponse } from "@/api/client";
 import { EmptyState } from "@/components/primitives";
+import { SlidingIndicator } from "@/components/sliding-indicator";
 import { shortAddress } from "@/token/address";
 import {
   LEADERBOARD_WINDOW_LABELS,
@@ -23,6 +24,7 @@ export function LeaderboardWindowTabs({ active }: { active: LeaderboardWindow })
           {LEADERBOARD_WINDOW_LABELS[option]}
         </Link>
       ))}
+      <SlidingIndicator />
     </nav>
   );
 }

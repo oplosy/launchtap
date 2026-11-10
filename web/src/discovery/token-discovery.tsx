@@ -36,6 +36,7 @@ import { TrendingList, useHighlights } from "./highlights";
 import { TokenCard } from "./token-card";
 import { loadTokenDiscoveryPage } from "./controller";
 import { Button, EmptyState, ErrorState, Input, Skeleton } from "@/components/primitives";
+import { SlidingIndicator } from "@/components/sliding-indicator";
 
 export type TokenListFetcher = (
   query: TokenListQuery,
@@ -268,6 +269,7 @@ export function TokenDiscovery({ fetchPage: injectedFetcher }: { fetchPage?: Tok
             {VIEW_LABELS[option]}
           </Link>
         ))}
+        <SlidingIndicator />
       </nav>
 
       {view !== "watchlist" ? (
@@ -315,6 +317,7 @@ export function TokenDiscovery({ fetchPage: injectedFetcher }: { fetchPage?: Tok
                   {AGE_LABELS[option]}
                 </button>
               ))}
+              <SlidingIndicator />
             </div>
           ) : null}
           <div className="ui-segment" role="group" aria-label="Layout">
@@ -328,6 +331,7 @@ export function TokenDiscovery({ fetchPage: injectedFetcher }: { fetchPage?: Tok
                 {option === "list" ? "List" : "Grid"}
               </button>
             ))}
+            <SlidingIndicator />
           </div>
         </div>
       ) : null}
