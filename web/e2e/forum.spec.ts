@@ -122,3 +122,25 @@ test("hot and top tabs rank communities from the URL", async ({ page }) => {
   expect(calls.communities).toEqual(["hot", "top"]);
   expect(calls.posts).toEqual([]);
 });
+
+test("forum tabs are centred and a whole post row opens its token", async ({ page }, testInfo) => {
+  await installApi(page, { posts: [], communities: [] });
+  await page.goto("/forum");
+  const tabs = page.getByRole("navigation", { name: "Forum view" });
+  await expect(tabs.getByRole("link", { name: "New" })).toBeVisible();
+  const box = (await tabs.boundingBox())!;
+  const width = page.viewportSize()!.width;
+  expect(Math.abs(box.x + box.width / 2 - width / 2)).toBeLessThanOrEqual(2);
+  await page.screenshot({
+    path: `../.impeccable/review/rebuild-forum-${testInfo.project.name}.png`,
+    fullPage: true,
+    animations: "disabled",
+  });
+  // The body text is not a link itself: the row is one target that leads to the token.
+  // A real pointer click on the text: the stretched row link sits above it and takes the click.
+  const text = page.getByText("post 3", { exact: true });
+  await text.scrollIntoViewIfNeeded();
+  const body = (await text.boundingBox())!;
+  await page.mouse.click(body.x + body.width / 2, body.y + body.height / 2);
+  await expect(page).toHaveURL(new RegExp(`/token/${TOKEN}$`, "i"));
+});
