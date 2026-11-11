@@ -5,7 +5,7 @@ test.describe("Task 6 transaction safety shell", () => {
     page,
   }) => {
     await page.goto("/create");
-    await expect(page.getByText("Protocol v1")).toBeVisible();
+    await expect(page.getByRole("group", { name: "Launch engine" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Transactions unavailable" })).toBeVisible();
     await expect(page.getByText(/No transaction can be submitted/)).toBeVisible();
     await expect(page.getByRole("button", { name: /Sign|Review launch/i })).toHaveCount(0);

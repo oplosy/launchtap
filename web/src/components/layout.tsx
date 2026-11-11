@@ -41,7 +41,7 @@ export function Section({
         <h2 id={headingId}>{title}</h2>
         {viewAllHref ? (
           <Link className="view-all-link" href={viewAllHref as never}>
-            {viewAllLabel} <span aria-hidden="true">â†’</span>
+            {viewAllLabel} <span aria-hidden="true">→</span>
           </Link>
         ) : null}
       </div>

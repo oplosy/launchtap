@@ -1,17 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { getHighlights, resolveApiAssetUrl, type TokenHighlights } from "@/api/client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { getHighlights, type TokenHighlights } from "@/api/client";
 import type { components } from "@/api/generated";
-import { Badge, EmptyState, SafeImage } from "@/components/primitives";
+import { EmptyState } from "@/components/primitives";
 import { UsdLine } from "@/market/usd-line";
-import { addressHue } from "@/token/address";
-import { StarButton } from "@/watchlist/star-button";
-import { TokenCard, displayAmount, tokenLabel } from "./token-card";
+import { TokenCard, TokenListHead, displayAmount } from "./token-card";
 
 export type TrendingItem = components["schemas"]["TrendingDTO"];
-export type KingItem = components["schemas"]["KingDTO"];
 
 export const HIGHLIGHTS_REFRESH_MS = 30_000;
 
@@ -122,72 +118,17 @@ export function useHighlights(apiBaseUrl: string | null): HighlightsState {
   return { data, loading, failed, stale, retry };
 }
 
-export function KingOfTheHill({
-  king,
-  apiBaseUrl,
-}: {
-  king: KingItem | null | undefined;
-  apiBaseUrl: string | null;
-}) {
-  if (!king) return null;
-  const label = tokenLabel(king);
-  const percent = progressPercent(king.graduation_progress_bps);
-  const imageUrl = resolveApiAssetUrl(
-    apiBaseUrl,
-    `/v1/tokens/${encodeURIComponent(king.address)}/image`,
-  );
-  return (
-    <article
-      className="king-card"
-      aria-label="King of the hill"
-      style={{ "--hue": addressHue(king.address) } as CSSProperties}
-    >
-      <p className="panel-kicker">King of the hill</p>
-      <div className="king-card-main">
-        <SafeImage
-          src={imageUrl}
-          alt={`${label} token`}
-          fallbackLabel="No artwork"
-          className="token-image"
-        />
-        <div className="token-identity">
-          <h3>
-            <Link href={`/token/${king.address}` as never}>{label}</Link>
-          </h3>
-          <p className="token-symbol">
-            <span>{king.symbol || "—"}</span>
-          </p>
-        </div>
-        <Badge tone="accent">{percent} to graduation</Badge>
-        <StarButton address={king.address} label={label} />
-      </div>
-      <div
-        className="king-progress"
-        role="progressbar"
-        aria-label={`${label} graduation progress`}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(king.graduation_progress_bps / 100)}
-        aria-valuetext={percent}
-      >
-        <span style={{ width: percent }} />
-      </div>
-      <p className="king-remaining">
-        {displayAmount(king.remaining_eth)} ETH remaining
-        <UsdLine wei={king.remaining_eth} />
-      </p>
-    </article>
-  );
-}
-
 export function TrendingList({
   items,
   apiBaseUrl,
   layout = "list",
+  className,
 }: {
   items: readonly TrendingItem[];
   apiBaseUrl: string | null;
   layout?: "list" | "grid";
+  /** Extra class on the list, e.g. a fixed column count for a home section. */
+  className?: string;
 }) {
   if (items.length === 0)
     return (
@@ -199,7 +140,12 @@ export function TrendingList({
       </div>
     );
   return (
-    <div className="token-list" data-layout={layout} aria-live="polite">
+    <div
+      className={className ? `token-list ${className}` : "token-list"}
+      data-layout={layout}
+      aria-live="polite"
+    >
+      <TokenListHead extra={["Recent volume", "Buyers"]} />
       {items.map((item) => (
         <TokenCard
           key={item.address}

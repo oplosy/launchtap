@@ -81,7 +81,7 @@
 .token-card {
   position: relative;
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) minmax(0, 2fr) auto;
+  grid-template-columns: 44px minmax(0, 1.2fr) minmax(0, 3fr) 40px;
   align-items: center;
   gap: 16px;
   min-height: 72px;
@@ -92,7 +92,7 @@
   width: 44px;
   height: 44px;
   flex: none;
-  border-radius: var(--radius-media);
+  border-radius: var(--radius-avatar);
   object-fit: cover;
 }
 .ui-image-fallback {
@@ -196,10 +196,62 @@ html[data-theme="light"] .ui-image-fallback {
   font-size: 12px;
 }
 
+/* Row layout reads as a table: one header row, one equal column per metric, labels hidden on rows. */
+.token-list-head {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1.2fr) minmax(0, 3fr) 40px;
+  align-items: end;
+  gap: 16px;
+  border-bottom: 1px solid var(--hairline);
+  padding: 12px 0;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 16px;
+}
+.token-list-head-token {
+  grid-column: 1 / 3;
+}
+.token-list-head-metrics,
+.token-list:not([data-layout="grid"]) .token-metrics {
+  grid-template-columns: none;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 4px 16px;
+}
+.token-list-head-metrics {
+  display: grid;
+  text-align: end;
+}
+.token-list:not([data-layout="grid"]) .token-metrics dt {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.token-list:not([data-layout="grid"]) .star-button {
+  justify-self: end;
+}
+.token-list[data-layout="grid"] .token-list-head {
+  display: none;
+}
+
+/* Artwork cards: five a row on wide screens, three on laptops, two below 1024 px. */
 .token-list[data-layout="grid"] {
-  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
-  gap: 32px 24px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 40px 24px;
   border-top: 0;
+}
+@media (max-width: 1279px) {
+  .token-list[data-layout="grid"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 1023px) {
+  .token-list[data-layout="grid"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .token-list[data-layout="grid"] > .token-card {
   grid-template-columns: minmax(0, 1fr) auto;
@@ -215,6 +267,15 @@ html[data-theme="light"] .ui-image-fallback {
   width: 100%;
   height: auto;
   aspect-ratio: 1;
+  /* A card's artwork is the card itself, so it keeps a soft square, not the avatar circle. */
+  border-radius: 8px;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+.token-list[data-layout="grid"] .token-image .ui-image-fallback-letter {
+  font-size: 48px;
+}
+.token-list[data-layout="grid"] > .token-card:hover .token-image {
+  opacity: 0.88;
 }
 .token-list[data-layout="grid"] .token-metrics {
   grid-column: 1 / -1;
@@ -229,12 +290,33 @@ html[data-theme="light"] .ui-image-fallback {
 .token-list[data-layout="grid"] .token-metrics dd {
   text-align: start;
 }
+/* Card text reads at a size that holds its own next to the artwork. */
+.token-list[data-layout="grid"] .token-identity h3 {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 26px;
+  letter-spacing: -0.01em;
+}
+.token-list[data-layout="grid"] .token-symbol {
+  font-size: 14px;
+}
+.token-list[data-layout="grid"] .token-metrics dt {
+  font-size: 13px;
+  line-height: 18px;
+}
+.token-list[data-layout="grid"] .token-metrics dd {
+  font-size: 15px;
+  line-height: 22px;
+}
 .token-list[data-layout="grid"] .star-button {
   grid-row: 2;
   grid-column: 2;
 }
 
 @media (max-width: 720px) {
+  .token-list-head {
+    display: none;
+  }
   .token-card {
     grid-template-columns: 40px minmax(0, 1fr) auto;
   }
@@ -341,55 +423,4 @@ html[data-theme="light"] .ui-image-fallback {
   bottom: 16px;
   z-index: 60;
   width: min(360px, calc(100vw - 32px));
-}
-
-/* King of the hill (home featured band). */
-.king-card {
-  position: relative;
-  display: grid;
-  gap: 12px;
-  isolation: isolate;
-  border-top: 1px solid var(--hairline);
-  padding: 24px 0;
-}
-.king-card-main {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 12px;
-}
-.king-card .token-identity h3 a::after {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  content: "";
-}
-.king-card a:focus-visible {
-  outline: none;
-}
-.king-card:has(a:focus-visible) {
-  outline: 2px solid var(--text);
-  outline-offset: 2px;
-}
-.king-progress {
-  height: 2px;
-  overflow: hidden;
-  border-radius: var(--radius-pill);
-  background: var(--fill);
-}
-.king-progress > span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--progress);
-}
-.king-remaining {
-  color: var(--text-2);
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}
-@media (max-width: 480px) {
-  .king-card-main {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-  }
 }

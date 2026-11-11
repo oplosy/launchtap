@@ -1,9 +1,8 @@
-/* Create route: one centred 640 px column with numbered sections, plus the creator metadata editor. */
+/* Create route: the form on the left, a sticky live preview with the launch terms and
+   action on the right (one column below 1024 px), plus the creator metadata editor. */
 .create-page {
   gap: 24px;
   width: 100%;
-  max-width: var(--measure-form);
-  margin-inline: auto;
   padding: clamp(32px, 6vw, 72px) 0 96px;
 }
 .create-page-toolbar {
@@ -12,50 +11,52 @@
   justify-content: space-between;
   gap: 12px;
 }
+/* A pill like the other secondary buttons; only the chevron is tuned here. */
 .create-back-button {
-  display: inline-flex;
-  align-items: center;
+  height: 36px;
   gap: 6px;
-  color: var(--text-2);
-  font: var(--type-label);
-  transition: color var(--dur-fast) linear;
-}
-.create-back-button:hover {
-  color: var(--text);
 }
 .create-back-button > span {
   font-size: 18px;
   line-height: 1;
 }
-.create-protocol-label {
+/* Engine switch: a hairline track; the black pill slides to the picked engine. */
+.engine-toggle {
+  position: relative;
+  display: inline-flex;
+  isolation: isolate;
+  border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-pill);
-  color: var(--text-3);
-  background: var(--fill);
+  padding: 2px;
+}
+.engine-toggle > button {
+  position: relative;
+  z-index: 1;
+  min-width: 44px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--text-2);
+  background: transparent;
   padding: 4px 12px;
   font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--dur-base) var(--ease-out);
+}
+.engine-toggle > button:hover {
+  color: var(--text);
+}
+.engine-toggle > button[aria-pressed="true"] {
+  color: var(--canvas);
+}
+.engine-toggle > .slide-indicator {
+  background: var(--text);
 }
 
 .launch-panel {
   border: 0;
   background: none;
   overflow: visible;
-}
-.launch-panel-head {
-  display: grid;
-  justify-items: center;
-  gap: 12px;
-  padding: 8px 0 40px;
-  text-align: center;
-}
-.launch-panel-head h1 {
-  font: var(--type-page);
-  letter-spacing: var(--tracking-page);
-}
-.launch-panel-head p {
-  max-width: 48ch;
-  color: var(--text-2);
-  font: var(--type-body);
-  letter-spacing: var(--tracking-body);
 }
 .launch-panel > .transaction-warning {
   margin: 0 0 24px;
@@ -72,32 +73,97 @@
 .launch-main > .transaction-form {
   gap: 0;
 }
-.launch-main > .ui-button,
+.launch-aside {
+  display: grid;
+  align-content: start;
+  gap: 24px;
+  min-width: 0;
+}
+.launch-aside > .ui-button,
 .launch-wallet-button.ui-button {
   width: 100%;
+}
+@media (min-width: 1024px) {
+  /* 60/40: the form on the left, the larger-type preview and terms on the right. */
+  .launch-main {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    align-items: start;
+    gap: clamp(48px, 6vw, 112px);
+  }
+  .launch-aside {
+    position: sticky;
+    top: calc(var(--nav-height) + 24px);
+    gap: 28px;
+  }
+  .launch-aside .launch-preview-card {
+    gap: 24px 28px;
+    padding: 28px;
+  }
+  .launch-aside .launch-preview-image {
+    width: 144px;
+    height: 144px;
+    border-radius: calc(var(--radius-container) - 4px);
+    font-size: 44px;
+  }
+  .launch-aside .launch-preview-name {
+    font-size: 32px;
+    line-height: 40px;
+    letter-spacing: var(--tracking-page);
+  }
+  .launch-aside .launch-preview-identity > .mono {
+    font-size: 15px;
+  }
+  .launch-aside .launch-preview-card dl {
+    gap: 20px 24px;
+    padding-top: 24px;
+  }
+  .launch-aside .launch-preview-card dt {
+    font-size: 14px;
+  }
+  .launch-aside .launch-preview-card dd {
+    margin-top: 4px;
+    font-size: 18px;
+  }
+}
+
+.launch-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: start;
+  color: var(--text-2);
+  font: var(--type-label);
+  font-weight: 400;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.launch-help:hover {
+  color: var(--text);
+}
+.launch-help-mark {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 50%;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
 }
 .launch-section {
   display: grid;
   gap: 16px;
-  border-top: 1px solid var(--hairline);
   padding: 28px 0;
+}
+/* The sticky preview stops where the form box ends: end the box at the last field. */
+.launch-section:last-child {
+  padding-bottom: 0;
 }
 .launch-section h2 {
   display: flex;
   align-items: baseline;
   gap: 12px;
   font: var(--type-section);
-}
-.launch-step {
-  color: var(--text-3);
-  font-family: var(--font-code);
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}
-.launch-section-hint {
-  margin-top: -8px;
-  color: var(--text-3);
-  font-size: 14px;
 }
 .launch-field-row {
   display: grid;
@@ -107,24 +173,8 @@
 .launch-image-preview {
   width: 88px;
   height: 88px;
-  border-radius: var(--radius-media);
+  border-radius: var(--radius-avatar);
   object-fit: cover;
-}
-.launch-advanced {
-  color: var(--text-3);
-  font-size: 13px;
-}
-.launch-advanced summary {
-  width: fit-content;
-  color: var(--text-2);
-  font-weight: 500;
-  cursor: pointer;
-}
-.launch-advanced summary:hover {
-  color: var(--text);
-}
-.launch-advanced p {
-  margin-top: 8px;
 }
 .launch-main .transaction-confirmation h3 {
   font: var(--type-label);
@@ -145,7 +195,7 @@
   width: 56px;
   height: 56px;
   overflow: hidden;
-  border-radius: var(--radius-media);
+  border-radius: var(--radius-avatar);
   color: var(--text-3);
   background: var(--canvas);
   place-items: center;
@@ -264,7 +314,7 @@
   width: 72px;
   height: 72px;
   overflow: hidden;
-  border-radius: 18px;
+  border-radius: var(--radius-avatar);
 }
 .metadata-preview-image > * {
   width: 100%;

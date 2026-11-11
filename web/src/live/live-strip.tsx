@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ApiClient, resolveApiAssetUrl } from "@/api/client";
 import { SafeImage } from "@/components/primitives";
 import type { LiveEvent } from "@/api/types";
@@ -18,6 +18,75 @@ import {
 } from "./live-strip-model";
 
 const TICK_MS = 15_000;
+/** Marquee speed in px per second, the same however many items there are. */
+const SPEED_PX_PER_S = 40;
+
+/**
+ * Scrolls the rail left at a constant speed and loops on the width of the first copy. The offset
+ * is kept in pixels, so a new trade at the front never restarts the loop: after the list changes,
+ * the item that was at the left edge is found again and the offset follows it.
+ */
+function useMarquee(itemsKey: string) {
+  const railRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLUListElement>(null);
+  const offset = useRef(0);
+  const paused = useRef(false);
+  const anchor = useRef<{ key: string; left: number } | null>(null);
+
+  // The strip renders nothing until it has items, so the loop starts once the rail exists.
+  const mounted = itemsKey !== "";
+  useEffect(() => {
+    const rail = railRef.current;
+    const track = trackRef.current;
+    if (!mounted || !rail || !track) return;
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let frame = 0;
+    let last = 0;
+    const step = (time: number) => {
+      // A hidden tab pauses frames: never jump by the whole time it was away.
+      const delta = last ? Math.min(time - last, 100) : 0;
+      last = time;
+      const width = track.offsetWidth;
+      if (!motion.matches && width > 0) {
+        if (!paused.current) offset.current += (SPEED_PX_PER_S * delta) / 1000;
+        offset.current %= width;
+        rail.style.transform = `translate3d(${-offset.current}px, 0, 0)`;
+        // Remember the leftmost visible item so a list change can keep it in place.
+        const items = track.children;
+        for (let index = 0; index < items.length; index++) {
+          const item = items[index] as HTMLElement;
+          if (item.offsetLeft + item.offsetWidth > offset.current) {
+            anchor.current = { key: item.dataset.key ?? "", left: item.offsetLeft };
+            break;
+          }
+        }
+      } else {
+        rail.style.transform = "";
+      }
+      frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [mounted]);
+
+  useLayoutEffect(() => {
+    const track = trackRef.current;
+    const kept = anchor.current;
+    if (!track || !kept) return;
+    const item = [...track.children].find(
+      (child) => (child as HTMLElement).dataset.key === kept.key,
+    ) as HTMLElement | undefined;
+    if (item) offset.current += item.offsetLeft - kept.left;
+  }, [itemsKey]);
+
+  const pause = useCallback(() => {
+    paused.current = true;
+  }, []);
+  const resume = useCallback(() => {
+    paused.current = false;
+  }, []);
+  return { railRef, trackRef, pause, resume };
+}
 
 /** Live trade strip: recent trades, launches and graduations, newest first, max 50. */
 export function LiveStrip() {
@@ -87,19 +156,28 @@ export function LiveStrip() {
     () => state.items.map((item) => toStripItem(item, now, state.receivedAt)),
     [state, now],
   );
+  const { railRef, trackRef, pause, resume } = useMarquee(views.map((view) => view.key).join("|"));
+
   if (!ready || views.length === 0) return null;
 
-  // The rail scrolls the list and an identical, inert copy behind it, so translating the rail by
-  // half its width loops without a seam. Speed stays constant however many items there are.
-  const duration = `${Math.max(views.length, 4) * 5}s`;
+  // The rail holds the list and an identical, inert copy behind it, so scrolling by the width of
+  // the list loops without a seam.
   return (
-    <section className="live-strip" aria-label="Live activity">
+    <section
+      className="live-strip"
+      aria-label="Live activity"
+      onMouseEnter={pause}
+      onMouseLeave={resume}
+      onFocus={pause}
+      onBlur={resume}
+    >
       <div className="live-strip-viewport">
-        <div className="live-strip-rail" style={{ "--live-duration": duration } as CSSProperties}>
-          <ul className="live-strip-track">
+        <div className="live-strip-rail" ref={railRef}>
+          <ul className="live-strip-track" ref={trackRef}>
             {views.map((view) => (
               <li
                 key={view.key}
+                data-key={view.key}
                 className="live-strip-item"
                 data-pending={view.pending || undefined}
               >
@@ -138,28 +216,29 @@ function StripEntry({ view, baseUrl }: { view: StripItemView; baseUrl: string | 
           className="live-strip-image"
         />
       </span>
+      <span className="live-strip-ticker" title={view.name}>
+        {view.ticker}
+      </span>
       {view.badge ? (
         <span className="live-strip-badge" data-kind={view.kind}>
           {view.badge}
         </span>
-      ) : (
-        <span className="live-strip-arrow" data-side={view.side ?? undefined} aria-hidden="true">
-          {view.arrow ?? "·"}
-        </span>
-      )}
-      <span className="live-strip-ticker" title={view.name}>
-        {view.ticker}
-      </span>
+      ) : null}
       {view.side ? <span className="sr-only">{view.side}</span> : null}
-      {view.eth ? (
-        <span className="live-strip-eth mono">
-          {view.eth}
-          {view.wei ? <UsdLine wei={view.wei} /> : null}
+      {/* Direction and size read as one coloured value: green for a buy, red for a sell. */}
+      {view.arrow || view.eth ? (
+        <span className="live-strip-value mono" data-side={view.side ?? undefined}>
+          {view.arrow ? (
+            <span className="live-strip-arrow" aria-hidden="true">
+              {view.arrow}
+            </span>
+          ) : null}
+          {view.eth ? <span className="live-strip-eth">{view.eth}</span> : null}
+          {view.eth && view.wei ? <UsdLine wei={view.wei} /> : null}
         </span>
       ) : null}
     </>
   );
-  // The token link and the trader link are siblings: anchors cannot nest.
   return (
     <span className="live-strip-link">
       {view.href ? (
@@ -169,17 +248,6 @@ function StripEntry({ view, baseUrl }: { view: StripItemView; baseUrl: string | 
       ) : (
         <span className="live-strip-part">{body}</span>
       )}
-      {view.traderHref ? (
-        <Link
-          className="live-strip-trader live-strip-trader-link mono"
-          href={view.traderHref as never}
-        >
-          {view.trader}
-        </Link>
-      ) : (
-        <span className="live-strip-trader mono">{view.trader}</span>
-      )}
-      <span className="live-strip-time mono">{view.time}</span>
       {view.pending ? <span className="sr-only">Updating</span> : null}
     </span>
   );

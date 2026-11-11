@@ -106,11 +106,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
-  border-radius: var(--radius-input);
-  color: var(--warning);
-  background: color-mix(in srgb, var(--warning) 10%, transparent);
-  padding: 10px 14px;
+  color: var(--text-2);
   font-size: 13.5px;
   line-height: 1.45;
 }

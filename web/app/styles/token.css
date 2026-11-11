@@ -21,7 +21,7 @@
   width: 72px;
   height: 72px;
   flex: none;
-  border-radius: var(--radius-media);
+  border-radius: var(--radius-avatar);
   object-fit: cover;
 }
 .token-detail-image .ui-image-fallback-letter,
@@ -152,10 +152,7 @@
 .token-trust-notice {
   justify-self: center;
   max-width: var(--measure-text);
-  border-radius: var(--radius-input);
-  color: var(--warning);
-  background: var(--fill);
-  padding: 12px 16px;
+  color: var(--text-2);
   font-size: 14px;
   text-align: center;
 }
@@ -482,6 +479,11 @@
   }
   .token-page[data-trade-bar] {
     padding-bottom: calc(96px + 72px + env(safe-area-inset-bottom));
+  }
+  /* Scrolling a control into view (focus, find, scrollIntoView) stops above the fixed trade bar
+     instead of leaving it underneath. */
+  html:has(.token-page[data-trade-bar]) {
+    scroll-padding-bottom: calc(72px + 16px + env(safe-area-inset-bottom));
   }
   /* One column: the inline trade card follows the chart directly. */
   .token-layout {

@@ -1,6 +1,10 @@
-/* Home: centred hero, featured band (8 + 4 columns), centred sections of hairline rows. */
+/* Home: centred hero, then card sections. */
 .home {
   gap: var(--section-gap);
+}
+/* The live strip sits right under the nav; the hero keeps its own top padding below it. */
+.home > .live-strip:first-child + .home-hero {
+  margin-top: calc(-1 * var(--section-gap));
 }
 .home-hero {
   display: grid;
@@ -26,75 +30,127 @@
   margin-top: 8px;
 }
 
-.home-featured-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 8fr) minmax(0, 4fr);
-  gap: 24px;
-}
-.home-featured-main .king-card {
-  height: 100%;
-  border-top: 0;
-  border-radius: var(--radius-container);
-  background: var(--fill);
-  padding: clamp(24px, 4vw, 40px);
-}
-.home-featured-main .king-card .token-image {
-  width: 72px;
-  height: 72px;
-}
-.home-featured-main .king-card h3 {
-  font-size: 28px;
-  line-height: 36px;
-  letter-spacing: var(--tracking-page);
-}
-.home-featured-side {
-  display: grid;
-  align-content: start;
-  list-style: none;
-  border-top: 1px solid var(--hairline);
-}
-.home-featured-item {
-  position: relative;
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  border-bottom: 1px solid var(--hairline);
-  padding: 14px 0;
-}
-.home-featured-item .token-identity h3 a::after {
-  position: absolute;
-  inset: 0;
-  content: "";
-}
-.home-featured-item:hover h3 a {
-  color: var(--text-2);
-}
-
 .home-posts {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 0;
   list-style: none;
-  border-top: 1px solid var(--hairline);
 }
 .home-post {
+  position: relative;
   display: grid;
-  gap: 4px;
-  border-bottom: 1px solid var(--hairline);
-  padding: 16px 0;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+  border-radius: var(--radius-container);
+  background: var(--fill);
+  padding: 20px;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.home-post:hover {
+  background: var(--fill-hover);
+}
+.home-post-head {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+.home-post-head .token-image {
+  width: 36px;
+  height: 36px;
 }
 .home-post-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
+  display: grid;
+  min-width: 0;
   color: var(--text-3);
   font-size: 13px;
-  line-height: 20px;
+  line-height: 18px;
 }
-.home-post-meta a {
+.home-post-meta > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-post-community {
   color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
 }
 .home-post-body {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
   overflow-wrap: anywhere;
+}
+.home-post-open {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.home-post-open:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+/* From the forum: a field where posts fog in at random spots and fog out (forum-field.tsx). */
+.forum-field {
+  position: relative;
+  height: 624px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+}
+.forum-bubble {
+  position: absolute;
+  overflow: hidden;
+  align-content: start;
+  animation-name: forum-fog;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+.forum-bubble .home-post-body {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+/* Holding a card (pointer or keyboard) keeps it from fading out mid-read. */
+.forum-bubble:hover,
+.forum-bubble:focus-within {
+  animation-play-state: paused;
+}
+/* Drift stays under the 12 px gap between cards, so neighbours never touch while they move. */
+@keyframes forum-fog {
+  0% {
+    opacity: 0;
+    filter: blur(18px);
+    transform: translateY(6px);
+    animation-timing-function: var(--ease-out);
+  }
+  15% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+  85% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(-3px);
+    animation-timing-function: var(--ease-in-out);
+  }
+  100% {
+    opacity: 0;
+    filter: blur(18px);
+    transform: translateY(-6px);
+  }
+}
+@media (max-width: 639px) {
+  .forum-field {
+    height: 760px;
+  }
 }
 .home-skeleton {
   display: grid;
@@ -106,7 +162,7 @@
 }
 
 @media (max-width: 1023px) {
-  .home-featured-grid {
+  .home-posts {
     grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -30,15 +30,16 @@ async function installRpc(page: Page) {
   );
 }
 
-test("the launch form is one centred column of at most 640 px", async ({ page }, testInfo) => {
+test("the launch form sits left of the token preview on a laptop", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "small-laptop", "One viewport is enough.");
   await installRpc(page);
   await page.goto("/create");
-  const form = page.getByRole("region", { name: "Launch token" });
   await expect(page.getByRole("textbox", { name: "Name" })).toBeVisible();
-  const box = (await form.boundingBox())!;
-  expect(box.width).toBeLessThanOrEqual(640);
-  expect(Math.abs(box.x + box.width / 2 - 640)).toBeLessThanOrEqual(2);
+  const form = (await page.locator(".launch-main > .transaction-form").boundingBox())!;
+  const preview = (await page.getByRole("complementary", { name: "Token preview" }).boundingBox())!;
+  // 60/40: the form column is wider and ends before the preview column starts.
+  expect(form.x + form.width).toBeLessThanOrEqual(preview.x);
+  expect(form.width).toBeGreaterThan(preview.width);
   await page.screenshot({
     path: "../.impeccable/review/rebuild-create-wide.png",
     fullPage: true,
@@ -46,16 +47,17 @@ test("the launch form is one centred column of at most 640 px", async ({ page },
   });
 });
 
-test("the four numbered sections appear in order", async ({ page }) => {
+test("the four sections appear in order", async ({ page }) => {
   await installRpc(page);
   await page.goto("/create");
   const form = page.getByRole("region", { name: "Launch token" });
   await expect(page.getByRole("textbox", { name: "Name" })).toBeVisible();
   await expect(form.getByRole("heading", { level: 2 })).toHaveText([
-    "01 Image",
-    "02 Name and symbol",
-    "03 Description and links",
-    "04 Initial buy",
+    "Image",
+    "Name and symbol",
+    // The Links heading also carries its info tip's text.
+    /^Links/,
+    "Initial buy",
   ]);
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth))

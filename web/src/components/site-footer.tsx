@@ -5,16 +5,11 @@ import {
   ArrowUpRight,
   CaretDown,
   DiscordLogo,
-  FacebookLogo,
   GithubLogo,
   InstagramLogo,
-  LinkedinLogo,
-  MediumLogo,
   RedditLogo,
   TelegramLogo,
-  ThreadsLogo,
   TiktokLogo,
-  TwitchLogo,
   XLogo,
   YoutubeLogo,
   type Icon,
@@ -33,11 +28,6 @@ const SOCIAL: ReadonlyArray<{ label: string; icon: Icon }> = [
   { label: "Instagram", icon: InstagramLogo },
   { label: "TikTok", icon: TiktokLogo },
   { label: "Reddit", icon: RedditLogo },
-  { label: "LinkedIn", icon: LinkedinLogo },
-  { label: "Facebook", icon: FacebookLogo },
-  { label: "Threads", icon: ThreadsLogo },
-  { label: "Twitch", icon: TwitchLogo },
-  { label: "Medium", icon: MediumLogo },
 ];
 
 /**
@@ -85,6 +75,16 @@ export function SiteFooter() {
               <span className="ui-disabled-link">Explorer unavailable</span>
             )}
           </FooterSection>
+          <FooterSection label="Learn">
+            <Link href={"/docs#overview" as never}>How it works</Link>
+            <Link href={"/docs#curve" as never}>The bonding curve</Link>
+            <Link href={"/docs#graduation" as never}>Graduation</Link>
+          </FooterSection>
+          <FooterSection label="Protocol">
+            <Link href={"/docs#economics" as never}>Fees and economics</Link>
+            <Link href={"/docs#token" as never}>Token rules</Link>
+            <Link href={"/docs#governance" as never}>Pauses and governance</Link>
+          </FooterSection>
           <FooterSection label="Account">
             <Link href="/profile">Profile</Link>
             <Link href={"/explore?view=watchlist" as never}>Watchlist</Link>
@@ -108,26 +108,24 @@ export function SiteFooter() {
               Explore launches <ArrowUpRight size={12} aria-hidden="true" />
             </Link>
           </div>
-          <div className="footer-aside-block">
-            <h2>Follow</h2>
-            <ul className="footer-social" aria-label="Social media">
-              {SOCIAL.map(({ label, icon: SocialIcon }) => (
-                <li key={label}>
-                  <span role="img" aria-label={`${label} (coming soon)`} title={label}>
-                    <SocialIcon size={18} aria-hidden="true" />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
         </aside>
+        {/* Wide layout: in the brand's column, its last line level with the last section's rule. */}
+        <div className="footer-aside-block footer-follow">
+          <h2>Follow</h2>
+          <ul className="footer-social" aria-label="Social media">
+            {SOCIAL.map(({ label, icon: SocialIcon }) => (
+              <li key={label}>
+                <span role="img" aria-label={`${label} (coming soon)`} title={label}>
+                  <SocialIcon size={18} aria-hidden="true" />
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
       <div className="footer-bottom">
         <p className="footer-meta">
-          © 2026 Launchpad <CoinGeckoAttribution />
-        </p>
-        <p className="footer-risk">
-          On-chain transactions may be irreversible. Tokens can be volatile or lose all value.
+          <strong>© 2026 Launchpad</strong> <CoinGeckoAttribution />
         </p>
       </div>
     </footer>

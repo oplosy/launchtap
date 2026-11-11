@@ -34,25 +34,43 @@ export function Button({
 export function Input({
   label,
   hint,
+  info,
   error,
   className = "",
   id: suppliedId,
   ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string; error?: string }) {
+}: React.InputHTMLAttributes<HTMLInputElement> & {
+  label: string;
+  hint?: string;
+  /** Short explanation behind a "?" at the input's right edge, instead of text under it. */
+  info?: string;
+  error?: string;
+}) {
   const generatedId = useId();
   const id = suppliedId ?? generatedId;
   const hintId = hint ? `${id}-hint` : undefined;
+  const infoId = info ? `${id}-info` : undefined;
   const errorId = error ? `${id}-error` : undefined;
+  const input = (
+    <input
+      id={id}
+      className={`ui-input ${info ? "ui-input-with-info" : ""} ${error ? "ui-input-error" : ""} ${className}`}
+      aria-invalid={error ? "true" : undefined}
+      aria-describedby={[hintId, infoId, errorId].filter(Boolean).join(" ") || undefined}
+      {...props}
+    />
+  );
   return (
     <div className="ui-field">
       <label htmlFor={id}>{label}</label>
-      <input
-        id={id}
-        className={`ui-input ${error ? "ui-input-error" : ""} ${className}`}
-        aria-invalid={error ? "true" : undefined}
-        aria-describedby={[hintId, errorId].filter(Boolean).join(" ") || undefined}
-        {...props}
-      />
+      {info && infoId ? (
+        <div className="ui-input-wrap">
+          {input}
+          <InfoTip id={infoId} label={label} text={info} />
+        </div>
+      ) : (
+        input
+      )}
       {hint ? (
         <p id={hintId} className="ui-field-hint">
           {hint}
@@ -64,6 +82,42 @@ export function Input({
         </p>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * A "?" that reveals a one-line explanation on hover or keyboard focus. The text is always in the
+ * DOM (visually hidden until shown) so `id` can serve as an aria-describedby target. `align` picks
+ * the edge the tooltip lines up with: "end" (default) opens leftward for a "?" at the right of a
+ * field, "start" opens rightward for one near the left edge of the page, such as beside a heading.
+ */
+export function InfoTip({
+  id,
+  label,
+  text,
+  align = "end",
+}: {
+  id?: string;
+  label: string;
+  text: string;
+  align?: "start" | "end";
+}) {
+  const generatedId = useId();
+  const tipId = id ?? generatedId;
+  return (
+    <span className="ui-info" data-align={align}>
+      <button
+        type="button"
+        className="ui-info-button"
+        aria-label={`About ${label}`}
+        aria-describedby={tipId}
+      >
+        ?
+      </button>
+      <span id={tipId} role="tooltip" className="ui-info-tip">
+        {text}
+      </span>
+    </span>
   );
 }
 

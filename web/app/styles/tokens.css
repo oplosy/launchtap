@@ -23,13 +23,15 @@
 
   --radius-pill: 9999px;
   --radius-media: 4px;
+  /* Token and profile images are circles everywhere. */
+  --radius-avatar: 50%;
   --radius-input: 12px;
   --radius-container: 20px;
-  --measure-page: 1680px;
+  --measure-page: 1760px;
   --measure-text: 720px;
   --measure-form: 640px;
-  --gutter: clamp(16px, 4vw, 40px);
-  --nav-height: 64px;
+  --gutter: clamp(16px, 5vw, 80px);
+  --nav-height: 62px;
   --section-gap: clamp(96px, 12vw, 160px);
 
   --type-body: 400 17px/28px var(--font-ui);

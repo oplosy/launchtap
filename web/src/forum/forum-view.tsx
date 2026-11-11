@@ -1,19 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import {
   ApiClient,
+  resolveApiAssetUrl,
   type ForumCommunity,
   type ForumPost,
   type TokenListResponse,
 } from "@/api/client";
 import { authorLabel } from "@/comments/comment-model";
-import { Badge, Button, EmptyState, ErrorState, Skeleton } from "@/components/primitives";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  ErrorState,
+  SafeImage,
+  Skeleton,
+} from "@/components/primitives";
 import { SlidingIndicator } from "@/components/sliding-indicator";
 import { publicConfiguration } from "@/config/public";
 import { displayAmount } from "@/discovery/token-card";
-import { shortAddress } from "@/token/address";
+import { relativeTime } from "@/live/live-strip-model";
+import { addressHue } from "@/token/address";
 import {
   appendForumPage,
   BIGGEST_LAUNCHES,
@@ -33,6 +42,18 @@ function apiClient(): ApiClient | null {
     : null;
 }
 
+/** The token's artwork, served by the API per address; a lettered tile when it is missing. */
+function TokenArt({ address, symbol }: { address: string; symbol: string }) {
+  const configuration = publicConfiguration();
+  const apiBaseUrl = configuration.status === "ready" ? configuration.apiBaseUrl : null;
+  const src = resolveApiAssetUrl(apiBaseUrl, `/v1/tokens/${encodeURIComponent(address)}/image`);
+  return (
+    <span className="forum-art" style={{ "--hue": addressHue(address) } as CSSProperties}>
+      <SafeImage src={src} alt={`${symbol.trim() || "Token"} artwork`} fallbackLabel="No artwork" />
+    </span>
+  );
+}
+
 function formatTime(iso: string) {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
@@ -50,12 +71,12 @@ function Loading({ label }: { label: string }) {
 
 export function ForumTabs({ active }: { active: ForumTab }) {
   return (
-    <nav className="explore-tabs forum-tabs" aria-label="Forum view">
+    <nav className="ui-segment forum-tabs" aria-label="Forum view">
       {FORUM_TABS.map((tab) => (
         <Link
           key={tab}
           href={forumTabHref(tab) as never}
-          className="explore-tab"
+          className="forum-tab"
           aria-current={tab === active ? "page" : undefined}
         >
           {FORUM_TAB_LABELS[tab]}
@@ -78,31 +99,35 @@ function CommunityLink({ token, symbol }: { token: string; symbol: string }) {
   );
 }
 
-function PostCard({ post }: { post: ForumPost }) {
+function PostCard({ post, now }: { post: ForumPost; now: number }) {
   const author = authorLabel(post.author);
   const href = tokenHref(post.token);
   return (
     <li className="forum-post">
-      <div className="forum-post-meta">
-        <CommunityLink token={post.token} symbol={post.symbol} />
-        {author.walletHref ? (
-          <Link href={author.walletHref as never} title={post.author.wallet ?? undefined}>
-            {author.primary}
-          </Link>
-        ) : (
-          <span>{author.primary}</span>
-        )}
-        {post.author.username && post.author.wallet ? (
-          <span className="forum-post-wallet mono">{shortAddress(post.author.wallet)}</span>
-        ) : null}
-        {post.author.role === "creator" ? <Badge tone="accent">Creator</Badge> : null}
-        <time dateTime={post.created_at}>{formatTime(post.created_at)}</time>
+      <TokenArt address={post.token} symbol={post.symbol} />
+      <div className="forum-post-content">
+        <div className="forum-post-meta">
+          <CommunityLink token={post.token} symbol={post.symbol} />
+          <span aria-hidden="true">·</span>
+          {author.walletHref ? (
+            <Link href={author.walletHref as never} title={post.author.wallet ?? undefined}>
+              {author.primary}
+            </Link>
+          ) : (
+            <span title={post.author.wallet ?? undefined}>{author.primary}</span>
+          )}
+          {post.author.role === "creator" ? <Badge tone="accent">Creator</Badge> : null}
+          <span aria-hidden="true">·</span>
+          <time dateTime={post.created_at} title={formatTime(post.created_at)}>
+            {relativeTime(post.created_at, now)}
+          </time>
+        </div>
+        <p className="forum-post-body">{post.body}</p>
       </div>
-      <p className="forum-post-body">{post.body}</p>
       {href ? (
-        // Stretched over the row: the whole post is one target that opens the token.
+        // Stretched over the card: the whole post is one target that opens the token.
         <Link className="forum-post-open" href={href as never}>
-          Trade {post.symbol.trim() || "token"}
+          <span className="sr-only">Trade {post.symbol.trim() || "token"}</span>
         </Link>
       ) : null}
     </li>
@@ -121,6 +146,8 @@ type FeedState =
 function ForumFeed() {
   const [state, setState] = useState<FeedState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  // Read once per mount; relative ages do not need to tick.
+  const [now] = useState(Date.now);
 
   useEffect(() => {
     const client = apiClient();
@@ -196,7 +223,7 @@ function ForumFeed() {
     <div className="forum-feed">
       <ul className="forum-post-list">
         {state.items.map((post) => (
-          <PostCard key={post.id} post={post} />
+          <PostCard key={post.id} post={post} now={now} />
         ))}
       </ul>
       {state.more === "error" ? (
@@ -330,18 +357,30 @@ export function BiggestLaunches() {
           {items.map((token, index) => {
             const href = tokenHref(token.address);
             return (
-              <li key={token.address}>
+              <li key={token.address} className="forum-launch">
                 <span className="forum-rank mono">{index + 1}</span>
+                <TokenArt address={token.address} symbol={token.symbol} />
+                <div className="forum-launch-main">
+                  {href ? (
+                    <Link href={href as never} className="forum-community">
+                      {communityLabel(token.symbol)}
+                    </Link>
+                  ) : (
+                    <span className="forum-community">{communityLabel(token.symbol)}</span>
+                  )}
+                  <span className="forum-launch-cap mono">
+                    {displayAmount(token.market_cap_eth)} ETH
+                  </span>
+                </div>
                 {href ? (
-                  <Link href={href as never} className="forum-community">
-                    {communityLabel(token.symbol)}
+                  <Link
+                    className="ui-button ui-button-secondary ui-button-sm"
+                    href={href as never}
+                    aria-label={`Trade ${token.symbol.trim() || "token"}`}
+                  >
+                    Trade
                   </Link>
-                ) : (
-                  <span className="forum-community">{communityLabel(token.symbol)}</span>
-                )}
-                <span className="forum-launch-cap mono">
-                  {displayAmount(token.market_cap_eth)} ETH
-                </span>
+                ) : null}
               </li>
             );
           })}

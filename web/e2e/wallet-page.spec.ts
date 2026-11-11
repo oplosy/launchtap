@@ -317,20 +317,6 @@ test("a trade for another wallet does not refetch", async ({ page }) => {
   expect(state.calls[`/wallets/${WALLET}`]).toBe(1);
 });
 
-test("a strip trader link opens that wallet page", async ({ page }) => {
-  const state: State = { attributionComplete: true, calls: {} };
-  await installApi(page, state);
-  await page.goto("/");
-  const strip = page.getByRole("region", { name: "Live activity" });
-  const link = strip.locator(`a[href="/wallet/${WALLET}"]`).first();
-  await expect(link).toBeVisible();
-  // The strip scrolls until a pointer or focus lands in it; focus pauses it like a hover does.
-  await link.focus();
-  await link.click();
-  await expect(page).toHaveURL(new RegExp(`/wallet/${WALLET}$`));
-  await expect(page.getByRole("region", { name: "Wallet totals" })).toBeVisible();
-});
-
 test("an invalid wallet address renders the not-found page", async ({ page }) => {
   const state: State = { attributionComplete: true, calls: {} };
   await installApi(page, state);

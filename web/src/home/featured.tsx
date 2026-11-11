@@ -1,30 +1,18 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState, type CSSProperties } from "react";
-import {
-  ApiClient,
-  resolveApiAssetUrl,
-  type ForumPost,
-  type TokenListResponse,
-} from "@/api/client";
-import { authorLabel } from "@/comments/comment-model";
+import { useEffect, useState } from "react";
+import { ApiClient, type TokenListResponse } from "@/api/client";
 import { Section } from "@/components/layout";
-import { Button, EmptyState, ErrorState, SafeImage, Skeleton } from "@/components/primitives";
+import { Button, EmptyState, ErrorState, Skeleton } from "@/components/primitives";
 import { Reveal } from "@/components/reveal";
 import { publicConfiguration } from "@/config/public";
-import {
-  KingOfTheHill,
-  TrendingList,
-  useHighlights,
-  type TrendingItem,
-} from "@/discovery/highlights";
-import { TokenCard, tokenLabel } from "@/discovery/token-card";
-import { communityLabel, tokenHref } from "@/forum/forum-model";
-import { relativeTime } from "@/live/live-strip-model";
-import { addressHue } from "@/token/address";
+import { TrendingList, useHighlights } from "@/discovery/highlights";
+import { TokenCard } from "@/discovery/token-card";
+import { ForumField } from "./forum-field";
+import { FIELD_POOL } from "./forum-field-model";
 
-const SECTION_SIZE = 5;
+/** Trending and Just graduated: three rows of five artwork cards. */
+const CARD_SECTION_SIZE = 15;
 
 type Load<T> = { status: "loading" } | { status: "error" } | { status: "ready"; data: T };
 
@@ -66,7 +54,7 @@ function ListSkeleton() {
   );
 }
 
-/** Featured band, Trending, Just graduated and From the forum, read from the public API. */
+/** Trending, Just graduated and From the forum, read from the public API. */
 export function HomeFeed() {
   const configuration = publicConfiguration();
   const apiBaseUrl =
@@ -76,7 +64,7 @@ export function HomeFeed() {
     apiBaseUrl
       ? (signal) =>
           new ApiClient({ baseUrl: apiBaseUrl }).getTokens(
-            { phase: "graduated", sort: "newest", limit: SECTION_SIZE },
+            { phase: "graduated", sort: "newest", limit: CARD_SECTION_SIZE },
             signal,
           )
       : null,
@@ -84,7 +72,7 @@ export function HomeFeed() {
   const forum = useRead(
     apiBaseUrl
       ? (signal) =>
-          new ApiClient({ baseUrl: apiBaseUrl }).getForumPosts({ limit: SECTION_SIZE }, signal)
+          new ApiClient({ baseUrl: apiBaseUrl }).getForumPosts({ limit: FIELD_POOL }, signal)
       : null,
   );
 
@@ -102,36 +90,6 @@ export function HomeFeed() {
   return (
     <>
       <Reveal>
-        <section className="home-featured" aria-label="Featured">
-          {highlights.failed ? (
-            <ErrorState
-              title="Highlights unavailable"
-              description="The leading launch could not be loaded."
-              action={<Button onClick={highlights.retry}>Retry</Button>}
-            />
-          ) : highlights.loading || !highlights.data ? (
-            <ListSkeleton />
-          ) : highlights.data.king_of_the_hill ? (
-            <div className="home-featured-grid">
-              <div className="home-featured-main">
-                <KingOfTheHill king={highlights.data.king_of_the_hill} apiBaseUrl={apiBaseUrl} />
-              </div>
-              <ul className="home-featured-side" aria-label="Also moving">
-                {trending.slice(0, 3).map((item) => (
-                  <FeaturedItem key={item.address} item={item} apiBaseUrl={apiBaseUrl} />
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <EmptyState
-              title="No launch is leading yet"
-              description="The launch closest to graduation is featured here."
-            />
-          )}
-        </section>
-      </Reveal>
-
-      <Reveal>
         <Section id="home-trending" title="Trending" viewAllHref="/explore?view=trending">
           {highlights.failed ? (
             <ErrorState
@@ -142,7 +100,12 @@ export function HomeFeed() {
           ) : highlights.loading || !highlights.data ? (
             <ListSkeleton />
           ) : (
-            <TrendingList items={trending.slice(0, SECTION_SIZE)} apiBaseUrl={apiBaseUrl} />
+            <TrendingList
+              items={trending.slice(0, CARD_SECTION_SIZE)}
+              apiBaseUrl={apiBaseUrl}
+              layout="grid"
+              className="home-card-grid"
+            />
           )}
         </Section>
       </Reveal>
@@ -163,7 +126,7 @@ export function HomeFeed() {
               description="Tokens that complete their curve and move to Uniswap appear here."
             />
           ) : (
-            <div className="token-list" data-layout="list">
+            <div className="token-list home-card-grid" data-layout="grid">
               {(graduated.state.data.items ?? []).map((token) => (
                 <TokenCard key={token.address} token={token} apiBaseUrl={apiBaseUrl} />
               ))}
@@ -188,59 +151,10 @@ export function HomeFeed() {
               description="Posts from holders and creators appear here."
             />
           ) : (
-            <ul className="home-posts">
-              {(forum.state.data.items ?? []).map((post) => (
-                <ForumRow key={post.id} post={post} />
-              ))}
-            </ul>
+            <ForumField initial={forum.state.data.items ?? []} apiBaseUrl={apiBaseUrl} />
           )}
         </Section>
       </Reveal>
     </>
-  );
-}
-
-function FeaturedItem({ item, apiBaseUrl }: { item: TrendingItem; apiBaseUrl: string }) {
-  const label = tokenLabel(item);
-  return (
-    <li
-      className="home-featured-item"
-      style={{ "--hue": addressHue(item.address) } as CSSProperties}
-    >
-      <SafeImage
-        src={resolveApiAssetUrl(apiBaseUrl, `/v1/tokens/${encodeURIComponent(item.address)}/image`)}
-        alt={`${label} token`}
-        fallbackLabel="No artwork"
-        className="token-image"
-      />
-      <div className="token-identity">
-        <h3>
-          <Link href={`/token/${item.address}` as never}>{label}</Link>
-        </h3>
-        <p className="token-symbol">
-          <span>{item.symbol || "—"}</span>
-        </p>
-      </div>
-    </li>
-  );
-}
-
-function ForumRow({ post }: { post: ForumPost }) {
-  const href = tokenHref(post.token);
-  const author = authorLabel(post.author);
-  const [now] = useState(Date.now);
-  return (
-    <li className="home-post">
-      <p className="home-post-meta">
-        {href ? (
-          <Link href={href as never}>{communityLabel(post.symbol)}</Link>
-        ) : (
-          <span>{communityLabel(post.symbol)}</span>
-        )}
-        <span>{author.primary}</span>
-        <time dateTime={post.created_at}>{relativeTime(post.created_at, now)}</time>
-      </p>
-      <p className="home-post-body">{post.body}</p>
-    </li>
   );
 }

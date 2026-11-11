@@ -56,7 +56,10 @@ export function SlidingIndicator() {
       if (child !== indicator) layout.observe(child);
     }
     return () => {
+      // A cancelled frame never sets data-ready, so a re-run (React Strict Mode mounts effects
+      // twice) must start from unplaced to schedule it again.
       cancelAnimationFrame(frame);
+      indicator.removeAttribute("data-placed");
       selection.disconnect();
       layout.disconnect();
     };

@@ -46,7 +46,7 @@
 }
 .navbar-brand {
   justify-self: start;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.03em;
 }
@@ -61,6 +61,7 @@
   color: var(--text-2);
   padding: 0 12px;
   font: var(--type-label);
+  font-size: 14px;
   line-height: 36px;
   transition: color var(--dur-fast) var(--ease-out);
 }
@@ -75,6 +76,15 @@
   align-items: center;
   gap: 8px;
 }
+.navbar-actions .ui-icon-button {
+  width: 36px;
+  height: 36px;
+}
+.navbar-actions .ui-button {
+  height: 36px;
+  padding: 0 18px;
+  font-size: 14px;
+}
 .navbar-menu-button {
   display: none;
 }
@@ -88,11 +98,12 @@
   opacity: 0;
   pointer-events: none;
   backdrop-filter: blur(12px);
-  transition: opacity var(--dur-base) var(--ease-out);
+  transition: opacity 160ms var(--ease-in-out);
 }
 .mega-backdrop[data-open="true"] {
   opacity: 1;
   pointer-events: auto;
+  transition: opacity var(--dur-base) var(--ease-out);
 }
 .mega-menu {
   position: absolute;
@@ -102,22 +113,25 @@
   z-index: 1;
   border-bottom: 1px solid var(--hairline);
   background: var(--canvas);
-  opacity: 0;
   visibility: hidden;
-  transform: translateY(-4px);
+  /* Rolls down from the nav and rolls back up into it: the clip edge is the visible motion. */
+  clip-path: inset(0 0 100% 0);
   transition:
-    opacity var(--dur-base) var(--ease-out),
-    transform var(--dur-base) var(--ease-out),
-    visibility 0s linear var(--dur-base);
+    clip-path 160ms var(--ease-in-out),
+    visibility 0s linear 160ms;
 }
 .mega-menu[data-open="true"] {
-  opacity: 1;
   visibility: visible;
-  transform: none;
+  clip-path: inset(0 0 -1px 0);
   transition:
-    opacity var(--dur-base) var(--ease-out),
-    transform var(--dur-base) var(--ease-out),
+    clip-path var(--dur-base) var(--ease-out),
     visibility 0s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mega-menu,
+  .mega-menu[data-open="true"] {
+    transition: none;
+  }
 }
 .mega-menu-inner {
   display: flex;
@@ -125,7 +139,7 @@
   gap: clamp(48px, 10vw, 160px);
   max-width: calc(var(--measure-page) + 2 * var(--gutter));
   margin: 0 auto;
-  padding: 40px var(--gutter) 56px;
+  padding: 8px var(--gutter) 20px;
 }
 .mega-menu-group ul {
   display: grid;
@@ -138,20 +152,14 @@
   font: var(--type-label);
 }
 .mega-menu-link {
-  display: grid;
-  gap: 2px;
-  font-size: 28px;
+  display: inline-block;
+  font-size: 22px;
   font-weight: 500;
-  line-height: 36px;
+  line-height: 30px;
   letter-spacing: var(--tracking-page);
   transition: color var(--dur-fast) var(--ease-out);
 }
-.mega-menu-summary {
-  color: var(--text-2);
-  font: var(--type-label);
-  letter-spacing: var(--tracking-body);
-}
-.mega-menu-link:hover > span:first-child,
+.mega-menu-link:hover,
 .mega-menu-resource:hover,
 .mega-menu-all:hover {
   color: var(--text-2);
@@ -205,9 +213,16 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 2.4fr) minmax(0, 1fr);
   align-items: start;
-  gap: 64px;
+  gap: 32px 64px;
+}
+.footer-follow {
+  grid-area: 1 / 1;
+  align-self: end;
+  font-size: 14px;
+  line-height: 20px;
 }
 .footer-brand {
+  grid-area: 1 / 1;
   justify-self: start;
   padding-top: 12px;
   color: var(--text);
@@ -221,7 +236,12 @@
 .footer-sections {
   border-top: 1px solid var(--hairline-strong);
 }
+/*
+ * One symmetric curve for both directions: the old ease-out spent most of its motion in the
+ * first frames, so closing read as a snap even at the same duration as opening.
+ */
 .footer-section {
+  --footer-accordion: 420ms;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
   border-bottom: 1px solid var(--hairline-strong);
@@ -270,7 +290,7 @@
   flex: none;
   margin-right: 4px;
   color: var(--text-3);
-  transition: rotate var(--dur-base) var(--ease-out);
+  transition: rotate var(--footer-accordion) var(--ease-in-out);
 }
 .footer-section[open] > summary svg {
   rotate: 180deg;
@@ -278,13 +298,18 @@
 .footer-section::details-content {
   grid-row: 1;
   grid-column: 2;
-  block-size: 0;
+  /*
+   * Closed at the summary's own height, not 0: the links share the summary's row, so from 0 the
+   * row would only start growing a third of the way through opening and stop moving a third of
+   * the way before closing ends — the two directions would feel unequal.
+   */
+  block-size: 52px;
   overflow: clip;
   opacity: 0;
   transition:
-    block-size var(--dur-base) var(--ease-out),
-    opacity var(--dur-base) var(--ease-out),
-    content-visibility var(--dur-base) allow-discrete;
+    block-size var(--footer-accordion) var(--ease-in-out),
+    opacity var(--footer-accordion) var(--ease-in-out),
+    content-visibility var(--footer-accordion) allow-discrete;
 }
 .footer-section[open]::details-content {
   block-size: auto;
@@ -316,8 +341,13 @@
 }
 
 /* Right column: a short statement, start links, and the social accounts. */
+/* Stretched to the row: the first block sits at the top, the last one level with the sections'
+   bottom rule (and the Follow block on the left). */
 .footer-aside {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-self: stretch;
   justify-self: end;
   gap: 32px;
   padding-top: 8px;
@@ -329,7 +359,8 @@
   justify-items: start;
   gap: 6px;
 }
-.footer-aside h2 {
+.footer-aside h2,
+.footer-follow h2 {
   margin-bottom: 2px;
   color: var(--text);
   font: var(--type-label);
@@ -389,6 +420,10 @@
   .footer-social {
     max-width: none;
   }
+  .footer-brand,
+  .footer-follow {
+    grid-area: auto;
+  }
   .app-footer .footer-bottom {
     margin-top: 40px;
   }
@@ -401,6 +436,7 @@
   .footer-section::details-content {
     grid-row: 2;
     grid-column: 1;
+    block-size: 0;
   }
   .footer-section-links {
     padding-left: 16px;
@@ -421,6 +457,10 @@
   font-size: 13px;
   line-height: 20px;
   text-align: center;
+}
+.footer-meta strong {
+  color: var(--text);
+  font-weight: 600;
 }
 .footer-meta {
   display: flex;
@@ -582,5 +622,55 @@
   }
   .command-foot {
     display: none;
+  }
+}
+
+/* Back to top: appears bottom-right once the page is scrolled past one screen. */
+.back-to-top {
+  position: fixed;
+  right: var(--gutter);
+  bottom: 24px;
+  z-index: 40;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 50%;
+  color: var(--text);
+  background: var(--canvas);
+  place-items: center;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px);
+  transition:
+    opacity var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out),
+    border-color var(--dur-fast) linear,
+    visibility 0s linear var(--dur-base);
+}
+.back-to-top[data-shown="true"] {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out),
+    border-color var(--dur-fast) linear,
+    visibility 0s;
+}
+.back-to-top:hover {
+  border-color: var(--text-2);
+}
+/* On phones the token page has a fixed Buy/Sell bar at the bottom: sit above it. */
+@media (max-width: 1023px) {
+  body:has(.token-trade-bar) .back-to-top {
+    bottom: calc(92px + env(safe-area-inset-bottom));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .back-to-top,
+  .back-to-top[data-shown="true"] {
+    transition: none;
   }
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { formatBaseUnits, parseDecimal } from "@/amounts";
@@ -45,6 +46,7 @@ import {
   Badge,
   Button,
   ErrorState,
+  InfoTip,
   Input,
   SafeImage,
   UnavailableState,
@@ -52,6 +54,24 @@ import {
 import { SlidingIndicator } from "@/components/sliding-indicator";
 
 const DEFAULT_TTL = 900n;
+
+/**
+ * Reasons the launch (or its developer buy) cannot go through right now, read from the factory.
+ * Empty until the factory has been read: a failed read already shows its own error.
+ */
+function launchBlockers(
+  defaultsRead: boolean,
+  launchesPaused: boolean | null,
+  tradingPaused: boolean | null,
+  engineEnabled: boolean | null,
+): string[] {
+  const blockers: string[] = [];
+  if (!defaultsRead) return blockers;
+  if (launchesPaused !== false) blockers.push("Launches are paused by the protocol.");
+  if (engineEnabled !== true) blockers.push("Engine v1 is disabled, so launching is unavailable.");
+  if (tradingPaused) blockers.push("Buying is paused, so a developer buy cannot go through.");
+  return blockers;
+}
 type Address = `0x${string}`;
 const useCommitEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
@@ -2343,19 +2363,14 @@ function LaunchPanelReady() {
       className="workspace-panel transaction-panel launch-panel"
       aria-labelledby="launch-title"
     >
-      <div className="launch-panel-head">
-        <h1 id="launch-title">Launch token</h1>
-        <p>One fixed supply, one bonding curve. Your wallet signs; nothing is held for you.</p>
-      </div>
+      {/* Named for assistive tech and the page outline; the form speaks for itself visually. */}
+      <h1 id="launch-title" className="sr-only">
+        Launch token
+      </h1>
       {error ? (
         <ErrorState title="Launch unavailable" description={error} />
       ) : (
         <>
-          {!readiness.address ? (
-            <div className="transaction-warning" role="status">
-              Connect the selected wallet before reviewing this launch.
-            </div>
-          ) : null}
           {readiness.address && launchChainId !== configuration.chainId ? (
             <div className="transaction-warning" role="alert">
               Wrong network. Switch to {deployment.name} before signing.
@@ -2368,14 +2383,13 @@ function LaunchPanelReady() {
             <div className="launch-main">
               <div className="transaction-form">
                 <section className="launch-section" aria-labelledby="launch-step-image">
-                  <h2 id="launch-step-image">
-                    <span className="launch-step">01</span> Image
-                  </h2>
+                  <h2 id="launch-step-image">Image</h2>
                   <Input
                     label="Token image"
                     value={imageUrl}
                     onChange={(event) => setImageUrl(event.target.value)}
                     placeholder="https://…"
+                    info="An https image URL. It becomes the token's artwork on cards and its page."
                   />
                   {imageUrl ? (
                     <SafeImage
@@ -2386,9 +2400,7 @@ function LaunchPanelReady() {
                   ) : null}
                 </section>
                 <section className="launch-section" aria-labelledby="launch-step-name">
-                  <h2 id="launch-step-name">
-                    <span className="launch-step">02</span> Name and symbol
-                  </h2>
+                  <h2 id="launch-step-name">Name and symbol</h2>
                   <div className="launch-field-row">
                     <Input
                       label="Name"
@@ -2403,16 +2415,19 @@ function LaunchPanelReady() {
                       onChange={(event) => setSymbol(event.target.value.toUpperCase())}
                       maxLength={16}
                       placeholder="Symbol"
+                      info="Up to 16 characters, shown in capitals."
                     />
                   </div>
                 </section>
                 <section className="launch-section" aria-labelledby="launch-step-links">
                   <h2 id="launch-step-links">
-                    <span className="launch-step">03</span> Description and links
+                    Links
+                    <InfoTip
+                      align="start"
+                      label="links"
+                      text="Optional. Add a description from the token page after launch."
+                    />
                   </h2>
-                  <p className="launch-section-hint">
-                    Add a description from the token page after launch.
-                  </p>
                   <div className="launch-field-row">
                     <Input
                       label="X profile"
@@ -2429,149 +2444,134 @@ function LaunchPanelReady() {
                   </div>
                 </section>
                 <section className="launch-section" aria-labelledby="launch-step-buy">
-                  <h2 id="launch-step-buy">
-                    <span className="launch-step">04</span> Initial buy
-                  </h2>
-                  <label className="ui-field">
-                    <span>Paired asset</span>
-                    <select className="ui-input" defaultValue="ETH" aria-label="Paired asset">
-                      <option>ETH</option>
-                    </select>
-                    <small className="ui-field-hint">
-                      Graduates once the curve raises 4.2 ETH.
-                    </small>
-                  </label>
-                  <Input
-                    label="Developer buy (ETH, optional)"
-                    value={buy}
-                    onChange={(event) => setBuy(event.target.value)}
-                    inputMode="decimal"
-                    hint="Launch value is exactly launch fee + developer buy gross."
-                  />
-                  <details className="launch-advanced">
-                    <summary>Advanced</summary>
-                    <p>Engine version and pause state are read from the reviewed factory.</p>
-                  </details>
+                  <h2 id="launch-step-buy">Initial buy</h2>
+                  <div className="launch-field-row">
+                    <div className="ui-field">
+                      <span>Paired asset</span>
+                      <div className="ui-input-wrap ui-select-wrap">
+                        <select
+                          className="ui-input ui-input-with-info"
+                          defaultValue="ETH"
+                          aria-label="Paired asset"
+                        >
+                          <option>ETH</option>
+                        </select>
+                        <InfoTip
+                          label="Paired asset"
+                          text="Graduates to Uniswap once the curve raises 4.2 ETH."
+                        />
+                      </div>
+                    </div>
+                    <Input
+                      label="Developer buy"
+                      value={buy}
+                      onChange={(event) => setBuy(event.target.value)}
+                      inputMode="decimal"
+                      placeholder="0 ETH, optional"
+                      info="Optional. Launch value is the launch fee plus this buy."
+                    />
+                  </div>
                 </section>
               </div>
-              <LaunchPreview
-                imageUrl={imageUrl}
-                name={name}
-                symbol={symbol}
-                launchFee={launchFee}
-                value={value}
-              />
-              <div className="quote-summary">
-                <span>
-                  Factory launch fee{" "}
-                  <strong className="mono">
-                    {launchFee === null ? "Unavailable" : eth(launchFee)}
-                  </strong>
-                </span>
-                <span>
-                  Factory defaults{" "}
-                  <strong className="mono">
-                    {defaultsRead ? "Read from chain" : "Unavailable"}
-                  </strong>
-                </span>
-                <span>
-                  Launches paused{" "}
-                  <strong className="mono">
-                    {launchesPaused === null ? "Unavailable" : launchesPaused ? "Yes" : "No"}
-                  </strong>
-                </span>
-                <span>
-                  Trading paused{" "}
-                  <strong className="mono">
-                    {tradingPaused === null ? "Unavailable" : tradingPaused ? "Yes" : "No"}
-                  </strong>
-                </span>
-                <span>
-                  Engine v1 enabled{" "}
-                  <strong className="mono">
-                    {engineEnabled === null ? "Unavailable" : engineEnabled ? "Yes" : "No"}
-                  </strong>
-                </span>
-                <small>
-                  Engine v1 is the only generated launch ABI. Pause state is read from the reviewed
-                  factory immediately before confirmation and simulation.
-                </small>
-                <span>
-                  Exact launch value{" "}
-                  <strong className="mono">{value === null ? "Unavailable" : eth(value)}</strong>
-                </span>
-              </div>
-              <p className="transaction-risk">
-                Non-custodial: your selected wallet signs directly. Launch is irreversible and may
-                lose value. Metadata links and image preview are validated before this confirmation
-                step.
-              </p>
-              {confirming ? (
-                <div className="transaction-confirmation">
-                  <h3>Confirm launch</h3>
-                  <dl>
-                    <dt>Token</dt>
-                    <dd>
-                      {name || "—"} ({symbol || "—"})
-                    </dd>
-                    <dt>Launch value</dt>
-                    <dd className="mono">{value === null ? "Unavailable" : eth(value)}</dd>
-                    <dt>Fee</dt>
-                    <dd className="mono">{launchFee === null ? "Unavailable" : eth(launchFee)}</dd>
-                    <dt>Developer buy / minimum output</dt>
-                    <dd className="mono">{buy || "0"} ETH / 0 tokens</dd>
-                    <dt>Network</dt>
-                    <dd>{deployment.name}</dd>
-                    <dt>Contract</dt>
-                    <dd className="mono">
-                      {factoryExplorer ? (
-                        <a href={factoryExplorer} target="_blank" rel="noreferrer">
-                          {deployment.factory}
-                        </a>
-                      ) : (
-                        deployment.factory
-                      )}
-                    </dd>
-                    <dt>Deadline</dt>
-                    <dd className="mono">
-                      {transactionDeadline(currentUnixSeconds(), DEFAULT_TTL).toString()} (Unix
-                      seconds)
-                    </dd>
-                  </dl>
-                  <div className="transaction-actions">
-                    <Button variant="quiet" onClick={() => setConfirming(false)}>
-                      Back
-                    </Button>
-                    <Button
-                      variant="primary"
-                      loading={state.status === "awaiting-signature"}
-                      onClick={() => void submit()}
-                    >
-                      Sign launch
-                    </Button>
+              {/* Right column on wide screens: live preview, terms and the launch action stay in view. */}
+              <div className="launch-aside">
+                <LaunchPreview
+                  imageUrl={imageUrl}
+                  name={name}
+                  symbol={symbol}
+                  launchFee={launchFee}
+                  value={value}
+                />
+                {/*
+                  The preview card already shows the fee and the exact launch value; factory state
+                  only earns a line when it blocks the launch or the developer buy.
+                */}
+                {launchBlockers(defaultsRead, launchesPaused, tradingPaused, engineEnabled).map(
+                  (blocker) => (
+                    <p key={blocker} className="transaction-error" role="alert">
+                      {blocker}
+                    </p>
+                  ),
+                )}
+                <Link className="launch-help" href={"/docs#flow" as never}>
+                  <span className="launch-help-mark" aria-hidden="true">
+                    ?
+                  </span>
+                  How launching works
+                </Link>
+                {confirming ? (
+                  <div className="transaction-confirmation">
+                    <h3>Confirm launch</h3>
+                    <dl>
+                      <dt>Token</dt>
+                      <dd>
+                        {name || "—"} ({symbol || "—"})
+                      </dd>
+                      <dt>Launch value</dt>
+                      <dd className="mono">{value === null ? "Unavailable" : eth(value)}</dd>
+                      <dt>Fee</dt>
+                      <dd className="mono">
+                        {launchFee === null ? "Unavailable" : eth(launchFee)}
+                      </dd>
+                      <dt>Developer buy / minimum output</dt>
+                      <dd className="mono">{buy || "0"} ETH / 0 tokens</dd>
+                      <dt>Network</dt>
+                      <dd>{deployment.name}</dd>
+                      <dt>Contract</dt>
+                      <dd className="mono">
+                        {factoryExplorer ? (
+                          <a href={factoryExplorer} target="_blank" rel="noreferrer">
+                            {deployment.factory}
+                          </a>
+                        ) : (
+                          deployment.factory
+                        )}
+                      </dd>
+                      <dt>Deadline</dt>
+                      <dd className="mono">
+                        {transactionDeadline(currentUnixSeconds(), DEFAULT_TTL).toString()} (Unix
+                        seconds)
+                      </dd>
+                    </dl>
+                    <div className="transaction-actions">
+                      <Button variant="quiet" onClick={() => setConfirming(false)}>
+                        Back
+                      </Button>
+                      <Button
+                        variant="primary"
+                        loading={state.status === "awaiting-signature"}
+                        onClick={() => void submit()}
+                      >
+                        Sign launch
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              ) : !readiness.address ? (
-                <WalletConnectButton className="launch-wallet-button" variant="primary" size="lg" />
-              ) : (
-                <Button
-                  variant="primary"
-                  size="lg"
-                  disabled={
-                    Object.keys(validMetadata).length > 0 ||
-                    value === null ||
-                    !defaultsRead ||
-                    launchesPaused !== false ||
-                    engineEnabled !== true ||
-                    !readiness.selectedAccountVerified ||
-                    !transaction.ready ||
-                    hasUnresolvedSubmission(state)
-                  }
-                  onClick={() => setConfirming(true)}
-                >
-                  Review launch
-                </Button>
-              )}
+                ) : !readiness.address ? (
+                  <WalletConnectButton
+                    className="launch-wallet-button"
+                    variant="primary"
+                    size="lg"
+                  />
+                ) : (
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    disabled={
+                      Object.keys(validMetadata).length > 0 ||
+                      value === null ||
+                      !defaultsRead ||
+                      launchesPaused !== false ||
+                      engineEnabled !== true ||
+                      !readiness.selectedAccountVerified ||
+                      !transaction.ready ||
+                      hasUnresolvedSubmission(state)
+                    }
+                    onClick={() => setConfirming(true)}
+                  >
+                    Review launch
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </>

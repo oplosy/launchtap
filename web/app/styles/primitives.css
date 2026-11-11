@@ -216,10 +216,11 @@
   width: 100%;
   height: 44px;
   border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-input);
+  /* Single-line fields share the pill shape of the segment controls; textareas stay rounded. */
+  border-radius: var(--radius-pill);
   color: var(--text);
   background: transparent;
-  padding: 0 14px;
+  padding: 0 18px;
   font-size: 16px;
   transition: border-color var(--dur-fast) linear;
 }
@@ -342,6 +343,7 @@ select.ui-input {
 }
 textarea.ui-input,
 .ui-textarea {
+  border-radius: var(--radius-input);
   height: auto;
   min-height: 96px;
   padding: 12px 14px;
@@ -368,6 +370,89 @@ input[type="file"].ui-input::file-selector-button {
 .ui-input[aria-invalid="true"] {
   border-color: var(--down);
 }
+/* "?" explanations: a small circle at the input's right edge, the text above it on hover/focus. */
+.ui-input-wrap {
+  position: relative;
+}
+.ui-input-with-info {
+  padding-right: 44px;
+}
+.ui-input-wrap > .ui-info {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
+}
+/* A select keeps its native arrow at the right edge, so the "?" sits just left of it. */
+.ui-select-wrap > .ui-input-with-info {
+  padding-right: 68px;
+}
+.ui-select-wrap > .ui-info {
+  right: 36px;
+}
+.ui-info {
+  position: relative;
+  display: inline-flex;
+}
+.ui-info-button {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 50%;
+  color: var(--text-3);
+  background: transparent;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: help;
+  transition:
+    color var(--dur-fast) linear,
+    border-color var(--dur-fast) linear;
+}
+.ui-info-button:hover,
+.ui-info-button:focus-visible {
+  border-color: var(--text-2);
+  color: var(--text);
+}
+.ui-info-tip {
+  position: absolute;
+  right: -8px;
+  bottom: calc(100% + 10px);
+  z-index: 5;
+  width: max-content;
+  max-width: 280px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-input);
+  color: var(--text-2);
+  background: var(--canvas);
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 18px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out),
+    visibility 0s linear var(--dur-fast);
+}
+.ui-info[data-align="start"] > .ui-info-tip {
+  right: auto;
+  left: -8px;
+}
+.ui-info-button:hover + .ui-info-tip,
+.ui-info-button:focus-visible + .ui-info-tip {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out),
+    visibility 0s;
+}
 .ui-field-hint {
   color: var(--text-3);
   font-size: 14px;
@@ -379,20 +464,16 @@ input[type="file"].ui-input::file-selector-button {
   line-height: 20px;
 }
 
-/* Badges: monochrome pills; status reads from the dot. */
+/* Badges: plain inline text. No pill, no tint, no dot and no tone colour: the words carry the
+   status. The tone classes stay so call sites keep their meaning, but they render alike. */
 .ui-badge {
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 6px;
-  height: 24px;
-  border-radius: var(--radius-pill);
   color: var(--text-2);
-  background: var(--fill);
-  padding: 0 10px;
   font-size: 13px;
-  font-weight: 500;
-  line-height: 1;
+  font-weight: 400;
+  line-height: 20px;
   white-space: nowrap;
 }
 .ui-badge > span {
@@ -400,29 +481,6 @@ input[type="file"].ui-input::file-selector-button {
 }
 .ui-badge > span::first-letter {
   text-transform: uppercase;
-}
-.ui-badge-success::before,
-.ui-badge-accent::before,
-.ui-badge-warning::before,
-.ui-badge-danger::before {
-  width: 6px;
-  height: 6px;
-  flex: none;
-  border-radius: 50%;
-  background: currentColor;
-  content: "";
-}
-.ui-badge-success {
-  color: var(--up);
-}
-.ui-badge-accent {
-  color: var(--text);
-}
-.ui-badge-warning {
-  color: var(--warning);
-}
-.ui-badge-danger {
-  color: var(--down);
 }
 
 /* Tabs: centred text tabs with an underline that slides to the active tab. */

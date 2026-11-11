@@ -40,14 +40,20 @@ export function useWalletConnection() {
   return useContext(WalletConnectionContext);
 }
 
+/**
+ * `compact` shortens the visible text for the navbar ("Connect", "Connecting"); the accessible
+ * name keeps the full label and still starts with the visible words.
+ */
 export function WalletConnectButton({
   className,
   variant = "quiet",
   size = "sm",
+  compact = false,
 }: {
   className?: string;
   variant?: ButtonProps["variant"];
   size?: ButtonProps["size"];
+  compact?: boolean;
 } = {}) {
   const wallet = useWalletConnection();
   const label = wallet.pending
@@ -57,6 +63,12 @@ export function WalletConnectButton({
       : wallet.available
         ? "Connect wallet"
         : "Wallet unavailable";
+  const text =
+    compact && wallet.pending
+      ? "Connecting"
+      : compact && !wallet.connected && wallet.available
+        ? "Connect"
+        : label;
   return (
     <Button
       variant={variant}
@@ -68,7 +80,7 @@ export function WalletConnectButton({
       aria-label={label}
       title={label}
     >
-      <Wallet size={17} aria-hidden="true" /> <span>{label}</span>
+      <Wallet size={17} aria-hidden="true" /> <span>{text}</span>
     </Button>
   );
 }

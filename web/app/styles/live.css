@@ -8,7 +8,6 @@
   width: 100vw;
   min-width: 0;
   margin-inline: calc(50% - 50vw);
-  border-block: 1px solid var(--hairline);
   padding: 12px 0;
 }
 .live-strip-viewport {
@@ -32,7 +31,7 @@
 }
 .live-strip-track > .live-strip-item,
 .live-strip-clone > .live-strip-item {
-  padding-right: 8px;
+  padding-right: 24px;
 }
 .live-strip-item {
   flex: none;
@@ -41,11 +40,9 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-media);
-  padding: 6px 10px;
+  padding: 6px 12px;
   color: var(--text);
-  font-size: 13px;
+  font-size: 15px;
   white-space: nowrap;
   text-decoration: none;
 }
@@ -56,8 +53,7 @@
   color: inherit;
   text-decoration: none;
 }
-a.live-strip-part:hover,
-a.live-strip-trader-link:hover {
+a.live-strip-part:hover {
   text-decoration: underline;
 }
 /* Token image at the strip's text scale; same rounded-square shape as .token-image. */
@@ -70,7 +66,7 @@ a.live-strip-trader-link:hover {
 .live-strip-image {
   width: 20px;
   height: 20px;
-  border-radius: 6px;
+  border-radius: var(--radius-avatar);
   object-fit: cover;
 }
 .live-strip-image .ui-image-fallback-letter {
@@ -82,11 +78,23 @@ a.live-strip-trader-link:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.live-strip-arrow[data-side="buy"] {
-  color: var(--text);
+.live-strip-ticker {
+  font-weight: 600;
 }
-.live-strip-arrow[data-side="sell"] {
+.live-strip-value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  color: var(--text-2);
+}
+.live-strip-value[data-side="buy"] {
+  color: var(--up);
+}
+.live-strip-value[data-side="sell"] {
   color: var(--down);
+}
+.live-strip-arrow {
+  font-size: 11px;
 }
 .live-strip-badge {
   border: 1px solid var(--hairline-strong);
@@ -96,45 +104,24 @@ a.live-strip-trader-link:hover {
   font-size: 11px;
   text-transform: uppercase;
 }
-.live-strip-eth .usd-line {
+.live-strip-value .usd-line {
   display: inline;
-  margin-left: 6px;
-}
-.live-strip-trader,
-.live-strip-time {
+  margin-left: 2px;
   color: var(--text-3);
 }
 /* Observed (not yet safe) items read as provisional until finality. */
-.live-strip-item[data-pending] .live-strip-link,
 .history-row[data-pending] {
   opacity: 0.65;
-  border-style: dashed;
 }
-.history-row[data-pending] {
-  border-style: solid;
+/* In the strip the pending state lasts seconds, so it only dims slightly. */
+.live-strip-item[data-pending] .live-strip-link {
+  opacity: 0.85;
 }
 
+/* The rail is moved from script (live-strip.tsx, useMarquee) at a constant speed. */
 @media (prefers-reduced-motion: no-preference) {
   .live-strip-rail {
-    animation: live-strip-marquee var(--live-duration, 40s) linear infinite;
-  }
-  .live-strip:hover .live-strip-rail,
-  .live-strip:focus-within .live-strip-rail {
-    animation-play-state: paused;
-  }
-  .live-strip-track > .live-strip-item:first-child {
-    animation: live-strip-in 320ms var(--ease-out);
-  }
-}
-@keyframes live-strip-marquee {
-  to {
-    transform: translateX(-50%);
-  }
-}
-@keyframes live-strip-in {
-  from {
-    opacity: 0;
-    transform: translateX(-16px);
+    will-change: transform;
   }
 }
 /* Reduced motion: one static, scrollable row and no copy. */

@@ -77,9 +77,7 @@ test("the forum feed lists posts as text, links tokens and loads more", async ({
   const calls: Calls = { posts: [], communities: [] };
   await installApi(page, calls);
   await page.goto("/forum");
-  await expect(
-    page.getByRole("heading", { name: "Every launch with a community, ranked by what is moving." }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Forum" })).toBeAttached();
   const feed = page.getByRole("region", { name: "Forum posts" });
   await expect(feed.getByText("<img src=x onerror=window.__pwned=1>")).toBeVisible();
   await expect(feed.getByRole("link", { name: "s/<b>EVIL</b>" })).toHaveAttribute(
@@ -91,7 +89,10 @@ test("the forum feed lists posts as text, links tokens and loads more", async ({
     "href",
     new RegExp(`/token/${OTHER}$`, "i"),
   );
-  await expect(feed.getByRole("link", { name: "Trade PONS" }).first()).toBeVisible();
+  await expect(feed.getByRole("link", { name: "Trade PONS" }).first()).toHaveAttribute(
+    "href",
+    new RegExp(`/token/${TOKEN}$`, "i"),
+  );
 
   await feed.getByRole("button", { name: "Load more" }).click();
   await expect(feed.getByText("oldest")).toBeVisible();
@@ -123,14 +124,17 @@ test("hot and top tabs rank communities from the URL", async ({ page }) => {
   expect(calls.posts).toEqual([]);
 });
 
-test("forum tabs are centred and a whole post row opens its token", async ({ page }, testInfo) => {
+test("forum tabs are centred over the feed and a whole post card opens its token", async ({
+  page,
+}, testInfo) => {
   await installApi(page, { posts: [], communities: [] });
   await page.goto("/forum");
   const tabs = page.getByRole("navigation", { name: "Forum view" });
   await expect(tabs.getByRole("link", { name: "New" })).toBeVisible();
+  // Centred over the feed column (the launches rail sits beside it on wide screens).
   const box = (await tabs.boundingBox())!;
-  const width = page.viewportSize()!.width;
-  expect(Math.abs(box.x + box.width / 2 - width / 2)).toBeLessThanOrEqual(2);
+  const feed = (await page.getByRole("region", { name: "Forum posts" }).boundingBox())!;
+  expect(Math.abs(box.x + box.width / 2 - (feed.x + feed.width / 2))).toBeLessThanOrEqual(2);
   await page.screenshot({
     path: `../.impeccable/review/rebuild-forum-${testInfo.project.name}.png`,
     fullPage: true,

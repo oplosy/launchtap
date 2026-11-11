@@ -33,7 +33,7 @@ import {
   type TokenSort,
 } from "./query-state";
 import { TrendingList, useHighlights } from "./highlights";
-import { TokenCard } from "./token-card";
+import { TokenCard, TokenListHead } from "./token-card";
 import { loadTokenDiscoveryPage } from "./controller";
 import { Button, EmptyState, ErrorState, Input, Skeleton } from "@/components/primitives";
 import { SlidingIndicator } from "@/components/sliding-indicator";
@@ -86,7 +86,7 @@ export function TokenDiscovery({ fetchPage: injectedFetcher }: { fetchPage?: Tok
   if (!sameTokenListQuery(urlState, nextState)) setUrlState(nextState);
   const listActiveRef = useRef(listActive);
   const highlights = useHighlights(view === "trending" ? configuration.apiBaseUrl : null);
-  const [layout, setLayout] = useState<Layout>("list");
+  const [layout, setLayout] = useState<Layout>("grid");
   const [searchDraft, setSearchDraft] = useState(urlState.q);
   const [pages, setPages] = useState<TokenListResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,6 +132,9 @@ export function TokenDiscovery({ fetchPage: injectedFetcher }: { fetchPage?: Tok
       cursor?: string,
       append = false,
       externalSignal?: AbortSignal,
+      // Live refreshes keep the shown cards until the new page arrives, instead of blanking
+      // the list to a skeleton (which made every card flash every couple of seconds).
+      background = false,
     ) => {
       if (configuration.status !== "ready" || !configuration.apiBaseUrl) {
         setLoading(false);
@@ -146,7 +149,7 @@ export function TokenDiscovery({ fetchPage: injectedFetcher }: { fetchPage?: Tok
       const currentRequest = ++requestId.current;
       setError(null);
       if (append) setLoadingMore(true);
-      else {
+      else if (!background) {
         setLoading(true);
         setPages([]);
         pagesRef.current = [];
@@ -169,6 +172,8 @@ export function TokenDiscovery({ fetchPage: injectedFetcher }: { fetchPage?: Tok
         setResetNotice(result.reset);
       } catch (cause) {
         if (controller.signal.aborted || currentRequest !== requestId.current) return;
+        // A failed background refresh keeps the list already on screen.
+        if (background && pagesRef.current.length > 0) return;
         setError(cause instanceof Error ? cause : new Error("The token list could not be loaded."));
         if (!append) {
           pagesRef.current = [];
@@ -211,14 +216,14 @@ export function TokenDiscovery({ fetchPage: injectedFetcher }: { fetchPage?: Tok
       refreshTimerRef.current = setTimeout(() => {
         refreshTimerRef.current = null;
         if (pagesRef.current.length > 1) return;
-        void loadPage(latestState.current, undefined, false);
+        void loadPage(latestState.current, undefined, false, undefined, true);
       }, DISCOVERY_REFRESH_INTERVAL_MS);
     },
     [configuration.chainId, configuration.deploymentId, loadPage],
   );
   const recoverLive = useCallback(
     async (signal?: AbortSignal) => {
-      await loadPage(latestState.current, undefined, false, signal);
+      await loadPage(latestState.current, undefined, false, signal, true);
     },
     [loadPage],
   );
@@ -321,7 +326,7 @@ export function TokenDiscovery({ fetchPage: injectedFetcher }: { fetchPage?: Tok
             </div>
           ) : null}
           <div className="ui-segment" role="group" aria-label="Layout">
-            {(["list", "grid"] as const).map((option) => (
+            {(["grid", "list"] as const).map((option) => (
               <button
                 key={option}
                 type="button"
@@ -431,6 +436,7 @@ export function TokenDiscovery({ fetchPage: injectedFetcher }: { fetchPage?: Tok
               aria-live="polite"
               aria-busy={loadingMore}
             >
+              <TokenListHead />
               {items.map((token) => (
                 <TokenCard
                   key={token.address}
@@ -440,9 +446,6 @@ export function TokenDiscovery({ fetchPage: injectedFetcher }: { fetchPage?: Tok
               ))}
             </div>
             <div className="discovery-pagination">
-              <span className="discovery-count">
-                {items.length} {items.length === 1 ? "token" : "tokens"} shown
-              </span>
               {nextCursor ? (
                 <Button
                   variant="secondary"
