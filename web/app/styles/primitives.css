@@ -439,6 +439,10 @@ input[type="file"].ui-input::file-selector-button {
     transform var(--dur-fast) var(--ease-out),
     visibility 0s linear var(--dur-fast);
 }
+.ui-info[data-align="start"] > .ui-info-tip {
+  right: auto;
+  left: -8px;
+}
 .ui-info-button:hover + .ui-info-tip,
 .ui-info-button:focus-visible + .ui-info-tip {
   opacity: 1;

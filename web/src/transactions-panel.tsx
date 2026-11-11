@@ -2404,6 +2404,7 @@ function LaunchPanelReady() {
                   <h2 id="launch-step-links">
                     Links
                     <InfoTip
+                      align="start"
                       label="links"
                       text="Optional. Add a description from the token page after launch."
                     />

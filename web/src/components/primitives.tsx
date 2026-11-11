@@ -87,13 +87,25 @@ export function Input({
 
 /**
  * A "?" that reveals a one-line explanation on hover or keyboard focus. The text is always in the
- * DOM (visually hidden until shown) so `id` can serve as an aria-describedby target.
+ * DOM (visually hidden until shown) so `id` can serve as an aria-describedby target. `align` picks
+ * the edge the tooltip lines up with: "end" (default) opens leftward for a "?" at the right of a
+ * field, "start" opens rightward for one near the left edge of the page, such as beside a heading.
  */
-export function InfoTip({ id, label, text }: { id?: string; label: string; text: string }) {
+export function InfoTip({
+  id,
+  label,
+  text,
+  align = "end",
+}: {
+  id?: string;
+  label: string;
+  text: string;
+  align?: "start" | "end";
+}) {
   const generatedId = useId();
   const tipId = id ?? generatedId;
   return (
-    <span className="ui-info">
+    <span className="ui-info" data-align={align}>
       <button
         type="button"
         className="ui-info-button"
