@@ -167,3 +167,12 @@ external audit. Both are separate plans or gates.
   precedes backend acceptance. This is not a choice.
 - **B5:** the quote clock is the latest indexed block time, and the quote returns
   `snipeTax`, `taxBps` and `taxEndsAt`.
+
+## Prerequisite status (2026-11-11)
+
+- **B1 done** in 286171f: `abi/v2`, `fixtures/v2/event-logs-v2.json` and the drift gates.
+- **B4 done** in 8241442:
+  - `script/v2/DeployLocalV2.s.sol`;
+  - `scripts/deploy-v2-local.ps1`;
+  - `deployments/deployment-v2.schema.json`.
+- The backend plan is `docs/plans/2026-11-11-v2-engine-backend.md` (Plan v2-B).
