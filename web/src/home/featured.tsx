@@ -25,8 +25,8 @@ import { relativeTime } from "@/live/live-strip-model";
 import { addressHue } from "@/token/address";
 
 const SECTION_SIZE = 5;
-/** Trending and Just graduated: two rows of five artwork cards. */
-const CARD_SECTION_SIZE = 10;
+/** Trending and Just graduated: three rows of five artwork cards. */
+const CARD_SECTION_SIZE = 15;
 
 type Load<T> = { status: "loading" } | { status: "error" } | { status: "ready"; data: T };
 
