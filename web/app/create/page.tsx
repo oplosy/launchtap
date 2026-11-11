@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { EngineToggle } from "@/components/engine-toggle";
 import { LaunchPanel } from "@/transactions-panel";
 
 export default function CreatePage() {
@@ -8,7 +9,7 @@ export default function CreatePage() {
         <Link className="create-back-button" href="/">
           <span aria-hidden="true">‹</span> Back
         </Link>
-        <span className="create-protocol-label">V1</span>
+        <EngineToggle />
       </div>
       <LaunchPanel />
     </div>
