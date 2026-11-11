@@ -1033,6 +1033,10 @@
 .forum-sidebar .forum-muted {
   text-align: center;
 }
+/* The rail is a --fill card: red text drops under 4.5:1 there, so its error line stays neutral. */
+.forum-sidebar .forum-error {
+  color: var(--text-2);
+}
 .forum-launch-list {
   gap: 4px;
 }
