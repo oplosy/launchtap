@@ -42,7 +42,7 @@
   gap: 8px;
   padding: 6px 12px;
   color: var(--text);
-  font-size: 13px;
+  font-size: 15px;
   white-space: nowrap;
   text-decoration: none;
 }
@@ -94,7 +94,7 @@ a.live-strip-part:hover {
   color: var(--down);
 }
 .live-strip-arrow {
-  font-size: 10px;
+  font-size: 11px;
 }
 .live-strip-badge {
   border: 1px solid var(--hairline-strong);
@@ -118,27 +118,10 @@ a.live-strip-part:hover {
   opacity: 0.85;
 }
 
+/* The rail is moved from script (live-strip.tsx, useMarquee) at a constant speed. */
 @media (prefers-reduced-motion: no-preference) {
   .live-strip-rail {
-    animation: live-strip-marquee var(--live-duration, 40s) linear infinite;
-  }
-  .live-strip:hover .live-strip-rail,
-  .live-strip:focus-within .live-strip-rail {
-    animation-play-state: paused;
-  }
-  .live-strip-track > .live-strip-item:first-child {
-    animation: live-strip-in 320ms var(--ease-out);
-  }
-}
-@keyframes live-strip-marquee {
-  to {
-    transform: translateX(-50%);
-  }
-}
-@keyframes live-strip-in {
-  from {
-    opacity: 0;
-    transform: translateX(-16px);
+    will-change: transform;
   }
 }
 /* Reduced motion: one static, scrollable row and no copy. */
