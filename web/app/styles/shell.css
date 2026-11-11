@@ -152,20 +152,14 @@
   font: var(--type-label);
 }
 .mega-menu-link {
-  display: grid;
-  gap: 2px;
+  display: inline-block;
   font-size: 18px;
   font-weight: 500;
   line-height: 26px;
   letter-spacing: var(--tracking-page);
   transition: color var(--dur-fast) var(--ease-out);
 }
-.mega-menu-summary {
-  color: var(--text-2);
-  font: var(--type-label);
-  letter-spacing: var(--tracking-body);
-}
-.mega-menu-link:hover > span:first-child,
+.mega-menu-link:hover,
 .mega-menu-resource:hover,
 .mega-menu-all:hover {
   color: var(--text-2);

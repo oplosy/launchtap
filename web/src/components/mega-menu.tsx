@@ -13,10 +13,10 @@ export const NAV_LINKS: ReadonlyArray<{ href: string; label: string }> = [
   { href: "/docs", label: "Docs" },
 ];
 
-export const EXPLORE_LINKS: ReadonlyArray<{ href: string; label: string; summary: string }> = [
-  { href: "/explore?view=new", label: "New", summary: "Launches as they happen" },
-  { href: "/explore?view=trending", label: "Trending", summary: "Where trading is right now" },
-  { href: "/explore?view=graduated", label: "Graduated", summary: "Tokens trading on Uniswap" },
+export const EXPLORE_LINKS: ReadonlyArray<{ href: string; label: string }> = [
+  { href: "/explore?view=new", label: "New" },
+  { href: "/explore?view=trending", label: "Trending" },
+  { href: "/explore?view=graduated", label: "Graduated" },
 ];
 
 export const EXPLORE_RESOURCES: ReadonlyArray<{ href: string; label: string }> = [
@@ -113,8 +113,7 @@ export function MegaMenu({
               {EXPLORE_LINKS.map((link) => (
                 <li key={link.href}>
                   <Link className="mega-menu-link" href={link.href as never} onClick={onClose}>
-                    <span>{link.label}</span>
-                    <span className="mega-menu-summary">{link.summary}</span>
+                    {link.label}
                   </Link>
                 </li>
               ))}
