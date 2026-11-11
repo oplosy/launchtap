@@ -425,39 +425,94 @@ html[data-theme="light"] .ui-image-fallback {
   width: min(360px, calc(100vw - 32px));
 }
 
-/* King of the hill (home featured band). */
+/* King of the hill (home featured band): one full-width showcase card. */
 .king-card {
   position: relative;
   display: grid;
-  gap: 12px;
-  isolation: isolate;
-  border-top: 1px solid var(--hairline);
-  padding: 24px 0;
-}
-.king-card-main {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: clamp(160px, 22vw, 260px) minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
+  gap: clamp(24px, 4vw, 48px);
+  isolation: isolate;
+  border-radius: var(--radius-container);
+  background: var(--fill);
+  padding: clamp(20px, 3vw, 32px);
+}
+.king-card .king-art {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: var(--radius-input);
+}
+.king-body {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+.king-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.king-head .token-identity {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.king-head h3 {
+  font: var(--type-section);
+  font-size: clamp(26px, 3vw, 40px);
+  line-height: 1.15;
+  letter-spacing: var(--tracking-page);
+  overflow-wrap: anywhere;
+}
+.king-head .star-button,
+.king-trade {
+  position: relative;
+  z-index: 2;
 }
 .king-card .token-identity h3 a::after {
   position: absolute;
   inset: 0;
   z-index: 1;
+  border-radius: inherit;
   content: "";
 }
 .king-card a:focus-visible {
   outline: none;
 }
-.king-card:has(a:focus-visible) {
+.king-card:has(h3 a:focus-visible) {
   outline: 2px solid var(--text);
   outline-offset: 2px;
 }
+.king-trade:focus-visible {
+  outline: 2px solid var(--text) !important;
+  outline-offset: 2px;
+}
+.king-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+}
+.king-stats dt {
+  color: var(--text-2);
+  font-size: 13px;
+}
+.king-stats dd {
+  margin: 2px 0 0;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+.king-progress-row {
+  display: grid;
+  gap: 8px;
+}
 .king-progress {
-  height: 2px;
+  height: 8px;
   overflow: hidden;
   border-radius: var(--radius-pill);
-  background: var(--fill);
+  background: var(--hairline-strong);
 }
 .king-progress > span {
   display: block;
@@ -465,13 +520,21 @@ html[data-theme="light"] .ui-image-fallback {
   border-radius: inherit;
   background: var(--progress);
 }
-.king-remaining {
+.king-percent {
   color: var(--text-2);
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
+  font-size: 13px;
 }
-@media (max-width: 480px) {
-  .king-card-main {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+.king-trade {
+  justify-self: start;
+}
+@media (max-width: 640px) {
+  .king-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .king-card .king-art {
+    width: 120px;
+  }
+  .king-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

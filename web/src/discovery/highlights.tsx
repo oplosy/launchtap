@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { getHighlights, resolveApiAssetUrl, type TokenHighlights } from "@/api/client";
 import type { components } from "@/api/generated";
-import { Badge, EmptyState, SafeImage } from "@/components/primitives";
+import { EmptyState, SafeImage } from "@/components/primitives";
 import { UsdLine } from "@/market/usd-line";
 import { addressHue } from "@/token/address";
 import { StarButton } from "@/watchlist/star-button";
@@ -136,46 +136,71 @@ export function KingOfTheHill({
     apiBaseUrl,
     `/v1/tokens/${encodeURIComponent(king.address)}/image`,
   );
+  const href = `/token/${king.address}`;
   return (
     <article
       className="king-card"
       aria-label="King of the hill"
       style={{ "--hue": addressHue(king.address) } as CSSProperties}
     >
-      <p className="panel-kicker">King of the hill</p>
-      <div className="king-card-main">
-        <SafeImage
-          src={imageUrl}
-          alt={`${label} token`}
-          fallbackLabel="No artwork"
-          className="token-image"
-        />
-        <div className="token-identity">
-          <h3>
-            <Link href={`/token/${king.address}` as never}>{label}</Link>
-          </h3>
-          <p className="token-symbol">
-            <span>{king.symbol || "—"}</span>
-          </p>
+      <SafeImage
+        src={imageUrl}
+        alt={`${label} token`}
+        fallbackLabel="No artwork"
+        className="token-image king-art"
+      />
+      <div className="king-body">
+        <div className="king-head">
+          <div className="token-identity">
+            <p className="panel-kicker">King of the hill</p>
+            <h3>
+              <Link href={href as never}>{label}</Link>
+            </h3>
+            <p className="token-symbol">
+              <span>{king.symbol || "—"}</span>
+            </p>
+          </div>
+          <StarButton address={king.address} label={label} />
         </div>
-        <Badge tone="accent">{percent} to graduation</Badge>
-        <StarButton address={king.address} label={label} />
+        <dl className="king-stats">
+          <div>
+            <dt>Market cap</dt>
+            <dd className="mono">{displayAmount(king.market_cap_eth)} ETH</dd>
+          </div>
+          <div>
+            <dt>Holders</dt>
+            <dd className="mono">{king.holder_count.toLocaleString()}</dd>
+          </div>
+          <div>
+            <dt>To graduate</dt>
+            <dd className="mono">
+              {displayAmount(king.remaining_eth)} ETH
+              <UsdLine wei={king.remaining_eth} />
+            </dd>
+          </div>
+        </dl>
+        <div className="king-progress-row">
+          <div
+            className="king-progress"
+            role="progressbar"
+            aria-label={`${label} graduation progress`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(king.graduation_progress_bps / 100)}
+            aria-valuetext={percent}
+          >
+            <span style={{ width: percent }} />
+          </div>
+          <span className="king-percent mono">{percent} to graduation</span>
+        </div>
+        <Link
+          className="ui-button ui-button-primary ui-button-md king-trade"
+          href={href as never}
+          aria-label={`Trade ${label}`}
+        >
+          Trade
+        </Link>
       </div>
-      <div
-        className="king-progress"
-        role="progressbar"
-        aria-label={`${label} graduation progress`}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(king.graduation_progress_bps / 100)}
-        aria-valuetext={percent}
-      >
-        <span style={{ width: percent }} />
-      </div>
-      <p className="king-remaining">
-        {displayAmount(king.remaining_eth)} ETH remaining
-        <UsdLine wei={king.remaining_eth} />
-      </p>
     </article>
   );
 }
