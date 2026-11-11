@@ -27,10 +27,10 @@
   --radius-avatar: 50%;
   --radius-input: 12px;
   --radius-container: 20px;
-  --measure-page: 1680px;
+  --measure-page: 1840px;
   --measure-text: 720px;
   --measure-form: 640px;
-  --gutter: clamp(16px, 4vw, 40px);
+  --gutter: clamp(12px, 2vw, 24px);
   --nav-height: 64px;
   --section-gap: clamp(96px, 12vw, 160px);
 
