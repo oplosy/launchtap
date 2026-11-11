@@ -23,6 +23,8 @@
 
   --radius-pill: 9999px;
   --radius-media: 4px;
+  /* Token and profile images are circles everywhere. */
+  --radius-avatar: 50%;
   --radius-input: 12px;
   --radius-container: 20px;
   --measure-page: 1680px;

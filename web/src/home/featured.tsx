@@ -25,6 +25,8 @@ import { relativeTime } from "@/live/live-strip-model";
 import { addressHue } from "@/token/address";
 
 const SECTION_SIZE = 5;
+/** Trending and Just graduated: two rows of four artwork cards. */
+const CARD_SECTION_SIZE = 8;
 
 type Load<T> = { status: "loading" } | { status: "error" } | { status: "ready"; data: T };
 
@@ -76,7 +78,7 @@ export function HomeFeed() {
     apiBaseUrl
       ? (signal) =>
           new ApiClient({ baseUrl: apiBaseUrl }).getTokens(
-            { phase: "graduated", sort: "newest", limit: SECTION_SIZE },
+            { phase: "graduated", sort: "newest", limit: CARD_SECTION_SIZE },
             signal,
           )
       : null,
@@ -142,7 +144,12 @@ export function HomeFeed() {
           ) : highlights.loading || !highlights.data ? (
             <ListSkeleton />
           ) : (
-            <TrendingList items={trending.slice(0, SECTION_SIZE)} apiBaseUrl={apiBaseUrl} />
+            <TrendingList
+              items={trending.slice(0, CARD_SECTION_SIZE)}
+              apiBaseUrl={apiBaseUrl}
+              layout="grid"
+              className="home-card-grid"
+            />
           )}
         </Section>
       </Reveal>
@@ -163,7 +170,7 @@ export function HomeFeed() {
               description="Tokens that complete their curve and move to Uniswap appear here."
             />
           ) : (
-            <div className="token-list" data-layout="list">
+            <div className="token-list home-card-grid" data-layout="grid">
               {(graduated.state.data.items ?? []).map((token) => (
                 <TokenCard key={token.address} token={token} apiBaseUrl={apiBaseUrl} />
               ))}

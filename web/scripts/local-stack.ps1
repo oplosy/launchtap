@@ -134,6 +134,8 @@ function Find-Foundry([string]$Name) {
 $anvilPath = Find-Foundry "anvil"
 $castPath = Find-Foundry "cast"
 $env:Path = "$(Split-Path -Parent $anvilPath)$([IO.Path]::PathSeparator)$env:Path"
+# A previous run stopped without its cleanup leaves this script's own container holding the port.
+& docker rm --force $postgresContainer 2>$null | Out-Null
 foreach ($port in @($AnvilPort, $PostgresPort, $ApiPort, $IndexerHealthPort, $WebPort)) { Assert-PortFree $port }
 
 $rpcUrl = "http://127.0.0.1:$AnvilPort"
@@ -210,9 +212,17 @@ try {
             @{ Name = "Night Market"; Symbol = "NIGHT"; Dev = 0.01; Buys = @(0.15, 0.3, 0.07, 0.22, 0.11) },
             @{ Name = "Signal Fire"; Symbol = "FIRE"; Dev = 0.002; Buys = @(0.025) },
             @{ Name = "Quiet Harbor"; Symbol = "HRBR"; Dev = 0; Buys = @(0.09, 0.035, 0.14) },
-            @{ Name = "Moon Ledger"; Symbol = "MOON"; Dev = 0.01; Buys = @(0.4, 0.25, 0.33) }
+            @{ Name = "Moon Ledger"; Symbol = "MOON"; Dev = 0.01; Buys = @(0.4, 0.25, 0.33); Graduate = $true },
+            @{ Name = "Copper Fox"; Symbol = "FOX"; Dev = 0.01; Buys = @(0.3, 0.5, 0.2); Graduate = $true },
+            @{ Name = "Glass Tiger"; Symbol = "GLASS"; Dev = 0.005; Buys = @(0.6, 0.15); Graduate = $true },
+            @{ Name = "Velvet Rocket"; Symbol = "VLVT"; Dev = 0.01; Buys = @(0.2, 0.45, 0.1, 0.35); Graduate = $true },
+            @{ Name = "Solar Drift"; Symbol = "SOLAR"; Dev = 0; Buys = @(0.5, 0.25); Graduate = $true },
+            @{ Name = "Iron Lotus"; Symbol = "LOTUS"; Dev = 0.008; Buys = @(0.15, 0.3, 0.4); Graduate = $true },
+            @{ Name = "Pixel Whale"; Symbol = "WHALE"; Dev = 0.01; Buys = @(0.7, 0.2, 0.12); Graduate = $true },
+            @{ Name = "Static Bloom"; Symbol = "BLOOM"; Dev = 0.004; Buys = @(0.25, 0.18); Graduate = $true }
         )
         $index = 0
+        $activeCurves = New-Object System.Collections.ArrayList
         foreach ($launch in $launches) {
             $creator = $accounts[$index % $accounts.Count]
             $curve = New-Launch $creator $launch.Name $launch.Symbol ([decimal]$launch.Dev)
@@ -222,13 +232,35 @@ try {
                 try { Buy $curve $accounts[$traderIndex % $accounts.Count] ([decimal]$eth) }
                 catch { Write-Warning "$($launch.Symbol) buy skipped: $($_.Exception.Message)" }
             }
-            Write-Host "  $($launch.Symbol) -> $curve"
+            # Graduating launches are bought past their threshold so the Graduated lists fill;
+            # the curve refunds any excess.
+            if ($launch.ContainsKey("Graduate")) {
+                try { Buy $curve $accounts[($index + 4) % $accounts.Count] ([decimal]200); Write-Host "  $($launch.Symbol) -> $curve (graduated)" }
+                catch { Write-Warning "$($launch.Symbol) graduation buy did not land: $($_.Exception.Message)" }
+            } else {
+                Write-Host "  $($launch.Symbol) -> $curve"
+                [void]$activeCurves.Add($curve)
+            }
             $index++
         }
-        # One launch bought past its graduation threshold so the Graduated list has an entry;
-        # the curve refunds any excess.
-        try { Buy $curve $accounts[4] ([decimal]200); Write-Host "  MOON bought to graduation" }
-        catch { Write-Warning "Graduation buy did not land: $($_.Exception.Message)" }
+    }
+
+    if (-not $NoSeed) {
+        # The indexer has to have projected the launches before comments can reference them.
+        for ($attempt = 0; $attempt -lt 60; $attempt++) {
+            $count = (& docker exec $postgresContainer psql -U postgres -d $databaseName -Atc "SELECT count(*) FROM tokens" | Out-String).Trim()
+            if ($count -eq [string]$launches.Count) { break }
+            Start-Sleep -Milliseconds 500
+        }
+        Write-Host "Seeding forum posts..."
+        Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "local-stack-forum.sql") |
+            & docker exec -i $postgresContainer psql -v ON_ERROR_STOP=1 -U postgres -d $databaseName | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Forum seed failed" }
+        Write-Host "Seeding token artwork..."
+        $addresses = @(& docker exec $postgresContainer psql -U postgres -d $databaseName -Atc "SELECT '0x' || encode(token_address, 'hex') FROM tokens")
+        & node (Join-Path $PSScriptRoot "local-stack-images.mjs") @addresses |
+            & docker exec -i $postgresContainer psql -v ON_ERROR_STOP=1 -U postgres -d $databaseName | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Artwork seed failed" }
     }
 
     Write-Host "Starting the web app..."
@@ -245,9 +277,21 @@ try {
     Write-Host ""
     Write-Host "Local stack is up: $webUrl  (API $apiUrl, RPC $rpcUrl). Logs: $logRoot"
     Write-Host "Press Ctrl+C to stop."
+    # Keep the feed alive: a small buy from a random dev account every ~20 seconds, so Trending
+    # (a recent-activity window) stays populated and the live strip keeps receiving trades.
+    $random = [System.Random]::new()
+    $tick = 0
     while ($true) {
         foreach ($child in $children) {
             if ($child.HasExited) { throw "A stack process exited (code $($child.ExitCode)); see $logRoot" }
+        }
+        $tick++
+        if (-not $NoSeed -and $activeCurves.Count -gt 0 -and $tick % 10 -eq 0) {
+            $curve = $activeCurves[$random.Next($activeCurves.Count)]
+            $trader = $accounts[1 + $random.Next($accounts.Count - 1)]
+            $eth = [decimal]::Round([decimal]($random.Next(5, 80)) / 1000, 3)
+            try { Buy $curve $trader $eth }
+            catch { Write-Warning "Background buy skipped: $($_.Exception.Message)" }
         }
         Start-Sleep -Seconds 2
     }

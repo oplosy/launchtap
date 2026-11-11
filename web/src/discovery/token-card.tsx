@@ -21,6 +21,29 @@ export function displayAmount(raw: string, decimals = 18) {
   }
 }
 
+/** Metric columns every token row shows, in order; extra metrics go before Age. */
+const BASE_METRICS = ["Market cap", "24h volume", "Holders"] as const;
+
+/**
+ * The column header of a token list in its row layout: labelled once here instead of on every
+ * row. Each row still carries its own `<dt>` labels for assistive technology, so this header is
+ * presentational. Hidden in the grid layout and on phones.
+ */
+export function TokenListHead({ extra = [] }: { extra?: readonly string[] }) {
+  const columns = [...BASE_METRICS, ...extra, "Age"];
+  return (
+    <div className="token-list-head" aria-hidden="true">
+      <span className="token-list-head-token">Token</span>
+      <div className="token-list-head-metrics">
+        {columns.map((column) => (
+          <span key={column}>{column}</span>
+        ))}
+      </div>
+      <span />
+    </div>
+  );
+}
+
 export function tokenLabel(token: TokenCardData) {
   return token.name.trim() || token.symbol.trim() || "Unnamed token";
 }
