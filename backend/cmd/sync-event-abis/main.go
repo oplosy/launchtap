@@ -9,43 +9,59 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 )
 
-const (
-	defaultSource      = "../contracts/abi/v1"
-	defaultDestination = "internal/chain/abi/v1"
-	fixtureSource      = "../contracts/fixtures/v1"
-	fixtureDestination = "internal/chain/testdata"
-)
+// syncPair copies one single-sourced contracts directory into the backend. A destination may
+// contain another pair's destination (engine v2 copies nest under v1's); that subtree belongs
+// to the other pair and is skipped when this pair is compared.
+type syncPair struct {
+	source, destination string
+}
+
+var repositoryPairs = []syncPair{
+	{source: "../contracts/abi/v1", destination: "internal/chain/abi/v1"},
+	{source: "../contracts/fixtures/v1", destination: "internal/chain/testdata"},
+	{source: "../contracts/abi/v2", destination: "internal/chain/abi/v2"},
+	{source: "../contracts/fixtures/v2", destination: "internal/chain/testdata/v2"},
+}
 
 func main() {
 	check := flag.Bool("check", false, "fail unless the destination is byte-identical to the source")
 	flag.Parse()
 
-	var err error
-	if *check {
-		err = syncPaths(true)
-	} else {
-		err = syncPaths(false)
-	}
-	if err != nil {
+	if err := syncPairs(repositoryPairs, *check); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func syncPaths(check bool) error {
-	for _, pair := range [][2]string{{defaultSource, defaultDestination}, {fixtureSource, fixtureDestination}} {
+func syncPairs(pairs []syncPair, check bool) error {
+	for _, pair := range pairs {
 		if !check {
-			if err := copyDirectory(pair[0], pair[1]); err != nil {
+			if err := copyDirectory(pair.source, pair.destination); err != nil {
 				return err
 			}
 		}
-		if err := compareDirectories(pair[0], pair[1]); err != nil {
+	}
+	for _, pair := range pairs {
+		if err := compareDirectories(pair.source, pair.destination, nestedDestinations(pair, pairs)); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func nestedDestinations(pair syncPair, pairs []syncPair) []string {
+	nested := make([]string, 0)
+	for _, other := range pairs {
+		relative, err := filepath.Rel(pair.destination, other.destination)
+		if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			continue
+		}
+		nested = append(nested, filepath.ToSlash(relative))
+	}
+	return nested
 }
 
 func copyDirectory(source, destination string) error {
@@ -69,46 +85,50 @@ func copyDirectory(source, destination string) error {
 	})
 }
 
-func compareDirectories(source, destination string) error {
-	sourceFiles, err := readDirectory(source)
+func compareDirectories(source, destination string, skip []string) error {
+	sourceFiles, err := readDirectory(source, nil)
 	if err != nil {
-		return fmt.Errorf("read source event ABIs: %w", err)
+		return fmt.Errorf("read source event-ABI: %w", err)
 	}
-	destinationFiles, err := readDirectory(destination)
+	destinationFiles, err := readDirectory(destination, skip)
 	if err != nil {
-		return fmt.Errorf("read backend event ABI copy: %w", err)
+		return fmt.Errorf("read backend event-ABI copy: %w", err)
 	}
 	sourceNames := sortedNames(sourceFiles)
 	destinationNames := sortedNames(destinationFiles)
 	if !slices.Equal(sourceNames, destinationNames) {
-		return fmt.Errorf("event-ABI file set differs: source %v, destination %v", sourceNames, destinationNames)
+		return fmt.Errorf("event-ABI file set differs (%s): source %v, destination %v", destination, sourceNames, destinationNames)
 	}
 	for _, name := range sourceNames {
 		if !bytes.Equal(sourceFiles[name], destinationFiles[name]) {
-			return fmt.Errorf("event-ABI file differs: %s", name)
+			return fmt.Errorf("event-ABI file differs: %s", filepath.ToSlash(filepath.Join(destination, name)))
 		}
 	}
 	return nil
 }
 
-func readDirectory(root string) (map[string][]byte, error) {
+func readDirectory(root string, skip []string) (map[string][]byte, error) {
 	files := make(map[string][]byte)
 	err := filepath.WalkDir(root, func(filePath string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.IsDir() {
-			return nil
-		}
 		relative, err := filepath.Rel(root, filePath)
 		if err != nil {
 			return err
+		}
+		relative = filepath.ToSlash(relative)
+		if entry.IsDir() {
+			if slices.Contains(skip, relative) {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		body, err := os.ReadFile(filePath)
 		if err != nil {
 			return err
 		}
-		files[filepath.ToSlash(relative)] = body
+		files[relative] = body
 		return nil
 	})
 	if errors.Is(err, fs.ErrNotExist) {
