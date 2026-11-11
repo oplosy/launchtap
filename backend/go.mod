@@ -2,7 +2,7 @@ module github.com/Contictus/launchtap/backend
 
 go 1.26.0
 
-toolchain go1.26.10
+toolchain go1.26.11
 
 require (
 	github.com/danielgtaylor/huma/v2 v2.39.1
