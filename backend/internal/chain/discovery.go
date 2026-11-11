@@ -245,7 +245,7 @@ func (d *Decoder) Topics(kind EmitterKind) []common.Hash {
 }
 
 func emptyEmitters(factory common.Address) Emitters {
-	return Emitters{Factory: factory, Curves: NewAddressSet(), Tokens: NewAddressSet(), Pairs: NewAddressSet()}
+	return Emitters{Factory: factory, Curves: NewAddressSet(), Tokens: NewAddressSet(), Pairs: NewAddressSet(), Pools: make(map[common.Hash]common.Address)}
 }
 
 func copyEmitters(source Emitters) Emitters {
@@ -258,6 +258,11 @@ func copyEmitters(source Emitters) Emitters {
 	}
 	for address := range source.Pairs {
 		result.Pairs[address] = struct{}{}
+	}
+	result.Locker = source.Locker
+	result.PoolManager = source.PoolManager
+	for poolID, token := range source.Pools {
+		result.Pools[poolID] = token
 	}
 	return result
 }

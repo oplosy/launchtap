@@ -11,7 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-//go:embed abi/v1/*.json
+//go:embed abi/v1/*.json abi/v2/*.json
 var eventArtifacts embed.FS
 
 type eventDefinition struct {
@@ -26,9 +26,18 @@ type Decoder struct {
 }
 
 func NewDecoder(engineVersion uint16) (*Decoder, error) {
-	if engineVersion != 1 {
+	switch engineVersion {
+	case 1:
+		return newDecoderV1()
+	case 2:
+		return newDecoderV2()
+	default:
 		return nil, &EngineVersionError{Version: engineVersion}
 	}
+}
+
+func newDecoderV1() (*Decoder, error) {
+	const engineVersion = 1
 	launch, err := readABI("abi/v1/ILaunchEvents.json")
 	if err != nil {
 		return nil, err
@@ -59,6 +68,52 @@ func NewDecoder(engineVersion uint16) (*Decoder, error) {
 	}
 	if len(decoder.events) != 18 {
 		return nil, fmt.Errorf("load event ABI registry: got %d topics, want 18", len(decoder.events))
+	}
+	return decoder, nil
+}
+
+// newDecoderV2 loads the frozen engine-2 ABIs. Topic ownership follows the emitter of every log
+// in fixtures/v2: the curve emits the fee recipient events, the locker its fee events and the
+// singleton PoolManager the pool events.
+func newDecoderV2() (*Decoder, error) {
+	const engineVersion = 2
+	launch, err := readABI("abi/v2/ILaunchEventsV2.json")
+	if err != nil {
+		return nil, err
+	}
+	locker, err := readABI("abi/v2/ILpFeeLockerEvents.json")
+	if err != nil {
+		return nil, err
+	}
+	poolManager, err := readABI("abi/v2/IPoolManagerEvents.json")
+	if err != nil {
+		return nil, err
+	}
+	token, err := readABI("abi/v2/LaunchTokenV2.json")
+	if err != nil {
+		return nil, err
+	}
+
+	decoder := &Decoder{engineVersion: engineVersion, events: make(map[common.Hash]eventDefinition, 22)}
+	factory := []string{"TokenLaunched", "LaunchFeesClaimed", "LaunchPauseSet", "TradingPauseSet", "EngineConfigured", "FutureDefaultsConfigured", "FutureTreasuryConfigured"}
+	curve := []string{"Trade", "Graduated", "CreatorFeesClaimed", "ProtocolFeesClaimed", "RefundCredited", "RefundClaimed", "SnipeTaxClaimed", "FeeRecipientProposed", "FeeRecipientAccepted"}
+	for _, group := range []struct {
+		parsed abi.ABI
+		names  []string
+		kind   EmitterKind
+	}{
+		{launch, factory, EmitterFactory},
+		{launch, curve, EmitterCurve},
+		{token, []string{"Transfer"}, EmitterToken},
+		{locker, []string{"LpFeesCollected", "LpFeesClaimed"}, EmitterLocker},
+		{poolManager, []string{"Initialize", "ModifyLiquidity", "Swap"}, EmitterPoolManager},
+	} {
+		if err := decoder.add(group.parsed, group.names, group.kind); err != nil {
+			return nil, err
+		}
+	}
+	if len(decoder.events) != 22 {
+		return nil, fmt.Errorf("load engine-2 event ABI registry: got %d topics, want 22", len(decoder.events))
 	}
 	return decoder, nil
 }
@@ -117,6 +172,12 @@ func (d *Decoder) Decode(log types.Log, emitters Emitters) (DecodedLog, error) {
 	if len(log.Topics) != len(indexed)+1 {
 		return DecodedLog{}, &LogError{Coordinates: coordinate, Err: fmt.Errorf("%w: event %s has %d topics, want %d", ErrMalformedLog, definition.event.Name, len(log.Topics), len(indexed)+1)}
 	}
+	// Every PoolManager event indexes the pool id first. A pool outside the known set is not ours.
+	if kind == EmitterPoolManager {
+		if _, known := emitters.Pools[log.Topics[1]]; !known {
+			return DecodedLog{}, &EmitterError{Address: log.Address, Coordinates: coordinate}
+		}
+	}
 	for index, argument := range indexed {
 		if argument.Type.T == abi.AddressTy && !isPaddedAddress(log.Topics[index+1]) {
 			return DecodedLog{}, &LogError{Coordinates: coordinate, Err: fmt.Errorf("%w: event %s indexed address %s is not zero-padded", ErrMalformedLog, definition.event.Name, argument.Name)}
@@ -132,11 +193,18 @@ func (d *Decoder) Decode(log types.Log, emitters Emitters) (DecodedLog, error) {
 	if err := abi.ParseTopicsIntoMap(values, indexed, log.Topics[1:]); err != nil {
 		return DecodedLog{}, &LogError{Coordinates: coordinate, Err: fmt.Errorf("%w: unpack %s topics: %v", ErrMalformedLog, definition.event.Name, err)}
 	}
-	value, err := typedEvent(definition.event.Name, log.Address, values)
+	typed := typedEvent
+	if d.engineVersion == 2 {
+		typed = typedEventV2
+	}
+	value, err := typed(definition.event.Name, log.Address, values)
 	if err != nil {
 		return DecodedLog{}, &LogError{Coordinates: coordinate, Err: fmt.Errorf("%w: %v", ErrMalformedLog, err)}
 	}
 	if launched, ok := value.(TokenLaunched); ok && launched.EngineVersion != d.engineVersion {
+		return DecodedLog{}, &EngineVersionError{Version: launched.EngineVersion}
+	}
+	if launched, ok := value.(TokenLaunchedV2); ok && launched.EngineVersion != d.engineVersion {
 		return DecodedLog{}, &EngineVersionError{Version: launched.EngineVersion}
 	}
 	if configured, ok := value.(EngineConfigured); ok && configured.EngineVersion != d.engineVersion {
@@ -224,6 +292,90 @@ func typedEvent(name string, emitter common.Address, v map[string]any) (any, err
 		return nil, fmt.Errorf("unknown decoded event %s", name)
 	}
 }
+
+// typedEventV2 builds engine-2 values. Events with a v1-identical ABI reuse typedEvent.
+func typedEventV2(name string, emitter common.Address, v map[string]any) (any, error) {
+	switch name {
+	case "TokenLaunched":
+		return TokenLaunchedV2{Token: addr(v, "token"), Curve: addr(v, "curve"), Creator: addr(v, "creator"), ProtocolTreasury: addr(v, "protocolTreasury"), EngineVersion: u16(v, "engineVersion"), Name: text(v, "name"), Symbol: text(v, "symbol"), TotalSupply: integer(v, "totalSupply"), VirtualETH: integer(v, "virtualEth"), VirtualToken: integer(v, "virtualToken"), CurveTokens: integer(v, "curveTokens"), LPTokens: integer(v, "lpTokens"), GraduationETH: integer(v, "graduationEth"), LaunchFeePaid: integer(v, "launchFeePaid"), TradeFeeBPS: u16(v, "tradeFeeBps"), ProtocolShareBPS: u16(v, "protocolShareBps"), Hook: addr(v, "hook"), Locker: addr(v, "locker"), AntiSnipeStartBPS: u16(v, "antiSnipeStartBps"), AntiSnipeDurationSeconds: u32(v, "antiSnipeDurationSeconds"), LPCreatorShareBPS: u16(v, "lpCreatorShareBps")}, nil
+	case "Trade":
+		return TradeV2{Token: addr(v, "token"), Trader: addr(v, "trader"), IsBuy: boolean(v, "isBuy"), ETHGross: integer(v, "ethGross"), ETHRefund: integer(v, "ethRefund"), TokenAmount: integer(v, "tokenAmount"), ProtocolFee: integer(v, "protocolFee"), CreatorFee: integer(v, "creatorFee"), NewETHReserve: integer(v, "newEthReserve"), NewTokenReserve: integer(v, "newTokenReserve"), SnipeTax: integer(v, "snipeTax")}, nil
+	case "Graduated":
+		return GraduatedV2{Token: addr(v, "token"), PoolID: hash(v, "poolId"), PositionTokenID: integer(v, "positionTokenId"), ETHToPool: integer(v, "ethToPool"), TokensToPool: integer(v, "tokensToPool"), Liquidity: integer(v, "liquidity"), SqrtPriceX96: integer(v, "sqrtPriceX96"), ETHRemainder: integer(v, "ethRemainder"), TokenRemainder: integer(v, "tokenRemainder")}, nil
+	case "CreatorFeesClaimed":
+		return CreatorFeesClaimedV2{addr(v, "token"), addr(v, "account"), integer(v, "amount")}, nil
+	case "SnipeTaxClaimed":
+		return SnipeTaxClaimed{addr(v, "token"), addr(v, "treasury"), integer(v, "amount")}, nil
+	case "FeeRecipientProposed":
+		return FeeRecipientProposed{addr(v, "token"), addr(v, "current"), addr(v, "next")}, nil
+	case "FeeRecipientAccepted":
+		return FeeRecipientAccepted{addr(v, "token"), addr(v, "previous"), addr(v, "next")}, nil
+	case "LpFeesCollected":
+		return LpFeesCollected{addr(v, "token"), integer(v, "ethAmount"), integer(v, "tokenAmount")}, nil
+	case "LpFeesClaimed":
+		return LpFeesClaimed{addr(v, "token"), addr(v, "recipient"), integer(v, "ethAmount"), integer(v, "tokenAmount")}, nil
+	case "Initialize":
+		fee, err := smallUint(v, "fee", 24)
+		if err != nil {
+			return nil, err
+		}
+		spacing, err := smallInt(v, "tickSpacing", 24)
+		if err != nil {
+			return nil, err
+		}
+		tick, err := smallInt(v, "tick", 24)
+		if err != nil {
+			return nil, err
+		}
+		return V4Initialize{PoolID: hash(v, "id"), Currency0: addr(v, "currency0"), Currency1: addr(v, "currency1"), Fee: fee, TickSpacing: spacing, Hooks: addr(v, "hooks"), SqrtPriceX96: integer(v, "sqrtPriceX96"), Tick: tick}, nil
+	case "ModifyLiquidity":
+		lower, err := smallInt(v, "tickLower", 24)
+		if err != nil {
+			return nil, err
+		}
+		upper, err := smallInt(v, "tickUpper", 24)
+		if err != nil {
+			return nil, err
+		}
+		return V4ModifyLiquidity{PoolID: hash(v, "id"), Sender: addr(v, "sender"), TickLower: lower, TickUpper: upper, LiquidityDelta: integer(v, "liquidityDelta"), Salt: hash(v, "salt")}, nil
+	case "Swap":
+		tick, err := smallInt(v, "tick", 24)
+		if err != nil {
+			return nil, err
+		}
+		fee, err := smallUint(v, "fee", 24)
+		if err != nil {
+			return nil, err
+		}
+		return V4Swap{PoolID: hash(v, "id"), Sender: addr(v, "sender"), Amount0: integer(v, "amount0"), Amount1: integer(v, "amount1"), SqrtPriceX96: integer(v, "sqrtPriceX96"), Liquidity: integer(v, "liquidity"), Tick: tick, Fee: fee}, nil
+	case "LaunchFeesClaimed", "ProtocolFeesClaimed", "RefundCredited", "RefundClaimed", "LaunchPauseSet", "TradingPauseSet", "EngineConfigured", "FutureDefaultsConfigured", "FutureTreasuryConfigured", "Transfer":
+		return typedEvent(name, emitter, v)
+	default:
+		return nil, fmt.Errorf("unknown decoded engine-2 event %s", name)
+	}
+}
+
+// smallUint and smallInt narrow the ABI's *big.Int for uint24/int24 fields, which go-ethereum
+// does not map to native integers. The ABI decoder already range-checks the width; this
+// rechecks it so a narrowing can never wrap.
+func smallUint(v map[string]any, name string, bits uint) (uint32, error) {
+	value := v[name].(*big.Int)
+	if value.Sign() < 0 || value.BitLen() > int(bits) {
+		return 0, fmt.Errorf("%s %s exceeds uint%d", name, value, bits)
+	}
+	return uint32(value.Uint64()), nil
+}
+
+func smallInt(v map[string]any, name string, bits uint) (int32, error) {
+	value := v[name].(*big.Int)
+	limit := new(big.Int).Lsh(big.NewInt(1), bits-1)
+	if value.Cmp(limit) >= 0 || value.Cmp(new(big.Int).Neg(limit)) < 0 {
+		return 0, fmt.Errorf("%s %s exceeds int%d", name, value, bits)
+	}
+	return int32(value.Int64()), nil
+}
+
+func u32(v map[string]any, name string) uint32 { return v[name].(uint32) }
 
 func addr(v map[string]any, name string) common.Address { return v[name].(common.Address) }
 func boolean(v map[string]any, name string) bool        { return v[name].(bool) }
