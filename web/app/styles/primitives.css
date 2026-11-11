@@ -216,10 +216,11 @@
   width: 100%;
   height: 44px;
   border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-input);
+  /* Single-line fields share the pill shape of the segment controls; textareas stay rounded. */
+  border-radius: var(--radius-pill);
   color: var(--text);
   background: transparent;
-  padding: 0 14px;
+  padding: 0 18px;
   font-size: 16px;
   transition: border-color var(--dur-fast) linear;
 }
@@ -342,6 +343,7 @@ select.ui-input {
 }
 textarea.ui-input,
 .ui-textarea {
+  border-radius: var(--radius-input);
   height: auto;
   min-height: 96px;
   padding: 12px 14px;
@@ -378,7 +380,7 @@ input[type="file"].ui-input::file-selector-button {
 .ui-input-wrap > .ui-info {
   position: absolute;
   top: 50%;
-  right: 12px;
+  right: 14px;
   transform: translateY(-50%);
 }
 /* A select keeps its native arrow at the right edge, so the "?" sits just left of it. */

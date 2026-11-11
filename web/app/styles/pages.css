@@ -627,6 +627,10 @@
   font: inherit;
   font-size: 15px;
 }
+.comment-wallet-select select {
+  border-radius: var(--radius-pill);
+  padding-inline: 18px;
+}
 .comment-composer textarea {
   resize: vertical;
   min-height: 84px;
