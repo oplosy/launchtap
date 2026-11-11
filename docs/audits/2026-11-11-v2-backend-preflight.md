@@ -153,3 +153,17 @@ review is its input.
 
 Web (Universal Router V4 swap path, Permit2 sells, locker claims UI, tax countdown), and the
 external audit. Both are separate plans or gates.
+
+## Decisions (product owner, 2026-11-11)
+
+- **B1:** v2 event order is locked as implemented in `ILaunchEventsV2.sol` and
+  `ILpFeeLocker.sol`. A contracts task exports `abi/v2` and `fixtures/v2` with a drift gate.
+- **B2:** one engine deployment per chain per database. v1 stays on testnet; v2 is
+  mainnet-only. Startup refuses a second deployment on the same chain.
+- **B3:** separate V4 ledger tables and a pool registry keyed by `poolId`. For v2,
+  `lp_pair`/`weth` are nullable, price comes from `sqrtPriceX96`, and projections are
+  engine-aware.
+- **B4:** a contracts prerequisite (local v2 deploy and the engine-2 manifest schema)
+  precedes backend acceptance. This is not a choice.
+- **B5:** the quote clock is the latest indexed block time, and the quote returns
+  `snipeTax`, `taxBps` and `taxEndsAt`.
