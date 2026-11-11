@@ -81,6 +81,13 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The fee split sits under the total as two quieter, indented rows. */
+.quote-summary > .quote-fee-leg {
+  margin-top: -4px;
+  color: var(--text-3);
+  padding-left: 12px;
+  font-size: 12.5px;
+}
 .quote-summary small {
   border-top: 1px solid var(--hairline);
   color: var(--text-3);
