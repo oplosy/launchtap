@@ -86,30 +86,61 @@
     justify-items: start;
     text-align: left;
   }
+  /* Two equal halves: the form on the left, the larger-type preview and terms on the right. */
   .launch-main {
-    grid-template-columns: minmax(0, 1fr) minmax(380px, 460px);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
     gap: clamp(48px, 6vw, 112px);
   }
   .launch-aside {
     position: sticky;
     top: calc(var(--nav-height) + 24px);
+    gap: 28px;
   }
   .launch-aside .launch-preview-card {
-    gap: 20px;
-    padding: 20px;
+    gap: 24px 28px;
+    padding: 28px;
   }
   .launch-aside .launch-preview-image {
-    width: 112px;
-    height: 112px;
+    width: 144px;
+    height: 144px;
     border-radius: calc(var(--radius-container) - 4px);
-    font-size: 36px;
+    font-size: 44px;
+  }
+  .launch-aside .launch-preview-name {
+    font-size: 32px;
+    line-height: 40px;
+    letter-spacing: var(--tracking-page);
+  }
+  .launch-aside .launch-preview-identity > .mono {
+    font-size: 15px;
   }
   .launch-aside .launch-preview-card dl {
+    gap: 20px 24px;
     border-top: 1px solid var(--hairline);
-    padding-top: 16px;
+    padding-top: 24px;
+  }
+  .launch-aside .launch-preview-card dt {
+    font-size: 14px;
+  }
+  .launch-aside .launch-preview-card dd {
+    margin-top: 4px;
+    font-size: 18px;
+  }
+  .launch-aside .quote-summary {
+    gap: 12px;
+    padding: 0;
+    font-size: 16px;
+  }
+  .launch-aside .quote-summary small {
+    padding-top: 12px;
+    font-size: 13px;
+  }
+  .launch-aside .transaction-risk {
+    font-size: 14px;
   }
 }
+
 .launch-section {
   display: grid;
   gap: 16px;
