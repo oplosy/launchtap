@@ -88,7 +88,7 @@
   opacity: 0;
   pointer-events: none;
   backdrop-filter: blur(12px);
-  transition: opacity 220ms var(--ease-in-out);
+  transition: opacity 160ms var(--ease-in-out);
 }
 .mega-backdrop[data-open="true"] {
   opacity: 1;
@@ -107,8 +107,8 @@
   /* Rolls down from the nav and rolls back up into it: the clip edge is the visible motion. */
   clip-path: inset(0 0 100% 0);
   transition:
-    clip-path 220ms var(--ease-in-out),
-    visibility 0s linear 220ms;
+    clip-path 160ms var(--ease-in-out),
+    visibility 0s linear 160ms;
 }
 .mega-menu[data-open="true"] {
   visibility: visible;
