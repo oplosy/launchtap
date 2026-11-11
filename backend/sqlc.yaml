@@ -80,6 +80,8 @@ sql:
             go_type: {type: "Address", pointer: true}
           - column: "v4_pools.hook"
             go_type: {type: "Address"}
+          - column: "v4_pool_managers.pool_manager"
+            go_type: {type: "Address"}
           - column: "v4_pool_initializations.hooks"
             go_type: {type: "Address"}
           - column: "*.currency0"
@@ -230,6 +232,13 @@ sql:
             go_type: {type: "Uint256"}
           - column: "*.reserve1"
             go_type: {type: "Uint256"}
+          # A 'v4' reserve row carries the pool price instead of reserves.
+          - column: "token_reserves.eth_reserve"
+            go_type: {type: "Uint256", pointer: true}
+          - column: "token_reserves.token_reserve"
+            go_type: {type: "Uint256", pointer: true}
+          - column: "token_reserves.sqrt_price_x96"
+            go_type: {type: "Uint256", pointer: true}
           - column: "*.eth_reserve"
             go_type: {type: "Uint256"}
           - column: "*.token_reserve"
@@ -254,7 +263,16 @@ sql:
             go_type: {type: "Uint256"}
           - column: "*.fdv_eth_wad"
             go_type: {type: "Uint256"}
+          # NULL for a graduated engine-2 token (pre-flight R5).
+          - column: "token_stats.liquidity_eth_wad"
+            go_type: {type: "Uint256", pointer: true}
           - column: "*.liquidity_eth_wad"
+            go_type: {type: "Uint256"}
+          - column: "creator_fee_balances.curve_eth_owed"
+            go_type: {type: "Uint256"}
+          - column: "creator_fee_balances.locker_eth_owed"
+            go_type: {type: "Uint256"}
+          - column: "creator_fee_balances.locker_token_owed"
             go_type: {type: "Uint256"}
           - column: "*.ath_price_eth_wad"
             go_type: {type: "Uint256"}

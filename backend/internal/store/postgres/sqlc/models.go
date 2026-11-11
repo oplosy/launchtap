@@ -42,6 +42,15 @@ type CommentReport struct {
 	Resolution   pgtype.Text
 }
 
+type CreatorFeeBalance struct {
+	ChainID         int64
+	TokenAddress    Address
+	Account         Address
+	CurveEthOwed    Uint256
+	LockerEthOwed   Uint256
+	LockerTokenOwed Uint256
+}
+
 type CreatorFeeClaim struct {
 	ChainID          int64
 	BlockNumber      int64
@@ -53,6 +62,17 @@ type CreatorFeeClaim struct {
 	TokenAddress     Address
 	Creator          Address
 	Amount           Uint256
+}
+
+type CreatorFeeDelta struct {
+	ChainID          int64
+	TokenAddress     Address
+	Account          Address
+	TxHash           Hash
+	LogIndex         int32
+	CurveEthDelta    pgtype.Numeric
+	LockerEthDelta   pgtype.Numeric
+	LockerTokenDelta pgtype.Numeric
 }
 
 type EngineConfiguration struct {
@@ -581,13 +601,14 @@ type TokenReserf struct {
 	ChainID           int64
 	TokenAddress      Address
 	ReserveSource     string
-	EthReserve        Uint256
-	TokenReserve      Uint256
+	EthReserve        *Uint256
+	TokenReserve      *Uint256
 	SourceBlockNumber int64
 	SourceBlockHash   Hash
 	SourceBlockTime   pgtype.Timestamptz
 	SourceTxHash      Hash
 	SourceLogIndex    int32
+	SqrtPriceX96      *Uint256
 }
 
 type TokenStat struct {
@@ -596,7 +617,7 @@ type TokenStat struct {
 	SpotPriceEthWad   Uint256
 	MarketCapEthWad   Uint256
 	FdvEthWad         Uint256
-	LiquidityEthWad   Uint256
+	LiquidityEthWad   *Uint256
 	AthPriceEthWad    Uint256
 	AthAt             pgtype.Timestamptz
 	Volume24hEthWad   Uint256
@@ -705,6 +726,23 @@ type V4PoolInitialization struct {
 	Hooks            Address
 	SqrtPriceX96     Uint256
 	Tick             int32
+}
+
+type V4PoolManager struct {
+	ChainID     int64
+	PoolManager Address
+}
+
+type V4PriceEvent struct {
+	ChainID          int64
+	TokenAddress     Address
+	BlockNumber      int64
+	BlockHash        Hash
+	BlockTime        pgtype.Timestamptz
+	TransactionIndex int32
+	TxHash           Hash
+	LogIndex         int32
+	SqrtPriceX96     pgtype.Numeric
 }
 
 type V4Swap struct {

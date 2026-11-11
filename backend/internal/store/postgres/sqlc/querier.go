@@ -12,6 +12,9 @@ import (
 
 type Querier interface {
 	AffectedTokensAbove(ctx context.Context, arg AffectedTokensAboveParams) ([]Address, error)
+	// Applies one event's owed-balance deltas (creator_fee_deltas). Callers apply it only when the
+	// ledger row was newly inserted, so a replay never double-counts.
+	ApplyCreatorFeeDeltas(ctx context.Context, arg ApplyCreatorFeeDeltasParams) error
 	// The pair's opening Sync is emitted by pair.mint before the curve emits Graduated, so the
 	// per-Sync projection above sees the token still in the curve phase. Graduation therefore
 	// re-applies the pair's latest Sync, matching rebuild_token_projections.
@@ -22,6 +25,11 @@ type Querier interface {
 	ApplyTokenLaunchProjection(ctx context.Context, arg ApplyTokenLaunchProjectionParams) error
 	ApplyTradeReserveProjection(ctx context.Context, arg ApplyTradeReserveProjectionParams) error
 	ApplyTransferProjection(ctx context.Context, arg ApplyTransferProjectionParams) (pgtype.Bool, error)
+	// The V4 pool registry entry of an engine-2 graduation; rebuild_token_projections writes the same row.
+	ApplyV4PoolProjection(ctx context.Context, arg ApplyV4PoolProjectionParams) error
+	// The pool price after an engine-2 graduation or V4 swap. It replaces the curve row and any earlier
+	// pool price, so an out-of-order replay never moves the price backwards.
+	ApplyV4ReserveProjection(ctx context.Context, arg ApplyV4ReserveProjectionParams) error
 	// Creates the user row if needed. An existing ban keeps its original time and reason.
 	BanSocialUser(ctx context.Context, arg BanSocialUserParams) error
 	ClaimAggregationDirty(ctx context.Context, arg ClaimAggregationDirtyParams) ([]ClaimAggregationDirtyRow, error)
@@ -87,6 +95,10 @@ type Querier interface {
 	DeleteWalletRealizedLegs(ctx context.Context, arg DeleteWalletRealizedLegsParams) error
 	DeleteWatchlistEntry(ctx context.Context, arg DeleteWatchlistEntryParams) (int64, error)
 	EngineConfigurationMatchesEvent(ctx context.Context, arg EngineConfigurationMatchesEventParams) (pgtype.Bool, error)
+	// Opens a zero balance row for every account one event moves. ApplyCreatorFeeDeltas then adds
+	// the deltas with an UPDATE: an upsert would check a claim's negative proposed row against the
+	// non-negative CHECKs before resolving the conflict.
+	EnsureCreatorFeeAccounts(ctx context.Context, arg EnsureCreatorFeeAccountsParams) error
 	EnsureSocialUser(ctx context.Context, arg EnsureSocialUserParams) error
 	FeeRecipientAcceptanceMatchesEvent(ctx context.Context, arg FeeRecipientAcceptanceMatchesEventParams) (pgtype.Bool, error)
 	FeeRecipientProposalMatchesEvent(ctx context.Context, arg FeeRecipientProposalMatchesEventParams) (pgtype.Bool, error)
@@ -278,6 +290,7 @@ type Querier interface {
 	// missed while the sweeper was down are recomputed.
 	MarkTokensWithVolumeDirty(ctx context.Context, chainID int64) (int64, error)
 	MarkTransferPositionsDirty(ctx context.Context, arg MarkTransferPositionsDirtyParams) error
+	MarkV4PoolTokenDirty(ctx context.Context, arg MarkV4PoolTokenDirtyParams) error
 	NotifyAPIRefresh(ctx context.Context, payload string) error
 	PoolBurnMatchesEvent(ctx context.Context, arg PoolBurnMatchesEventParams) (pgtype.Bool, error)
 	PoolMintMatchesEvent(ctx context.Context, arg PoolMintMatchesEventParams) (pgtype.Bool, error)
@@ -306,6 +319,7 @@ type Querier interface {
 	RecordIndexerReorg(ctx context.Context, arg RecordIndexerReorgParams) (int64, error)
 	RefundClaimMatchesEvent(ctx context.Context, arg RefundClaimMatchesEventParams) (pgtype.Bool, error)
 	RefundCreditMatchesEvent(ctx context.Context, arg RefundCreditMatchesEventParams) (pgtype.Bool, error)
+	RegisterV4PoolManager(ctx context.Context, arg RegisterV4PoolManagerParams) ([]byte, error)
 	ReleaseUsername(ctx context.Context, arg ReleaseUsernameParams) error
 	ReplaceTokenImage(ctx context.Context, arg ReplaceTokenImageParams) (int64, error)
 	ReplaceTokenMetadata(ctx context.Context, arg ReplaceTokenMetadataParams) (int64, error)

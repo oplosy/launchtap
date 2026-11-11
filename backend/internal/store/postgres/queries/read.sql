@@ -187,13 +187,12 @@ LIMIT sqlc.arg(page_size)::integer;
 SELECT h.holder_address, h.balance, h.first_acquired_block_number
 FROM holder_balances AS h
 JOIN tokens AS t USING (chain_id, token_address)
+LEFT JOIN v4_pool_managers AS manager ON manager.chain_id = t.chain_id
 WHERE h.chain_id = sqlc.arg(chain_id)
   AND h.token_address = sqlc.arg(token_address)
   AND h.balance > 0
-  AND h.holder_address <> decode(repeat('00', 20), 'hex')
-  AND h.holder_address <> decode(repeat('00', 18) || 'dead', 'hex')
-  AND h.holder_address <> t.curve_address
-  AND h.holder_address <> t.lp_pair
+  AND NOT token_holder_excluded(t.engine_version, h.holder_address, t.curve_address, t.lp_pair,
+                                t.locker, manager.pool_manager)
   AND (sqlc.narg(after_balance)::numeric IS NULL OR
        (h.balance, h.holder_address) < (sqlc.narg(after_balance)::numeric, sqlc.narg(after_address)::bytea))
 ORDER BY h.balance DESC, h.holder_address DESC

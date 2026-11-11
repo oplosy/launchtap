@@ -125,7 +125,7 @@ func assertProjectionColumns(t testing.TB, ctx context.Context, database *sql.DB
 			"sort_market_cap_eth_wad", "sort_volume_24h_eth_wad",
 			"hook", "locker", "anti_snipe_start_bps", "anti_snipe_duration_seconds", "lp_creator_share_bps",
 		},
-		"token_reserves":    {"chain_id", "token_address", "reserve_source", "eth_reserve", "token_reserve", "source_block_number", "source_block_hash", "source_block_time", "source_tx_hash", "source_log_index"},
+		"token_reserves":    {"chain_id", "token_address", "reserve_source", "eth_reserve", "token_reserve", "source_block_number", "source_block_hash", "source_block_time", "source_tx_hash", "source_log_index", "sqrt_price_x96"},
 		"holder_balances":   {"chain_id", "token_address", "holder_address", "balance", "first_acquired_block_number"},
 		"aggregation_dirty": {"chain_id", "token_address", "generation", "claimed_generation", "claimed_at", "claimed_by"},
 		"token_metadata":    {"chain_id", "token_address", "description", "image_url", "x_url", "telegram_url", "updated_at", "revision", "content_id", "launch_tx_hash", "launch_log_index"},

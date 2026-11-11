@@ -79,6 +79,13 @@ func run() error {
 	router := indexer.LedgerRouter{ChainID: int64(c.ChainID)}
 	health.Set(indexer.Health{ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, OwnershipHeld: true, RPCHealthy: true})
 	healthStore := storepostgres.NewAdapter(pool)
+	if deployment.EngineVersion == 2 {
+		// Holder views exclude the chain's PoolManager for engine-2 tokens; newDiscovery has
+		// already required the manifest's V4 section.
+		if err := healthStore.RegisterV4PoolManager(ctx, int64(c.ChainID), deployment.V4.PoolManager); err != nil {
+			return err
+		}
+	}
 	refreshOperationalHealth := func() {
 		snapshot, err := healthStore.ReadOperationalHealth(ctx, int64(c.ChainID), c.DeploymentID)
 		health.Database(err == nil)

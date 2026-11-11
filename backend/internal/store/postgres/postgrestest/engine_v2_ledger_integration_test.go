@@ -237,6 +237,10 @@ func TestEngineV2LedgerDownRefusesV2Rows(t *testing.T) {
 	if err := insertLedgerRow(ctx, database.DB, "token_launches", eventCoordinates{chainID, 1, hashBytes(0x01), base, 0, hashBytes(0x41), 0}, v2Launch(addressBytes(0x41))...); err != nil {
 		t.Fatal(err)
 	}
+	// The v2 projections migration holds no projection rows here, so it rolls back first.
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back engine v2 projections: %v", err)
+	}
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err == nil || !strings.Contains(err.Error(), "engine v2 ledger rows exist") {
 		t.Fatalf("down with a v2 launch error = %v, want refusal", err)
 	}

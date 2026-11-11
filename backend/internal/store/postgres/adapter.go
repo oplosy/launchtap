@@ -399,12 +399,11 @@ func (adapter *Adapter) IngestPoolSwap(ctx context.Context, event ledger.PoolSwa
 	return result, nil
 }
 
+// IngestCreatorFeeClaim debits an engine-2 creator fee balance; for an engine-1 token the delta
+// is a no-op.
 func (adapter *Adapter) IngestCreatorFeeClaim(ctx context.Context, event ledger.CreatorFeeClaim) (ledger.InsertResult, error) {
 	result, err := adapter.InsertCreatorFeeClaim(ctx, event)
-	if err != nil || !result.Inserted {
-		return result, err
-	}
-	return result, adapter.markTokenDirty(ctx, event.ChainID, event.Token)
+	return adapter.applyCreatorFeeDeltasIfInserted(ctx, result, err, event.EventCoordinates, event.Token)
 }
 
 func (adapter *Adapter) IngestProtocolFeeClaim(ctx context.Context, event ledger.ProtocolFeeClaim) (ledger.InsertResult, error) {
