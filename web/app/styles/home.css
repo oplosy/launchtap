@@ -2,6 +2,10 @@
 .home {
   gap: var(--section-gap);
 }
+/* The live strip sits right under the nav; the hero keeps its own top padding below it. */
+.home > .live-strip:first-child + .home-hero {
+  margin-top: calc(-1 * var(--section-gap));
+}
 .home-hero {
   display: grid;
   justify-items: center;
