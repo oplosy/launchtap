@@ -65,6 +65,17 @@ $testnetDisabledPath = Join-Path $deploymentsRoot "config/robinhood-testnet.disa
 Assert-JsonSchema $mainnetPath $chainDependenciesSchemaPath "mainnet dependency record"
 
 $mainnet = Get-Content -Raw -LiteralPath $mainnetPath | ConvertFrom-Json
+
+$mainnetV4Path = Join-Path $deploymentsRoot "config/robinhood-mainnet-v4.json"
+Assert-JsonSchema $mainnetV4Path (Join-Path $deploymentsRoot "v4-dependencies.schema.json") `
+    "mainnet Uniswap v4 dependency record"
+$mainnetV4 = Get-Content -Raw -LiteralPath $mainnetV4Path | ConvertFrom-Json
+if ([uint64] $mainnetV4.chainId -ne [uint64] $mainnet.chainId) {
+    Fail "mainnet v4 dependency record must target the mainnet chain"
+}
+if ([string] $mainnetV4.weth9 -cne [string] $mainnet.weth) {
+    Fail "mainnet v4 PositionManager WETH9 must match the reviewed WETH"
+}
 if ([uint64] $mainnet.chainId -ne 4663) { Fail "mainnet chain id must remain 4663" }
 if ([string] $mainnet.weth -cne "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73") {
     Fail "mainnet WETH drifted from the reviewed dependency record"

@@ -8,6 +8,8 @@ Set-StrictMode -Version Latest
 $contractsRoot = Split-Path -Parent $PSScriptRoot
 $configPath = Join-Path $contractsRoot "deployments/config/robinhood-mainnet.json"
 $config = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json
+$v4ConfigPath = Join-Path $contractsRoot "deployments/config/robinhood-mainnet-v4.json"
+$v4Config = Get-Content -Raw -LiteralPath $v4ConfigPath | ConvertFrom-Json
 
 function Fail([string] $Message) {
     throw "Robinhood mainnet fork check failed: $Message"
@@ -68,6 +70,24 @@ foreach ($dependency in @(
     }
 }
 
+# v2 runs at its own reviewed block: the Uniswap v4 record was pinned after the v1 record.
+$v4ForkBlock = [uint64] $v4Config.forkVerification.blockNumber
+$v4BlockHash = Invoke-Text "cast" @(
+    "block", [string] $v4ForkBlock, "--field", "hash", "--rpc-url", $RpcUrl
+)
+if ($v4BlockHash -cne [string] $v4Config.forkVerification.blockHash) {
+    Fail "v4 fork block hash does not match the reviewed evidence"
+}
+foreach ($name in @("poolManager", "positionManager", "permit2", "universalRouter")) {
+    $actual = Invoke-Text "cast" @(
+        "codehash", [string] $v4Config.$name, "--block", [string] $v4ForkBlock,
+        "--rpc-url", $RpcUrl
+    )
+    if ($actual -cne [string] $v4Config.bytecodeHashes.$name) {
+        Fail "Uniswap v4 $name runtime code hash does not match the reviewed evidence"
+    }
+}
+
 $previousProfile = [Environment]::GetEnvironmentVariable(
     "FOUNDRY_PROFILE", [EnvironmentVariableTarget]::Process
 )
@@ -76,8 +96,12 @@ $previousProfile = [Environment]::GetEnvironmentVariable(
 )
 Push-Location $contractsRoot
 try {
-    & forge test --fork-url $RpcUrl --fork-block-number $forkBlock -vvv
-    if ($LASTEXITCODE -ne 0) { Fail "forge fork suite exited with $LASTEXITCODE" }
+    & forge test --fork-url $RpcUrl --fork-block-number $forkBlock `
+        --no-match-contract "RobinhoodMainnetV2ForkTest" -vvv
+    if ($LASTEXITCODE -ne 0) { Fail "forge v1 fork suite exited with $LASTEXITCODE" }
+    & forge test --fork-url $RpcUrl --fork-block-number $v4ForkBlock `
+        --match-contract "RobinhoodMainnetV2ForkTest" -vvv
+    if ($LASTEXITCODE -ne 0) { Fail "forge v2 fork suite exited with $LASTEXITCODE" }
 }
 finally {
     Pop-Location
@@ -86,4 +110,4 @@ finally {
     )
 }
 
-Write-Output "Robinhood mainnet fork compatibility verified at block $forkBlock via QuickNode."
+Write-Output "Robinhood mainnet fork compatibility verified at blocks $forkBlock (v1) and $v4ForkBlock (v2) via QuickNode."

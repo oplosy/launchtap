@@ -2,12 +2,13 @@
 pragma solidity 0.8.36;
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import { IHooks } from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import { Currency } from "@uniswap/v4-core/src/types/Currency.sol";
 import { PoolId } from "@uniswap/v4-core/src/types/PoolId.sol";
 import { PoolKey } from "@uniswap/v4-core/src/types/PoolKey.sol";
+// v4-core SafeCast only: OZ SafeCast shares its name, which breaks Slither IR generation.
+import { SafeCast } from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import { IPositionManager } from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import { Actions } from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import { IAllowanceTransfer } from "permit2/src/interfaces/IAllowanceTransfer.sol";
@@ -125,7 +126,12 @@ contract BondingCurveV2 is BondingCurveV2Storage, IBondingCurveV2 {
         _protocolShareBps = parameters.protocolShareBps;
         _antiSnipeStartBps = antiSnipe.startBps;
         _antiSnipeDurationSeconds = antiSnipe.durationSeconds;
-        _launchTime = SafeCast.toUint64(block.timestamp);
+        // Checked cast; v4-core SafeCast has no toUint64 (see the import note). The bound
+        // check is not a timing decision, and the cast follows it.
+        // forge-lint: disable-start(block-timestamp, unsafe-typecast)
+        if (block.timestamp > type(uint64).max) revert SafeCast.SafeCastOverflow();
+        _launchTime = uint64(block.timestamp);
+        // forge-lint: disable-end(block-timestamp, unsafe-typecast)
         _lpCreatorShareBps = initialization.lpCreatorShareBps;
         _factory = initialization.factory;
         _implementation = initialization.implementation;
@@ -607,8 +613,12 @@ contract BondingCurveV2 is BondingCurveV2Storage, IBondingCurveV2 {
         IERC20 launchToken = IERC20(_token);
         bool approved = launchToken.approve(_permit2, tokenMax);
         if (!approved) revert TokenTransferFailed(_token, _permit2, tokenMax);
-        // forge-lint: disable-next-line(block-timestamp)
-        uint48 expiration = SafeCast.toUint48(block.timestamp);
+        // Checked cast; v4-core SafeCast has no toUint48 (see the import note). The bound
+        // check is not a timing decision, and the cast follows it.
+        // forge-lint: disable-start(block-timestamp, unsafe-typecast)
+        if (block.timestamp > type(uint48).max) revert SafeCast.SafeCastOverflow();
+        uint48 expiration = uint48(block.timestamp);
+        // forge-lint: disable-end(block-timestamp, unsafe-typecast)
         IAllowanceTransfer(_permit2)
             .approve(_token, _positionManager, SafeCast.toUint160(tokenMax), expiration);
 
@@ -631,11 +641,12 @@ contract BondingCurveV2 is BondingCurveV2Storage, IBondingCurveV2 {
         view
         returns (bytes memory)
     {
+        // Action ids are compile-time constants below 0x20; the narrowing cannot truncate.
+        // forge-lint: disable-start(unsafe-typecast)
         bytes memory actions = abi.encodePacked(
-            SafeCast.toUint8(Actions.MINT_POSITION),
-            SafeCast.toUint8(Actions.SETTLE_PAIR),
-            SafeCast.toUint8(Actions.SWEEP)
+            uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR), uint8(Actions.SWEEP)
         );
+        // forge-lint: disable-end(unsafe-typecast)
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(
             key,

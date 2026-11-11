@@ -6,7 +6,6 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { IERC721 } from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import { IERC721Receiver } from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
-import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {
     ReentrancyGuardTransient
 } from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
@@ -154,9 +153,11 @@ contract LpFeeLocker is ILpFeeLocker, ReentrancyGuardTransient {
 
     /// @dev `DECREASE_LIQUIDITY(tokenId, 0, 0, 0, "")` then `TAKE_PAIR(ETH, token, this)`.
     function _collectData(uint256 tokenId, address token) private view returns (bytes memory) {
-        bytes memory actions = abi.encodePacked(
-            SafeCast.toUint8(Actions.DECREASE_LIQUIDITY), SafeCast.toUint8(Actions.TAKE_PAIR)
-        );
+        // Action ids are compile-time constants below 0x20; the narrowing cannot truncate.
+        // forge-lint: disable-start(unsafe-typecast)
+        bytes memory actions =
+            abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR));
+        // forge-lint: disable-end(unsafe-typecast)
         bytes[] memory params = new bytes[](2);
         params[0] = abi.encode(tokenId, uint256(0), uint128(0), uint128(0), bytes(""));
         params[1] = abi.encode(Currency.wrap(address(0)), Currency.wrap(token), address(this));
