@@ -76,7 +76,12 @@ test("live strip lists recent trades, links to the token and truncates long name
     "href",
     `/token/${tokenA.toLowerCase()}`,
   );
-  await expect(items.first()).toContainText("—");
+  // An item is the token, then direction and size as one value coloured by side; the trader
+  // and the trade's age are not shown.
+  const value = items.first().locator(".live-strip-value");
+  await expect(value).toHaveAttribute("data-side", "buy");
+  await expect(value).toContainText("1.5 ETH");
+  await expect(items.first()).not.toContainText("—");
   const ticker = items.first().locator(".live-strip-ticker");
   const style = await ticker.evaluate((element) => {
     const computed = getComputedStyle(element);
