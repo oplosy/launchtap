@@ -113,33 +113,38 @@
   animation-timing-function: linear;
   animation-fill-mode: both;
 }
+.forum-bubble .home-post-body {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
 /* Holding a card (pointer or keyboard) keeps it from fading out mid-read. */
 .forum-bubble:hover,
 .forum-bubble:focus-within {
   animation-play-state: paused;
 }
+/* Drift stays under the 12 px gap between cards, so neighbours never touch while they move. */
 @keyframes forum-fog {
   0% {
     opacity: 0;
     filter: blur(18px);
-    transform: translateY(14px) scale(0.96);
+    transform: translateY(6px);
     animation-timing-function: var(--ease-out);
   }
   15% {
     opacity: 1;
     filter: blur(0);
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
   85% {
     opacity: 1;
     filter: blur(0);
-    transform: translateY(-8px) scale(1);
+    transform: translateY(-3px);
     animation-timing-function: var(--ease-in-out);
   }
   100% {
     opacity: 0;
     filter: blur(18px);
-    transform: translateY(-16px) scale(1.02);
+    transform: translateY(-6px);
   }
 }
 @media (max-width: 639px) {

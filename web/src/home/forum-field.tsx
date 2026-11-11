@@ -19,35 +19,26 @@ import { addressHue } from "@/token/address";
 import {
   FIELD_LIFETIME_MS,
   FIELD_POOL,
-  FIELD_TARGET,
-  layoutCells,
+  FIELD_TARGET_NARROW,
+  FIELD_TARGET_WIDE,
   nextPost,
-  pickCell,
-  placeInCell,
+  pickSpot,
   type Spot,
 } from "./forum-field-model";
 
-/** A card's box in the field. The body is clipped to three lines, so a card is never taller than
+/** Below this field width only a few cards fit, stacked loosely. */
+const NARROW_FIELD = 640;
+/** A card's box in the field. The body is clipped to two lines, so a card is never taller than
  *  CARD_HEIGHT; placement reserves that much and short posts simply leave more air. */
 const CARD_WIDTH = 384;
-const CARD_HEIGHT = 176;
-const CARD_GAP = 16;
+const CARD_HEIGHT = 148;
+/** Placement tries per card and the space kept between cards: many tries pack the field
+ *  densely while every spot stays random. */
+const PLACE_TRIES = 400;
+const CARD_GAP = 12;
 const TICK_MS = 500;
 
-type Bubble = {
-  key: number;
-  post: ForumPost;
-  cell: number;
-  spot: Spot;
-  area: { w: number; h: number };
-  age: number;
-};
-
-function fieldGrid(field: HTMLElement) {
-  const area = { width: field.clientWidth, height: field.clientHeight };
-  const size = { w: Math.min(CARD_WIDTH, area.width), h: CARD_HEIGHT };
-  return { area, size, cells: layoutCells(area, size, CARD_GAP) };
-}
+type Bubble = { key: number; post: ForumPost; spot: Spot; area: Spot; age: number };
 
 const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
 function subscribeReducedMotion(onChange: () => void) {
@@ -128,7 +119,7 @@ export function ForumField({ initial, apiBaseUrl }: { initial: ForumPost[]; apiB
   const postsRef = useRef(posts);
   const lastShown = useRef(new Map<string, number>());
   const counter = useRef(0);
-  const vacated = useRef<number | null>(null);
+  const vacated = useRef<Spot | null>(null);
 
   useEffect(() => {
     postsRef.current = posts;
@@ -143,14 +134,15 @@ export function ForumField({ initial, apiBaseUrl }: { initial: ForumPost[]; apiB
   const spawn = useCallback((age: number) => {
     const field = fieldRef.current;
     if (!field) return false;
-    const { area, size, cells } = fieldGrid(field);
-    // The cell a card just left is skipped while another is free: the next card appears elsewhere.
-    const taken = new Set(live.current.map((bubble) => bubble.cell));
-    const cell = pickCell(cells.length, taken, vacated.current, Math.random);
+    const area = { width: field.clientWidth, height: field.clientHeight };
+    const size = { w: Math.min(CARD_WIDTH, area.width), h: CARD_HEIGHT };
+    const taken = live.current.map((bubble) => bubble.spot);
+    // The card that just left keeps its spot for a moment: the next one appears elsewhere.
+    if (vacated.current) taken.push(vacated.current);
+    const spot = pickSpot(taken, area, size, Math.random, PLACE_TRIES, CARD_GAP);
     const onScreen = new Set(live.current.map((bubble) => bubble.post.id));
     const post = nextPost(postsRef.current, onScreen, lastShown.current);
-    const box = cell === null ? undefined : cells[cell];
-    if (cell === null || !box || !post) return false;
+    if (!spot || !post) return false;
     vacated.current = null;
     lastShown.current.set(post.id, Date.now() - age);
     counter.current += 1;
@@ -159,9 +151,8 @@ export function ForumField({ initial, apiBaseUrl }: { initial: ForumPost[]; apiB
       {
         key: counter.current,
         post,
-        cell,
-        spot: placeInCell(box, size, Math.random),
-        area: { w: area.width, h: area.height },
+        spot,
+        area: { x: 0, y: 0, w: area.width, h: area.height },
         age,
       },
     ];
@@ -173,10 +164,8 @@ export function ForumField({ initial, apiBaseUrl }: { initial: ForumPost[]; apiB
     const fill = () => {
       const field = fieldRef.current;
       if (!field) return;
-      // One cell always stays free, so each new card has a new place to appear.
       const target = Math.min(
-        FIELD_TARGET,
-        Math.max(1, fieldGrid(field).cells.length - 1),
+        field.clientWidth < NARROW_FIELD ? FIELD_TARGET_NARROW : FIELD_TARGET_WIDE,
         postsRef.current.length,
       );
       const first = live.current.length === 0;
@@ -200,7 +189,7 @@ export function ForumField({ initial, apiBaseUrl }: { initial: ForumPost[]; apiB
     (key: number) => (event: React.AnimationEvent<HTMLLIElement>) => {
       if (event.target !== event.currentTarget) return;
       const gone = live.current.find((bubble) => bubble.key === key);
-      vacated.current = gone?.cell ?? null;
+      vacated.current = gone?.spot ?? null;
       live.current = live.current.filter((bubble) => bubble.key !== key);
       spawn(0);
       commit(live.current);

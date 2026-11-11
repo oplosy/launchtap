@@ -1,63 +1,45 @@
 /** How long one post stays in the field, fog in and fog out included. */
 export const FIELD_LIFETIME_MS = 15_000;
-/** Most posts on screen at once; one cell is always left free so a new post has somewhere new
- *  to appear. */
-export const FIELD_TARGET = 9;
+/** Posts on screen at once: wide screens, and narrow ones where fewer boxes fit. */
+export const FIELD_TARGET_WIDE = 9;
+export const FIELD_TARGET_NARROW = 4;
 /** Recent posts the field cycles through. */
 export const FIELD_POOL = 30;
 
 export type Spot = { x: number; y: number; w: number; h: number };
 
+/** Whether two boxes touch, counting `gap` pixels around them as taken. */
+export function overlaps(a: Spot, b: Spot, gap: number): boolean {
+  return (
+    a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap
+  );
+}
+
 /**
- * Splits the field into a grid of cells, as many as fit a card of `size` with `gap` between them;
- * the spare room is shared out, so each cell is a little larger than a card.
+ * A random top-left position for a box of `size` inside `area` that keeps clear of every box in
+ * `taken`, or null after `tries` misses (the caller tries again on its next tick).
  */
-export function layoutCells(
+export function pickSpot(
+  taken: readonly Spot[],
   area: { width: number; height: number },
   size: { w: number; h: number },
-  gap: number,
-): Spot[] {
-  const columns = Math.floor((area.width + gap) / (size.w + gap));
-  const rows = Math.floor((area.height + gap) / (size.h + gap));
-  if (columns < 1 || rows < 1) return [];
-  const w = Math.floor(area.width / columns);
-  const h = Math.floor(area.height / rows);
-  const cells: Spot[] = [];
-  for (let row = 0; row < rows; row++)
-    for (let column = 0; column < columns; column++)
-      cells.push({ x: column * w, y: row * h, w, h });
-  return cells;
-}
-
-/** A card's box at a random offset inside its cell, so the grid never reads as a grid. */
-export function placeInCell(
-  cell: Spot,
-  size: { w: number; h: number },
   random: () => number,
-): Spot {
-  return {
-    x: cell.x + Math.round(random() * Math.max(0, cell.w - size.w)),
-    y: cell.y + Math.round(random() * Math.max(0, cell.h - size.h)),
-    w: size.w,
-    h: size.h,
-  };
-}
-
-/**
- * A random free cell, avoiding the one a card just left so the next card appears elsewhere; that
- * cell is used only when it is the last one free. Null when every cell is taken.
- */
-export function pickCell(
-  count: number,
-  taken: ReadonlySet<number>,
-  avoid: number | null,
-  random: () => number,
-): number | null {
-  const free: number[] = [];
-  for (let index = 0; index < count; index++)
-    if (!taken.has(index) && index !== avoid) free.push(index);
-  if (free.length > 0) return free[Math.floor(random() * free.length)] ?? null;
-  return avoid !== null && avoid < count && !taken.has(avoid) ? avoid : null;
+  tries = 80,
+  gap = 16,
+): Spot | null {
+  const freeX = area.width - size.w;
+  const freeY = area.height - size.h;
+  if (freeX < 0 || freeY < 0) return null;
+  for (let attempt = 0; attempt < tries; attempt++) {
+    const spot = {
+      x: Math.round(random() * freeX),
+      y: Math.round(random() * freeY),
+      w: size.w,
+      h: size.h,
+    };
+    if (!taken.some((box) => overlaps(box, spot, gap))) return spot;
+  }
+  return null;
 }
 
 /**
