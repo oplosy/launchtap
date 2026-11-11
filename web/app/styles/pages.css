@@ -327,7 +327,7 @@
 
 /* Docs: a centred 720 px reading column; contents sit in the left gutter, or behind a button. */
 .docs-page {
-  padding-top: clamp(32px, 5vw, 64px);
+  padding-top: clamp(48px, 7.5vw, 96px);
   padding-bottom: 96px;
 }
 .docs-layout {
@@ -338,10 +338,36 @@
 }
 .docs-contents {
   position: sticky;
-  /* DocsNav sets --docs-contents-top to where the list first renders, so it never moves. */
+  /* DocsNav sets --docs-contents-top to the vertical centre of the screen. */
   top: var(--docs-contents-top, calc(var(--nav-height) + 24px));
   justify-self: center;
   width: min(100%, 200px);
+}
+/* Wide layout: the list surfaces out of a blur on the first scroll and dissolves into one at the
+   end of the article. Hidden, it also leaves the tab order (visibility). */
+@media (min-width: 1024px) {
+  .docs-contents {
+    transition:
+      opacity 420ms var(--ease-out),
+      filter 420ms var(--ease-out),
+      visibility 0s;
+  }
+  .docs-contents[data-shown="false"] {
+    opacity: 0;
+    filter: blur(10px);
+    visibility: hidden;
+    transition:
+      opacity 420ms var(--ease-out),
+      filter 420ms var(--ease-out),
+      visibility 0s linear 420ms;
+  }
+}
+@media (min-width: 1024px) and (prefers-reduced-motion: reduce) {
+  .docs-contents,
+  .docs-contents[data-shown="false"] {
+    filter: none;
+    transition: none;
+  }
 }
 .docs-contents-toggle {
   display: none;
