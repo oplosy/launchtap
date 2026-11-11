@@ -216,12 +216,13 @@
   gap: 32px 64px;
 }
 .footer-follow {
-  grid-column: 1;
-  grid-row: 2;
+  grid-area: 1 / 1;
+  align-self: end;
   font-size: 14px;
   line-height: 20px;
 }
 .footer-brand {
+  grid-area: 1 / 1;
   justify-self: start;
   padding-top: 12px;
   color: var(--text);
@@ -404,8 +405,9 @@
   .footer-social {
     max-width: none;
   }
+  .footer-brand,
   .footer-follow {
-    grid-row: auto;
+    grid-area: auto;
   }
   .app-footer .footer-bottom {
     margin-top: 40px;
@@ -439,6 +441,10 @@
   font-size: 13px;
   line-height: 20px;
   text-align: center;
+}
+.footer-meta strong {
+  color: var(--text);
+  font-weight: 600;
 }
 .footer-meta {
   display: flex;
