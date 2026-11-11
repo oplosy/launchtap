@@ -100,7 +100,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     closeTimer.current = setTimeout(() => {
       closeTimer.current = null;
       setExploreOpen(false);
-    }, 220);
+    }, 80);
   }, []);
   useEffect(() => cancelHoverClose, [cancelHoverClose]);
   const hoverOpen = (event: React.PointerEvent) => {
