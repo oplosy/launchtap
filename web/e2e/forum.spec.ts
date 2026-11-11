@@ -77,9 +77,7 @@ test("the forum feed lists posts as text, links tokens and loads more", async ({
   const calls: Calls = { posts: [], communities: [] };
   await installApi(page, calls);
   await page.goto("/forum");
-  await expect(
-    page.getByRole("heading", { name: "Every launch with a community, ranked by what is moving." }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Forum" })).toBeAttached();
   const feed = page.getByRole("region", { name: "Forum posts" });
   await expect(feed.getByText("<img src=x onerror=window.__pwned=1>")).toBeVisible();
   await expect(feed.getByRole("link", { name: "s/<b>EVIL</b>" })).toHaveAttribute(
