@@ -155,6 +155,10 @@
   gap: 16px;
   padding: 28px 0;
 }
+/* The sticky preview stops where the form box ends: end the box at the last field. */
+.launch-section:last-child {
+  padding-bottom: 0;
+}
 .launch-section h2 {
   display: flex;
   align-items: baseline;
