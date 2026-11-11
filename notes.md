@@ -373,6 +373,10 @@ These do not change contract or backend correctness and are fail-closed or nulla
   implemented and independently reviewed on `dev`; deterministic CI is complete, while live
   Robinhood/Privy/production release inputs remain deferred.** Forum/Memestock remains a
   separate later plan.
+- `docs/specs/2026-11-11-v2-engine-design.md` — launch engine v2: anti-snipe tax, graduation
+  into a guarded Uniswap V4 pool with a locked LP position whose fees are split creator /
+  protocol, two-step fee recipient change. **Design agreed; awaiting pre-flight review and
+  plan. Gate 0 first.**
 
 ## Sub-project A — economy & contract parameters (DESIGN CLOSED)
 
