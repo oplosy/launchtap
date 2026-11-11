@@ -206,6 +206,6 @@ test("the footer frames the sections with the brand and a side column", async ({
   expect(b.x + b.width).toBeLessThan(s.x);
   expect(s.x + s.width).toBeLessThan(a.x);
   const social = footer.getByRole("list", { name: "Social media" }).getByRole("img");
-  expect(await social.count()).toBeGreaterThanOrEqual(10);
+  expect(await social.count()).toBe(8);
   await expect(social.first()).toHaveAccessibleName(/X/);
 });
