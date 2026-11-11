@@ -47,6 +47,7 @@ import { isTokenEventForAddress } from "./sse-scope";
 import { TradingPanel } from "@/transactions-panel";
 import { MetadataEditor } from "./metadata-editor";
 import { LaunchFactsPanel } from "./launch-facts-panel";
+import { graduationPreview } from "./graduation-preview";
 import { PRICE_FLASH_MS, priceDirection } from "./price-flash";
 
 type TokenDetailProps = { address: `0x${string}` };
@@ -521,6 +522,7 @@ export function TokenDetail({
   if (tokenError || !token) return <TokenLoadError onRetry={() => window.location.reload()} />;
 
   const progress = Math.max(0, Math.min(100, token.graduation_progress_bps / 100));
+  const preview = graduationPreview(token);
   const pagesItems: unknown[] = [];
   for (const page of pages) {
     for (const item of page.items ?? []) pagesItems.push(item);
@@ -714,6 +716,37 @@ export function TokenDetail({
                 {amount(token.real_curve_eth)} of {amount(token.graduation_eth)} raised · source{" "}
                 {token.reserve_source || "unavailable"}
               </p>
+              {preview ? (
+                <dl className="graduation-preview">
+                  <div>
+                    <dt>Left to graduate</dt>
+                    <dd>
+                      {preview.remainingWei === null ? "Unavailable" : amount(preview.remainingWei)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Implied pool opening price</dt>
+                    <dd>
+                      {preview.openingPriceWad === null
+                        ? "Unavailable"
+                        : `${safeMarketValue(preview.openingPriceWad)} ETH`}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Implied opening market cap</dt>
+                    <dd>
+                      {preview.openingMarketCapWei === null ? (
+                        "Unavailable"
+                      ) : (
+                        <>
+                          {amount(preview.openingMarketCapWei)}
+                          <UsdLine wei={preview.openingMarketCapWei} />
+                        </>
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+              ) : null}
             </div>
           </section>
 

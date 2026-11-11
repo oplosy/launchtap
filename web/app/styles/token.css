@@ -349,6 +349,32 @@
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
+/* What the pool opens at: three quiet figures under the bar, curve phase only. */
+.graduation-preview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 32px;
+  margin-top: 6px;
+}
+.graduation-preview > div {
+  min-width: 0;
+}
+.graduation-preview dt {
+  color: var(--text-3);
+  font-size: 13px;
+}
+.graduation-preview dd {
+  margin-top: 4px;
+  color: var(--text-2);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 560px) {
+  .graduation-preview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 
 /* History tables */
 .token-history-panel .ui-tabpanel {
