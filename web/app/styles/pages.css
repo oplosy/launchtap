@@ -348,8 +348,8 @@
 @media (min-width: 1024px) {
   .docs-contents {
     transition:
-      opacity 420ms var(--ease-out),
-      filter 420ms var(--ease-out),
+      opacity 700ms var(--ease-out),
+      filter 700ms var(--ease-out),
       visibility 0s;
   }
   .docs-contents[data-shown="false"] {
@@ -357,9 +357,9 @@
     filter: blur(10px);
     visibility: hidden;
     transition:
-      opacity 420ms var(--ease-out),
-      filter 420ms var(--ease-out),
-      visibility 0s linear 420ms;
+      opacity 700ms var(--ease-out),
+      filter 700ms var(--ease-out),
+      visibility 0s linear 700ms;
   }
 }
 @media (min-width: 1024px) and (prefers-reduced-motion: reduce) {
@@ -388,10 +388,6 @@
 .docs-nav a:hover,
 .docs-nav a[aria-current] {
   color: var(--text);
-}
-.docs-nav a .mono {
-  color: var(--text-3);
-  font-size: 12px;
 }
 .docs-article {
   display: grid;
@@ -442,7 +438,6 @@
   color: var(--text-3);
 }
 .docs-formula {
-  overflow-x: auto;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-input);
   color: var(--text);
@@ -451,7 +446,9 @@
   font-family: var(--font-code);
   font-size: 14px;
   line-height: 24px;
-  white-space: pre;
+  /* Wraps on narrow screens instead of becoming a scroll region keyboards cannot reach. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .docs-facts {
   display: grid;
