@@ -21,6 +21,9 @@ const (
 	deploymentSchemaPath   = "deployment.schema.json"
 	dependenciesSchemaPath = "chain-dependencies.schema.json"
 	disabledSchemaPath     = "chain-disabled.schema.json"
+	v4SchemaPath           = "v4-dependencies.schema.json"
+	// v4RecordSuffix marks a reviewed Uniswap v4 dependency record under config/.
+	v4RecordSuffix = "-v4.json"
 )
 
 var (
@@ -121,6 +124,9 @@ func Load(fsys fs.FS) (*Registry, error) {
 		switch {
 		case strings.HasSuffix(filePath, ".disabled.json"):
 			return registry.addDisabled(filePath, body, validators.disabled)
+		case strings.HasPrefix(filePath, "config/") && strings.HasSuffix(filePath, v4RecordSuffix):
+			// Schema-only: the engine v2 runtime does not consume this record yet.
+			return validateOnly(filePath, body, validators.v4)
 		case strings.HasPrefix(filePath, "config/"):
 			return validateDependencies(filePath, body, validators.dependencies)
 		default:
@@ -174,6 +180,7 @@ type compiledSchemas struct {
 	deployment   *jsonschema.Schema
 	dependencies *jsonschema.Schema
 	disabled     *jsonschema.Schema
+	v4           *jsonschema.Schema
 }
 
 func compileSchemas(fsys fs.FS) (compiledSchemas, error) {
@@ -209,7 +216,11 @@ func compileSchemas(fsys fs.FS) (compiledSchemas, error) {
 	if err != nil {
 		return compiledSchemas{}, err
 	}
-	return compiledSchemas{deployment: deployment, dependencies: dependencies, disabled: disabled}, nil
+	v4, err := compile(v4SchemaPath)
+	if err != nil {
+		return compiledSchemas{}, err
+	}
+	return compiledSchemas{deployment: deployment, dependencies: dependencies, disabled: disabled, v4: v4}, nil
 }
 
 func validateOnly(filePath string, body []byte, schema *jsonschema.Schema) error {

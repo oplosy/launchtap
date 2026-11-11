@@ -7,6 +7,9 @@ libs = ["lib"]
 remappings = [
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
     "forge-std/=lib/forge-std/src/",
+    "@uniswap/v4-core/=lib/v4-periphery/lib/v4-core/",
+    "@uniswap/v4-periphery/=lib/v4-periphery/",
+    "permit2/=lib/v4-periphery/lib/permit2/",
 ]
 auto_detect_remappings = false
 solc_version = "0.8.36"
@@ -20,10 +23,39 @@ fs_permissions = [
     { access = "read-write", path = "./vectors" },
     { access = "read-write", path = "./fixtures" },
     { access = "read", path = "./deployments" },
+    { access = "read", path = "./out-v4" },
 ]
 
 [profile.fork]
 test = "fork-test"
+
+# Test-only build of the Uniswap v4 deployables (PoolManager, PositionManager) with the
+# upstream compiler and settings (solc 0.8.26, via-IR, upstream optimizer runs and remappings).
+# The default profile pins solc 0.8.36, which those exact-pragma sources cannot use; tests
+# load these artifacts with `vm.deployCode("out-v4/...")`. Mainnet uses the live deployments.
+[profile.v4]
+src = "v4-deployables"
+test = "v4-deployables"
+script = "v4-deployables"
+out = "out-v4"
+cache_path = "cache-v4"
+remappings = [
+    "@uniswap/v4-core/=lib/v4-periphery/lib/v4-core/",
+    "@uniswap/v4-periphery/=lib/v4-periphery/",
+    "@openzeppelin/=lib/v4-periphery/lib/v4-core/lib/openzeppelin-contracts/",
+    "openzeppelin-contracts/=lib/v4-periphery/lib/v4-core/lib/openzeppelin-contracts/",
+    "solmate/=lib/v4-periphery/lib/v4-core/lib/solmate/",
+    "permit2/=lib/v4-periphery/lib/permit2/",
+]
+solc_version = "0.8.26"
+via_ir = true
+optimizer_runs = 44444444
+bytecode_hash = "none"
+deny = "never"
+additional_compiler_profiles = [{ name = "posm", via_ir = true, optimizer_runs = 500 }]
+compilation_restrictions = [
+    { paths = "lib/v4-periphery/src/PositionManager.sol", optimizer_runs = 500 },
+]
 
 [fmt]
 line_length = 100

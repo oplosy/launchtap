@@ -26,6 +26,8 @@ pnpm-debug.log*
 # Foundry
 /contracts/out/
 /contracts/cache/
+/contracts/out-v4/
+/contracts/cache-v4/
 /contracts/broadcast/
 /contracts/vectors/.generated/
 /contracts/deployments/.generated/

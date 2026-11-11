@@ -33,7 +33,11 @@ $requiredPins = @(
     "OPENZEPPELIN_VERSION",
     "OPENZEPPELIN_COMMIT",
     "FORGE_STD_VERSION",
-    "FORGE_STD_COMMIT"
+    "FORGE_STD_COMMIT",
+    "UNISWAP_V4_PERIPHERY_COMMIT",
+    "UNISWAP_V4_CORE_VERSION",
+    "UNISWAP_V4_CORE_COMMIT",
+    "PERMIT2_COMMIT"
 )
 foreach ($requiredPin in $requiredPins) {
     if (-not $pins.ContainsKey($requiredPin)) {
@@ -72,6 +76,30 @@ $dependencies = @(
         Submodule = "contracts/lib/forge-std"
         Url = "https://github.com/foundry-rs/forge-std.git"
         Commit = $pins["FORGE_STD_COMMIT"]
+    },
+    @{
+        Name = "Uniswap v4-periphery"
+        Path = Join-Path $contractsRoot "lib/v4-periphery"
+        Submodule = "contracts/lib/v4-periphery"
+        Url = "https://github.com/Uniswap/v4-periphery.git"
+        Commit = $pins["UNISWAP_V4_PERIPHERY_COMMIT"]
+    },
+    # Nested submodules of v4-periphery: their URLs live in v4-periphery's own .gitmodules.
+    @{
+        Name = "Uniswap v4-core"
+        Path = Join-Path $contractsRoot "lib/v4-periphery/lib/v4-core"
+        GitmodulesRoot = Join-Path $contractsRoot "lib/v4-periphery"
+        Submodule = "lib/v4-core"
+        Url = "https://github.com/Uniswap/v4-core"
+        Commit = $pins["UNISWAP_V4_CORE_COMMIT"]
+    },
+    @{
+        Name = "Permit2"
+        Path = Join-Path $contractsRoot "lib/v4-periphery/lib/permit2"
+        GitmodulesRoot = Join-Path $contractsRoot "lib/v4-periphery"
+        Submodule = "lib/permit2"
+        Url = "https://github.com/Uniswap/permit2"
+        Commit = $pins["PERMIT2_COMMIT"]
     }
 )
 
@@ -91,7 +119,11 @@ foreach ($dependency in $dependencies) {
     }
 
     $urlKey = "submodule.$($dependency.Submodule).url"
-    $actualUrl = (& git -C $repositoryRoot config -f .gitmodules --get $urlKey).Trim()
+    $gitmodulesRoot = $repositoryRoot
+    if ($dependency.ContainsKey("GitmodulesRoot")) {
+        $gitmodulesRoot = $dependency.GitmodulesRoot
+    }
+    $actualUrl = (& git -C $gitmodulesRoot config -f .gitmodules --get $urlKey).Trim()
     if ($LASTEXITCODE -ne 0 -or $actualUrl -ne $dependency.Url) {
         Fail "$($dependency.Name) expected URL $($dependency.Url), got $actualUrl"
     }
@@ -108,6 +140,11 @@ $foundryDependencies = @(
         Path = "lib/forge-std"
         Version = $pins["FORGE_STD_VERSION"]
         Commit = $pins["FORGE_STD_COMMIT"]
+    },
+    @{
+        Path = "lib/v4-periphery"
+        Version = $null
+        Commit = $pins["UNISWAP_V4_PERIPHERY_COMMIT"]
     }
 )
 foreach ($dependency in $foundryDependencies) {
@@ -117,6 +154,13 @@ foreach ($dependency in $foundryDependencies) {
     }
 
     $entry = $entryProperty.Value
+    if ($null -eq $dependency.Version) {
+        # Untagged dependency: foundry.lock pins the bare revision.
+        if ($null -eq $entry.PSObject.Properties["rev"] -or $entry.rev -ne $dependency.Commit) {
+            Fail "foundry.lock drift for $($dependency.Path)"
+        }
+        continue
+    }
     if ($entry.tag.name -ne $dependency.Version -or $entry.tag.rev -ne $dependency.Commit) {
         Fail "foundry.lock drift for $($dependency.Path)"
     }

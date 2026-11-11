@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "target": "robinhood-mainnet",
+  "chainId": 4663,
+  "reviewed": true,
+  "poolManager": "0x8366a39CC670B4001A1121B8F6A443A643e40951",
+  "positionManager": "0x58daec3116aae6D93017bAAea7749052E8a04fA7",
+  "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+  "universalRouter": "0x204FAca1764B154221e35c0d20aBb3c525710498",
+  "positionDescriptor": "0x9639443158E8C5efa35Bd45287bf2EFfd3D8dC06",
+  "stateView": "0xF3334192D15450CdD385c8B70e03f9A6bD9E673b",
+  "v4Quoter": "0x8Dc178eFB8111BB0973Dd9d722ebeFF267c98F94",
+  "weth9": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+  "bytecodeHashes": {
+    "poolManager": "0xbd3881180b547f5fe817545743cfb4343e96b1bc6640dcd70c106b0066e95626",
+    "positionManager": "0xc873e135dc9aaec88489cfbad146b4cb49d6a32e0d80326377784b7ba17670b2",
+    "permit2": "0x5208783f52488f7d3493e5e38311ab707c1d75457fe472a19b0b4d57d66a7fca",
+    "universalRouter": "0x76b92a5bba2dd32019a64eb421f1750e78c6ba044dbfa6840b722eb5ac63d296"
+  },
+  "forkVerification": {
+    "blockNumber": 111860852,
+    "blockHash": "0x4b9f84b306bf5e4b25812c0635e9eb1a432b5b98c7f73656a4d0fac294cddfe3",
+    "observedRpcProvider": "Robinhood Public RPC",
+    "archiveRpcProvider": "QuickNode",
+    "rpcEnvironmentVariable": "ROBINHOOD_MAINNET_ARCHIVE_RPC_URL",
+    "archiveRequired": true
+  },
+  "evidence": {
+    "poolManager": "runtime identical to the pinned v4-core 59d3ecf build outside its single immutable",
+    "permit2": "runtime identical to the canonical Permit2 bytecode outside its cached chain id (4663) and domain separator",
+    "positionManager": "not reproduced from the pinned v4-periphery c6e4754 build (different source revision); identified by the official feed and docs, its code hash, poolManager() and permit2() wiring, WETH9() and tokenDescriptor() matching this file",
+    "universalRouter": "active v2.1.2 record in the official feed; used only by the web plan"
+  },
+  "sources": {
+    "uniswapV4Deployments": "https://developers.uniswap.org/docs/protocols/v4/deployments",
+    "uniswapDeploymentsFeed": "https://developers.uniswap.org/deployments.json",
+    "uniswapDeploymentsFeedCommit": "036160f74ad4477ae958772ee4b460d1e683a365",
+    "chainRpc": "https://docs.robinhood.com/chain/connecting/"
+  }
+}

@@ -39,6 +39,11 @@ try {
         }
     }
 
+    # Every target that compiles tests or scripts needs the test-only Uniswap v4 artifacts
+    # (`out-v4/`), built from the pinned submodule with the upstream compiler settings.
+    if ($Target -notin @("pins", "fmt", "runner-test")) {
+        Invoke-WithFoundryProfile "v4" { forge build --no-lint }
+    }
     if ($Target -in @("all", "release", "pins")) {
         Invoke-Checked { & "$PSScriptRoot/check-dependencies.ps1" }
     }

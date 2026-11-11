@@ -10,5 +10,8 @@
       "name": "v5.7.0",
       "rev": "cab19933c33c2ad1d4c7a84864a3601dddfd16f3"
     }
+  },
+  "lib/v4-periphery": {
+    "rev": "c6e4754dab11bd38c6f08ac51c3c868569e93d64"
   }
 }
