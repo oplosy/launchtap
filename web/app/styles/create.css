@@ -11,16 +11,9 @@
   justify-content: space-between;
   gap: 12px;
 }
+/* A pill like the other secondary buttons; only the chevron is tuned here. */
 .create-back-button {
-  display: inline-flex;
-  align-items: center;
   gap: 6px;
-  color: var(--text-2);
-  font: var(--type-label);
-  transition: color var(--dur-fast) linear;
-}
-.create-back-button:hover {
-  color: var(--text);
 }
 .create-back-button > span {
   font-size: 18px;
@@ -121,7 +114,6 @@
   }
   .launch-aside .launch-preview-card dl {
     gap: 20px 24px;
-    border-top: 1px solid var(--hairline);
     padding-top: 24px;
   }
   .launch-aside .launch-preview-card dt {
@@ -160,7 +152,6 @@
 .launch-section {
   display: grid;
   gap: 16px;
-  border-top: 1px solid var(--hairline);
   padding: 28px 0;
 }
 .launch-section h2 {

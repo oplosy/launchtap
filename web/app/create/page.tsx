@@ -6,7 +6,7 @@ export default function CreatePage() {
   return (
     <div className="page-stack create-page">
       <div className="create-page-toolbar">
-        <Link className="create-back-button" href="/">
+        <Link className="ui-button ui-button-secondary ui-button-sm create-back-button" href="/">
           <span aria-hidden="true">‹</span> Back
         </Link>
         <EngineToggle />
