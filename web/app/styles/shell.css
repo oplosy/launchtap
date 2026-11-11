@@ -77,11 +77,11 @@
   gap: 8px;
 }
 .navbar-actions .ui-icon-button {
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
 }
 .navbar-actions .ui-button {
-  height: 38px;
+  height: 36px;
   padding: 0 18px;
   font-size: 14px;
 }
@@ -213,7 +213,13 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 2.4fr) minmax(0, 1fr);
   align-items: start;
-  gap: 64px;
+  gap: 32px 64px;
+}
+.footer-follow {
+  grid-column: 1;
+  grid-row: 2;
+  font-size: 14px;
+  line-height: 20px;
 }
 .footer-brand {
   justify-self: start;
@@ -337,7 +343,8 @@
   justify-items: start;
   gap: 6px;
 }
-.footer-aside h2 {
+.footer-aside h2,
+.footer-follow h2 {
   margin-bottom: 2px;
   color: var(--text);
   font: var(--type-label);
@@ -396,6 +403,9 @@
   }
   .footer-social {
     max-width: none;
+  }
+  .footer-follow {
+    grid-row: auto;
   }
   .app-footer .footer-bottom {
     margin-top: 40px;

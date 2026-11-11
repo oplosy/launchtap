@@ -108,19 +108,20 @@ export function SiteFooter() {
               Explore launches <ArrowUpRight size={12} aria-hidden="true" />
             </Link>
           </div>
-          <div className="footer-aside-block">
-            <h2>Follow</h2>
-            <ul className="footer-social" aria-label="Social media">
-              {SOCIAL.map(({ label, icon: SocialIcon }) => (
-                <li key={label}>
-                  <span role="img" aria-label={`${label} (coming soon)`} title={label}>
-                    <SocialIcon size={18} aria-hidden="true" />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
         </aside>
+        {/* Wide layout: under the brand, in the row below the sections and the side column. */}
+        <div className="footer-aside-block footer-follow">
+          <h2>Follow</h2>
+          <ul className="footer-social" aria-label="Social media">
+            {SOCIAL.map(({ label, icon: SocialIcon }) => (
+              <li key={label}>
+                <span role="img" aria-label={`${label} (coming soon)`} title={label}>
+                  <SocialIcon size={18} aria-hidden="true" />
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
       <div className="footer-bottom">
         <p className="footer-meta">

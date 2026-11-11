@@ -69,14 +69,13 @@ export function DocsNav({ sections }: { sections: ReadonlyArray<{ id: string; la
         aria-label="Documentation sections"
         data-open={open ? "" : undefined}
       >
-        {sections.map(({ id, label }, index) => (
+        {sections.map(({ id, label }) => (
           <a
             key={id}
             href={`#${id}`}
             aria-current={active === id ? "location" : undefined}
             onClick={() => setOpen(false)}
           >
-            <span className="mono">{String(index + 1).padStart(2, "0")}</span>
             {label}
           </a>
         ))}

@@ -186,7 +186,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               Create
             </Link>
-            <WalletConnectButton variant="primary" />
+            <WalletConnectButton variant="primary" compact />
             <button
               type="button"
               className="ui-icon-button navbar-menu-button"
