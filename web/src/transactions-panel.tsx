@@ -2364,9 +2364,7 @@ function LaunchPanelReady() {
             <div className="launch-main">
               <div className="transaction-form">
                 <section className="launch-section" aria-labelledby="launch-step-image">
-                  <h2 id="launch-step-image">
-                    <span className="launch-step">01</span> Image
-                  </h2>
+                  <h2 id="launch-step-image">Image</h2>
                   <Input
                     label="Token image"
                     value={imageUrl}
@@ -2383,9 +2381,7 @@ function LaunchPanelReady() {
                   ) : null}
                 </section>
                 <section className="launch-section" aria-labelledby="launch-step-name">
-                  <h2 id="launch-step-name">
-                    <span className="launch-step">02</span> Name and symbol
-                  </h2>
+                  <h2 id="launch-step-name">Name and symbol</h2>
                   <div className="launch-field-row">
                     <Input
                       label="Name"
@@ -2406,7 +2402,7 @@ function LaunchPanelReady() {
                 </section>
                 <section className="launch-section" aria-labelledby="launch-step-links">
                   <h2 id="launch-step-links">
-                    <span className="launch-step">03</span> Links
+                    Links
                     <InfoTip
                       label="links"
                       text="Optional. Add a description from the token page after launch."
@@ -2428,9 +2424,7 @@ function LaunchPanelReady() {
                   </div>
                 </section>
                 <section className="launch-section" aria-labelledby="launch-step-buy">
-                  <h2 id="launch-step-buy">
-                    <span className="launch-step">04</span> Initial buy
-                  </h2>
+                  <h2 id="launch-step-buy">Initial buy</h2>
                   <div className="launch-field-row">
                     <div className="ui-field">
                       <span>Paired asset</span>
