@@ -325,14 +325,14 @@
   margin: 0 0 24px;
 }
 
-/* Docs: a centred 720 px reading column; contents sit in the left gutter, or behind a button. */
+/* Docs: a centred 820 px reading column; contents sit in the left gutter, or behind a button. */
 .docs-page {
   padding-top: clamp(48px, 7.5vw, 96px);
   padding-bottom: 96px;
 }
 .docs-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 720px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 820px) minmax(0, 1fr);
   align-items: start;
   gap: 48px;
 }
@@ -399,15 +399,6 @@
   display: grid;
   gap: 16px;
   scroll-margin-top: calc(var(--nav-height) + 24px);
-}
-/* Wide layout: sections step gently right and left down the page. */
-@media (min-width: 1024px) {
-  .docs-article > section:nth-child(odd) {
-    translate: 24px 0;
-  }
-  .docs-article > section:nth-child(even) {
-    translate: -24px 0;
-  }
 }
 .docs-article h2 {
   font: var(--type-section);
