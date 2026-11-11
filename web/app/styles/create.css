@@ -26,12 +26,14 @@
   font-size: 18px;
   line-height: 1;
 }
+/* Inverted pill: black on the light theme, white on the dark one. */
 .create-protocol-label {
   border-radius: var(--radius-pill);
-  color: var(--text-3);
-  background: var(--fill);
+  color: var(--canvas);
+  background: var(--text);
   padding: 4px 12px;
   font-size: 12px;
+  font-weight: 500;
 }
 
 .launch-panel {
