@@ -88,7 +88,7 @@
   opacity: 0;
   pointer-events: none;
   backdrop-filter: blur(12px);
-  transition: opacity var(--dur-fast) var(--ease-out);
+  transition: opacity 220ms var(--ease-in-out);
 }
 .mega-backdrop[data-open="true"] {
   opacity: 1;
@@ -103,23 +103,25 @@
   z-index: 1;
   border-bottom: 1px solid var(--hairline);
   background: var(--canvas);
-  opacity: 0;
   visibility: hidden;
-  transform: translateY(-8px);
-  /* Closing is quicker than opening. */
+  /* Rolls down from the nav and rolls back up into it: the clip edge is the visible motion. */
+  clip-path: inset(0 0 100% 0);
   transition:
-    opacity var(--dur-fast) var(--ease-out),
-    transform var(--dur-fast) var(--ease-out),
-    visibility 0s linear var(--dur-fast);
+    clip-path 220ms var(--ease-in-out),
+    visibility 0s linear 220ms;
 }
 .mega-menu[data-open="true"] {
-  opacity: 1;
   visibility: visible;
-  transform: none;
+  clip-path: inset(0 0 -1px 0);
   transition:
-    opacity var(--dur-base) var(--ease-out),
-    transform var(--dur-base) var(--ease-out),
+    clip-path var(--dur-base) var(--ease-out),
     visibility 0s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mega-menu,
+  .mega-menu[data-open="true"] {
+    transition: none;
+  }
 }
 .mega-menu-inner {
   display: flex;
