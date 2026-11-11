@@ -87,17 +87,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setExploreOpen(false);
   }
   const active = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  // Hover intent: leaving the menu closes it only after a short grace period, so a fast move from
+  // the trigger down into the still-unrolling panel (or a brief overshoot) does not shut it.
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelHoverClose = useCallback(() => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = null;
+  }, []);
+  const scheduleHoverClose = useCallback(() => {
+    // Already counting down: further moves off the menu must not push the close back.
+    if (closeTimer.current) return;
+    closeTimer.current = setTimeout(() => {
+      closeTimer.current = null;
+      setExploreOpen(false);
+    }, 220);
+  }, []);
+  useEffect(() => cancelHoverClose, [cancelHoverClose]);
   const hoverOpen = (event: React.PointerEvent) => {
-    if (event.pointerType === "mouse") setExploreOpen(true);
+    if (event.pointerType !== "mouse") return;
+    cancelHoverClose();
+    setExploreOpen(true);
   };
   const hoverClose = (event: React.PointerEvent) => {
-    if (event.pointerType === "mouse") setExploreOpen(false);
+    if (event.pointerType !== "mouse") return;
+    cancelHoverClose();
+    setExploreOpen(false);
+  };
+  const hoverLeave = (event: React.PointerEvent) => {
+    if (event.pointerType === "mouse") scheduleHoverClose();
   };
   return (
     <div className="app-frame">
       <header
         className={`app-navbar${scrolled ? " is-scrolled" : ""}${exploreOpen ? " is-menu-open" : ""}`}
-        onPointerLeave={hoverClose}
+        onPointerLeave={hoverLeave}
       >
         <div className="navbar-inner">
           <Link className="navbar-brand" href="/" aria-label="Open home">
@@ -114,7 +137,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     className={`navbar-link${active(href) ? " is-active" : ""}`}
                     aria-expanded={exploreOpen}
                     aria-controls={exploreMenuId}
-                    onClick={() => setExploreOpen((open) => !open)}
+                    // A mouse click lands right after the hover that opened the menu, so it keeps
+                    // the menu open; keyboard activation (detail 0) still toggles it.
+                    onClick={(event) => setExploreOpen((open) => (event.detail > 0 ? true : !open))}
                     onPointerEnter={hoverOpen}
                   >
                     {label}
@@ -123,6 +148,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     id={exploreMenuId}
                     open={exploreOpen}
                     onClose={closeExplore}
+                    onHoverLeave={scheduleHoverClose}
+                    onHoverReturn={cancelHoverClose}
                     triggerRef={exploreRef}
                   />
                 </Fragment>

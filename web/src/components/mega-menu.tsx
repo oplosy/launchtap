@@ -33,11 +33,17 @@ export function MegaMenu({
   id,
   open,
   onClose,
+  onHoverLeave,
+  onHoverReturn,
   triggerRef,
 }: {
   id: string;
   open: boolean;
   onClose: () => void;
+  /** The mouse moved off the menu: close after the shell's grace period. */
+  onHoverLeave: () => void;
+  /** The mouse came back over the menu: keep it open. */
+  onHoverReturn: () => void;
   triggerRef: RefObject<HTMLElement | null>;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -62,6 +68,19 @@ export function MegaMenu({
     };
   }, [open, onClose, triggerRef]);
 
+  const trackBackdrop = (event: React.PointerEvent) => {
+    if (event.pointerType !== "mouse" || !open) return;
+    const box = panelRef.current?.getBoundingClientRect();
+    const overPanel =
+      box !== undefined &&
+      event.clientX >= box.left &&
+      event.clientX <= box.right &&
+      event.clientY >= box.top &&
+      event.clientY <= box.bottom;
+    if (overPanel) onHoverReturn();
+    else onHoverLeave();
+  };
+
   return (
     <>
       <div
@@ -69,10 +88,11 @@ export function MegaMenu({
         data-open={open ? "true" : "false"}
         onClick={onClose}
         // The backdrop sits inside the header, so the header's pointer-leave never fires while
-        // the mouse is over it: moving onto the backdrop is leaving the menu.
-        onPointerEnter={(event) => {
-          if (event.pointerType === "mouse" && open) onClose();
-        }}
+        // the mouse is over it: moving onto the backdrop is leaving the menu. While the panel
+        // still rolls down its clipped part does not take the pointer, so a point inside the
+        // panel's full box counts as over the menu.
+        onPointerEnter={(event) => trackBackdrop(event)}
+        onPointerMove={(event) => trackBackdrop(event)}
         aria-hidden="true"
       />
       <div
@@ -82,6 +102,7 @@ export function MegaMenu({
         role="region"
         aria-label="Explore menu"
         data-open={open ? "true" : "false"}
+        onPointerEnter={onHoverReturn}
         // Closed: CSS makes it visibility:hidden after the fade, which also removes its links
         // from the tab order and the accessibility tree.
       >
