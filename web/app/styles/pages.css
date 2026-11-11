@@ -339,7 +339,7 @@
   position: sticky;
   /* DocsNav sets --docs-contents-top to where the list first renders, so it never moves. */
   top: var(--docs-contents-top, calc(var(--nav-height) + 24px));
-  justify-self: end;
+  justify-self: center;
   width: min(100%, 200px);
 }
 .docs-contents-toggle {

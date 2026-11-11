@@ -31,7 +31,7 @@
   --measure-text: 720px;
   --measure-form: 640px;
   --gutter: clamp(16px, 5vw, 80px);
-  --nav-height: 76px;
+  --nav-height: 70px;
   --section-gap: clamp(96px, 12vw, 160px);
 
   --type-body: 400 17px/28px var(--font-ui);
