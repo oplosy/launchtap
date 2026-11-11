@@ -41,9 +41,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-media);
-  padding: 6px 10px;
+  padding: 6px 12px;
   color: var(--text);
   font-size: 13px;
   white-space: nowrap;
@@ -108,10 +106,6 @@ a.live-strip-trader-link:hover {
 .live-strip-item[data-pending] .live-strip-link,
 .history-row[data-pending] {
   opacity: 0.65;
-  border-style: dashed;
-}
-.history-row[data-pending] {
-  border-style: solid;
 }
 
 @media (prefers-reduced-motion: no-preference) {
