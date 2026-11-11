@@ -46,7 +46,7 @@
 }
 .navbar-brand {
   justify-self: start;
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 600;
   letter-spacing: -0.03em;
 }
@@ -56,12 +56,13 @@
   gap: 4px;
 }
 .navbar-link {
-  height: 36px;
+  height: 40px;
   border-radius: var(--radius-pill);
   color: var(--text-2);
-  padding: 0 12px;
+  padding: 0 14px;
   font: var(--type-label);
-  line-height: 36px;
+  font-size: 16px;
+  line-height: 40px;
   transition: color var(--dur-fast) var(--ease-out);
 }
 .navbar-link:hover,
@@ -74,6 +75,15 @@
   justify-self: end;
   align-items: center;
   gap: 8px;
+}
+.navbar-actions .ui-icon-button {
+  width: 40px;
+  height: 40px;
+}
+.navbar-actions .ui-button {
+  height: 40px;
+  padding: 0 20px;
+  font-size: 15px;
 }
 .navbar-menu-button {
   display: none;
