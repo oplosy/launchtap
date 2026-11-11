@@ -46,6 +46,7 @@ import { createCoalescedRefresh } from "./coalesced-refresh";
 import { isTokenEventForAddress } from "./sse-scope";
 import { TradingPanel } from "@/transactions-panel";
 import { MetadataEditor } from "./metadata-editor";
+import { LaunchFactsPanel } from "./launch-facts-panel";
 import { PRICE_FLASH_MS, priceDirection } from "./price-flash";
 
 type TokenDetailProps = { address: `0x${string}` };
@@ -715,6 +716,11 @@ export function TokenDetail({
               </p>
             </div>
           </section>
+
+          <LaunchFactsPanel
+            token={token}
+            explorerFor={(address) => addressExplorerUrl(configuration, address)}
+          />
 
           <section className="token-history-panel" aria-labelledby="history-title">
             <div className="token-section-head">

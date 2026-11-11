@@ -421,6 +421,50 @@
   padding: 16px 0 0;
   font-size: 13px;
 }
+/* Launch facts: onchain economics, rules in plain sentences, then the contract addresses. */
+.launch-facts .token-summary-grid dd {
+  white-space: normal;
+}
+.launch-facts-rules {
+  display: grid;
+  gap: 8px;
+  max-width: 68ch;
+  margin-top: 24px;
+  padding-left: 18px;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.5;
+  list-style: disc;
+}
+.launch-facts-addresses {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px 32px;
+  margin-top: 24px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 20px;
+}
+.launch-facts-addresses > div {
+  min-width: 0;
+}
+.launch-facts-addresses dt {
+  color: var(--text-3);
+  font-size: 13px;
+}
+.launch-facts-addresses dd {
+  margin-top: 4px;
+  font-size: 14px;
+}
+.launch-facts-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+  transition: color var(--dur-fast) linear;
+}
+.launch-facts-link:hover {
+  color: var(--text);
+}
 .token-history-panel > .discovery-notice {
   margin-bottom: 12px;
 }
@@ -569,7 +613,8 @@
   }
 }
 @media (max-width: 560px) {
-  .token-summary-grid {
+  .token-summary-grid,
+  .launch-facts-addresses {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 20px;
   }
