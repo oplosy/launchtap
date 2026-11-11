@@ -107,8 +107,8 @@ review is its input.
    - The projection must replay `Trade.creatorFee` and `LpFeesCollected` against the
      recipient ordered by `FeeRecipientAccepted` (block, log index, across curve and locker
      emitters).
-   - Drift risk: the e2e reconciles against on-chain `owed()` and the curve's per-account
-     balance.
+   - Drift risk: the e2e reconciles against on-chain `owed()` and the curve's
+     `creatorFeesOwed(account)`.
 8. **Revenue metrics.** `ethGross` now includes `snipeTax`. Protocol revenue gains the tax
    and the graduation ETH remainder. `SnipeTaxClaimed` is a separate claim stream.
 9. **Launch verification.** Replace `VerifyLaunchPair` for v2. Each `TokenLaunched` must
