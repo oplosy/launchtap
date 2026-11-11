@@ -26,14 +26,37 @@
   font-size: 18px;
   line-height: 1;
 }
-/* Inverted pill: black on the light theme, white on the dark one. */
-.create-protocol-label {
+/* Engine switch: a hairline track; the black pill slides to the picked engine. */
+.engine-toggle {
+  position: relative;
+  display: inline-flex;
+  isolation: isolate;
+  border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-pill);
-  color: var(--canvas);
-  background: var(--text);
+  padding: 2px;
+}
+.engine-toggle > button {
+  position: relative;
+  z-index: 1;
+  min-width: 44px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--text-2);
+  background: transparent;
   padding: 4px 12px;
   font-size: 12px;
   font-weight: 500;
+  cursor: pointer;
+  transition: color var(--dur-base) var(--ease-out);
+}
+.engine-toggle > button:hover {
+  color: var(--text);
+}
+.engine-toggle > button[aria-pressed="true"] {
+  color: var(--canvas);
+}
+.engine-toggle > .slide-indicator {
+  background: var(--text);
 }
 
 .launch-panel {
