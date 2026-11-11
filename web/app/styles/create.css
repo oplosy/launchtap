@@ -1,9 +1,8 @@
-/* Create route: one centred 640 px column with numbered sections, plus the creator metadata editor. */
+/* Create route: the numbered form on the left, a sticky live preview with the launch terms and
+   action on the right (one column below 1024 px), plus the creator metadata editor. */
 .create-page {
   gap: 24px;
   width: 100%;
-  max-width: var(--measure-form);
-  margin-inline: auto;
   padding: clamp(32px, 6vw, 72px) 0 96px;
 }
 .create-page-toolbar {
@@ -72,9 +71,44 @@
 .launch-main > .transaction-form {
   gap: 0;
 }
-.launch-main > .ui-button,
+.launch-aside {
+  display: grid;
+  align-content: start;
+  gap: 24px;
+  min-width: 0;
+}
+.launch-aside > .ui-button,
 .launch-wallet-button.ui-button {
   width: 100%;
+}
+@media (min-width: 1024px) {
+  .launch-panel-head {
+    justify-items: start;
+    text-align: left;
+  }
+  .launch-main {
+    grid-template-columns: minmax(0, 1fr) minmax(380px, 460px);
+    align-items: start;
+    gap: clamp(48px, 6vw, 112px);
+  }
+  .launch-aside {
+    position: sticky;
+    top: calc(var(--nav-height) + 24px);
+  }
+  .launch-aside .launch-preview-card {
+    gap: 20px;
+    padding: 20px;
+  }
+  .launch-aside .launch-preview-image {
+    width: 112px;
+    height: 112px;
+    border-radius: calc(var(--radius-container) - 4px);
+    font-size: 36px;
+  }
+  .launch-aside .launch-preview-card dl {
+    border-top: 1px solid var(--hairline);
+    padding-top: 16px;
+  }
 }
 .launch-section {
   display: grid;
