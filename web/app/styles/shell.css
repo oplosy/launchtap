@@ -88,11 +88,12 @@
   opacity: 0;
   pointer-events: none;
   backdrop-filter: blur(12px);
-  transition: opacity var(--dur-base) var(--ease-out);
+  transition: opacity var(--dur-fast) var(--ease-out);
 }
 .mega-backdrop[data-open="true"] {
   opacity: 1;
   pointer-events: auto;
+  transition: opacity var(--dur-base) var(--ease-out);
 }
 .mega-menu {
   position: absolute;
@@ -104,11 +105,12 @@
   background: var(--canvas);
   opacity: 0;
   visibility: hidden;
-  transform: translateY(-4px);
+  transform: translateY(-8px);
+  /* Closing is quicker than opening. */
   transition:
-    opacity var(--dur-base) var(--ease-out),
-    transform var(--dur-base) var(--ease-out),
-    visibility 0s linear var(--dur-base);
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out),
+    visibility 0s linear var(--dur-fast);
 }
 .mega-menu[data-open="true"] {
   opacity: 1;
@@ -140,9 +142,9 @@
 .mega-menu-link {
   display: grid;
   gap: 2px;
-  font-size: 28px;
+  font-size: 18px;
   font-weight: 500;
-  line-height: 36px;
+  line-height: 26px;
   letter-spacing: var(--tracking-page);
   transition: color var(--dur-fast) var(--ease-out);
 }

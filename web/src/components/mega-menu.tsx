@@ -68,6 +68,11 @@ export function MegaMenu({
         className="mega-backdrop"
         data-open={open ? "true" : "false"}
         onClick={onClose}
+        // The backdrop sits inside the header, so the header's pointer-leave never fires while
+        // the mouse is over it: moving onto the backdrop is leaving the menu.
+        onPointerEnter={(event) => {
+          if (event.pointerType === "mouse" && open) onClose();
+        }}
         aria-hidden="true"
       />
       <div
