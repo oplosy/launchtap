@@ -76,11 +76,12 @@ requested by the market: an anti-snipe window and a creator-controlled fee recip
 
 ### 3.4 `GraduationGuardHook`
 - A Uniswap V4 hook whose only permission bit is `BEFORE_INITIALIZE`.
-- `beforeInitialize` succeeds only when the caller is the curve registered for that pool's
-  token (registry written by the factory at launch). Every other initializer reverts.
-- No swap, liquidity or donate callbacks, no owner, no upgrade path, no storage beyond the
-  factory-written registry. Its address is mined (CREATE2) so that only the
-  `BEFORE_INITIALIZE` flag bit is set.
+- `beforeInitialize` succeeds only when the caller is the curve the factory records for
+  that pool's token (`factory.curveOfToken`). Every other initializer reverts.
+- No swap, liquidity or donate callbacks, no owner, no upgrade path, no storage. Its
+  address is mined (CREATE2) so that only the `BEFORE_INITIALIZE` flag bit is set. The
+  factory learns the hook and locker addresses through a one-time, deployer-only
+  `setDependencies` call made before the first launch.
 
 ### 3.5 `LpFeeLocker`
 - Receives each graduated token's position NFT from the curve and holds it forever.
