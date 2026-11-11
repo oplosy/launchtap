@@ -221,7 +221,32 @@ try {
             @{ Name = "Pixel Whale"; Symbol = "WHALE"; Dev = 0.01; Buys = @(0.7, 0.2, 0.12); Graduate = $true },
             @{ Name = "Static Bloom"; Symbol = "BLOOM"; Dev = 0.004; Buys = @(0.25, 0.18); Graduate = $true },
             @{ Name = "Amber Comet"; Symbol = "AMBER"; Dev = 0.006; Buys = @(0.3, 0.22); Graduate = $true },
-            @{ Name = "Coral Signal"; Symbol = "CORAL"; Dev = 0; Buys = @(0.18, 0.4, 0.09); Graduate = $true }
+            @{ Name = "Coral Signal"; Symbol = "CORAL"; Dev = 0; Buys = @(0.18, 0.4, 0.09); Graduate = $true },
+            @{ Name = "Neon Heron"; Symbol = "HERON"; Dev = 0.005; Buys = @(0.2, 0.15); Graduate = $true },
+            @{ Name = "Granite Owl"; Symbol = "OWL"; Dev = 0.005; Buys = @(0.2, 0.15); Graduate = $true },
+            @{ Name = "Lunar Moth"; Symbol = "MOTH"; Dev = 0.005; Buys = @(0.2, 0.15); Graduate = $true },
+            @{ Name = "Cobalt Drift"; Symbol = "COBLT"; Dev = 0.01; Buys = @(0.05, 0.12); Graduate = $true },
+            @{ Name = "Saffron Kite"; Symbol = "KITE"; Dev = 0.005; Buys = @(0.08); Graduate = $true },
+            @{ Name = "Echo Garden"; Symbol = "ECHO"; Dev = 0; Buys = @(0.2, 0.06, 0.1); Graduate = $true },
+            @{ Name = "Mint Parade"; Symbol = "MINT"; Dev = 0.002; Buys = @(0.03, 0.04); Graduate = $true },
+            @{ Name = "Rust Engine"; Symbol = "RUST"; Dev = 0.01; Buys = @(0.15); Graduate = $true },
+            @{ Name = "Hollow Bell"; Symbol = "BELL"; Dev = 0.005; Buys = @(0.07, 0.09, 0.02) },
+            @{ Name = "Indigo Fern"; Symbol = "FERN"; Dev = 0; Buys = @(0.11, 0.05) },
+            @{ Name = "Tidal Clock"; Symbol = "TIDE"; Dev = 0.002; Buys = @(0.25) },
+            @{ Name = "Wild Comma"; Symbol = "COMMA"; Dev = 0.01; Buys = @(0.04, 0.06, 0.08) },
+            @{ Name = "Opal Ferry"; Symbol = "OPAL"; Dev = 0.005; Buys = @(0.1, 0.1) },
+            @{ Name = "Silk Radar"; Symbol = "RADAR"; Dev = 0; Buys = @(0.05, 0.12) },
+            @{ Name = "Pepper Moon"; Symbol = "PEPR"; Dev = 0.002; Buys = @(0.08) },
+            @{ Name = "North Lantern"; Symbol = "NRTH"; Dev = 0.01; Buys = @(0.2, 0.06, 0.1) },
+            @{ Name = "Cedar Pulse"; Symbol = "CEDAR"; Dev = 0.005; Buys = @(0.03, 0.04) },
+            @{ Name = "Velvet Owl"; Symbol = "VOWL"; Dev = 0; Buys = @(0.15) },
+            @{ Name = "Frost Ledger"; Symbol = "FROST"; Dev = 0.002; Buys = @(0.07, 0.09, 0.02) },
+            @{ Name = "Atlas Crumb"; Symbol = "CRUMB"; Dev = 0.01; Buys = @(0.11, 0.05) },
+            @{ Name = "Golden Static"; Symbol = "GLDN"; Dev = 0.005; Buys = @(0.25) },
+            @{ Name = "Plum Signal"; Symbol = "PLUM"; Dev = 0; Buys = @(0.04, 0.06, 0.08) },
+            @{ Name = "Nova Tram"; Symbol = "TRAM"; Dev = 0.002; Buys = @(0.1, 0.1) },
+            @{ Name = "Marble Fox"; Symbol = "MRBL"; Dev = 0.01; Buys = @(0.05, 0.12) },
+            @{ Name = "Bright Anchor"; Symbol = "ANCHR"; Dev = 0.005; Buys = @(0.08) }
         )
         $index = 0
         $activeCurves = New-Object System.Collections.ArrayList
