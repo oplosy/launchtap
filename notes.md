@@ -174,7 +174,44 @@ pons uses Dune; we will do it ourselves. Options:
 
 ## Ideas
 
--
+### Roadmap candidates from the 2026-11-11 product research
+
+Source: external product/competition research (`launchtap-product-research-2026-11-11.md`,
+not in the repo). Its repo findings match `backlog.md`; its competitor facts (Pons V2
+mechanics, Crius launch counts, Uniswap router support on chain 4663) are **unverified** —
+read the primary sources before any decision rests on them. Candidates only, not decisions.
+
+**Order:** Gate 0 (already in `backlog.md`: testnet engine switch, mainnet manifest/roles,
+external audit, production RPC, shared rate limiter, image object storage/CDN, Privy
+advisory before 2027-02-01) → cheap v1 wins → v2 engine pre-flight spec → everything else
+after product-market fit. No new tokenomics on mainnet before Gate 0 closes.
+
+**Cheap v1 wins (no contract change):**
+- Launch facts / contract identity panel: v1 tokens have no mint, tax, blacklist or owner
+  privileges and the LP is burned by construction — surface that with onchain evidence
+  links (factory, engine version, curve config, LP burn tx). A trust signal we already
+  earn but do not show.
+- Trade preview: separate fee lines (protocol / creator / network), minimum received,
+  `eth_call` simulation before the wallet opens, revert reason on failure.
+- Graduation preview: remaining ETH, implied opening price, estimated market cap.
+- Telegram alerts: watchlist, graduation, large trades (thresholds, dedup, opt-in).
+
+**v2 engine (needs a pre-flight spec first — contract economics, high risk):**
+- Post-graduation creator revenue. Biggest competitive gap: v1 creator fees stop at
+  graduation, Pons/Bankr continue them. On a V2 pair there is no clean way: a token
+  transfer tax breaks the "plain ERC-20" trust signal and trips honeypot scanners; a
+  router-side fee misses trades outside our UI. Realistic path is a Uniswap V4 hook +
+  fee escrow, which changes the "graduate to V2, burn LP" identity and adds hook audit
+  scope. New factory/engine version; v1 tokens stay as they are.
+- Anti-snipe tax: buy-only, launch-time fixed decay, immutable; quote paths (web,
+  backend, contract) share one `currentTax` rule.
+- Creator fee recipient change (timelocked, two-step) belongs to the same spec.
+
+**Deferred (after product-market fit):** chain-wide cross-launchpad discovery (turns us
+into an aggregator, Crius dependency, mixes external data into the canonical ledger),
+multi-pool router / Uniswap Trading API (one V2 pair per graduated token suffices today),
+AI launch assistant, public API/webhooks/SDK, holder rewards, buyback/vesting, CTO,
+CCA-style auctions, stock-token / custom quote assets.
 
 ## Decisions
 
