@@ -17,6 +17,7 @@ import { MagnifyingGlass } from "@phosphor-icons/react";
 import { List } from "./icons";
 import { Sheet } from "./primitives";
 import { MegaMenu, NAV_LINKS } from "./mega-menu";
+import { BackToTop } from "./back-to-top";
 import { SiteFooter } from "./site-footer";
 import { ThemeToggle } from "./theme-toggle";
 import { walletPath } from "@/portfolio/wallet-model";
@@ -199,6 +200,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </header>
       <main className="app-content">{children}</main>
       <SiteFooter />
+      <BackToTop />
       <Sheet open={menuOpen} title="Menu" onClose={() => setMenuOpen(false)}>
         <nav className="sheet-nav" aria-label="Menu">
           {sheetLinks.map(({ href, label }) => (
