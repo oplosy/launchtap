@@ -9,6 +9,9 @@ test("docs read in a centred column of at most 720 px with contents beside it", 
   await page.goto("/docs");
   const article = page.locator(".docs-article");
   const contents = page.getByRole("navigation", { name: "Documentation sections" });
+  // The contents stay hidden at the top of the page and fade in on the first scroll.
+  await expect(contents).toBeHidden();
+  await page.mouse.wheel(0, 200);
   await expect(contents).toBeVisible();
   await expect(page.getByRole("button", { name: "Contents" })).toBeHidden();
   const text = (await article.boundingBox())!;
