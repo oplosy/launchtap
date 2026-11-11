@@ -108,6 +108,39 @@ function Compare-OrWrite([string] $Path, [string] $Expected) {
     }
 }
 
+function Get-Callables([object] $AbiObject) {
+    return @(
+        foreach ($entry in $AbiObject) {
+            if ($entry.type -eq "function") {
+                $inputTypes = @($entry.inputs | ForEach-Object { [string] $_.type })
+                "$($entry.name)($($inputTypes -join ','))"
+            }
+            elseif ($entry.type -in @("fallback", "receive")) {
+                [string] $entry.type
+            }
+        }
+    ) | Sort-Object
+}
+
+function Assert-Callables([object] $AbiObject, [string[]] $Expected, [string] $Message) {
+    $actual = Get-Callables $AbiObject
+    if (($actual -join "`n") -ne ((@($Expected) | Sort-Object) -join "`n")) {
+        Fail $Message
+    }
+}
+
+function Get-Events([object] $AbiObject, [string[]] $Names) {
+    $events = @($AbiObject | Where-Object { $_.type -eq "event" })
+    if ($null -ne $Names) {
+        $events = @($events | Where-Object { [string] $_.name -in $Names })
+        $found = @($events | ForEach-Object { [string] $_.name } | Sort-Object)
+        if (($found -join "`n") -ne ((@($Names) | Sort-Object) -join "`n")) {
+            Fail "event ABI is missing one of: $($Names -join ', ')"
+        }
+    }
+    return $events
+}
+
 Push-Location $contractsRoot
 try {
     $config = Invoke-ForgeJson @("config", "--json")
@@ -227,6 +260,76 @@ try {
     }
     $factoryAbi = ConvertTo-StableJson $factoryAbiObject
     Compare-OrWrite (Join-Path $contractsRoot "abi/v1/LaunchFactory.json") $factoryAbi
+
+    # Engine v2 (spec 2026-11-11 §7): the event surface the backend decodes and the callable
+    # surface the web calls are frozen here; any change is a reviewed golden update.
+    $v2EventNames = @(
+        "CreatorFeesClaimed", "EngineConfigured", "FeeRecipientAccepted", "FeeRecipientProposed",
+        "FutureDefaultsConfigured", "FutureTreasuryConfigured", "Graduated", "LaunchFeesClaimed",
+        "LaunchPauseSet", "ProtocolFeesClaimed", "RefundClaimed", "RefundCredited",
+        "SnipeTaxClaimed", "TokenLaunched", "Trade", "TradingPauseSet"
+    )
+    $v2Events = Get-Events (Invoke-ForgeJson @("inspect", "ILaunchFactoryV2", "abi", "--json")) $v2EventNames
+    if (@($v2Events).Count -ne $v2EventNames.Count) {
+        Fail "ILaunchFactoryV2 must declare exactly the v2 launch events"
+    }
+    Compare-OrWrite (Join-Path $contractsRoot "abi/v2/ILaunchEventsV2.json") (ConvertTo-StableJson $v2Events)
+
+    $lockerEvents = Get-Events (Invoke-ForgeJson @("inspect", "ILpFeeLocker", "abi", "--json")) @(
+        "LpFeesClaimed", "LpFeesCollected"
+    )
+    Compare-OrWrite (Join-Path $contractsRoot "abi/v2/ILpFeeLockerEvents.json") (ConvertTo-StableJson $lockerEvents)
+
+    $poolManagerEvents = Get-Events (Invoke-ForgeJson @("inspect", "IPoolManager", "abi", "--json")) @(
+        "Initialize", "ModifyLiquidity", "Swap"
+    )
+    Compare-OrWrite (Join-Path $contractsRoot "abi/v2/IPoolManagerEvents.json") (ConvertTo-StableJson $poolManagerEvents)
+
+    $factoryV2AbiObject = Invoke-ForgeJson @("inspect", "LaunchFactoryV2", "abi", "--json")
+    Assert-Callables $factoryV2AbiObject @(
+        "DEPLOYER()", "PERMIT2()", "POOL_MANAGER()", "POSITION_MANAGER()", "claimLaunchFees()",
+        "configureEngine(uint16,address,bool)", "curveImplementation(uint16)",
+        "curveOfToken(address)", "engineEnabled(uint16)", "futureDefaults()",
+        "futureDefaultsHash()", "hook()", "launch(tuple)", "launchFee()",
+        "launchFeesByTreasury(address)", "launchesPaused()", "locker()", "pauseAuthority()",
+        "protocolTreasury()", "setDependencies(address,address)", "setFutureDefaults(tuple)",
+        "setFutureTreasury(address)", "setLaunchesPaused(bool)", "setTradingPaused(bool)",
+        "timelock()", "tradingPaused()"
+    ) "LaunchFactoryV2 callable ABI must remain fixed and must not expose authority transfer or rescue paths"
+    Compare-OrWrite (Join-Path $contractsRoot "abi/v2/LaunchFactoryV2.json") (ConvertTo-StableJson $factoryV2AbiObject)
+
+    $curveV2AbiObject = Invoke-ForgeJson @("inspect", "BondingCurveV2", "abi", "--json")
+    Assert-Callables $curveV2AbiObject @(
+        "ENGINE_VERSION()", "acceptFeeRecipient()", "antiSnipeProfile()",
+        "buy(address,address,uint256,uint256)", "buyFor(address,address,address,uint256,uint256)",
+        "cancelFeeRecipientProposal()", "claimCreatorFees()", "claimCreatorFeesTo(address)",
+        "claimProtocolFees()", "claimRefund()", "claimRefundTo(address)", "claimSnipeTax()",
+        "creator()", "creatorFeesOwed(address)", "currentTaxBps()", "feeRecipient()", "hook()",
+        "implementation()", "initialize(tuple)", "launchTime()", "locker()",
+        "lpCreatorShareBps()", "pendingFeeRecipient()", "pendingRefund(address)", "phase()",
+        "poolManager()", "positionManager()", "proposeFeeRecipient(address)",
+        "protocolTreasury()", "quoteBuy(uint256)", "quoteSell(uint256)", "realCurveEth()",
+        "receive", "sell(uint256,address,uint256,uint256)", "token()", "tokensSold()",
+        "unclaimedCreatorFees()", "unclaimedProtocolFees()", "unclaimedSnipeTax()",
+        "virtualEthReserve()", "virtualTokenReserve()"
+    ) "BondingCurveV2 callable ABI must remain fixed"
+    Compare-OrWrite (Join-Path $contractsRoot "abi/v2/BondingCurveV2.json") (ConvertTo-StableJson $curveV2AbiObject)
+
+    $tokenV2AbiObject = Invoke-ForgeJson @("inspect", "LaunchTokenV2", "abi", "--json")
+    Assert-Callables $tokenV2AbiObject @(
+        "allowance(address,address)", "approve(address,uint256)", "balanceOf(address)", "curve()",
+        "decimals()", "graduated()", "markGraduated()", "name()", "poolManager()", "symbol()",
+        "totalSupply()", "transfer(address,uint256)", "transferFrom(address,address,uint256)"
+    ) "LaunchTokenV2 callable ABI must remain fixed and must not expose mint or burn paths"
+    Compare-OrWrite (Join-Path $contractsRoot "abi/v2/LaunchTokenV2.json") (ConvertTo-StableJson $tokenV2AbiObject)
+
+    $lockerAbiObject = Invoke-ForgeJson @("inspect", "LpFeeLocker", "abi", "--json")
+    Assert-Callables $lockerAbiObject @(
+        "FACTORY()", "POOL_MANAGER()", "POSITION_MANAGER()", "claim(address)", "collect(address)",
+        "onERC721Received(address,address,uint256,bytes)", "owed(address,address)",
+        "positionOf(address)", "receive", "registerPosition(address,uint256)"
+    ) "LpFeeLocker callable ABI must remain fixed and must not expose a position withdrawal path"
+    Compare-OrWrite (Join-Path $contractsRoot "abi/v2/LpFeeLocker.json") (ConvertTo-StableJson $lockerAbiObject)
 
     $storageContracts = @(
         [PSCustomObject]@{
