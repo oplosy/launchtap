@@ -160,7 +160,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await expect(page.getByRole("heading", { name: "Launch token" })).toBeVisible();
     await connectWallet(page);
     await page.getByLabel("Name", { exact: true }).fill("Browser Task 6");
-    await page.getByLabel("Ticker").fill("B6");
+    await page.getByLabel("Ticker", { exact: true }).fill("B6");
     await page.getByRole("button", { name: "Review launch" }).click();
     await expect(page.getByRole("heading", { name: "Confirm launch" })).toBeVisible();
     const evidenceDir = path.resolve(process.cwd(), "..", ".impeccable", "review");
@@ -192,7 +192,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.goto("/create");
     await connectWallet(page);
     await page.getByLabel("Name", { exact: true }).fill("Browser Trade Task 6");
-    await page.getByLabel("Ticker").fill("BT6");
+    await page.getByLabel("Ticker", { exact: true }).fill("BT6");
     await page.getByRole("button", { name: "Review launch" }).click();
     await page.getByRole("button", { name: "Sign launch" }).click();
     const launchStatus = transactionStatus(page).last();
@@ -427,7 +427,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.getByRole("button", { name: "Switch network" }).click();
     await expect(page.getByText(/Wrong network/i)).toHaveCount(0);
     await page.getByLabel("Name", { exact: true }).fill("Wrong Chain Task 6");
-    await page.getByLabel("Ticker").fill("WC6");
+    await page.getByLabel("Ticker", { exact: true }).fill("WC6");
     await page.getByRole("button", { name: "Review launch" }).click();
     await page.evaluate(() => {
       (window as unknown as { __task6ChainId: string }).__task6ChainId = "0x1";
@@ -443,7 +443,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.goto("/create");
     await connectWallet(page);
     await page.getByLabel("Name", { exact: true }).fill("Rejected Task 6");
-    await page.getByLabel("Ticker").fill("R6");
+    await page.getByLabel("Ticker", { exact: true }).fill("R6");
     await page.getByRole("button", { name: "Review launch" }).click();
     await page.evaluate(() => {
       (window as unknown as { __task6RejectNext: boolean }).__task6RejectNext = true;
@@ -459,7 +459,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.goto("/create");
     await connectWallet(page);
     await page.getByLabel("Name", { exact: true }).fill("Revert Task 6");
-    await page.getByLabel("Ticker").fill("RV6");
+    await page.getByLabel("Ticker", { exact: true }).fill("RV6");
     await page.getByLabel("Developer buy", { exact: true }).fill("0.02");
     await page.getByRole("button", { name: "Review launch" }).click();
     await page.getByRole("button", { name: "Sign launch" }).click();
@@ -477,7 +477,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.goto("/create");
     await connectWallet(page);
     await page.getByLabel("Name", { exact: true }).fill("Graduated Task 6");
-    await page.getByLabel("Ticker").fill("GR6");
+    await page.getByLabel("Ticker", { exact: true }).fill("GR6");
     await page.getByRole("button", { name: "Review launch" }).click();
     await page.getByRole("button", { name: "Sign launch" }).click();
     const launchStatus = transactionStatus(page).last();
@@ -683,7 +683,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.goto("/create");
     await connectWallet(page);
     await page.getByLabel("Name", { exact: true }).fill("Wallet PnL Task 11");
-    await page.getByLabel("Ticker").fill("WP11");
+    await page.getByLabel("Ticker", { exact: true }).fill("WP11");
     await page.getByRole("button", { name: "Review launch" }).click();
     await page.getByRole("button", { name: "Sign launch" }).click();
     const launchStatus = transactionStatus(page).last();
@@ -928,7 +928,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.goto("/create");
     await connectWallet(page);
     await page.getByLabel("Name", { exact: true }).fill(tokenName);
-    await page.getByLabel("Ticker").fill("DS12");
+    await page.getByLabel("Ticker", { exact: true }).fill("DS12");
     await page.getByRole("button", { name: "Review launch" }).click();
     await page.getByRole("button", { name: "Sign launch" }).click();
     const launchStatus = transactionStatus(page).last();
@@ -1045,7 +1045,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.goto("/create");
     await connectWallet(page);
     await page.getByLabel("Name", { exact: true }).fill(tokenName);
-    await page.getByLabel("Ticker").fill("LF8");
+    await page.getByLabel("Ticker", { exact: true }).fill("LF8");
     await page.getByRole("button", { name: "Review launch" }).click();
     await page.getByRole("button", { name: "Sign launch" }).click();
     const launchStatus = transactionStatus(page).last();
@@ -1121,7 +1121,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.goto("/create");
     await connectWallet(page);
     await page.getByLabel("Name", { exact: true }).fill("Reorg Task 6");
-    await page.getByLabel("Ticker").fill("RG6");
+    await page.getByLabel("Ticker", { exact: true }).fill("RG6");
     await page.getByRole("button", { name: "Review launch" }).click();
     await page.getByRole("button", { name: "Sign launch" }).click();
     const status = transactionStatus(page).last();
