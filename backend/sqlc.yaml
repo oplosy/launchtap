@@ -58,10 +58,56 @@ sql:
             go_type: {type: "Address"}
           - column: "*.creator"
             go_type: {type: "Address"}
-          - column: "*.lp_pair"
+          # Engine 2 has no pair or WETH: these are NULL for every v2 row.
+          - column: "token_launches.lp_pair"
+            go_type: {type: "Address", pointer: true}
+          - column: "tokens.lp_pair"
+            go_type: {type: "Address", pointer: true}
+          - column: "graduations.lp_pair"
+            go_type: {type: "Address", pointer: true}
+          - column: "token_launches.weth"
+            go_type: {type: "Address", pointer: true}
+          - column: "tokens.weth"
+            go_type: {type: "Address", pointer: true}
+          # Engine-2 launch facts, NULL for every v1 row.
+          - column: "token_launches.hook"
+            go_type: {type: "Address", pointer: true}
+          - column: "tokens.hook"
+            go_type: {type: "Address", pointer: true}
+          - column: "token_launches.locker"
+            go_type: {type: "Address", pointer: true}
+          - column: "tokens.locker"
+            go_type: {type: "Address", pointer: true}
+          - column: "v4_pools.hook"
             go_type: {type: "Address"}
-          - column: "*.weth"
+          - column: "v4_pool_initializations.hooks"
             go_type: {type: "Address"}
+          - column: "*.currency0"
+            go_type: {type: "Address"}
+          - column: "*.currency1"
+            go_type: {type: "Address"}
+          - column: "*.recipient"
+            go_type: {type: "Address"}
+          - column: "*.current_recipient"
+            go_type: {type: "Address"}
+          - column: "*.previous_recipient"
+            go_type: {type: "Address"}
+          - column: "*.next_recipient"
+            go_type: {type: "Address"}
+          - column: "v4_swaps.tx_from"
+            go_type: {type: "Address", pointer: true}
+          - column: "graduations.pool_id"
+            go_type: {type: "Hash", pointer: true}
+          - column: "v4_pools.pool_id"
+            go_type: {type: "Hash"}
+          - column: "v4_pool_initializations.pool_id"
+            go_type: {type: "Hash"}
+          - column: "v4_liquidity_changes.pool_id"
+            go_type: {type: "Hash"}
+          - column: "v4_swaps.pool_id"
+            go_type: {type: "Hash"}
+          - column: "v4_liquidity_changes.salt"
+            go_type: {type: "Hash"}
           - column: "*.protocol_treasury"
             go_type: {type: "Address"}
           - column: "*.trader"
@@ -129,8 +175,33 @@ sql:
             go_type: {type: "Uint256"}
           - column: "*.tokens_to_pool"
             go_type: {type: "Uint256"}
-          - column: "*.lp_liquidity_burned"
+          - column: "graduations.lp_liquidity_burned"
+            go_type: {type: "Uint256", pointer: true}
+          # Engine-2 graduation facts, NULL for every v1 graduation.
+          - column: "graduations.position_token_id"
+            go_type: {type: "Uint256", pointer: true}
+          - column: "graduations.liquidity"
+            go_type: {type: "Uint256", pointer: true}
+          - column: "graduations.sqrt_price_x96"
+            go_type: {type: "Uint256", pointer: true}
+          - column: "graduations.eth_remainder"
+            go_type: {type: "Uint256", pointer: true}
+          - column: "graduations.token_remainder"
+            go_type: {type: "Uint256", pointer: true}
+          - column: "v4_pools.position_token_id"
             go_type: {type: "Uint256"}
+          - column: "trades.snipe_tax"
+            go_type: {type: "Uint256"}
+          - column: "*.eth_amount"
+            go_type: {type: "Uint256"}
+          - column: "v4_pool_initializations.sqrt_price_x96"
+            go_type: {type: "Uint256"}
+          - column: "v4_swaps.sqrt_price_x96"
+            go_type: {type: "Uint256"}
+          - column: "v4_swaps.liquidity"
+            go_type: {type: "Uint256"}
+          # Signed V4 deltas (liquidity_delta, amount0_delta, amount1_delta) stay
+          # pgtype.Numeric: Uint256 rejects negatives by design.
           - column: "*.amount"
             go_type: {type: "Uint256"}
           - column: "*.value"

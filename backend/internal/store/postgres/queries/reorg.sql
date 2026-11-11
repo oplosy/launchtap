@@ -15,6 +15,18 @@ SELECT DISTINCT affected.token_address FROM (
     UNION ALL SELECT credit.token_address FROM refund_credits AS credit WHERE credit.chain_id=$1 AND credit.block_number>$2
     UNION ALL SELECT claim.token_address FROM refund_claims AS claim WHERE claim.chain_id=$1 AND claim.block_number>$2
     UNION ALL SELECT transfer.token_address FROM transfers AS transfer WHERE transfer.chain_id=$1 AND transfer.block_number>$2
+    UNION ALL SELECT claim.token_address FROM snipe_tax_claims AS claim WHERE claim.chain_id=$1 AND claim.block_number>$2
+    UNION ALL SELECT proposal.token_address FROM fee_recipient_proposals AS proposal WHERE proposal.chain_id=$1 AND proposal.block_number>$2
+    UNION ALL SELECT acceptance.token_address FROM fee_recipient_acceptances AS acceptance WHERE acceptance.chain_id=$1 AND acceptance.block_number>$2
+    UNION ALL SELECT collection.token_address FROM lp_fee_collections AS collection WHERE collection.chain_id=$1 AND collection.block_number>$2
+    UNION ALL SELECT claim.token_address FROM lp_fee_claims AS claim WHERE claim.chain_id=$1 AND claim.block_number>$2
+    -- V4 pool events resolve to their token through the graduation ledger, not a projection.
+    UNION ALL
+    SELECT graduation.token_address FROM graduations AS graduation JOIN (
+        SELECT initialization.pool_id FROM v4_pool_initializations AS initialization WHERE initialization.chain_id=$1 AND initialization.block_number>$2
+        UNION SELECT change.pool_id FROM v4_liquidity_changes AS change WHERE change.chain_id=$1 AND change.block_number>$2
+        UNION SELECT swap.pool_id FROM v4_swaps AS swap WHERE swap.chain_id=$1 AND swap.block_number>$2
+    ) AS pools ON pools.pool_id=graduation.pool_id WHERE graduation.chain_id=$1
     UNION ALL
     SELECT token.token_address FROM tokens AS token JOIN (
         SELECT mint.pair_address FROM pool_mints AS mint WHERE mint.chain_id=$1 AND mint.block_number>$2
@@ -90,6 +102,23 @@ DELETE FROM engine_configurations WHERE chain_id=$1 AND block_number>$2;
 DELETE FROM future_defaults_configurations WHERE chain_id=$1 AND block_number>$2;
 -- name: DeleteFutureTreasuryConfigurationsAbove :execrows
 DELETE FROM future_treasury_configurations WHERE chain_id=$1 AND block_number>$2;
+-- Engine-2 ledger. V4 pool rows reference graduations, so they are deleted before them.
+-- name: DeleteSnipeTaxClaimsAbove :execrows
+DELETE FROM snipe_tax_claims WHERE chain_id=$1 AND block_number>$2;
+-- name: DeleteFeeRecipientProposalsAbove :execrows
+DELETE FROM fee_recipient_proposals WHERE chain_id=$1 AND block_number>$2;
+-- name: DeleteFeeRecipientAcceptancesAbove :execrows
+DELETE FROM fee_recipient_acceptances WHERE chain_id=$1 AND block_number>$2;
+-- name: DeleteLpFeeCollectionsAbove :execrows
+DELETE FROM lp_fee_collections WHERE chain_id=$1 AND block_number>$2;
+-- name: DeleteLpFeeClaimsAbove :execrows
+DELETE FROM lp_fee_claims WHERE chain_id=$1 AND block_number>$2;
+-- name: DeleteV4PoolInitializationsAbove :execrows
+DELETE FROM v4_pool_initializations WHERE chain_id=$1 AND block_number>$2;
+-- name: DeleteV4LiquidityChangesAbove :execrows
+DELETE FROM v4_liquidity_changes WHERE chain_id=$1 AND block_number>$2;
+-- name: DeleteV4SwapsAbove :execrows
+DELETE FROM v4_swaps WHERE chain_id=$1 AND block_number>$2;
 -- name: DeleteIndexedBlocksAbove :execrows
 DELETE FROM indexed_blocks WHERE chain_id=$1 AND block_number>$2;
 

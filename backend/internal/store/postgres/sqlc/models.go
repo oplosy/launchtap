@@ -68,6 +68,32 @@ type EngineConfiguration struct {
 	Enabled          bool
 }
 
+type FeeRecipientAcceptance struct {
+	ChainID           int64
+	BlockNumber       int64
+	BlockHash         Hash
+	BlockTime         pgtype.Timestamptz
+	TransactionIndex  int32
+	TxHash            Hash
+	LogIndex          int32
+	TokenAddress      Address
+	PreviousRecipient Address
+	NextRecipient     Address
+}
+
+type FeeRecipientProposal struct {
+	ChainID          int64
+	BlockNumber      int64
+	BlockHash        Hash
+	BlockTime        pgtype.Timestamptz
+	TransactionIndex int32
+	TxHash           Hash
+	LogIndex         int32
+	TokenAddress     Address
+	CurrentRecipient Address
+	NextRecipient    Address
+}
+
 type FutureDefaultsConfiguration struct {
 	ChainID          int64
 	BlockNumber      int64
@@ -100,10 +126,16 @@ type Graduation struct {
 	TxHash            Hash
 	LogIndex          int32
 	TokenAddress      Address
-	LpPair            Address
+	LpPair            *Address
 	EthToPool         Uint256
 	TokensToPool      Uint256
-	LpLiquidityBurned Uint256
+	LpLiquidityBurned *Uint256
+	PoolID            *Hash
+	PositionTokenID   *Uint256
+	Liquidity         *Uint256
+	SqrtPriceX96      *Uint256
+	EthRemainder      *Uint256
+	TokenRemainder    *Uint256
 }
 
 type HolderBalance struct {
@@ -173,6 +205,33 @@ type LaunchPauseEvent struct {
 	TxHash           Hash
 	LogIndex         int32
 	Paused           bool
+}
+
+type LpFeeClaim struct {
+	ChainID          int64
+	BlockNumber      int64
+	BlockHash        Hash
+	BlockTime        pgtype.Timestamptz
+	TransactionIndex int32
+	TxHash           Hash
+	LogIndex         int32
+	TokenAddress     Address
+	Recipient        Address
+	EthAmount        Uint256
+	TokenAmount      Uint256
+}
+
+type LpFeeCollection struct {
+	ChainID          int64
+	BlockNumber      int64
+	BlockHash        Hash
+	BlockTime        pgtype.Timestamptz
+	TransactionIndex int32
+	TxHash           Hash
+	LogIndex         int32
+	TokenAddress     Address
+	EthAmount        Uint256
+	TokenAmount      Uint256
 }
 
 type MarketTrade struct {
@@ -356,6 +415,19 @@ type RefundCredit struct {
 	Amount           Uint256
 }
 
+type SnipeTaxClaim struct {
+	ChainID          int64
+	BlockNumber      int64
+	BlockHash        Hash
+	BlockTime        pgtype.Timestamptz
+	TransactionIndex int32
+	TxHash           Hash
+	LogIndex         int32
+	TokenAddress     Address
+	Treasury         Address
+	Amount           Uint256
+}
+
 type SocialPublicWallet struct {
 	ChainID      int64
 	DeploymentID string
@@ -391,38 +463,43 @@ type SyncState struct {
 }
 
 type Token struct {
-	ChainID               int64
-	TokenAddress          Address
-	CurveAddress          Address
-	LpPair                Address
-	Weth                  Address
-	Creator               Address
-	ProtocolTreasury      Address
-	EngineVersion         int32
-	Name                  string
-	Symbol                string
-	TotalSupply           Uint256
-	InitialVirtualEth     Uint256
-	InitialVirtualToken   Uint256
-	CurveTokens           Uint256
-	LpTokens              Uint256
-	GraduationEth         Uint256
-	TradeFeeBps           int32
-	ProtocolShareBps      int32
-	LaunchBlockNumber     int64
-	LaunchBlockHash       Hash
-	LaunchBlockTime       pgtype.Timestamptz
-	LaunchTxHash          Hash
-	LaunchLogIndex        int32
-	Phase                 string
-	GraduationBlockNumber pgtype.Int8
-	GraduationBlockHash   *Hash
-	GraduationBlockTime   pgtype.Timestamptz
-	GraduationTxHash      *Hash
-	GraduationLogIndex    pgtype.Int4
-	TokenIsToken0         bool
-	SortMarketCapEthWad   Uint256
-	SortVolume24hEthWad   Uint256
+	ChainID                  int64
+	TokenAddress             Address
+	CurveAddress             Address
+	LpPair                   *Address
+	Weth                     *Address
+	Creator                  Address
+	ProtocolTreasury         Address
+	EngineVersion            int32
+	Name                     string
+	Symbol                   string
+	TotalSupply              Uint256
+	InitialVirtualEth        Uint256
+	InitialVirtualToken      Uint256
+	CurveTokens              Uint256
+	LpTokens                 Uint256
+	GraduationEth            Uint256
+	TradeFeeBps              int32
+	ProtocolShareBps         int32
+	LaunchBlockNumber        int64
+	LaunchBlockHash          Hash
+	LaunchBlockTime          pgtype.Timestamptz
+	LaunchTxHash             Hash
+	LaunchLogIndex           int32
+	Phase                    string
+	GraduationBlockNumber    pgtype.Int8
+	GraduationBlockHash      *Hash
+	GraduationBlockTime      pgtype.Timestamptz
+	GraduationTxHash         *Hash
+	GraduationLogIndex       pgtype.Int4
+	TokenIsToken0            bool
+	SortMarketCapEthWad      Uint256
+	SortVolume24hEthWad      Uint256
+	Hook                     *Address
+	Locker                   *Address
+	AntiSnipeStartBps        pgtype.Int4
+	AntiSnipeDurationSeconds pgtype.Int8
+	LpCreatorShareBps        pgtype.Int4
 }
 
 type TokenComment struct {
@@ -454,31 +531,36 @@ type TokenImage struct {
 }
 
 type TokenLaunch struct {
-	ChainID          int64
-	BlockNumber      int64
-	BlockHash        Hash
-	BlockTime        pgtype.Timestamptz
-	TransactionIndex int32
-	TxHash           Hash
-	LogIndex         int32
-	TokenAddress     Address
-	CurveAddress     Address
-	Creator          Address
-	LpPair           Address
-	Weth             Address
-	ProtocolTreasury Address
-	EngineVersion    int32
-	Name             string
-	Symbol           string
-	TotalSupply      Uint256
-	VirtualEth       Uint256
-	VirtualToken     Uint256
-	CurveTokens      Uint256
-	LpTokens         Uint256
-	GraduationEth    Uint256
-	LaunchFeePaid    Uint256
-	TradeFeeBps      int32
-	ProtocolShareBps int32
+	ChainID                  int64
+	BlockNumber              int64
+	BlockHash                Hash
+	BlockTime                pgtype.Timestamptz
+	TransactionIndex         int32
+	TxHash                   Hash
+	LogIndex                 int32
+	TokenAddress             Address
+	CurveAddress             Address
+	Creator                  Address
+	LpPair                   *Address
+	Weth                     *Address
+	ProtocolTreasury         Address
+	EngineVersion            int32
+	Name                     string
+	Symbol                   string
+	TotalSupply              Uint256
+	VirtualEth               Uint256
+	VirtualToken             Uint256
+	CurveTokens              Uint256
+	LpTokens                 Uint256
+	GraduationEth            Uint256
+	LaunchFeePaid            Uint256
+	TradeFeeBps              int32
+	ProtocolShareBps         int32
+	Hook                     *Address
+	Locker                   *Address
+	AntiSnipeStartBps        pgtype.Int4
+	AntiSnipeDurationSeconds pgtype.Int8
+	LpCreatorShareBps        pgtype.Int4
 }
 
 type TokenMetadatum struct {
@@ -547,6 +629,7 @@ type Trade struct {
 	CreatorFee       Uint256
 	NewEthReserve    Uint256
 	NewTokenReserve  Uint256
+	SnipeTax         Uint256
 }
 
 type TradingPauseEvent struct {
@@ -580,6 +663,67 @@ type UsernameRelease struct {
 	Username     string
 	PrivyDid     string
 	ReleasedAt   pgtype.Timestamptz
+}
+
+type V4LiquidityChange struct {
+	ChainID          int64
+	BlockNumber      int64
+	BlockHash        Hash
+	BlockTime        pgtype.Timestamptz
+	TransactionIndex int32
+	TxHash           Hash
+	LogIndex         int32
+	PoolID           Hash
+	Sender           Address
+	TickLower        int32
+	TickUpper        int32
+	LiquidityDelta   pgtype.Numeric
+	Salt             Hash
+}
+
+type V4Pool struct {
+	ChainID         int64
+	PoolID          Hash
+	TokenAddress    Address
+	PositionTokenID Uint256
+	Hook            Address
+}
+
+type V4PoolInitialization struct {
+	ChainID          int64
+	BlockNumber      int64
+	BlockHash        Hash
+	BlockTime        pgtype.Timestamptz
+	TransactionIndex int32
+	TxHash           Hash
+	LogIndex         int32
+	PoolID           Hash
+	Currency0        Address
+	Currency1        Address
+	Fee              int32
+	TickSpacing      int32
+	Hooks            Address
+	SqrtPriceX96     Uint256
+	Tick             int32
+}
+
+type V4Swap struct {
+	ChainID          int64
+	BlockNumber      int64
+	BlockHash        Hash
+	BlockTime        pgtype.Timestamptz
+	TransactionIndex int32
+	TxHash           Hash
+	LogIndex         int32
+	PoolID           Hash
+	Sender           Address
+	Amount0Delta     pgtype.Numeric
+	Amount1Delta     pgtype.Numeric
+	SqrtPriceX96     Uint256
+	Liquidity        Uint256
+	Tick             int32
+	Fee              int32
+	TxFrom           *Address
 }
 
 type WalletPosition struct {

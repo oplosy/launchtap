@@ -11,6 +11,40 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const listGraduatedV4Pools = `-- name: ListGraduatedV4Pools :many
+SELECT pool_id, token_address
+FROM graduations
+WHERE chain_id=$1 AND pool_id IS NOT NULL
+ORDER BY pool_id
+`
+
+type ListGraduatedV4PoolsRow struct {
+	PoolID       *Hash
+	TokenAddress Address
+}
+
+// Engine-2 pools graduated on the chain, read from the ledger so the discovery pool set
+// survives a restart without depending on projections (Plan v2-B Task 6).
+func (q *Queries) ListGraduatedV4Pools(ctx context.Context, chainID int64) ([]ListGraduatedV4PoolsRow, error) {
+	rows, err := q.db.Query(ctx, listGraduatedV4Pools, chainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListGraduatedV4PoolsRow{}
+	for rows.Next() {
+		var i ListGraduatedV4PoolsRow
+		if err := rows.Scan(&i.PoolID, &i.TokenAddress); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTokenIdentities = `-- name: ListTokenIdentities :many
 SELECT token_address, curve_address, lp_pair, engine_version,
        launch_block_number, launch_block_hash, launch_block_time
@@ -20,7 +54,7 @@ FROM tokens WHERE chain_id=$1 ORDER BY token_address
 type ListTokenIdentitiesRow struct {
 	TokenAddress      Address
 	CurveAddress      Address
-	LpPair            Address
+	LpPair            *Address
 	EngineVersion     int32
 	LaunchBlockNumber int64
 	LaunchBlockHash   Hash

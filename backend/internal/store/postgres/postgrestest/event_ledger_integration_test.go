@@ -15,9 +15,9 @@ import (
 )
 
 var eventPayloadColumns = map[string][]string{
-	"token_launches":                 {"token_address", "curve_address", "creator", "lp_pair", "weth", "protocol_treasury", "engine_version", "name", "symbol", "total_supply", "virtual_eth", "virtual_token", "curve_tokens", "lp_tokens", "graduation_eth", "launch_fee_paid", "trade_fee_bps", "protocol_share_bps"},
-	"trades":                         {"token_address", "trader", "is_buy", "eth_gross", "eth_refund", "token_amount", "protocol_fee", "creator_fee", "new_eth_reserve", "new_token_reserve"},
-	"graduations":                    {"token_address", "lp_pair", "eth_to_pool", "tokens_to_pool", "lp_liquidity_burned"},
+	"token_launches":                 {"token_address", "curve_address", "creator", "lp_pair", "weth", "protocol_treasury", "engine_version", "name", "symbol", "total_supply", "virtual_eth", "virtual_token", "curve_tokens", "lp_tokens", "graduation_eth", "launch_fee_paid", "trade_fee_bps", "protocol_share_bps", "hook", "locker", "anti_snipe_start_bps", "anti_snipe_duration_seconds", "lp_creator_share_bps"},
+	"trades":                         {"token_address", "trader", "is_buy", "eth_gross", "eth_refund", "token_amount", "protocol_fee", "creator_fee", "new_eth_reserve", "new_token_reserve", "snipe_tax"},
+	"graduations":                    {"token_address", "lp_pair", "eth_to_pool", "tokens_to_pool", "lp_liquidity_burned", "pool_id", "position_token_id", "liquidity", "sqrt_price_x96", "eth_remainder", "token_remainder"},
 	"creator_fee_claims":             {"token_address", "creator", "amount"},
 	"protocol_fee_claims":            {"token_address", "treasury", "amount"},
 	"launch_fee_claims":              {"treasury", "amount"},
@@ -33,6 +33,14 @@ var eventPayloadColumns = map[string][]string{
 	"engine_configurations":          {"engine_version", "implementation", "enabled"},
 	"future_defaults_configurations": {"config_hash"},
 	"future_treasury_configurations": {"previous_treasury", "new_treasury"},
+	"snipe_tax_claims":               {"token_address", "treasury", "amount"},
+	"fee_recipient_proposals":        {"token_address", "current_recipient", "next_recipient"},
+	"fee_recipient_acceptances":      {"token_address", "previous_recipient", "next_recipient"},
+	"lp_fee_collections":             {"token_address", "eth_amount", "token_amount"},
+	"lp_fee_claims":                  {"token_address", "recipient", "eth_amount", "token_amount"},
+	"v4_pool_initializations":        {"pool_id", "currency0", "currency1", "fee", "tick_spacing", "hooks", "sqrt_price_x96", "tick"},
+	"v4_liquidity_changes":           {"pool_id", "sender", "tick_lower", "tick_upper", "liquidity_delta", "salt"},
+	"v4_swaps":                       {"pool_id", "sender", "amount0_delta", "amount1_delta", "sqrt_price_x96", "liquidity", "tick", "fee", "tx_from"},
 }
 
 var sharedEventColumns = []string{
@@ -149,8 +157,9 @@ func testSharedEventConstraintsAndIndexes(t *testing.T, ctx context.Context, dat
 	`).Scan(&tokenFKs); err != nil {
 		t.Fatalf("count deferred token foreign keys: %v", err)
 	}
-	if tokenFKs != 8 { // Seven event links plus tokens; metadata survives orphan launches.
-		t.Fatalf("deferred no-action token foreign keys = %d, want 8", tokenFKs)
+	// Seven v1 and five engine-2 event links plus tokens; metadata survives orphan launches.
+	if tokenFKs != 13 {
+		t.Fatalf("deferred no-action token foreign keys = %d, want 13", tokenFKs)
 	}
 
 	for _, index := range []string{"pool_swaps_reserve_lookup_idx", "pool_syncs_reserve_lookup_idx"} {

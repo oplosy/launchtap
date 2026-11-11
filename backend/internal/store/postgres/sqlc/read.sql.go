@@ -311,8 +311,8 @@ type GetTokenDetailParams struct {
 type GetTokenDetailRow struct {
 	TokenAddress          Address
 	CurveAddress          Address
-	LpPair                Address
-	Weth                  Address
+	LpPair                *Address
+	Weth                  *Address
 	Creator               Address
 	ProtocolTreasury      Address
 	EngineVersion         int32
@@ -657,7 +657,7 @@ type ListGraduationsAfterParams struct {
 
 type ListGraduationsAfterRow struct {
 	TokenAddress     Address
-	LpPair           Address
+	LpPair           *Address
 	Name             string
 	Symbol           string
 	TxHash           Hash

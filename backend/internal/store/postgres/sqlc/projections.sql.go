@@ -787,7 +787,7 @@ ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregat
 
 type MarkPairTokenDirtyParams struct {
 	ChainID int64
-	LpPair  Address
+	LpPair  *Address
 }
 
 func (q *Queries) MarkPairTokenDirty(ctx context.Context, arg MarkPairTokenDirtyParams) error {
