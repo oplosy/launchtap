@@ -255,7 +255,7 @@ html[data-theme="light"] .ui-image-fallback {
   grid-column: 1 / -1;
   width: 100%;
   height: auto;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 1;
   /* A card's artwork is the card itself, so it keeps a soft square, not the avatar circle. */
   border-radius: var(--radius-container);
   transition: opacity var(--dur-base) var(--ease-out);
