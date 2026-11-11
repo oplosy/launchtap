@@ -30,7 +30,7 @@ import {
 const NARROW_FIELD = 640;
 /** A card's box in the field. The body is clipped to two lines, so a card is never taller than
  *  CARD_HEIGHT; placement reserves that much and short posts simply leave more air. */
-const CARD_WIDTH = 384;
+const CARD_WIDTH = 326;
 const CARD_HEIGHT = 148;
 /** Placement tries per card and the space kept between cards: many tries pack the field
  *  densely while every spot stays random. */
