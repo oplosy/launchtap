@@ -86,7 +86,7 @@ export function TokenDiscovery({ fetchPage: injectedFetcher }: { fetchPage?: Tok
   if (!sameTokenListQuery(urlState, nextState)) setUrlState(nextState);
   const listActiveRef = useRef(listActive);
   const highlights = useHighlights(view === "trending" ? configuration.apiBaseUrl : null);
-  const [layout, setLayout] = useState<Layout>("list");
+  const [layout, setLayout] = useState<Layout>("grid");
   const [searchDraft, setSearchDraft] = useState(urlState.q);
   const [pages, setPages] = useState<TokenListResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -321,7 +321,7 @@ export function TokenDiscovery({ fetchPage: injectedFetcher }: { fetchPage?: Tok
             </div>
           ) : null}
           <div className="ui-segment" role="group" aria-label="Layout">
-            {(["list", "grid"] as const).map((option) => (
+            {(["grid", "list"] as const).map((option) => (
               <button
                 key={option}
                 type="button"

@@ -13,19 +13,19 @@ test("a segmented choice slides one indicator to the pressed option", async ({
   test.skip(testInfo.project.name !== "small-laptop", "One viewport is enough.");
   await page.goto("/explore");
   const group = page.getByRole("group", { name: "Layout" });
-  const grid = group.getByRole("button", { name: "Grid" });
+  const list = group.getByRole("button", { name: "List" });
   const indicator = group.locator(".slide-indicator");
   await expect(indicator).toHaveAttribute("data-placed", "");
-  const list = group.getByRole("button", { name: "List" });
+  const grid = group.getByRole("button", { name: "Grid" });
   expect(await indicatorX(group)).toBe(
-    `${await list.evaluate((n) => (n as HTMLElement).offsetLeft)}px`,
+    `${await grid.evaluate((n) => (n as HTMLElement).offsetLeft)}px`,
   );
   expect(await indicator.evaluate((node) => getComputedStyle(node).transitionProperty)).toContain(
     "transform",
   );
-  await grid.click();
-  const gridLeft = await grid.evaluate((n) => (n as HTMLElement).offsetLeft);
-  await expect.poll(() => indicatorX(group)).toBe(`${gridLeft}px`);
+  await list.click();
+  const listLeft = await list.evaluate((n) => (n as HTMLElement).offsetLeft);
+  await expect.poll(() => indicatorX(group)).toBe(`${listLeft}px`);
 });
 
 test("view tabs slide their underline to the current view", async ({ page }, testInfo) => {

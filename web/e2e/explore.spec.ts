@@ -122,8 +122,9 @@ test("sort turns Trending into a ranked list and the grid keeps the same tokens"
       .evaluateAll((nodes) => nodes.map((node) => node.textContent));
   // The list may refetch once on mount (live recovery), so wait for settled rows each time.
   await expect.poll(names).toEqual(["Token 1", "Token 2"]);
-  await page.getByRole("group", { name: "Layout" }).getByRole("button", { name: "Grid" }).click();
   await expect(page.locator(".token-list")).toHaveAttribute("data-layout", "grid");
+  await page.getByRole("group", { name: "Layout" }).getByRole("button", { name: "List" }).click();
+  await expect(page.locator(".token-list")).toHaveAttribute("data-layout", "list");
   await expect.poll(names).toEqual(["Token 1", "Token 2"]);
 });
 
