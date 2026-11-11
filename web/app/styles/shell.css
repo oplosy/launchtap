@@ -341,8 +341,13 @@
 }
 
 /* Right column: a short statement, start links, and the social accounts. */
+/* Stretched to the row: the first block sits at the top, the last one level with the sections'
+   bottom rule (and the Follow block on the left). */
 .footer-aside {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-self: stretch;
   justify-self: end;
   gap: 32px;
   padding-top: 8px;
