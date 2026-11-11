@@ -241,7 +241,7 @@
  * first frames, so closing read as a snap even at the same duration as opening.
  */
 .footer-section {
-  --footer-accordion: 520ms;
+  --footer-accordion: 420ms;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
   border-bottom: 1px solid var(--hairline-strong);
