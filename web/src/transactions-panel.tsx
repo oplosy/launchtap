@@ -45,6 +45,7 @@ import {
   Badge,
   Button,
   ErrorState,
+  InfoTip,
   Input,
   SafeImage,
   UnavailableState,
@@ -2345,17 +2346,12 @@ function LaunchPanelReady() {
     >
       <div className="launch-panel-head">
         <h1 id="launch-title">Launch token</h1>
-        <p>One fixed supply, one bonding curve. Your wallet signs; nothing is held for you.</p>
+        <p>Fixed supply. Bonding curve. Your wallet signs.</p>
       </div>
       {error ? (
         <ErrorState title="Launch unavailable" description={error} />
       ) : (
         <>
-          {!readiness.address ? (
-            <div className="transaction-warning" role="status">
-              Connect the selected wallet before reviewing this launch.
-            </div>
-          ) : null}
           {readiness.address && launchChainId !== configuration.chainId ? (
             <div className="transaction-warning" role="alert">
               Wrong network. Switch to {deployment.name} before signing.
@@ -2376,6 +2372,7 @@ function LaunchPanelReady() {
                     value={imageUrl}
                     onChange={(event) => setImageUrl(event.target.value)}
                     placeholder="https://…"
+                    info="An https image URL. It becomes the token's artwork on cards and its page."
                   />
                   {imageUrl ? (
                     <SafeImage
@@ -2403,16 +2400,18 @@ function LaunchPanelReady() {
                       onChange={(event) => setSymbol(event.target.value.toUpperCase())}
                       maxLength={16}
                       placeholder="Symbol"
+                      info="Up to 16 characters, shown in capitals."
                     />
                   </div>
                 </section>
                 <section className="launch-section" aria-labelledby="launch-step-links">
                   <h2 id="launch-step-links">
-                    <span className="launch-step">03</span> Description and links
+                    <span className="launch-step">03</span> Links
+                    <InfoTip
+                      label="links"
+                      text="Optional. Add a description from the token page after launch."
+                    />
                   </h2>
-                  <p className="launch-section-hint">
-                    Add a description from the token page after launch.
-                  </p>
                   <div className="launch-field-row">
                     <Input
                       label="X profile"
@@ -2432,26 +2431,32 @@ function LaunchPanelReady() {
                   <h2 id="launch-step-buy">
                     <span className="launch-step">04</span> Initial buy
                   </h2>
-                  <label className="ui-field">
-                    <span>Paired asset</span>
-                    <select className="ui-input" defaultValue="ETH" aria-label="Paired asset">
-                      <option>ETH</option>
-                    </select>
-                    <small className="ui-field-hint">
-                      Graduates once the curve raises 4.2 ETH.
-                    </small>
-                  </label>
-                  <Input
-                    label="Developer buy (ETH, optional)"
-                    value={buy}
-                    onChange={(event) => setBuy(event.target.value)}
-                    inputMode="decimal"
-                    hint="Launch value is exactly launch fee + developer buy gross."
-                  />
-                  <details className="launch-advanced">
-                    <summary>Advanced</summary>
-                    <p>Engine version and pause state are read from the reviewed factory.</p>
-                  </details>
+                  <div className="launch-field-row">
+                    <div className="ui-field">
+                      <span>Paired asset</span>
+                      <div className="ui-input-wrap ui-select-wrap">
+                        <select
+                          className="ui-input ui-input-with-info"
+                          defaultValue="ETH"
+                          aria-label="Paired asset"
+                        >
+                          <option>ETH</option>
+                        </select>
+                        <InfoTip
+                          label="Paired asset"
+                          text="Graduates to Uniswap once the curve raises 4.2 ETH."
+                        />
+                      </div>
+                    </div>
+                    <Input
+                      label="Developer buy"
+                      value={buy}
+                      onChange={(event) => setBuy(event.target.value)}
+                      inputMode="decimal"
+                      placeholder="0 ETH, optional"
+                      info="Optional. Launch value is the launch fee plus this buy."
+                    />
+                  </div>
                 </section>
               </div>
               {/* Right column on wide screens: live preview, terms and the launch action stay in view. */}
