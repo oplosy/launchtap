@@ -219,7 +219,9 @@ try {
             @{ Name = "Solar Drift"; Symbol = "SOLAR"; Dev = 0; Buys = @(0.5, 0.25); Graduate = $true },
             @{ Name = "Iron Lotus"; Symbol = "LOTUS"; Dev = 0.008; Buys = @(0.15, 0.3, 0.4); Graduate = $true },
             @{ Name = "Pixel Whale"; Symbol = "WHALE"; Dev = 0.01; Buys = @(0.7, 0.2, 0.12); Graduate = $true },
-            @{ Name = "Static Bloom"; Symbol = "BLOOM"; Dev = 0.004; Buys = @(0.25, 0.18); Graduate = $true }
+            @{ Name = "Static Bloom"; Symbol = "BLOOM"; Dev = 0.004; Buys = @(0.25, 0.18); Graduate = $true },
+            @{ Name = "Amber Comet"; Symbol = "AMBER"; Dev = 0.006; Buys = @(0.3, 0.22); Graduate = $true },
+            @{ Name = "Coral Signal"; Symbol = "CORAL"; Dev = 0; Buys = @(0.18, 0.4, 0.09); Graduate = $true }
         )
         $index = 0
         $activeCurves = New-Object System.Collections.ArrayList
