@@ -3,12 +3,13 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import { useIdentityToken, usePrivy } from "@privy-io/react-auth";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
+import { E2ESessionContext } from "@/e2e/session-context";
 import { ApiClient, type ProfileResponse } from "@/api/client";
 import { formatBaseUnits } from "@/amounts";
 import { CoinGeckoAttribution, UsdLine } from "@/market/usd-line";
 import { publicConfiguration } from "@/config/public";
-import { Button, Badge } from "@/components/primitives";
+import { Button, Badge, UnavailableState } from "@/components/primitives";
 import { useWalletReadiness } from "@/wallet/readiness";
 import { WalletConnectButton } from "@/wallet/connection-context";
 import { shortAddress } from "@/token/address";
@@ -18,15 +19,31 @@ type ProfileAction = NonNullable<ProfileResponse["items"]>[number];
 
 export function ProfileView() {
   const configuration = publicConfiguration();
-  const { authenticated, ready, user, login, logout, getAccessToken } = usePrivy();
-  const { identityToken } = useIdentityToken();
+  // Fixture build only: a browser test's fixed session stands in for Privy (src/e2e).
+  const testSession = useContext(E2ESessionContext);
+  const privy = usePrivy();
+  const { identityToken: privyIdentityToken } = useIdentityToken();
+  const authenticated = testSession ? true : privy.authenticated;
+  const ready = testSession ? true : privy.ready;
+  const { login, logout } = privy;
+  const privyGetAccessToken = privy.getAccessToken;
+  const getAccessToken = useCallback(
+    async () => (testSession ? testSession.accessToken : privyGetAccessToken()),
+    [privyGetAccessToken, testSession],
+  );
+  const identityToken = testSession ? testSession.identityToken : privyIdentityToken;
   const readiness = useWalletReadiness();
   const [actions, setActions] = useState<ProfileAction[]>([]);
   const [actionsLoading, setActionsLoading] = useState(false);
   const [actionsError, setActionsError] = useState<string | null>(null);
-  const email = user?.linkedAccounts?.find((item) => item.type === "email") as
-    { address?: string } | undefined;
-  const linked = readiness.linkedWallets;
+  const userId = testSession ? testSession.userId : privy.user?.id;
+  const email = testSession
+    ? { address: testSession.email ?? undefined }
+    : (privy.user?.linkedAccounts?.find((item) => item.type === "email") as
+        { address?: string } | undefined);
+  const linked = testSession
+    ? testSession.linkedWallets.map((address) => ({ address, kind: "wallet" as const }))
+    : readiness.linkedWallets;
   const getAuth = useCallback(async () => {
     const accessToken = await getAccessToken();
     return accessToken && identityToken ? { accessToken, identityToken } : null;
@@ -77,6 +94,14 @@ export function ProfileView() {
     getAccessToken,
     identityToken,
   ]);
+  // A fixture build without Privy renders this view only for a test session.
+  if (!testSession && !configuration.privyAppId)
+    return (
+      <UnavailableState
+        title="Account unavailable"
+        description="Account access is not configured for this environment. Public launch data remains available."
+      />
+    );
   if (!ready)
     return (
       <section className="workspace-panel profile-auth" aria-live="polite">
@@ -114,7 +139,7 @@ export function ProfileView() {
         <dl className="profile-details">
           <div>
             <dt>Account ID</dt>
-            <dd className="mono">{user?.id ?? "Unavailable"}</dd>
+            <dd className="mono">{userId ?? "Unavailable"}</dd>
           </div>
           <div>
             <dt>Email</dt>

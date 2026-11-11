@@ -18,6 +18,24 @@ const env = {
   NEXT_PUBLIC_LOCAL_DEV: "1",
 };
 
+// Playwright matches these filters against the absolute spec path, so a bare word such as
+// "home" would also match a CI checkout under /home/runner and select every spec. Anchor each
+// filter to its spec file name.
+const specs = [
+  "live-strip",
+  "wallet-page",
+  "notifications",
+  "release-hardening",
+  "token-comments",
+  "public-profile",
+  "forum",
+  "signed-in",
+  "explore",
+  "home",
+  "token-layout",
+  "create-layout",
+];
+
 // Run the Playwright CLI through this Node binary, without a shell: with `shell: true` on Windows
 // cmd.exe re-splits the joined argument string, so a multi-word value (a --grep pattern) would
 // break apart. No shell means every argument reaches Playwright exactly as written.
@@ -27,13 +45,7 @@ const result = spawnSync(
   [
     playwrightCli,
     "test",
-    "live-strip",
-    "wallet-page",
-    "notifications",
-    "release-hardening",
-    "token-comments",
-    "public-profile",
-    "forum",
+    ...specs.map((name) => `e2e[\\\\/]${name}\\.spec\\.ts$`),
     ...process.argv.slice(2),
   ],
   { stdio: "inherit", env },

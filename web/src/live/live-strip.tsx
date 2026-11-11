@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { ApiClient, resolveApiAssetUrl } from "@/api/client";
 import { SafeImage } from "@/components/primitives";
 import type { LiveEvent } from "@/api/types";
@@ -89,16 +89,37 @@ export function LiveStrip() {
   );
   if (!ready || views.length === 0) return null;
 
+  // The rail scrolls the list and an identical, inert copy behind it, so translating the rail by
+  // half its width loops without a seam. Speed stays constant however many items there are.
+  const duration = `${Math.max(views.length, 4) * 5}s`;
   return (
     <section className="live-strip" aria-label="Live activity">
-      <span className="live-strip-label">Live</span>
-      <ul className="live-strip-track">
-        {views.map((view) => (
-          <li key={view.key} className="live-strip-item" data-pending={view.pending || undefined}>
-            <StripEntry view={view} baseUrl={baseUrl} />
-          </li>
-        ))}
-      </ul>
+      <div className="live-strip-viewport">
+        <div className="live-strip-rail" style={{ "--live-duration": duration } as CSSProperties}>
+          <ul className="live-strip-track">
+            {views.map((view) => (
+              <li
+                key={view.key}
+                className="live-strip-item"
+                data-pending={view.pending || undefined}
+              >
+                <StripEntry view={view} baseUrl={baseUrl} />
+              </li>
+            ))}
+          </ul>
+          <div className="live-strip-clone" aria-hidden="true" inert>
+            {views.map((view) => (
+              <div
+                key={view.key}
+                className="live-strip-item"
+                data-pending={view.pending || undefined}
+              >
+                <StripEntry view={view} baseUrl={baseUrl} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </section>
   );
 }

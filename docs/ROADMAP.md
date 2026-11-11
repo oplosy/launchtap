@@ -61,21 +61,32 @@ opt-in Compose `monitoring` profile with Prometheus and Alertmanager
 - **P0-C1 wallet page, PnL, leaderboard — complete.** Per-wallet positions and realized PnL
   recomputed from the ledger, public wallet pages, the leaderboard, wallet share cards, and
   holdings-based notifications ([spec](specs/2026-11-06-p0c1-wallet-page-pnl-design.md)).
+- **P0-C2 comments, usernames, moderation — complete.** Holder/creator-gated token comments with
+  rate limits, reports, an operator moderation CLI, and usernames with opt-in published wallets
+  ([spec](specs/2026-11-09-p0c2-comments-usernames-design.md)).
+- **P0-C3 watch counts and windowed leaderboards — complete.** Public watcher counts and 7d/30d
+  realized-PnL leaderboards ([spec](specs/2026-11-10-p0c3-watch-counts-windowed-leaderboards-design.md)).
+- **P0-C4 notification inbox — complete.** Server-side inbox with unread counts and cross-device
+  read positions ([spec](specs/2026-11-10-p0c4-notification-inbox-design.md)).
+- **P0-C5 forum (Memestock) — complete.** Cross-token feed and hot/top communities over token
+  comments ([spec](specs/2026-11-10-p0c5-forum-memestock-design.md)). The P0-C package merged to
+  `main` in milestone PR #21.
+
+
+### Frontend rebuild — in review
+
+The web UI is rebuilt around a centred composition, a pure-black dark theme with a light theme,
+a monochrome interface with colour reserved for data, and a new information architecture
+(`/explore` replaces the old discovery routes, which redirect)
+([spec](specs/2026-11-10-frontend-rebuild-design.md), [plan](plans/2026-11-10-frontend-rebuild.md)).
+All nine plan tasks are on `task/frontend-rebuild`, opened as a PR into `dev`.
 
 ## Next
 
-Owner decisions of 2026-11-09 set the scope:
-
-1. **P0-C2 token comments.** Holders of a token (and its creator) with a Privy-linked wallet can
-   comment; per-user rate limits, user reports, and an operator endpoint to hide comments and
-   ban users.
-2. **Usernames.** Unique, editable usernames tied to the Privy user, shown on wallet pages,
-   comments and the leaderboard. No ENS.
-3. **Social data.** Public watchlist counts; 7-day and 30-day realized-PnL leaderboards.
-4. **Notification inbox.** A server-side inbox with unread counts and cross-device sync. No
-   browser push, Telegram, or email.
-5. **Forum (Memestock).** Every launch with its community, ranked by activity, built on the
-   comment system.
+No new feature scope is decided. Signed-in e2e coverage (a fixture-only test session) landed on
+`dev` and goes to `main` with the next milestone PR. The only open feature work in
+[`backlog.md`](../backlog.md) → Active is the forum ticker tape and votes, which need an owner
+decision.
 
 ## Deferred operational work
 

@@ -49,6 +49,7 @@ import {
   SafeImage,
   UnavailableState,
 } from "@/components/primitives";
+import { SlidingIndicator } from "@/components/sliding-indicator";
 
 const DEFAULT_TTL = 900n;
 type Address = `0x${string}`;
@@ -351,6 +352,7 @@ function TradeSideTabs({
             {value === "buy" ? "Buy" : "Sell"}
           </button>
         ))}
+        <SlidingIndicator />
       </div>
       <div
         id={panelId}
@@ -362,6 +364,37 @@ function TradeSideTabs({
         {children}
       </div>
     </>
+  );
+}
+
+const SLIPPAGE_PRESETS = ["1", "5", "10"] as const;
+
+/** Preset slippage values; they fill the same input, so its validation still applies. */
+function SlippageChips({
+  value,
+  disabled,
+  onPick,
+}: {
+  value: string;
+  disabled: boolean;
+  onPick: (value: string) => void;
+}) {
+  return (
+    <div className="trade-chips" role="group" aria-label="Slippage presets">
+      {SLIPPAGE_PRESETS.map((preset) => (
+        <button
+          key={preset}
+          type="button"
+          className="ui-chip"
+          aria-pressed={value.trim() === preset}
+          disabled={disabled}
+          onClick={() => onPick(preset)}
+        >
+          {preset}%
+        </button>
+      ))}
+      <SlidingIndicator />
+    </div>
   );
 }
 
@@ -1050,7 +1083,6 @@ function TradingPanelReady({
     <section className="workspace-panel transaction-panel" aria-labelledby="trade-title">
       <div className="panel-head">
         <div>
-          <p className="panel-kicker">Wallet action</p>
           <h2 id="trade-title">Trade {token.symbol}</h2>
         </div>
         <Badge tone={token.phase === "graduated" ? "success" : "accent"}>{token.phase}</Badge>
@@ -1102,6 +1134,15 @@ function TradingPanelReady({
             }}
             inputMode="decimal"
             hint="Minimum output is rounded down on-chain. At most 50%."
+          />
+          <SlippageChips
+            value={slippage}
+            disabled={executionBusy}
+            onPick={(value) => {
+              setSlippage(value);
+              setConfirming(false);
+              setReviewIntent(null);
+            }}
           />
           {quoteError ? (
             <p className="transaction-error" role="alert">
@@ -1824,6 +1865,15 @@ function GraduatedSwapPanel({
             inputMode="decimal"
             hint="At most 50%."
           />
+          <SlippageChips
+            value={slippage}
+            disabled={executionBusy}
+            onPick={(value) => {
+              setSlippage(value);
+              setConfirming(false);
+              setReviewIntent(null);
+            }}
+          />
           {output !== null ? (
             <div className="quote-summary">
               <span>
@@ -2010,8 +2060,10 @@ function LaunchPreview({
           <span aria-hidden="true">◈</span>
         )}
       </div>
-      <h2>{name.trim() || "Your token"}</h2>
-      <p className="mono">{symbol.trim() || "ticker"}</p>
+      <div className="launch-preview-identity">
+        <p className="launch-preview-name">{name.trim() || "Your token"}</p>
+        <p className="mono">{symbol.trim() || "ticker"}</p>
+      </div>
       <dl>
         <div>
           <dt>Launch fee</dt>
@@ -2292,9 +2344,8 @@ function LaunchPanelReady() {
       aria-labelledby="launch-title"
     >
       <div className="launch-panel-head">
-        <div>
-          <h1 id="launch-title">Launch token</h1>
-        </div>
+        <h1 id="launch-title">Launch token</h1>
+        <p>One fixed supply, one bonding curve. Your wallet signs; nothing is held for you.</p>
       </div>
       {error ? (
         <ErrorState title="Launch unavailable" description={error} />
@@ -2316,68 +2367,100 @@ function LaunchPanelReady() {
           <div className="launch-layout">
             <div className="launch-main">
               <div className="transaction-form">
-                <div className="launch-field-row">
+                <section className="launch-section" aria-labelledby="launch-step-image">
+                  <h2 id="launch-step-image">
+                    <span className="launch-step">01</span> Image
+                  </h2>
                   <Input
-                    label="Name"
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    maxLength={64}
-                    placeholder="Token name"
+                    label="Token image"
+                    value={imageUrl}
+                    onChange={(event) => setImageUrl(event.target.value)}
+                    placeholder="https://…"
                   />
+                  {imageUrl ? (
+                    <SafeImage
+                      src={imageUrl}
+                      alt="Token image preview"
+                      className="launch-image-preview"
+                    />
+                  ) : null}
+                </section>
+                <section className="launch-section" aria-labelledby="launch-step-name">
+                  <h2 id="launch-step-name">
+                    <span className="launch-step">02</span> Name and symbol
+                  </h2>
+                  <div className="launch-field-row">
+                    <Input
+                      label="Name"
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                      maxLength={64}
+                      placeholder="Token name"
+                    />
+                    <Input
+                      label="Ticker"
+                      value={symbol}
+                      onChange={(event) => setSymbol(event.target.value.toUpperCase())}
+                      maxLength={16}
+                      placeholder="Symbol"
+                    />
+                  </div>
+                </section>
+                <section className="launch-section" aria-labelledby="launch-step-links">
+                  <h2 id="launch-step-links">
+                    <span className="launch-step">03</span> Description and links
+                  </h2>
+                  <p className="launch-section-hint">
+                    Add a description from the token page after launch.
+                  </p>
+                  <div className="launch-field-row">
+                    <Input
+                      label="X profile"
+                      value={xUrl}
+                      onChange={(event) => setXUrl(event.target.value)}
+                      placeholder="https://x.com/handle"
+                    />
+                    <Input
+                      label="Telegram"
+                      value={telegramUrl}
+                      onChange={(event) => setTelegramUrl(event.target.value)}
+                      placeholder="https://t.me/community"
+                    />
+                  </div>
+                </section>
+                <section className="launch-section" aria-labelledby="launch-step-buy">
+                  <h2 id="launch-step-buy">
+                    <span className="launch-step">04</span> Initial buy
+                  </h2>
+                  <label className="ui-field">
+                    <span>Paired asset</span>
+                    <select className="ui-input" defaultValue="ETH" aria-label="Paired asset">
+                      <option>ETH</option>
+                    </select>
+                    <small className="ui-field-hint">
+                      Graduates once the curve raises 4.2 ETH.
+                    </small>
+                  </label>
                   <Input
-                    label="Ticker"
-                    value={symbol}
-                    onChange={(event) => setSymbol(event.target.value.toUpperCase())}
-                    maxLength={16}
-                    placeholder="Symbol"
+                    label="Developer buy (ETH, optional)"
+                    value={buy}
+                    onChange={(event) => setBuy(event.target.value)}
+                    inputMode="decimal"
+                    hint="Launch value is exactly launch fee + developer buy gross."
                   />
-                </div>
-                <Input
-                  label="Token image"
-                  value={imageUrl}
-                  onChange={(event) => setImageUrl(event.target.value)}
-                  placeholder="https://…"
-                />
-                <div className="launch-field-row">
-                  <Input
-                    label="X profile"
-                    value={xUrl}
-                    onChange={(event) => setXUrl(event.target.value)}
-                    placeholder="https://x.com/handle"
-                  />
-                  <Input
-                    label="Telegram"
-                    value={telegramUrl}
-                    onChange={(event) => setTelegramUrl(event.target.value)}
-                    placeholder="https://t.me/community"
-                  />
-                </div>
-                <label className="ui-field">
-                  <span>Paired asset</span>
-                  <select className="ui-input" defaultValue="ETH" aria-label="Paired asset">
-                    <option>ETH</option>
-                  </select>
-                  <small className="ui-field-hint">Graduates once the curve raises 4.2 ETH.</small>
-                </label>
-                <Input
-                  label="Developer buy (ETH, optional)"
-                  value={buy}
-                  onChange={(event) => setBuy(event.target.value)}
-                  inputMode="decimal"
-                  hint="Launch value is exactly launch fee + developer buy gross."
-                />
-                {imageUrl ? (
-                  <SafeImage
-                    src={imageUrl}
-                    alt="Token image preview"
-                    className="launch-image-preview"
-                  />
-                ) : null}
-                <details className="launch-advanced">
-                  <summary>Advanced</summary>
-                  <p>Engine version and pause state are read from the reviewed factory.</p>
-                </details>
+                  <details className="launch-advanced">
+                    <summary>Advanced</summary>
+                    <p>Engine version and pause state are read from the reviewed factory.</p>
+                  </details>
+                </section>
               </div>
+              <LaunchPreview
+                imageUrl={imageUrl}
+                name={name}
+                symbol={symbol}
+                launchFee={launchFee}
+                value={value}
+              />
               <div className="quote-summary">
                 <span>
                   Factory launch fee{" "}
@@ -2490,13 +2573,6 @@ function LaunchPanelReady() {
                 </Button>
               )}
             </div>
-            <LaunchPreview
-              imageUrl={imageUrl}
-              name={name}
-              symbol={symbol}
-              launchFee={launchFee}
-              value={value}
-            />
           </div>
         </>
       )}

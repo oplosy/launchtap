@@ -411,3 +411,46 @@ func TestEventsCommentFilteredAndCoalesced(t *testing.T) {
 		t.Fatalf("comment payload=%q", batch)
 	}
 }
+
+// The web app opens one unfiltered stream per tab and scopes comment hints to the open token
+// client-side, so the unfiltered stream must carry them. A stalled subscriber flooded with
+// comment hints is evicted alone (its stream ends and the client reconnects and refetches,
+// because the stream has no replay) while the live stream still gets one hint per token.
+func TestEventsCommentHintsOnUnfilteredStreamWithStalledSubscriber(t *testing.T) {
+	hub := realtime.NewHub(4, 8)
+	stalled, err := hub.Subscribe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stalled.Close()
+	reader := openFeedStream(t, hub, "")
+	for deadline := time.Now().Add(time.Second); hub.Active() != 2 && time.Now().Before(deadline); {
+		time.Sleep(time.Millisecond)
+	}
+	tokenA := "0x00000000000000000000000000000000000000aa"
+	tokenB := "0x00000000000000000000000000000000000000bb"
+	for i := range 9 { // the stalled subscriber's 8-slot buffer overflows on the 9th hint
+		token := tokenA
+		if i%3 == 2 {
+			token = tokenB
+		}
+		hub.Publish(realtime.Event{Type: "comment", ChainID: 46630, DeploymentID: "testnet", Token: token})
+		time.Sleep(2 * time.Millisecond) // let the live stream take each hint off its buffer
+	}
+	// openFeedStream coalesces for an hour; a reorg flushes the pending hints.
+	hub.Publish(realtime.Event{Type: "reorg", ChainID: 46630, DeploymentID: "testnet", CommonAncestor: 7})
+	batch := readUntil(t, reader, `"common_ancestor":7`, 2*time.Second)
+	if strings.Count(batch, "event: comment") != 2 || !strings.Contains(batch, tokenA) || !strings.Contains(batch, tokenB) {
+		t.Fatalf("batch=%q, want one comment hint per token", batch)
+	}
+	if hub.Evictions() != 1 || hub.Active() != 1 {
+		t.Fatalf("evictions=%d active=%d, want the stalled subscriber evicted alone", hub.Evictions(), hub.Active())
+	}
+	buffered := 0
+	for range stalled.C {
+		buffered++
+	}
+	if buffered != 8 {
+		t.Fatalf("stalled subscriber held %d hints at eviction, want 8", buffered)
+	}
+}

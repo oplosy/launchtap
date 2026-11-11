@@ -167,6 +167,26 @@ export function Tabs({
 }) {
   const tablistId = useId();
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const indicatorRef = useRef<HTMLSpanElement>(null);
+  const activeIndex = tabs.findIndex((tab) => tab.value === value);
+  useEffect(() => {
+    // The underline slides to the active tab; layout is read after paint, so no SSR mismatch.
+    const indicator = indicatorRef.current;
+    if (!indicator) return;
+    const place = () => {
+      const active = tabRefs.current[activeIndex];
+      if (!active) {
+        indicator.style.width = "0px";
+        return;
+      }
+      indicator.style.width = `${active.offsetWidth}px`;
+      indicator.style.transform = `translateX(${active.offsetLeft}px)`;
+    };
+    place();
+    // Fonts loading or the viewport changing moves the tabs; follow them.
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [activeIndex, tabs.length]);
   const selectTab = (index: number) => {
     const next = tabs[index];
     if (!next || next.disabled) return;
@@ -207,6 +227,7 @@ export function Tabs({
             </button>
           );
         })}
+        <span ref={indicatorRef} className="ui-tabs-indicator" aria-hidden="true" />
       </div>
       {tabs.map((tab, index) => {
         const tabId = `${tablistId}-tab-${index}`;

@@ -35,6 +35,9 @@ type Querier interface {
 	ClearOrphanProjections(ctx context.Context, arg ClearOrphanProjectionsParams) error
 	ClearProtocolDaily(ctx context.Context, chainID int64) error
 	// Windows are measured on the database clock; window_seconds is a policy constant.
+	// release_at is the hourly_limit-th newest comment inside the window: once it leaves the window
+	// fewer than hourly_limit remain, so it is the exact end of an hourly block even when the
+	// window holds more rows than the limit.
 	CommentRateState(ctx context.Context, arg CommentRateStateParams) (CommentRateStateRow, error)
 	CompleteAggregationDirty(ctx context.Context, arg CompleteAggregationDirtyParams) (int64, error)
 	CompleteIndexerReorg(ctx context.Context, reorgID int64) (CompleteIndexerReorgRow, error)
@@ -274,6 +277,7 @@ type Querier interface {
 	ReleaseUsername(ctx context.Context, arg ReleaseUsernameParams) error
 	ReplaceTokenImage(ctx context.Context, arg ReplaceTokenImageParams) (int64, error)
 	ReplaceTokenMetadata(ctx context.Context, arg ReplaceTokenMetadataParams) (int64, error)
+	// release_at: the hourly_limit-th newest report in the window (see CommentRateState).
 	ReportRateState(ctx context.Context, arg ReportRateStateParams) (ReportRateStateRow, error)
 	ResolveAuthorReports(ctx context.Context, arg ResolveAuthorReportsParams) (int64, error)
 	ResolveCommentReports(ctx context.Context, arg ResolveCommentReportsParams) (int64, error)

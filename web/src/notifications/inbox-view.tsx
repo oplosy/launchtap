@@ -165,7 +165,10 @@ export function InboxView() {
         title="No notifications yet"
         description="Star tokens to hear about their graduation and trades of 0.5 ETH or more from the last 30 days."
         action={
-          <Link className="ui-button ui-button-secondary ui-button-md" href="/?view=watchlist">
+          <Link
+            className="ui-button ui-button-secondary ui-button-md"
+            href={"/explore?view=watchlist" as never}
+          >
             Open watchlist
           </Link>
         }

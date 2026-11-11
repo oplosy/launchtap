@@ -1,0 +1,112 @@
+/* Home: centred hero, featured band (8 + 4 columns), centred sections of hairline rows. */
+.home {
+  gap: var(--section-gap);
+}
+.home-hero {
+  display: grid;
+  justify-items: center;
+  gap: 24px;
+  padding: clamp(72px, 12vw, 160px) 0 0;
+  text-align: center;
+}
+.home-hero h1 {
+  max-width: 14ch;
+  font: var(--type-hero);
+  letter-spacing: var(--tracking-hero);
+}
+.home-hero-summary {
+  max-width: 44ch;
+  color: var(--text-2);
+}
+.home-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.home-featured-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 8fr) minmax(0, 4fr);
+  gap: 24px;
+}
+.home-featured-main .king-card {
+  height: 100%;
+  border-top: 0;
+  border-radius: var(--radius-container);
+  background: var(--fill);
+  padding: clamp(24px, 4vw, 40px);
+}
+.home-featured-main .king-card .token-image {
+  width: 72px;
+  height: 72px;
+}
+.home-featured-main .king-card h3 {
+  font-size: 28px;
+  line-height: 36px;
+  letter-spacing: var(--tracking-page);
+}
+.home-featured-side {
+  display: grid;
+  align-content: start;
+  list-style: none;
+  border-top: 1px solid var(--hairline);
+}
+.home-featured-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--hairline);
+  padding: 14px 0;
+}
+.home-featured-item .token-identity h3 a::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+}
+.home-featured-item:hover h3 a {
+  color: var(--text-2);
+}
+
+.home-posts {
+  display: grid;
+  list-style: none;
+  border-top: 1px solid var(--hairline);
+}
+.home-post {
+  display: grid;
+  gap: 4px;
+  border-bottom: 1px solid var(--hairline);
+  padding: 16px 0;
+}
+.home-post-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 20px;
+}
+.home-post-meta a {
+  color: var(--text);
+}
+.home-post-body {
+  overflow-wrap: anywhere;
+}
+.home-skeleton {
+  display: grid;
+  gap: 12px;
+  padding: 16px 0;
+}
+.home-unavailable {
+  padding: 48px 0;
+}
+
+@media (max-width: 1023px) {
+  .home-featured-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

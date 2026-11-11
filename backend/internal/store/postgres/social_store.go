@@ -179,7 +179,7 @@ func (s SocialStore) Eligibility(ctx context.Context, a social.Actor, token comm
 	return out, nil
 }
 
-func (s SocialStore) Post(ctx context.Context, a social.Actor, token, wallet common.Address, body string) (social.Comment, error) {
+func (s SocialStore) Post(ctx context.Context, a social.Actor, token, wallet common.Address, raw string) (social.Comment, error) {
 	var posted social.Comment
 	err := WithinTx(ctx, s.Pool, func(ctx context.Context, adapter *Adapter) error {
 		q := adapter.queries
@@ -189,6 +189,10 @@ func (s SocialStore) Post(ctx context.Context, a social.Actor, token, wallet com
 		}
 		if user.BannedAt.Valid {
 			return social.ErrBanned
+		}
+		body, err := social.NormalizeBody(raw)
+		if err != nil {
+			return err
 		}
 		if err := tokenExists(ctx, q, a.ChainID, token); err != nil {
 			return err
@@ -204,7 +208,7 @@ func (s SocialStore) Post(ctx context.Context, a social.Actor, token, wallet com
 		if err != nil {
 			return err
 		}
-		state, err := q.CommentRateState(ctx, sqlc.CommentRateStateParams{WindowSeconds: rateWindowSeconds, ChainID: a.ChainID, DeploymentID: a.DeploymentID, PrivyDid: a.PrivyDID})
+		state, err := q.CommentRateState(ctx, sqlc.CommentRateStateParams{WindowSeconds: rateWindowSeconds, ChainID: a.ChainID, DeploymentID: a.DeploymentID, PrivyDid: a.PrivyDID, HourlyLimit: social.CommentsPerHour})
 		if err != nil {
 			return fmt.Errorf("comment rate state: %w", err)
 		}
@@ -284,8 +288,10 @@ func commentWait(st sqlc.CommentRateStateRow) time.Duration {
 			until = next
 		}
 	}
-	if st.CountInWindow >= social.CommentsPerHour && st.OldestInWindow.Valid {
-		if free := st.OldestInWindow.Time.Add(social.RateWindow); free.After(until) {
+	// ReleaseAt is the CommentsPerHour-th newest comment in the window: once it leaves, fewer
+	// than CommentsPerHour remain, even when the window holds more rows than the cap.
+	if st.CountInWindow >= social.CommentsPerHour && st.ReleaseAt.Valid {
+		if free := st.ReleaseAt.Time.Add(social.RateWindow); free.After(until) {
 			until = free
 		}
 	}
@@ -331,12 +337,14 @@ func (s SocialStore) Report(ctx context.Context, a social.Actor, commentID int64
 		if rows == 0 {
 			return nil
 		}
-		state, err := q.ReportRateState(ctx, sqlc.ReportRateStateParams{ChainID: a.ChainID, DeploymentID: a.DeploymentID, ReporterDid: a.PrivyDID, WindowSeconds: rateWindowSeconds})
+		state, err := q.ReportRateState(ctx, sqlc.ReportRateStateParams{ChainID: a.ChainID, DeploymentID: a.DeploymentID, ReporterDid: a.PrivyDID, WindowSeconds: rateWindowSeconds, HourlyLimit: social.ReportsPerHour + 1})
 		if err != nil {
 			return fmt.Errorf("report rate state: %w", err)
 		}
-		if state.CountInWindow > social.ReportsPerHour && state.OldestInWindow.Valid && state.DbNow.Valid {
-			return &social.RateLimitedError{RetryAfter: retryAfter(state.OldestInWindow.Time.Add(social.RateWindow), state.DbNow.Time)}
+		// The count includes the report just inserted (the newest row), so the (cap+1)-th newest
+		// is the cap-th newest of the earlier reports: once it leaves the window a retry fits.
+		if state.CountInWindow > social.ReportsPerHour && state.ReleaseAt.Valid && state.DbNow.Valid {
+			return &social.RateLimitedError{RetryAfter: retryAfter(state.ReleaseAt.Time.Add(social.RateWindow), state.DbNow.Time)}
 		}
 		return nil
 	})

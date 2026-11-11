@@ -2,67 +2,51 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { lazy, Suspense, useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { motion, useScroll } from "motion/react";
+import {
+  Fragment,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { MagnifyingGlass } from "@phosphor-icons/react";
-import {
-  ArrowSquareOut,
-  BookOpenText,
-  ChartLineUp,
-  ChatsCircle,
-  Compass,
-  List,
-  Moon,
-  Plus,
-  ShieldCheck,
-  Sun,
-  UserCircle,
-  Wallet,
-} from "./icons";
-import { SafeExternalLink, Sheet } from "./primitives";
-import {
-  originOf,
-  setThemePreference,
-  useResolvedTheme,
-  useThemePreference,
-  type ThemePreference,
-} from "./theme";
+import { List } from "./icons";
+import { Sheet } from "./primitives";
+import { MegaMenu, NAV_LINKS } from "./mega-menu";
+import { SiteFooter } from "./site-footer";
+import { ThemeToggle } from "./theme-toggle";
 import { walletPath } from "@/portfolio/wallet-model";
 import { WalletConnectButton, useWalletConnection } from "@/wallet/connection-context";
-import { publicConfiguration } from "@/config/public";
 import { NotificationBell } from "@/live/notifications";
-import { CoinGeckoAttribution } from "@/market/usd-line";
 
 // The palette is only downloaded the first time someone opens it.
 const CommandPalette = lazy(() => import("./command-palette"));
-
-const navItems = [
-  { href: "/", label: "Explore", icon: Compass },
-  { href: "/forum", label: "Forum", icon: ChatsCircle },
-  { href: "/create", label: "Create", icon: Plus },
-  { href: "/analytics", label: "Analytics", icon: ChartLineUp },
-  { href: "/docs", label: "Docs", icon: BookOpenText },
-  { href: "/profile", label: "Profile", icon: UserCircle },
-] as const;
 
 const noSubscription = () => () => undefined;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const configuration = publicConfiguration();
   // The lightweight connection context only: it reports an address once a wallet is connected.
   const connection = useWalletConnection();
-  const navLinks: ReadonlyArray<{ href: string; label: string; icon: typeof Compass }> = [
-    ...navItems,
+  const sheetLinks: ReadonlyArray<{ href: string; label: string }> = [
+    ...NAV_LINKS,
+    { href: "/create", label: "Create" },
+    { href: "/profile", label: "Profile" },
     ...(connection.connected && connection.address
-      ? [{ href: walletPath(connection.address), label: "My wallet", icon: Wallet }]
+      ? [{ href: walletPath(connection.address), label: "My wallet" }]
       : []),
   ];
   const [menuOpen, setMenuOpen] = useState(false);
+  const [exploreOpen, setExploreOpen] = useState(false);
+  const exploreRef = useRef<HTMLButtonElement>(null);
+  const exploreMenuId = useId();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteLoaded, setPaletteLoaded] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const { scrollYProgress } = useScroll();
   const modifier = useSyncExternalStore(
     noSubscription,
     () => (/Mac|iPhone|iPad/.test(navigator.userAgent) ? "⌘" : "Ctrl"),
@@ -73,6 +57,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setPaletteOpen(true);
   }, []);
   const closePalette = useCallback(() => setPaletteOpen(false), []);
+  const closeExplore = useCallback(() => setExploreOpen(false), []);
   useEffect(() => {
     const sync = () => setScrolled(window.scrollY > 8);
     sync();
@@ -95,153 +80,122 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [openPalette]);
-  const active = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  // A route change closes the menus (their links also close them on click).
+  const [shownPath, setShownPath] = useState(pathname);
+  if (shownPath !== pathname) {
+    setShownPath(pathname);
+    setExploreOpen(false);
+  }
+  const active = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  const hoverOpen = (event: React.PointerEvent) => {
+    if (event.pointerType === "mouse") setExploreOpen(true);
+  };
+  const hoverClose = (event: React.PointerEvent) => {
+    if (event.pointerType === "mouse") setExploreOpen(false);
+  };
   return (
     <div className="app-frame">
       <header
-        className={`app-navbar ${scrolled ? "is-scrolled" : ""}`}
-        aria-label="Primary navigation"
+        className={`app-navbar${scrolled ? " is-scrolled" : ""}${exploreOpen ? " is-menu-open" : ""}`}
+        onPointerLeave={hoverClose}
       >
         <div className="navbar-inner">
           <Link className="navbar-brand" href="/" aria-label="Open home">
-            <BrandMark />
-            <span className="brand-word">launchpad</span>
+            Launchpad
           </Link>
-          <nav className="navbar-links" aria-label="Desktop primary navigation">
-            {/* Profile has its own icon; Docs stays in the menu sheet and the footer so the
-                desktop bar fits Explore / Forum / Create / Analytics beside the wallet button. */}
-            {navLinks
-              .filter(({ href }) => href !== "/profile" && href !== "/docs")
-              .map(({ href, label }) => (
+          <nav className="navbar-links" aria-label="Primary">
+            {NAV_LINKS.map(({ href, label }) =>
+              href === "/explore" ? (
+                // The panel follows its trigger in DOM order so Tab moves straight into it.
+                <Fragment key={href}>
+                  <button
+                    ref={exploreRef}
+                    type="button"
+                    className={`navbar-link${active(href) ? " is-active" : ""}`}
+                    aria-expanded={exploreOpen}
+                    aria-controls={exploreMenuId}
+                    onClick={() => setExploreOpen((open) => !open)}
+                    onPointerEnter={hoverOpen}
+                  >
+                    {label}
+                  </button>
+                  <MegaMenu
+                    id={exploreMenuId}
+                    open={exploreOpen}
+                    onClose={closeExplore}
+                    triggerRef={exploreRef}
+                  />
+                </Fragment>
+              ) : (
                 <Link
                   key={href}
                   href={href as never}
-                  className={`navbar-link ${active(href) ? "is-active" : ""}`}
+                  className={`navbar-link${active(href) ? " is-active" : ""}`}
                   aria-current={active(href) ? "page" : undefined}
+                  onPointerEnter={hoverClose}
                 >
-                  {active(href) ? (
-                    <motion.span
-                      className="navbar-link-indicator"
-                      layoutId="navbar-indicator"
-                      transition={{ type: "spring", stiffness: 480, damping: 38 }}
-                      aria-hidden="true"
-                    />
-                  ) : null}
-                  <span>{label}</span>
+                  {label}
                 </Link>
-              ))}
+              ),
+            )}
           </nav>
           <div className="navbar-actions">
             <button
               type="button"
-              className="navbar-search"
+              className="ui-icon-button navbar-search"
               onClick={openPalette}
               aria-label="Search"
               aria-keyshortcuts="Control+K Meta+K"
+              title={`Search (${modifier} K)`}
             >
-              <MagnifyingGlass size={15} aria-hidden="true" />
-              <span className="navbar-search-label">Search</span>
-              <kbd aria-hidden="true">{modifier} K</kbd>
+              <MagnifyingGlass size={18} aria-hidden="true" />
             </button>
             <ThemeToggle />
-            <Link
-              className="ui-icon-button navbar-profile"
-              href="/profile"
-              aria-label="Open profile"
-            >
-              <UserCircle size={19} />
-            </Link>
             <NotificationBell />
-            <WalletConnectButton />
+            <Link
+              className="ui-button ui-button-secondary ui-button-sm navbar-create"
+              href="/create"
+            >
+              Create
+            </Link>
+            <WalletConnectButton variant="primary" />
             <button
+              type="button"
               className="ui-icon-button navbar-menu-button"
               onClick={() => setMenuOpen(true)}
-              aria-label="Open navigation"
+              aria-label="Open menu"
             >
               <List size={20} />
             </button>
           </div>
         </div>
-        <motion.span
-          className="scroll-progress"
-          style={{ scaleX: scrollYProgress }}
-          aria-hidden="true"
-        />
       </header>
-      <main className="app-content">
-        {children}
-        <footer className="app-footer" aria-label="Site footer">
-          <div className="footer-top">
-            <div className="footer-brand">
-              <span className="footer-name">
-                <BrandMark />
-                Launchpad
-              </span>
-              <p>
-                Fixed-supply token launches on Robinhood Chain. Your selected wallet signs every
-                transaction; Launchpad never takes custody.
-              </p>
-            </div>
-            <nav className="footer-navigation" aria-label="Footer navigation">
-              <span>Product</span>
-              <Link href="/">Explore</Link>
-              <Link href="/forum">Forum</Link>
-              <Link href="/create">Create</Link>
-              <Link href="/analytics">Analytics</Link>
-              <Link href="/profile">Profile</Link>
-            </nav>
-            <div className="footer-navigation">
-              <span>Resources</span>
-              <Link href="/docs">Docs</Link>
-              <Link href="/docs#risk">Risk and finality</Link>
-              {configuration.deployment?.explorerBase ? (
-                <SafeExternalLink href={configuration.deployment.explorerBase}>
-                  Explorer <ArrowSquareOut size={12} />
-                </SafeExternalLink>
-              ) : (
-                <span className="ui-disabled-link">Explorer unavailable</span>
-              )}
-            </div>
-            <div className="footer-appearance">
-              <span>Appearance</span>
-              <ThemeSwitcher />
-            </div>
-          </div>
-          <div className="footer-bottom">
-            <p className="footer-meta">
-              © 2026 Launchpad <CoinGeckoAttribution />
-            </p>
-            <p className="footer-risk">
-              On-chain transactions may be irreversible. Tokens can be volatile or lose all value.
-            </p>
-          </div>
-        </footer>
-      </main>
-      <Sheet open={menuOpen} title="Navigate" onClose={() => setMenuOpen(false)}>
-        <nav className="sheet-nav" aria-label="Mobile menu navigation">
-          {navLinks.map(({ href, label, icon: Icon }, index) => (
+      <main className="app-content">{children}</main>
+      <SiteFooter />
+      <Sheet open={menuOpen} title="Menu" onClose={() => setMenuOpen(false)}>
+        <nav className="sheet-nav" aria-label="Menu">
+          {sheetLinks.map(({ href, label }) => (
             <Link
               key={href}
               href={href as never}
               onClick={() => setMenuOpen(false)}
-              className={active(href) ? "is-active" : ""}
-              style={{ "--i": index } as React.CSSProperties}
+              aria-current={active(href) ? "page" : undefined}
             >
-              <Icon size={20} />
               {label}
             </Link>
           ))}
         </nav>
-        <div className="sheet-appearance">
-          <span>Appearance</span>
-          <ThemeSwitcher />
-        </div>
-        <div className="sheet-note">
-          <ShieldCheck size={18} />
-          <p>
-            Wallet connections and signing remain user-controlled. Launchpad never takes custody of
-            funds.
-          </p>
+        <div className="sheet-foot">
+          <button
+            type="button"
+            className="ui-button ui-button-secondary"
+            onClick={() => {
+              setMenuOpen(false);
+              openPalette();
+            }}
+          >
+            Search
+          </button>
         </div>
       </Sheet>
       {paletteLoaded ? (
@@ -249,64 +203,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <CommandPalette open={paletteOpen} onClose={closePalette} />
         </Suspense>
       ) : null}
-    </div>
-  );
-}
-
-function BrandMark() {
-  return (
-    <svg className="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
-      <path className="brand-mark-axis" d="M5 5v22h22" />
-      <path className="brand-mark-curve" d="M7 25C15 24 21 19 25.5 8" pathLength={1} />
-      <circle className="brand-mark-dot" cx="25.5" cy="8" r="2.6" />
-    </svg>
-  );
-}
-
-function ThemeToggle() {
-  const resolved = useResolvedTheme();
-  const next = resolved === "dark" ? "light" : "dark";
-  return (
-    <button
-      type="button"
-      className="ui-icon-button theme-toggle"
-      onClick={(event) => setThemePreference(next, originOf(event.currentTarget))}
-      aria-label={`Switch to ${next} theme`}
-      title={`Switch to ${next} theme`}
-    >
-      <Sun className="theme-icon-sun" size={17} aria-hidden="true" />
-      <Moon className="theme-icon-moon" size={17} aria-hidden="true" />
-    </button>
-  );
-}
-
-const THEME_OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string }> = [
-  { value: "system", label: "System" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-];
-
-function ThemeSwitcher() {
-  const preference = useThemePreference();
-  const index = THEME_OPTIONS.findIndex((option) => option.value === preference);
-  return (
-    <div
-      className="theme-switcher"
-      role="group"
-      aria-label="Color theme"
-      style={{ "--index": index } as React.CSSProperties}
-    >
-      <span className="theme-switcher-indicator" aria-hidden="true" />
-      {THEME_OPTIONS.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          aria-pressed={preference === option.value}
-          onClick={(event) => setThemePreference(option.value, originOf(event.currentTarget))}
-        >
-          {option.label}
-        </button>
-      ))}
     </div>
   );
 }

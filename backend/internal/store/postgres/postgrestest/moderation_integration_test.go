@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Contictus/launchtap/backend/internal/realtime"
 	"github.com/Contictus/launchtap/backend/internal/social"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/ethereum/go-ethereum/common"
@@ -139,6 +140,14 @@ func TestModerateHideResolvesAndNotifies(t *testing.T) {
 	events := drain()
 	if len(events) != 1 || events[0]["type"] != "comment" || events[0]["token"] != token.Hex() || events[0]["deployment_id"] != socialDep {
 		t.Fatalf("notifies = %v", events)
+	}
+	// The hide notification is a valid realtime comment hint, so open streams refetch comments.
+	raw, err := json.Marshal(events[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hint, err := realtime.Decode(raw); err != nil || hint.Type != "comment" || hint.Token != token.Hex() || hint.ChainID != socialChainID {
+		t.Fatalf("hide hint = %+v err=%v", hint, err)
 	}
 
 	if err := mod.Unhide(ctx, modScope, bad, "ops", "mistake"); err != nil {

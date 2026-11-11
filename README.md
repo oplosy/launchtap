@@ -407,6 +407,15 @@ and cannot submit transactions. There is no local Privy app ID or public API/RPC
 in the repository. Although the reviewed chain-46630 manifest is active, a local UI server alone
 is not a launchpad demo or a live application.
 
+To browse the UI with real indexed data, start the local demo stack (Docker, Foundry, Go and
+Node required). It runs Anvil, a PostgreSQL container, the API and indexer, seeds six launches
+with trades (one graduated), and serves the web app at `http://127.0.0.1:3417` until Ctrl+C,
+then tears everything down. There is no wallet sign-in locally, so it is read-only:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File web/scripts/local-stack.ps1
+```
+
 For browser development against an already operated API/RPC and reviewed manifest, supply the
 values from [Configuration reference](#configuration-reference) in `web/.env.local` and make
 sure the API's `API_ALLOWED_ORIGINS` includes exactly the web origin. For a reproducible

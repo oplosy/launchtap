@@ -14,27 +14,24 @@
   margin: 0 20px 14px;
 }
 
-/* Buy / sell segmented switch */
+/* Buy / sell: a pill segment; the active side is the inverted pill. */
 .trade-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 3px;
+  gap: 4px;
   margin: 0 20px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--canvas-soft);
-  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--canvas);
+  padding: 4px;
 }
 .trade-tabs button {
   height: 36px;
-  border-radius: 9px;
-  color: var(--text-faint);
-  font-size: 14px;
-  font-weight: 560;
+  border-radius: var(--radius-pill);
+  color: var(--text-2);
+  font: var(--type-label);
   transition:
-    background-color 0.2s ease,
-    color 0.2s ease,
-    box-shadow 0.2s ease;
+    background-color var(--dur-fast) linear,
+    color var(--dur-fast) linear;
 }
 .trade-tabs button:hover:not(:disabled) {
   color: var(--text);
@@ -44,14 +41,8 @@
   opacity: 0.6;
 }
 .trade-tabs button.is-active {
-  color: var(--text);
-  background: var(--surface-strong);
-  box-shadow: 0 0 0 1px var(--line-strong);
-}
-.trade-tabs button.is-active:first-child {
-  color: var(--accent-ink);
-  background: var(--accent);
-  box-shadow: none;
+  color: var(--canvas);
+  background: var(--text);
 }
 .trade-side-panel {
   display: grid;
@@ -70,9 +61,8 @@
 .quote-summary {
   display: grid;
   gap: 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--canvas-soft);
+  border-radius: var(--radius-input);
+  background: var(--canvas);
   padding: 14px 16px;
   font-size: 13.5px;
 }
@@ -81,7 +71,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  color: var(--text-soft);
+  color: var(--text-2);
 }
 .quote-summary strong {
   min-width: 0;
@@ -92,22 +82,22 @@
   white-space: nowrap;
 }
 .quote-summary small {
-  border-top: 1px solid var(--line);
-  color: var(--text-faint);
+  border-top: 1px solid var(--hairline);
+  color: var(--text-3);
   padding-top: 8px;
   font-size: 12px;
   line-height: 1.45;
 }
 .transaction-risk {
-  color: var(--text-faint);
+  color: var(--text-3);
   font-size: 12.5px;
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
 .transaction-risk a {
-  color: var(--text-soft);
+  color: var(--text-2);
   text-decoration: underline;
-  text-decoration-color: var(--line-bright);
+  text-decoration-color: var(--hairline-bright);
   text-underline-offset: 3px;
 }
 .transaction-warning {
@@ -117,15 +107,15 @@
   justify-content: space-between;
   gap: 10px;
   border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-input);
   color: var(--warning);
-  background: var(--warning-wash);
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
   padding: 10px 14px;
   font-size: 13.5px;
   line-height: 1.45;
 }
 .transaction-error {
-  color: var(--danger);
+  color: var(--down);
   font-size: 13px;
   line-height: 1.45;
   overflow-wrap: anywhere;
@@ -135,9 +125,8 @@
 .transaction-confirmation {
   display: grid;
   gap: 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--canvas-soft);
+  border-radius: var(--radius-input);
+  background: var(--canvas);
   padding: 16px;
   animation: confirm-in 0.35s var(--ease-out);
 }
@@ -148,7 +137,7 @@
   font-size: 12.5px;
 }
 .transaction-confirmation dt {
-  color: var(--text-faint);
+  color: var(--text-3);
 }
 .transaction-confirmation dd {
   min-width: 0;
@@ -180,22 +169,22 @@
   display: grid;
   justify-items: start;
   gap: 8px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--hairline);
   padding: 14px 20px;
   font-size: 12.5px;
 }
 .transaction-progress > .mono {
   max-width: 100%;
   overflow: hidden;
-  color: var(--text-faint);
+  color: var(--text-3);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .claim-row {
   display: grid;
   gap: 12px;
-  border-top: 1px solid var(--line);
-  color: var(--text-soft);
+  border-top: 1px solid var(--hairline);
+  color: var(--text-2);
   padding: 16px 20px 20px;
   font-size: 13px;
   line-height: 1.6;
@@ -213,7 +202,7 @@
 
 .usd-line {
   display: block;
-  color: var(--text-faint);
+  color: var(--text-3);
   font-size: 0.8em;
   font-weight: 400;
   opacity: 0.75;
@@ -224,10 +213,53 @@
 
 .usd-attribution {
   display: block;
-  color: var(--text-faint);
+  color: var(--text-3);
   font-size: 0.75rem;
 }
 .usd-hint .usd-attribution,
 .footer-meta .usd-attribution {
   display: inline;
+}
+
+/* Trade card (token page): a 20 px container, pill side switch, preset chips, full-width action. */
+.token-aside .transaction-panel {
+  border: 0;
+  border-radius: var(--radius-container);
+  background: var(--fill);
+}
+.token-aside .transaction-panel > .panel-head {
+  padding: 20px 20px 16px;
+}
+.token-aside .transaction-panel > .panel-head h2 {
+  font: var(--type-section);
+}
+.trade-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: -6px;
+}
+.trade-chips .ui-chip {
+  height: 28px;
+  border-radius: var(--radius-pill);
+  color: var(--text-2);
+  background: var(--canvas);
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  transition:
+    background-color var(--dur-fast) linear,
+    color var(--dur-fast) linear;
+}
+.trade-chips .ui-chip:hover:not(:disabled) {
+  color: var(--text);
+}
+.trade-chips .ui-chip[aria-pressed="true"] {
+  color: var(--canvas);
+  background: var(--text);
+}
+.trade-chips .ui-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }

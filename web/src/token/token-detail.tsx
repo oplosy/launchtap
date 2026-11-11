@@ -3,7 +3,7 @@
 /* eslint-disable react-hooks/preserve-manual-memoization */
 
 import Link from "next/link";
-import { ArrowUpRight, Check, Copy } from "@phosphor-icons/react";
+import { ArrowUpRight, Check, Copy, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import type { components } from "@/api/generated";
 import { ApiClient, resolveApiAssetUrl, type TokenDetailResponse } from "@/api/client";
@@ -32,6 +32,7 @@ import {
   Skeleton,
   Tabs,
 } from "@/components/primitives";
+import { SlidingIndicator } from "@/components/sliding-indicator";
 import { walletPath } from "@/portfolio/wallet-model";
 import { addressHue, parseTokenAddress, shortAddress } from "./address";
 import { transformCandles, type CandleChartPoint } from "./chart-data";
@@ -45,6 +46,7 @@ import { createCoalescedRefresh } from "./coalesced-refresh";
 import { isTokenEventForAddress } from "./sse-scope";
 import { TradingPanel } from "@/transactions-panel";
 import { MetadataEditor } from "./metadata-editor";
+import { PRICE_FLASH_MS, priceDirection } from "./price-flash";
 
 type TokenDetailProps = { address: `0x${string}` };
 type Tab = "trades" | "holders";
@@ -103,6 +105,13 @@ export function TokenDetail({
     address: "",
     items: [],
   });
+  // A spot-price change is hinted for PRICE_FLASH_MS; never under reduced motion.
+  const [priceFlash, setPriceFlash] = useState<{ direction: "up" | "down"; id: number } | null>(
+    null,
+  );
+  // Below 1024 px the trade card opens as a sheet from the bottom bar; the side picks its tab.
+  const [sheetSide, setSheetSide] = useState<"buy" | "sell" | null>(null);
+  const asideRef = useRef<HTMLElement>(null);
   const clientRef = useRef<ApiClient | null>(null);
   const tokenRef = useRef<TokenDetailResponse | null>(null);
   const tokenAbortRef = useRef<AbortController | null>(null);
@@ -147,6 +156,13 @@ export function TokenDetail({
           requestId === requestIds.current.token &&
           activeRouteRef.current === tokenAddress
         ) {
+          const previous = tokenRef.current;
+          const direction =
+            previous && previous.address === next.address
+              ? priceDirection(previous.spot_price_eth, next.spot_price_eth)
+              : null;
+          if (direction && !window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+            setPriceFlash({ direction, id: Date.now() });
           tokenRef.current = next;
           setToken(next);
         }
@@ -435,6 +451,68 @@ export function TokenDetail({
     return () => window.removeEventListener("launchpad:canonical-reorg", refreshAfterReorg);
   }, [tokenAddress]);
 
+  useEffect(() => {
+    if (!priceFlash) return;
+    const timer = window.setTimeout(() => setPriceFlash(null), PRICE_FLASH_MS);
+    return () => window.clearTimeout(timer);
+  }, [priceFlash]);
+
+  useEffect(() => {
+    if (!sheetSide) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const close = () => setSheetSide(null);
+    const aside = asideRef.current;
+    // Land on the requested side's tab; re-selecting the active side would clear the amount.
+    const tab =
+      aside?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[sheetSide === "buy" ? 0 : 1];
+    if (tab && !tab.disabled && tab.getAttribute("aria-selected") !== "true") tab.click();
+    else
+      (tab && !tab.disabled
+        ? tab
+        : aside?.querySelector<HTMLElement>(".token-sheet-close")
+      )?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+        return;
+      }
+      const current = asideRef.current;
+      if (event.key !== "Tab" || !current) return;
+      // Focus stays inside the sheet while it is modal.
+      const focusable = Array.from(
+        current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => element.getClientRects().length > 0);
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+      if (!current.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    // The sheet only exists below 1024 px; widening the window returns the card to the column.
+    const wide = window.matchMedia("(min-width: 1024px)");
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKeyDown);
+    wide.addEventListener("change", close);
+    return () => {
+      document.body.style.overflow = overflow;
+      document.removeEventListener("keydown", onKeyDown);
+      wide.removeEventListener("change", close);
+      opener?.focus();
+    };
+  }, [sheetSide]);
+
   if (configuration.status !== "ready") return <TokenUnavailable address={tokenAddress} />;
   if (loading) return <TokenSkeleton />;
   if (tokenError instanceof ApiProblem && tokenError.status === 404)
@@ -464,39 +542,46 @@ export function TokenDetail({
   const snapshot = token.snapshot;
   const title = token.name.trim() || token.symbol.trim() || "Unnamed token";
   const change = token.price_change_24h_bps / 100;
+  const showTrade = !useFixture;
   return (
     <div
-      className="page-stack token-page"
+      className="token-page"
+      data-trade-bar={showTrade ? "" : undefined}
       style={{ "--hue": addressHue(token.address) } as CSSProperties}
     >
-      <nav className="token-breadcrumb" aria-label="Breadcrumb">
-        <Link href="/">Explore</Link>
-        <span aria-hidden="true">/</span>
-        <span aria-current="page">{token.symbol.trim() || shortAddress(token.address, 4)}</span>
-      </nav>
-      <section className="token-hero" aria-labelledby="token-title">
-        <div className="token-hero-identity">
-          <SafeImage
-            src={currentImageUrl}
-            alt={`${title} token`}
-            className="token-detail-image"
-            fallbackLabel="No artwork"
-          />
-          <div>
-            <h1 id="token-title">{title}</h1>
-            <p className="token-detail-symbol">
-              <span>{token.symbol || "—"}</span>
-              <CopyAddress address={token.address} />
-            </p>
-          </div>
+      <header className="token-header" aria-labelledby="token-title">
+        <SafeImage
+          src={currentImageUrl}
+          alt={`${title} token`}
+          className="token-detail-image"
+          fallbackLabel="No artwork"
+        />
+        <h1 id="token-title">{title}</h1>
+        <p className="token-detail-symbol">
+          <span>{token.symbol || "—"}</span>
+          <CopyAddress address={token.address} />
+        </p>
+        <div className="market-price">
+          <span className="market-price-label">Spot price</span>
+          <strong
+            className="market-price-value"
+            data-flash={priceFlash?.direction}
+            key={priceFlash?.id}
+          >
+            {safeMarketValue(token.spot_price_eth)}
+            <small> ETH</small>
+          </strong>
+          <UsdLine wei={token.spot_price_eth} />
+          <span className={`market-change ${change < 0 ? "is-down" : "is-up"}`}>
+            {change >= 0 ? "+" : ""}
+            {change.toFixed(2)}% <span>24h</span>
+          </span>
         </div>
-        <div className="token-hero-actions">
-          <div className="token-badges">
-            <Badge tone={token.phase === "graduated" ? "success" : "accent"}>
-              {token.phase || "Phase unavailable"}
-            </Badge>
-            <Badge tone={finalityTone(snapshot.finality)}>{finalityLabel(snapshot.finality)}</Badge>
-          </div>
+        <div className="token-header-actions">
+          <Badge tone={token.phase === "graduated" ? "success" : "neutral"}>
+            {token.phase || "Phase unavailable"}
+          </Badge>
+          <Badge tone={finalityTone(snapshot.finality)}>{finalityLabel(snapshot.finality)}</Badge>
           <StarButton address={token.address} label={title} />
           {!useFixture && configuration.status === "ready" && configuration.apiBaseUrl ? (
             <WatchCount
@@ -517,7 +602,7 @@ export function TokenDetail({
             <span className="token-link-unavailable">Explorer unavailable</span>
           )}
         </div>
-      </section>
+      </header>
       <WatchlistToaster />
 
       {snapshot.finality === "stale" || snapshot.finality === "provisional" ? (
@@ -526,29 +611,16 @@ export function TokenDetail({
         </p>
       ) : null}
 
-      <div className="token-layout">
-        <section className="workspace-panel market-panel" aria-labelledby="market-title">
-          <div className="market-panel-head">
-            <div className="market-price">
-              <h2 id="market-title" className="sr-only">
-                Market activity
-              </h2>
-              <span className="market-price-label">Spot price</span>
-              <strong className="market-price-value">
-                {safeMarketValue(token.spot_price_eth)}
-                <small> ETH</small>
-              </strong>
-              <UsdLine wei={token.spot_price_eth} />
-              <span className={`market-change ${change < 0 ? "is-down" : "is-up"}`}>
-                {change >= 0 ? "+" : ""}
-                {change.toFixed(2)}% <span>24h</span>
-              </span>
-            </div>
+      <div className="token-layout" data-single={showTrade ? undefined : ""}>
+        <div className="token-main">
+          <section className="market-panel" aria-labelledby="market-title">
+            <h2 id="market-title" className="sr-only">
+              Price chart
+            </h2>
             <div className="chart-controls">
-              <label className="chart-control-label">
+              <label className="chart-range">
                 <span className="sr-only">Timeframe</span>
                 <select
-                  className="ui-input"
                   value={interval}
                   onChange={(event) =>
                     setInterval(event.target.value as (typeof intervals)[number])
@@ -578,29 +650,60 @@ export function TokenDetail({
                 >
                   Candles
                 </button>
+                <SlidingIndicator />
               </div>
             </div>
-          </div>
-          {chartLoading ? (
-            <div className="chart-loading">
-              <Skeleton className="chart-skeleton" />
-            </div>
-          ) : chartError ? (
-            <ErrorState
-              title="Chart unavailable"
-              description="Price history could not be loaded."
-              action={<Button onClick={() => void loadCandles()}>Retry</Button>}
-            />
-          ) : (
-            <MarketChart key={tokenAddress} points={chartPoints} mode={mode} />
-          )}
-        </section>
+            {chartLoading ? (
+              <div className="chart-loading">
+                <Skeleton className="chart-skeleton" />
+              </div>
+            ) : chartError ? (
+              <ErrorState
+                title="Chart unavailable"
+                description="Price history could not be loaded."
+                action={<Button onClick={() => void loadCandles()}>Retry</Button>}
+              />
+            ) : (
+              <MarketChart key={tokenAddress} points={chartPoints} mode={mode} />
+            )}
+          </section>
 
-        <aside className="token-aside" aria-label="Trade and graduation">
-          <section className="workspace-panel graduation-card" aria-labelledby="graduation-title">
-            <div className="graduation-progress" aria-label={`Graduation progress ${progress}%`}>
+          <section className="token-stats" aria-labelledby="token-summary-title">
+            <div className="token-section-head">
+              <h2 id="token-summary-title">Market and reserves</h2>
+              <CoinGeckoAttribution />
+            </div>
+            <dl className="token-summary-grid">
+              <Metric
+                label="Market cap"
+                value={amount(token.market_cap_eth)}
+                eth={token.market_cap_eth}
+              />
+              <Metric
+                label="24h volume"
+                value={amount(token.volume_24h_eth)}
+                eth={token.volume_24h_eth}
+              />
+              <Metric
+                label="Liquidity"
+                value={amount(token.liquidity_eth)}
+                eth={token.liquidity_eth}
+              />
+              <Metric label="Holders" value={token.holder_count.toLocaleString("en-US")} />
+              <Metric
+                label="ETH reserve"
+                value={amount(token.eth_reserve)}
+                eth={token.eth_reserve}
+              />
+              <Metric label="Token reserve" value={safeTokenAmount(token.token_reserve)} />
+            </dl>
+            <div
+              className="graduation-progress"
+              role="group"
+              aria-label={`Graduation progress ${progress}%`}
+            >
               <div className="graduation-progress-head">
-                <h2 id="graduation-title">Graduation</h2>
+                <span>Graduation</span>
                 <strong>{progress.toFixed(1)}%</strong>
               </div>
               <div className="progress-track">
@@ -612,7 +715,138 @@ export function TokenDetail({
               </p>
             </div>
           </section>
+
+          <section className="token-history-panel" aria-labelledby="history-title">
+            <div className="token-section-head">
+              <h2 id="history-title">Recent activity</h2>
+              <CoinGeckoAttribution />
+              {collectionSnapshot ? (
+                <Badge tone={finalityTone(collectionSnapshot.finality)}>
+                  {finalityLabel(collectionSnapshot.finality)}
+                </Badge>
+              ) : null}
+            </div>
+            {resetNotice ? (
+              <p className="discovery-notice" role="status">
+                The activity list was refreshed with the latest available data.
+              </p>
+            ) : null}
+            <Tabs
+              ariaLabel="Token history"
+              value={tab}
+              onChange={(value) => {
+                setTab(value as Tab);
+                setPages([]);
+                setResetNotice(false);
+              }}
+              tabs={[
+                {
+                  value: "trades",
+                  label: "Recent trades",
+                  panel: (
+                    <Trades
+                      items={tradeItems}
+                      loading={collectionLoading}
+                      error={collectionError}
+                    />
+                  ),
+                },
+                {
+                  value: "holders",
+                  label: "Holders",
+                  panel: (
+                    <Holders
+                      items={holderItems}
+                      loading={collectionLoading}
+                      error={collectionError}
+                    />
+                  ),
+                },
+              ]}
+            />
+            {nextCursor ? (
+              <div className="history-pagination">
+                <span>{pagesItems.length} rows</span>
+                <Button
+                  variant="secondary"
+                  loading={collectionLoading}
+                  onClick={() => void loadCollection(tab, nextCursor, true)}
+                >
+                  Load more
+                </Button>
+              </div>
+            ) : null}
+          </section>
+
+          {!useFixture && configuration.status === "ready" && configuration.apiBaseUrl ? (
+            <CommentPanel
+              key={tokenAddress}
+              tokenAddress={tokenAddress}
+              apiBaseUrl={configuration.apiBaseUrl}
+              liveSignal={commentSignal}
+            />
+          ) : null}
+
+          <section className="token-metadata" aria-labelledby="metadata-title">
+            <div className="token-section-head">
+              <div>
+                <h2 id="metadata-title">About this token</h2>
+                <p className="section-description">Supplied by the creator, not verified.</p>
+              </div>
+            </div>
+            <p className="token-description">
+              {token.description.trim() || "No description supplied."}
+            </p>
+            <div className="token-links">
+              <SafeExternalLink href={token.x_url}>X profile</SafeExternalLink>
+              <SafeExternalLink href={token.telegram_url}>Telegram</SafeExternalLink>
+              {explorer ? (
+                <SafeExternalLink href={explorer}>
+                  Contract {shortAddress(token.address)}
+                </SafeExternalLink>
+              ) : null}
+              {market.dexscreener ? (
+                <SafeExternalLink href={market.dexscreener}>Dexscreener</SafeExternalLink>
+              ) : null}
+              {market.geckoterminal ? (
+                <SafeExternalLink href={market.geckoterminal}>GeckoTerminal</SafeExternalLink>
+              ) : null}
+            </div>
+          </section>
           {!useFixture ? (
+            <MetadataEditor
+              token={{
+                address: token.address,
+                description: token.description,
+                x_url: token.x_url,
+                telegram_url: token.telegram_url,
+                image_url: token.image_url,
+              }}
+              onConflict={loadToken}
+            />
+          ) : null}
+        </div>
+
+        {showTrade ? (
+          <aside
+            ref={asideRef}
+            className="token-aside"
+            data-open={sheetSide ? "" : undefined}
+            {...(sheetSide
+              ? { role: "dialog", "aria-modal": true, "aria-labelledby": "trade-sheet-title" }
+              : { "aria-label": "Trade" })}
+          >
+            <div className="token-sheet-head">
+              <h2 id="trade-sheet-title">Trade</h2>
+              <button
+                type="button"
+                className="ui-icon-button token-sheet-close"
+                aria-label="Close trade"
+                onClick={() => setSheetSide(null)}
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+            </div>
             <TradingPanel
               token={{
                 address: token.address,
@@ -623,148 +857,32 @@ export function TokenDetail({
                 symbol: token.symbol,
               }}
             />
-          ) : null}
-          <p className="token-aside-note">
-            Non-custodial read surface. Signing and execution remain in your selected wallet.
-          </p>
-        </aside>
-
-        <section
-          className="workspace-panel token-summary-panel"
-          aria-labelledby="token-summary-title"
-        >
-          <div className="panel-head">
-            <h2 id="token-summary-title">Market and reserves</h2>
-            <span className="token-block">Live values</span>
-          </div>
-          <CoinGeckoAttribution />
-          <dl className="token-summary-grid">
-            <Metric
-              label="Market cap"
-              value={amount(token.market_cap_eth)}
-              eth={token.market_cap_eth}
-            />
-            <Metric
-              label="24h volume"
-              value={amount(token.volume_24h_eth)}
-              eth={token.volume_24h_eth}
-            />
-            <Metric
-              label="Liquidity"
-              value={amount(token.liquidity_eth)}
-              eth={token.liquidity_eth}
-            />
-            <Metric label="Holders" value={token.holder_count.toLocaleString("en-US")} />
-            <Metric label="ETH reserve" value={amount(token.eth_reserve)} eth={token.eth_reserve} />
-            <Metric label="Token reserve" value={safeTokenAmount(token.token_reserve)} />
-          </dl>
-        </section>
-
-        <section className="workspace-panel token-history-panel" aria-labelledby="history-title">
-          <div className="panel-head">
-            <h2 id="history-title">Recent activity</h2>
-            <CoinGeckoAttribution />
-            {collectionSnapshot ? (
-              <Badge tone={finalityTone(collectionSnapshot.finality)}>
-                {finalityLabel(collectionSnapshot.finality)}
-              </Badge>
-            ) : null}
-          </div>
-          {resetNotice ? (
-            <p className="discovery-notice" role="status">
-              The activity list was refreshed with the latest available data.
+            <p className="token-aside-note">
+              Non-custodial. Signing and execution stay in your selected wallet.
             </p>
-          ) : null}
-          <Tabs
-            ariaLabel="Token history"
-            value={tab}
-            onChange={(value) => {
-              setTab(value as Tab);
-              setPages([]);
-              setResetNotice(false);
-            }}
-            tabs={[
-              {
-                value: "trades",
-                label: "Recent trades",
-                panel: (
-                  <Trades items={tradeItems} loading={collectionLoading} error={collectionError} />
-                ),
-              },
-              {
-                value: "holders",
-                label: "Holders",
-                panel: (
-                  <Holders
-                    items={holderItems}
-                    loading={collectionLoading}
-                    error={collectionError}
-                  />
-                ),
-              },
-            ]}
-          />
-          {nextCursor ? (
-            <div className="history-pagination">
-              <span>{pagesItems.length} rows</span>
-              <Button
-                loading={collectionLoading}
-                onClick={() => void loadCollection(tab, nextCursor, true)}
-              >
-                Load more
-              </Button>
-            </div>
-          ) : null}
-        </section>
-
-        {!useFixture && configuration.status === "ready" && configuration.apiBaseUrl ? (
-          <CommentPanel
-            key={tokenAddress}
-            tokenAddress={tokenAddress}
-            apiBaseUrl={configuration.apiBaseUrl}
-            liveSignal={commentSignal}
-          />
-        ) : null}
-
-        <section className="workspace-panel token-metadata" aria-labelledby="metadata-title">
-          <div className="panel-head">
-            <div>
-              <h2 id="metadata-title">About this token</h2>
-              <p className="section-description">Supplied by the creator, not verified.</p>
-            </div>
-          </div>
-          <p className="token-description">
-            {token.description.trim() || "No description supplied."}
-          </p>
-          <div className="token-links">
-            <SafeExternalLink href={token.x_url}>X profile</SafeExternalLink>
-            <SafeExternalLink href={token.telegram_url}>Telegram</SafeExternalLink>
-            {explorer ? (
-              <SafeExternalLink href={explorer}>
-                Contract {shortAddress(token.address)}
-              </SafeExternalLink>
-            ) : null}
-            {market.dexscreener ? (
-              <SafeExternalLink href={market.dexscreener}>Dexscreener</SafeExternalLink>
-            ) : null}
-            {market.geckoterminal ? (
-              <SafeExternalLink href={market.geckoterminal}>GeckoTerminal</SafeExternalLink>
-            ) : null}
-          </div>
-        </section>
-        {!useFixture ? (
-          <MetadataEditor
-            token={{
-              address: token.address,
-              description: token.description,
-              x_url: token.x_url,
-              telegram_url: token.telegram_url,
-              image_url: token.image_url,
-            }}
-            onConflict={loadToken}
-          />
+          </aside>
         ) : null}
       </div>
+
+      {showTrade ? (
+        <>
+          {sheetSide ? (
+            <div
+              className="token-sheet-backdrop"
+              aria-hidden="true"
+              onClick={() => setSheetSide(null)}
+            />
+          ) : null}
+          <div className="token-trade-bar" role="region" aria-label="Quick trade">
+            <Button variant="primary" onClick={() => setSheetSide("buy")}>
+              Buy
+            </Button>
+            <Button variant="secondary" onClick={() => setSheetSide("sell")}>
+              Sell
+            </Button>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -990,7 +1108,7 @@ function UnavailableBlock({ title, description }: { title: string; description: 
       <p className="panel-kicker">Token route</p>
       <h1>{title}</h1>
       <p>{description}</p>
-      <Link className="ui-button ui-button-secondary ui-button-md" href="/">
+      <Link className="ui-button ui-button-secondary ui-button-md" href="/explore">
         Return to Explore
       </Link>
     </section>
@@ -998,25 +1116,19 @@ function UnavailableBlock({ title, description }: { title: string; description: 
 }
 function TokenSkeleton() {
   return (
-    <div className="page-stack token-page" aria-busy="true">
-      <section className="token-skeleton">
+    <div className="token-page" aria-busy="true">
+      <section className="token-header token-skeleton">
         <Skeleton className="token-detail-image" />
-        <div>
-          <Skeleton className="token-skeleton-title" />
-          <Skeleton className="token-skeleton-copy" />
-        </div>
+        <Skeleton className="token-skeleton-title" />
+        <Skeleton className="token-skeleton-copy" />
       </section>
       <div className="token-layout">
-        <section className="workspace-panel market-panel token-skeleton-panel">
-          <Skeleton className="token-skeleton-copy" />
+        <div className="token-main">
           <Skeleton className="chart-skeleton" />
-        </section>
-        <aside className="token-aside">
-          <section className="workspace-panel token-skeleton-panel">
-            <Skeleton className="token-skeleton-title" />
-            <Skeleton className="chart-skeleton token-skeleton-trade" />
-          </section>
-        </aside>
+        </div>
+        <div className="token-aside">
+          <Skeleton className="token-skeleton-trade" />
+        </div>
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ApiClient, type ProtocolDailyResponse } from "@/api/client";
 import { publicConfiguration } from "@/config/public";
+import { PageHeader } from "@/components/layout";
 import { formatCanonicalBaseUnits } from "@/amounts";
 import { Badge, Button, ErrorState, Skeleton, UnavailableState } from "@/components/primitives";
 
@@ -59,19 +60,15 @@ export default function AnalyticsPage() {
   }, [configuration.apiBaseUrl, configuration.status]);
   return (
     <div className="page-stack analytics-page">
-      <section className="page-hero">
-        <div>
-          <div className="section-kicker">Analytics</div>
-          <h1>Read the launch route.</h1>
-          <p className="hero-summary">
-            Protocol activity across launches, trades, volume, and graduations. ETH-native values
-            are shown without USD enrichment.
-          </p>
+      <PageHeader
+        title="Read the launch route."
+        summary="Protocol activity across launches, trades, volume, and graduations. ETH-native values are shown without USD enrichment."
+        actions={
           <Link className="ui-button ui-button-secondary ui-button-md" href="/leaderboard">
             View the leaderboard
           </Link>
-        </div>
-      </section>
+        }
+      />
       {error ? (
         <ErrorState
           title="Live analytics are unavailable"
@@ -89,7 +86,7 @@ export default function AnalyticsPage() {
       {loading ? (
         <div className="analytics-grid">
           {[1, 2, 3, 4].map((item) => (
-            <div className="workspace-panel metric-panel" key={item}>
+            <div className="metric-panel" key={item}>
               <Skeleton />
               <Skeleton />
             </div>
@@ -98,7 +95,7 @@ export default function AnalyticsPage() {
       ) : null}
       {!loading && !error && summary && daily ? (
         <>
-          <section className="workspace-panel analytics-snapshot" aria-label="Current analytics">
+          <section className="analytics-snapshot" aria-label="Current analytics">
             <span className="panel-kicker">Current window</span>
             <Badge
               tone={
@@ -127,10 +124,7 @@ export default function AnalyticsPage() {
               value={`${summary.graduations_24h.toLocaleString("en-US")} / ${summary.graduations_all_time.toLocaleString("en-US")}`}
             />
           </section>
-          <section
-            className="workspace-panel analytics-history"
-            aria-labelledby="daily-history-title"
-          >
+          <section className="analytics-history" aria-labelledby="daily-history-title">
             <div className="panel-head">
               <div>
                 <p className="panel-kicker">Activity history</p>
@@ -214,7 +208,7 @@ function VolumeChart({ items }: { items: DailyItem[] }) {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <section className="workspace-panel metric-panel">
+    <section className="metric-panel">
       <dl>
         <dt>{label}</dt>
         <dd className="metric-value">

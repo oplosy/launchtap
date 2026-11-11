@@ -74,8 +74,8 @@ func TestPostQualifiesAndRecordsWallet(t *testing.T) {
 	if holder.Author.Role != social.RoleHolder || holder.Author.Wallet == nil || *holder.Author.Wallet != socialHolder || holder.Author.Username != nil || holder.Token != token || holder.Body != "hello" || holder.ID == 0 || holder.CreatedAt.IsZero() {
 		t.Fatalf("holder comment = %+v", holder)
 	}
-	creator, err := store.Post(ctx, socialActor("did:creator", socialCreator), token, socialCreator, "gm")
-	if err != nil || creator.Author.Role != social.RoleCreator {
+	creator, err := store.Post(ctx, socialActor("did:creator", socialCreator), token, socialCreator, "  gm\r\nfren  ")
+	if err != nil || creator.Author.Role != social.RoleCreator || creator.Body != "gm\nfren" {
 		t.Fatalf("creator post = %+v err=%v", creator, err)
 	}
 	var wallet []byte
@@ -136,6 +136,14 @@ func TestPostRejectsUnlinkedNonHolderBannedUnknownToken(t *testing.T) {
 	insertSocialUser(t, ctx, database.DB, socialDep, "did:banned", nil, true)
 	if _, err := store.Post(ctx, socialActor("did:banned", socialHolder), token, socialHolder, "x"); !errors.Is(err, social.ErrBanned) {
 		t.Fatalf("banned err = %v", err)
+	}
+	// The ban check comes before body validation.
+	if _, err := store.Post(ctx, socialActor("did:banned", socialHolder), token, socialHolder, "   "); !errors.Is(err, social.ErrBanned) {
+		t.Fatalf("banned invalid-body err = %v", err)
+	}
+	var bodyErr *social.BodyError
+	if _, err := store.Post(ctx, socialActor("did:a", socialHolder), token, socialHolder, "   "); !errors.As(err, &bodyErr) || bodyErr.Rule != "empty" {
+		t.Fatalf("invalid body err = %v", err)
 	}
 	var n int
 	if err := database.DB.QueryRowContext(ctx, `SELECT count(*) FROM token_comments`).Scan(&n); err != nil || n != 0 {
@@ -202,6 +210,27 @@ func TestPostRateLimitHourly(t *testing.T) {
 	}
 	if rl.RetryAfter%time.Second != 0 {
 		t.Fatalf("RetryAfter = %s; want whole seconds", rl.RetryAfter)
+	}
+}
+
+// More rows than the cap in the window (e.g. seeded or left by a policy change): the wait ends
+// when the cap-th newest row leaves the window, not the oldest one.
+func TestPostRateLimitHourlyOverCap(t *testing.T) {
+	database := NewMigrated(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	store, _ := newSocialStore(t, ctx, database)
+	token := seedSocialToken(t, ctx, database, 0x10)
+	// 10 rows 50 minutes old, then 30 rows 20 minutes old: the 30th newest is 20 minutes old.
+	mustExecSocial(t, ctx, database.DB, `
+		INSERT INTO token_comments (chain_id, deployment_id, token_address, privy_did, wallet, author_role, body, created_at)
+		SELECT $1, $2, $3, 'did:a', $4, 'holder', 'seed ' || g,
+		       now() - CASE WHEN g <= 10 THEN interval '50 minutes' ELSE interval '20 minutes' END
+		FROM generate_series(1, 40) AS g`, socialChainID, socialDep, token.Bytes(), socialHolder.Bytes())
+	_, err := store.Post(ctx, socialActor("did:a", socialHolder), token, socialHolder, "41st")
+	rl := rateLimited(t, err)
+	if rl.RetryAfter < 39*time.Minute || rl.RetryAfter > 40*time.Minute {
+		t.Fatalf("RetryAfter = %s; want about 40m (oldest-row math would give about 10m)", rl.RetryAfter)
 	}
 }
 
@@ -506,12 +535,12 @@ func TestSocialRateStateQueries(t *testing.T) {
 	window := float64(time.Hour / time.Second)
 
 	// No rows: counts are zero, timestamps NULL, db_now is set.
-	c, err := q.CommentRateState(ctx, sqlc.CommentRateStateParams{WindowSeconds: window, ChainID: socialChainID, DeploymentID: socialDep, PrivyDid: "did:none"})
-	if err != nil || c.CountInWindow != 0 || c.LastCreatedAt.Valid || c.OldestInWindow.Valid || !c.DbNow.Valid {
+	c, err := q.CommentRateState(ctx, sqlc.CommentRateStateParams{WindowSeconds: window, ChainID: socialChainID, DeploymentID: socialDep, PrivyDid: "did:none", HourlyLimit: 1})
+	if err != nil || c.CountInWindow != 0 || c.LastCreatedAt.Valid || c.ReleaseAt.Valid || !c.DbNow.Valid {
 		t.Fatalf("empty comment state = %+v err=%v", c, err)
 	}
-	r, err := q.ReportRateState(ctx, sqlc.ReportRateStateParams{ChainID: socialChainID, DeploymentID: socialDep, ReporterDid: "did:none", WindowSeconds: window})
-	if err != nil || r.CountInWindow != 0 || r.OldestInWindow.Valid || !r.DbNow.Valid {
+	r, err := q.ReportRateState(ctx, sqlc.ReportRateStateParams{ChainID: socialChainID, DeploymentID: socialDep, ReporterDid: "did:none", WindowSeconds: window, HourlyLimit: 1})
+	if err != nil || r.CountInWindow != 0 || r.ReleaseAt.Valid || !r.DbNow.Valid {
 		t.Fatalf("empty report state = %+v err=%v", r, err)
 	}
 
@@ -528,18 +557,30 @@ func TestSocialRateStateQueries(t *testing.T) {
 	old := ins("2 hours")
 	ins("30 minutes")
 	ins("10 minutes")
-	c, err = q.CommentRateState(ctx, sqlc.CommentRateStateParams{WindowSeconds: window, ChainID: socialChainID, DeploymentID: socialDep, PrivyDid: "did:a"})
+	c, err = q.CommentRateState(ctx, sqlc.CommentRateStateParams{WindowSeconds: window, ChainID: socialChainID, DeploymentID: socialDep, PrivyDid: "did:a", HourlyLimit: 2})
 	if err != nil || c.CountInWindow != 2 {
 		t.Fatalf("comment state = %+v err=%v; want 2 in window", c, err)
 	}
-	if got := c.DbNow.Time.Sub(c.OldestInWindow.Time); got < 29*time.Minute || got > 31*time.Minute {
-		t.Fatalf("oldest in window is %s old; want ~30m (2h row excluded)", got)
+	if got := c.DbNow.Time.Sub(c.ReleaseAt.Time); got < 29*time.Minute || got > 31*time.Minute {
+		t.Fatalf("2nd newest in window is %s old; want ~30m (2h row excluded)", got)
+	}
+	// More rows than the limit: the release point is the limit-th newest row, not the oldest.
+	over, err := q.CommentRateState(ctx, sqlc.CommentRateStateParams{WindowSeconds: window, ChainID: socialChainID, DeploymentID: socialDep, PrivyDid: "did:a", HourlyLimit: 1})
+	if err != nil || over.CountInWindow != 2 {
+		t.Fatalf("over-limit state = %+v err=%v", over, err)
+	}
+	if got := over.DbNow.Time.Sub(over.ReleaseAt.Time); got < 9*time.Minute || got > 11*time.Minute {
+		t.Fatalf("1st newest in window is %s old; want ~10m", got)
+	}
+	// A limit beyond the row count has no release point.
+	if beyond, err := q.CommentRateState(ctx, sqlc.CommentRateStateParams{WindowSeconds: window, ChainID: socialChainID, DeploymentID: socialDep, PrivyDid: "did:a", HourlyLimit: 3}); err != nil || beyond.ReleaseAt.Valid {
+		t.Fatalf("beyond-limit state = %+v err=%v", beyond, err)
 	}
 	if got := c.DbNow.Time.Sub(c.LastCreatedAt.Time); got < 9*time.Minute || got > 11*time.Minute {
 		t.Fatalf("last comment is %s old; want ~10m", got)
 	}
 	// Other scope and other DID are not counted.
-	other, err := q.CommentRateState(ctx, sqlc.CommentRateStateParams{WindowSeconds: window, ChainID: socialChainID, DeploymentID: "dep-b", PrivyDid: "did:a"})
+	other, err := q.CommentRateState(ctx, sqlc.CommentRateStateParams{WindowSeconds: window, ChainID: socialChainID, DeploymentID: "dep-b", PrivyDid: "did:a", HourlyLimit: 1})
 	if err != nil || other.CountInWindow != 0 {
 		t.Fatalf("other deployment state = %+v err=%v", other, err)
 	}
@@ -552,11 +593,11 @@ func TestSocialRateStateQueries(t *testing.T) {
 	mustExecSocial(t, ctx, database.DB, `
 		INSERT INTO comment_reports (comment_id, chain_id, deployment_id, reporter_did, reason, created_at)
 		VALUES ($1, $2, $3, 'did:r', 'spam', now() - interval '5 minutes')`, recent, socialChainID, socialDep)
-	r, err = q.ReportRateState(ctx, sqlc.ReportRateStateParams{ChainID: socialChainID, DeploymentID: socialDep, ReporterDid: "did:r", WindowSeconds: window})
-	if err != nil || r.CountInWindow != 1 || !r.OldestInWindow.Valid {
+	r, err = q.ReportRateState(ctx, sqlc.ReportRateStateParams{ChainID: socialChainID, DeploymentID: socialDep, ReporterDid: "did:r", WindowSeconds: window, HourlyLimit: 1})
+	if err != nil || r.CountInWindow != 1 || !r.ReleaseAt.Valid {
 		t.Fatalf("report state = %+v err=%v; want 1 in window", r, err)
 	}
-	if got := r.DbNow.Time.Sub(r.OldestInWindow.Time); got < 4*time.Minute || got > 6*time.Minute {
+	if got := r.DbNow.Time.Sub(r.ReleaseAt.Time); got < 4*time.Minute || got > 6*time.Minute {
 		t.Fatalf("oldest report is %s old; want ~5m", got)
 	}
 }
