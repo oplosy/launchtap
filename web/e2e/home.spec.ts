@@ -41,7 +41,9 @@ async function installApi(page: Page, empty: boolean) {
               remaining_eth: `${10n ** 18n}`,
             },
         snapshot,
-        trending: empty ? [] : [{ ...token(8), window_volume_eth: "0", distinct_buyers: 2 }],
+        trending: empty
+          ? []
+          : [{ ...token(8, { name: "<b>Hot</b>" }), window_volume_eth: "0", distinct_buyers: 2 }],
         window_start: new Date().toISOString(),
       });
     } else if (url.pathname.endsWith("/tokens")) {
@@ -90,9 +92,11 @@ test("sections link to their full views and render names as text", async ({ page
   test.skip(!ready, "Needs the READY fixture configuration.");
   await installApi(page, false);
   await page.goto("/");
-  const featured = page.getByRole("region", { name: "Featured" });
   // A name is user-controlled text: markup in it shows literally.
-  await expect(featured.getByText("<b>King</b>")).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Trending" }).getByText("<b>Hot</b>"),
+  ).toBeVisible();
+  await expect(page.getByRole("region", { name: "Featured" })).toHaveCount(0);
   for (const [title, href] of [
     ["Trending", "/explore?view=trending"],
     ["Just graduated", "/explore?view=graduated"],
@@ -113,7 +117,6 @@ test("empty lists show their empty states instead of a blank area", async ({ pag
   test.skip(!ready, "Needs the READY fixture configuration.");
   await installApi(page, true);
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "No launch is leading yet" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Nothing is trending yet" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "No graduated tokens yet" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "No forum posts yet" })).toBeVisible();

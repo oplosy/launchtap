@@ -13,7 +13,7 @@ import { Section } from "@/components/layout";
 import { Button, EmptyState, ErrorState, SafeImage, Skeleton } from "@/components/primitives";
 import { Reveal } from "@/components/reveal";
 import { publicConfiguration } from "@/config/public";
-import { KingOfTheHill, TrendingList, useHighlights } from "@/discovery/highlights";
+import { TrendingList, useHighlights } from "@/discovery/highlights";
 import { TokenCard } from "@/discovery/token-card";
 import { communityLabel, tokenHref } from "@/forum/forum-model";
 import { relativeTime } from "@/live/live-strip-model";
@@ -64,7 +64,7 @@ function ListSkeleton() {
   );
 }
 
-/** Featured band, Trending, Just graduated and From the forum, read from the public API. */
+/** Trending, Just graduated and From the forum, read from the public API. */
 export function HomeFeed() {
   const configuration = publicConfiguration();
   const apiBaseUrl =
@@ -99,27 +99,6 @@ export function HomeFeed() {
   const trending = highlights.data?.trending ?? [];
   return (
     <>
-      <Reveal>
-        <section className="home-featured" aria-label="Featured">
-          {highlights.failed ? (
-            <ErrorState
-              title="Highlights unavailable"
-              description="The leading launch could not be loaded."
-              action={<Button onClick={highlights.retry}>Retry</Button>}
-            />
-          ) : highlights.loading || !highlights.data ? (
-            <ListSkeleton />
-          ) : highlights.data.king_of_the_hill ? (
-            <KingOfTheHill king={highlights.data.king_of_the_hill} apiBaseUrl={apiBaseUrl} />
-          ) : (
-            <EmptyState
-              title="No launch is leading yet"
-              description="The launch closest to graduation is featured here."
-            />
-          )}
-        </section>
-      </Reveal>
-
       <Reveal>
         <Section id="home-trending" title="Trending" viewAllHref="/explore?view=trending">
           {highlights.failed ? (
