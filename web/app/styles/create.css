@@ -13,6 +13,7 @@
 }
 /* A pill like the other secondary buttons; only the chevron is tuned here. */
 .create-back-button {
+  height: 36px;
   gap: 6px;
 }
 .create-back-button > span {
