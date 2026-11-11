@@ -588,3 +588,53 @@
     display: none;
   }
 }
+
+/* Back to top: appears bottom-right once the page is scrolled past one screen. */
+.back-to-top {
+  position: fixed;
+  right: var(--gutter);
+  bottom: 24px;
+  z-index: 40;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 50%;
+  color: var(--text);
+  background: var(--canvas);
+  place-items: center;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px);
+  transition:
+    opacity var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out),
+    border-color var(--dur-fast) linear,
+    visibility 0s linear var(--dur-base);
+}
+.back-to-top[data-shown="true"] {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out),
+    border-color var(--dur-fast) linear,
+    visibility 0s;
+}
+.back-to-top:hover {
+  border-color: var(--text-2);
+}
+/* On phones the token page has a fixed Buy/Sell bar at the bottom: sit above it. */
+@media (max-width: 1023px) {
+  body:has(.token-trade-bar) .back-to-top {
+    bottom: calc(92px + env(safe-area-inset-bottom));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .back-to-top,
+  .back-to-top[data-shown="true"] {
+    transition: none;
+  }
+}
