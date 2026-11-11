@@ -384,6 +384,47 @@
   font: var(--type-body);
   letter-spacing: var(--tracking-body);
 }
+.docs-article h3 {
+  margin-top: 8px;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 26px;
+}
+.docs-article strong {
+  color: var(--text);
+  font-weight: 500;
+}
+.docs-list,
+.docs-steps {
+  display: grid;
+  gap: 10px;
+  color: var(--text-2);
+  padding-left: 22px;
+  font: var(--type-body);
+  letter-spacing: var(--tracking-body);
+}
+.docs-list {
+  list-style: disc;
+}
+.docs-steps {
+  list-style: decimal;
+}
+.docs-list li::marker,
+.docs-steps li::marker {
+  color: var(--text-3);
+}
+.docs-formula {
+  overflow-x: auto;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-input);
+  color: var(--text);
+  background: var(--fill);
+  padding: 16px 20px;
+  font-family: var(--font-code);
+  font-size: 14px;
+  line-height: 24px;
+  white-space: pre;
+}
 .docs-facts {
   display: grid;
   border-block: 1px solid var(--hairline);
