@@ -107,7 +107,7 @@
 .launch-image-preview {
   width: 88px;
   height: 88px;
-  border-radius: var(--radius-media);
+  border-radius: var(--radius-avatar);
   object-fit: cover;
 }
 .launch-advanced {
@@ -145,7 +145,7 @@
   width: 56px;
   height: 56px;
   overflow: hidden;
-  border-radius: var(--radius-media);
+  border-radius: var(--radius-avatar);
   color: var(--text-3);
   background: var(--canvas);
   place-items: center;
@@ -264,7 +264,7 @@
   width: 72px;
   height: 72px;
   overflow: hidden;
-  border-radius: 18px;
+  border-radius: var(--radius-avatar);
 }
 .metadata-preview-image > * {
   width: 100%;

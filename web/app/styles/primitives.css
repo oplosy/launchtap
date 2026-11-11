@@ -379,20 +379,16 @@ input[type="file"].ui-input::file-selector-button {
   line-height: 20px;
 }
 
-/* Badges: monochrome pills; status reads from the dot. */
+/* Badges: plain inline text. No pill, no tint, no dot and no tone colour: the words carry the
+   status. The tone classes stay so call sites keep their meaning, but they render alike. */
 .ui-badge {
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 6px;
-  height: 24px;
-  border-radius: var(--radius-pill);
   color: var(--text-2);
-  background: var(--fill);
-  padding: 0 10px;
   font-size: 13px;
-  font-weight: 500;
-  line-height: 1;
+  font-weight: 400;
+  line-height: 20px;
   white-space: nowrap;
 }
 .ui-badge > span {
@@ -400,29 +396,6 @@ input[type="file"].ui-input::file-selector-button {
 }
 .ui-badge > span::first-letter {
   text-transform: uppercase;
-}
-.ui-badge-success::before,
-.ui-badge-accent::before,
-.ui-badge-warning::before,
-.ui-badge-danger::before {
-  width: 6px;
-  height: 6px;
-  flex: none;
-  border-radius: 50%;
-  background: currentColor;
-  content: "";
-}
-.ui-badge-success {
-  color: var(--up);
-}
-.ui-badge-accent {
-  color: var(--text);
-}
-.ui-badge-warning {
-  color: var(--warning);
-}
-.ui-badge-danger {
-  color: var(--down);
 }
 
 /* Tabs: centred text tabs with an underline that slides to the active tab. */

@@ -21,7 +21,7 @@
   width: 72px;
   height: 72px;
   flex: none;
-  border-radius: var(--radius-media);
+  border-radius: var(--radius-avatar);
   object-fit: cover;
 }
 .token-detail-image .ui-image-fallback-letter,
@@ -152,10 +152,7 @@
 .token-trust-notice {
   justify-self: center;
   max-width: var(--measure-text);
-  border-radius: var(--radius-input);
-  color: var(--warning);
-  background: var(--fill);
-  padding: 12px 16px;
+  color: var(--text-2);
   font-size: 14px;
   text-align: center;
 }

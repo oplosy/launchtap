@@ -8,7 +8,7 @@ import { Badge, EmptyState, SafeImage } from "@/components/primitives";
 import { UsdLine } from "@/market/usd-line";
 import { addressHue } from "@/token/address";
 import { StarButton } from "@/watchlist/star-button";
-import { TokenCard, displayAmount, tokenLabel } from "./token-card";
+import { TokenCard, TokenListHead, displayAmount, tokenLabel } from "./token-card";
 
 export type TrendingItem = components["schemas"]["TrendingDTO"];
 export type KingItem = components["schemas"]["KingDTO"];
@@ -184,10 +184,13 @@ export function TrendingList({
   items,
   apiBaseUrl,
   layout = "list",
+  className,
 }: {
   items: readonly TrendingItem[];
   apiBaseUrl: string | null;
   layout?: "list" | "grid";
+  /** Extra class on the list, e.g. a fixed column count for a home section. */
+  className?: string;
 }) {
   if (items.length === 0)
     return (
@@ -199,7 +202,12 @@ export function TrendingList({
       </div>
     );
   return (
-    <div className="token-list" data-layout={layout} aria-live="polite">
+    <div
+      className={className ? `token-list ${className}` : "token-list"}
+      data-layout={layout}
+      aria-live="polite"
+    >
+      <TokenListHead extra={["Recent volume", "Buyers"]} />
       {items.map((item) => (
         <TokenCard
           key={item.address}

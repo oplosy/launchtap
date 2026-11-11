@@ -33,7 +33,7 @@ import {
   type TokenSort,
 } from "./query-state";
 import { TrendingList, useHighlights } from "./highlights";
-import { TokenCard } from "./token-card";
+import { TokenCard, TokenListHead } from "./token-card";
 import { loadTokenDiscoveryPage } from "./controller";
 import { Button, EmptyState, ErrorState, Input, Skeleton } from "@/components/primitives";
 import { SlidingIndicator } from "@/components/sliding-indicator";
@@ -431,6 +431,7 @@ export function TokenDiscovery({ fetchPage: injectedFetcher }: { fetchPage?: Tok
               aria-live="polite"
               aria-busy={loadingMore}
             >
+              <TokenListHead />
               {items.map((token) => (
                 <TokenCard
                   key={token.address}

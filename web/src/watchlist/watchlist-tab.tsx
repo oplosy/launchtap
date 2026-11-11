@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { Button, EmptyState, ErrorState, Skeleton } from "@/components/primitives";
-import { TokenCard } from "@/discovery/token-card";
+import { TokenCard, TokenListHead } from "@/discovery/token-card";
 import { shortAddress } from "@/token/address";
 import { StarButton } from "./star-button";
 import { useWatchlist } from "./use-watchlist";
@@ -105,6 +105,7 @@ export function WatchlistTab({ apiBaseUrl }: { apiBaseUrl: string | null }) {
     );
   return (
     <div className="token-list" aria-live="polite">
+      <TokenListHead />
       {entries.map((entry) =>
         // The API returns no token summary for entries it can no longer resolve.
         entry.token ? (

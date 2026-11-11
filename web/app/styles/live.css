@@ -70,7 +70,7 @@ a.live-strip-trader-link:hover {
 .live-strip-image {
   width: 20px;
   height: 20px;
-  border-radius: 6px;
+  border-radius: var(--radius-avatar);
   object-fit: cover;
 }
 .live-strip-image .ui-image-fallback-letter {
