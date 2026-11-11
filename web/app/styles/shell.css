@@ -139,7 +139,7 @@
   gap: clamp(48px, 10vw, 160px);
   max-width: calc(var(--measure-page) + 2 * var(--gutter));
   margin: 0 auto;
-  padding: 24px var(--gutter) 32px;
+  padding: 8px var(--gutter) 20px;
 }
 .mega-menu-group ul {
   display: grid;
