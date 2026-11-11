@@ -268,7 +268,7 @@ html[data-theme="light"] .ui-image-fallback {
   height: auto;
   aspect-ratio: 1;
   /* A card's artwork is the card itself, so it keeps a soft square, not the avatar circle. */
-  border-radius: 12px;
+  border-radius: 8px;
   transition: opacity var(--dur-base) var(--ease-out);
 }
 .token-list[data-layout="grid"] .token-image .ui-image-fallback-letter {
