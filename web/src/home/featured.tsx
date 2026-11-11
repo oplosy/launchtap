@@ -13,18 +13,14 @@ import { Section } from "@/components/layout";
 import { Button, EmptyState, ErrorState, SafeImage, Skeleton } from "@/components/primitives";
 import { Reveal } from "@/components/reveal";
 import { publicConfiguration } from "@/config/public";
-import {
-  KingOfTheHill,
-  TrendingList,
-  useHighlights,
-  type TrendingItem,
-} from "@/discovery/highlights";
-import { TokenCard, tokenLabel } from "@/discovery/token-card";
+import { KingOfTheHill, TrendingList, useHighlights } from "@/discovery/highlights";
+import { TokenCard } from "@/discovery/token-card";
 import { communityLabel, tokenHref } from "@/forum/forum-model";
 import { relativeTime } from "@/live/live-strip-model";
 import { addressHue } from "@/token/address";
 
-const SECTION_SIZE = 5;
+/** From the forum: one row of three post cards. */
+const SECTION_SIZE = 3;
 /** Trending and Just graduated: three rows of five artwork cards. */
 const CARD_SECTION_SIZE = 15;
 
@@ -114,16 +110,7 @@ export function HomeFeed() {
           ) : highlights.loading || !highlights.data ? (
             <ListSkeleton />
           ) : highlights.data.king_of_the_hill ? (
-            <div className="home-featured-grid">
-              <div className="home-featured-main">
-                <KingOfTheHill king={highlights.data.king_of_the_hill} apiBaseUrl={apiBaseUrl} />
-              </div>
-              <ul className="home-featured-side" aria-label="Also moving">
-                {trending.slice(0, 3).map((item) => (
-                  <FeaturedItem key={item.address} item={item} apiBaseUrl={apiBaseUrl} />
-                ))}
-              </ul>
-            </div>
+            <KingOfTheHill king={highlights.data.king_of_the_hill} apiBaseUrl={apiBaseUrl} />
           ) : (
             <EmptyState
               title="No launch is leading yet"
@@ -197,7 +184,7 @@ export function HomeFeed() {
           ) : (
             <ul className="home-posts">
               {(forum.state.data.items ?? []).map((post) => (
-                <ForumRow key={post.id} post={post} />
+                <ForumCard key={post.id} post={post} apiBaseUrl={apiBaseUrl} />
               ))}
             </ul>
           )}
@@ -207,47 +194,36 @@ export function HomeFeed() {
   );
 }
 
-function FeaturedItem({ item, apiBaseUrl }: { item: TrendingItem; apiBaseUrl: string }) {
-  const label = tokenLabel(item);
-  return (
-    <li
-      className="home-featured-item"
-      style={{ "--hue": addressHue(item.address) } as CSSProperties}
-    >
-      <SafeImage
-        src={resolveApiAssetUrl(apiBaseUrl, `/v1/tokens/${encodeURIComponent(item.address)}/image`)}
-        alt={`${label} token`}
-        fallbackLabel="No artwork"
-        className="token-image"
-      />
-      <div className="token-identity">
-        <h3>
-          <Link href={`/token/${item.address}` as never}>{label}</Link>
-        </h3>
-        <p className="token-symbol">
-          <span>{item.symbol || "—"}</span>
-        </p>
-      </div>
-    </li>
-  );
-}
-
-function ForumRow({ post }: { post: ForumPost }) {
+/** A post as a card: the token's artwork and community, the author, and a clipped body. */
+function ForumCard({ post, apiBaseUrl }: { post: ForumPost; apiBaseUrl: string }) {
   const href = tokenHref(post.token);
   const author = authorLabel(post.author);
+  const community = communityLabel(post.symbol);
   const [now] = useState(Date.now);
   return (
-    <li className="home-post">
-      <p className="home-post-meta">
-        {href ? (
-          <Link href={href as never}>{communityLabel(post.symbol)}</Link>
-        ) : (
-          <span>{communityLabel(post.symbol)}</span>
-        )}
-        <span>{author.primary}</span>
-        <time dateTime={post.created_at}>{relativeTime(post.created_at, now)}</time>
-      </p>
+    <li className="home-post" style={{ "--hue": addressHue(post.token) } as CSSProperties}>
+      <div className="home-post-head">
+        <SafeImage
+          src={resolveApiAssetUrl(apiBaseUrl, `/v1/tokens/${encodeURIComponent(post.token)}/image`)}
+          alt=""
+          fallbackLabel="No artwork"
+          className="token-image"
+        />
+        <p className="home-post-meta">
+          <span className="home-post-community">{community}</span>
+          <span>
+            {author.primary} ·{" "}
+            <time dateTime={post.created_at}>{relativeTime(post.created_at, now)}</time>
+          </span>
+        </p>
+      </div>
       <p className="home-post-body">{post.body}</p>
+      {href ? (
+        // Laid over the whole card: the post is one target that opens its token.
+        <Link className="home-post-open" href={href as never}>
+          <span className="sr-only">Open {community}</span>
+        </Link>
+      ) : null}
     </li>
   );
 }
