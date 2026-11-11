@@ -237,10 +237,21 @@ html[data-theme="light"] .ui-image-fallback {
   display: none;
 }
 
+/* Artwork cards: five a row on wide screens, three on laptops, two below 1024 px. */
 .token-list[data-layout="grid"] {
-  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
-  gap: 32px 24px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 40px 24px;
   border-top: 0;
+}
+@media (max-width: 1279px) {
+  .token-list[data-layout="grid"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 1023px) {
+  .token-list[data-layout="grid"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .token-list[data-layout="grid"] > .token-card {
   grid-template-columns: minmax(0, 1fr) auto;
