@@ -236,7 +236,12 @@
 .footer-sections {
   border-top: 1px solid var(--hairline-strong);
 }
+/*
+ * One symmetric curve for both directions: the old ease-out spent most of its motion in the
+ * first frames, so closing read as a snap even at the same duration as opening.
+ */
 .footer-section {
+  --footer-accordion: 520ms;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
   border-bottom: 1px solid var(--hairline-strong);
@@ -285,7 +290,7 @@
   flex: none;
   margin-right: 4px;
   color: var(--text-3);
-  transition: rotate var(--dur-base) var(--ease-out);
+  transition: rotate var(--footer-accordion) var(--ease-in-out);
 }
 .footer-section[open] > summary svg {
   rotate: 180deg;
@@ -293,13 +298,18 @@
 .footer-section::details-content {
   grid-row: 1;
   grid-column: 2;
-  block-size: 0;
+  /*
+   * Closed at the summary's own height, not 0: the links share the summary's row, so from 0 the
+   * row would only start growing a third of the way through opening and stop moving a third of
+   * the way before closing ends — the two directions would feel unequal.
+   */
+  block-size: 52px;
   overflow: clip;
   opacity: 0;
   transition:
-    block-size var(--dur-base) var(--ease-out),
-    opacity var(--dur-base) var(--ease-out),
-    content-visibility var(--dur-base) allow-discrete;
+    block-size var(--footer-accordion) var(--ease-in-out),
+    opacity var(--footer-accordion) var(--ease-in-out),
+    content-visibility var(--footer-accordion) allow-discrete;
 }
 .footer-section[open]::details-content {
   block-size: auto;
@@ -421,6 +431,7 @@
   .footer-section::details-content {
     grid-row: 2;
     grid-column: 1;
+    block-size: 0;
   }
   .footer-section-links {
     padding-left: 16px;
