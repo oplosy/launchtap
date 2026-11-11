@@ -400,6 +400,15 @@
   gap: 16px;
   scroll-margin-top: calc(var(--nav-height) + 24px);
 }
+/* Wide layout: sections step gently right and left down the page. */
+@media (min-width: 1024px) {
+  .docs-article > section:nth-child(odd) {
+    translate: 24px 0;
+  }
+  .docs-article > section:nth-child(even) {
+    translate: -24px 0;
+  }
+}
 .docs-article h2 {
   font: var(--type-section);
 }
