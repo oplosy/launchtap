@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { formatBaseUnits, parseDecimal } from "@/amounts";
@@ -53,6 +54,24 @@ import {
 import { SlidingIndicator } from "@/components/sliding-indicator";
 
 const DEFAULT_TTL = 900n;
+
+/**
+ * Reasons the launch (or its developer buy) cannot go through right now, read from the factory.
+ * Empty until the factory has been read: a failed read already shows its own error.
+ */
+function launchBlockers(
+  defaultsRead: boolean,
+  launchesPaused: boolean | null,
+  tradingPaused: boolean | null,
+  engineEnabled: boolean | null,
+): string[] {
+  const blockers: string[] = [];
+  if (!defaultsRead) return blockers;
+  if (launchesPaused !== false) blockers.push("Launches are paused by the protocol.");
+  if (engineEnabled !== true) blockers.push("Engine v1 is disabled, so launching is unavailable.");
+  if (tradingPaused) blockers.push("Buying is paused, so a developer buy cannot go through.");
+  return blockers;
+}
 type Address = `0x${string}`;
 const useCommitEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
@@ -2463,51 +2482,23 @@ function LaunchPanelReady() {
                   launchFee={launchFee}
                   value={value}
                 />
-                <div className="quote-summary">
-                  <span>
-                    Factory launch fee{" "}
-                    <strong className="mono">
-                      {launchFee === null ? "Unavailable" : eth(launchFee)}
-                    </strong>
+                {/*
+                  The preview card already shows the fee and the exact launch value; factory state
+                  only earns a line when it blocks the launch or the developer buy.
+                */}
+                {launchBlockers(defaultsRead, launchesPaused, tradingPaused, engineEnabled).map(
+                  (blocker) => (
+                    <p key={blocker} className="transaction-error" role="alert">
+                      {blocker}
+                    </p>
+                  ),
+                )}
+                <Link className="launch-help" href={"/docs#flow" as never}>
+                  <span className="launch-help-mark" aria-hidden="true">
+                    ?
                   </span>
-                  <span>
-                    Factory defaults{" "}
-                    <strong className="mono">
-                      {defaultsRead ? "Read from chain" : "Unavailable"}
-                    </strong>
-                  </span>
-                  <span>
-                    Launches paused{" "}
-                    <strong className="mono">
-                      {launchesPaused === null ? "Unavailable" : launchesPaused ? "Yes" : "No"}
-                    </strong>
-                  </span>
-                  <span>
-                    Trading paused{" "}
-                    <strong className="mono">
-                      {tradingPaused === null ? "Unavailable" : tradingPaused ? "Yes" : "No"}
-                    </strong>
-                  </span>
-                  <span>
-                    Engine v1 enabled{" "}
-                    <strong className="mono">
-                      {engineEnabled === null ? "Unavailable" : engineEnabled ? "Yes" : "No"}
-                    </strong>
-                  </span>
-                  <small>
-                    Engine v1 is the only generated launch ABI. Pause state is read from the
-                    reviewed factory immediately before confirmation and simulation.
-                  </small>
-                  <span>
-                    Exact launch value{" "}
-                    <strong className="mono">{value === null ? "Unavailable" : eth(value)}</strong>
-                  </span>
-                </div>
-                <p className="transaction-risk">
-                  Non-custodial: your selected wallet signs directly. Launch is irreversible and may
-                  lose value. Metadata links and image preview are validated before this
-                  confirmation step.
-                </p>
+                  How launching works
+                </Link>
                 {confirming ? (
                   <div className="transaction-confirmation">
                     <h3>Confirm launch</h3>

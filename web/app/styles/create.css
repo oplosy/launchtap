@@ -131,20 +131,32 @@
     margin-top: 4px;
     font-size: 18px;
   }
-  .launch-aside .quote-summary {
-    gap: 12px;
-    padding: 0;
-    font-size: 16px;
-  }
-  .launch-aside .quote-summary small {
-    padding-top: 12px;
-    font-size: 13px;
-  }
-  .launch-aside .transaction-risk {
-    font-size: 14px;
-  }
 }
 
+.launch-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: start;
+  color: var(--text-2);
+  font: var(--type-label);
+  font-weight: 400;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.launch-help:hover {
+  color: var(--text);
+}
+.launch-help-mark {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 50%;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+}
 .launch-section {
   display: grid;
   gap: 16px;
