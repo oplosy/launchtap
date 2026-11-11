@@ -138,28 +138,29 @@ function StripEntry({ view, baseUrl }: { view: StripItemView; baseUrl: string | 
           className="live-strip-image"
         />
       </span>
+      <span className="live-strip-ticker" title={view.name}>
+        {view.ticker}
+      </span>
       {view.badge ? (
         <span className="live-strip-badge" data-kind={view.kind}>
           {view.badge}
         </span>
-      ) : (
-        <span className="live-strip-arrow" data-side={view.side ?? undefined} aria-hidden="true">
-          {view.arrow ?? "·"}
-        </span>
-      )}
-      <span className="live-strip-ticker" title={view.name}>
-        {view.ticker}
-      </span>
+      ) : null}
       {view.side ? <span className="sr-only">{view.side}</span> : null}
-      {view.eth ? (
-        <span className="live-strip-eth mono">
-          {view.eth}
-          {view.wei ? <UsdLine wei={view.wei} /> : null}
+      {/* Direction and size read as one coloured value: green for a buy, red for a sell. */}
+      {view.arrow || view.eth ? (
+        <span className="live-strip-value mono" data-side={view.side ?? undefined}>
+          {view.arrow ? (
+            <span className="live-strip-arrow" aria-hidden="true">
+              {view.arrow}
+            </span>
+          ) : null}
+          {view.eth ? <span className="live-strip-eth">{view.eth}</span> : null}
+          {view.eth && view.wei ? <UsdLine wei={view.wei} /> : null}
         </span>
       ) : null}
     </>
   );
-  // The token link and the trader link are siblings: anchors cannot nest.
   return (
     <span className="live-strip-link">
       {view.href ? (
@@ -169,17 +170,6 @@ function StripEntry({ view, baseUrl }: { view: StripItemView; baseUrl: string | 
       ) : (
         <span className="live-strip-part">{body}</span>
       )}
-      {view.traderHref ? (
-        <Link
-          className="live-strip-trader live-strip-trader-link mono"
-          href={view.traderHref as never}
-        >
-          {view.trader}
-        </Link>
-      ) : (
-        <span className="live-strip-trader mono">{view.trader}</span>
-      )}
-      <span className="live-strip-time mono">{view.time}</span>
       {view.pending ? <span className="sr-only">Updating</span> : null}
     </span>
   );
