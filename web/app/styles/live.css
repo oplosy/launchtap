@@ -110,9 +110,12 @@ a.live-strip-part:hover {
   color: var(--text-3);
 }
 /* Observed (not yet safe) items read as provisional until finality. */
-.live-strip-item[data-pending] .live-strip-link,
 .history-row[data-pending] {
   opacity: 0.65;
+}
+/* In the strip the pending state lasts seconds, so it only dims slightly. */
+.live-strip-item[data-pending] .live-strip-link {
+  opacity: 0.85;
 }
 
 @media (prefers-reduced-motion: no-preference) {
