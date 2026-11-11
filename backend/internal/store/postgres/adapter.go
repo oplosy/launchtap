@@ -300,20 +300,23 @@ func (adapter *Adapter) IngestTrade(ctx context.Context, event ledger.Trade) (le
 	if err != nil || !result.Inserted {
 		return result, err
 	}
+	return result, adapter.applyTradeProjections(ctx, event)
+}
+
+// applyTradeProjections updates the curve reserves and candles from a stored curve trade and
+// marks the token and the trader's position dirty. Engine 1 and 2 trades share it.
+func (adapter *Adapter) applyTradeProjections(ctx context.Context, event ledger.Trade) error {
 	identity := projectionIdentity(event.EventCoordinates)
 	if err := adapter.queries.ApplyTradeReserveProjection(ctx, sqlc.ApplyTradeReserveProjectionParams(identity)); err != nil {
-		return ledger.InsertResult{}, fmt.Errorf("apply trade reserve projection: %w", err)
+		return fmt.Errorf("apply trade reserve projection: %w", err)
 	}
 	if err := adapter.queries.ApplyMarketTradeCandles(ctx, sqlc.ApplyMarketTradeCandlesParams(identity)); err != nil {
-		return ledger.InsertResult{}, fmt.Errorf("apply trade candles: %w", err)
+		return fmt.Errorf("apply trade candles: %w", err)
 	}
 	if err := adapter.queries.MarkTokenDirty(ctx, sqlc.MarkTokenDirtyParams{ChainID: event.ChainID, TokenAddress: sqlc.Address(event.Token)}); err != nil {
-		return ledger.InsertResult{}, fmt.Errorf("mark token dirty: %w", err)
+		return fmt.Errorf("mark token dirty: %w", err)
 	}
-	if err := adapter.markPositionDirty(ctx, event.ChainID, event.Trader, event.Token); err != nil {
-		return ledger.InsertResult{}, err
-	}
-	return result, nil
+	return adapter.markPositionDirty(ctx, event.ChainID, event.Trader, event.Token)
 }
 
 func (adapter *Adapter) IngestGraduation(ctx context.Context, event ledger.Graduation) (ledger.InsertResult, error) {

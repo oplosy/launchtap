@@ -30,6 +30,8 @@ type memoryUnit struct {
 	transactionID  int
 	actions        []memoryRecoveryAction
 	foreign        []string
+	identities     []TokenIdentity
+	pools          map[common.Hash]common.Address
 }
 type memoryStore struct {
 	unit             memoryUnit
@@ -181,7 +183,16 @@ func (u *memoryUnit) PromoteBlocks(_ context.Context, _ int64, safe, final *ledg
 	}
 	return nil
 }
-func (*memoryUnit) TokenIdentities(context.Context, int64) ([]TokenIdentity, error) { return nil, nil }
+func (u *memoryUnit) TokenIdentities(context.Context, int64) ([]TokenIdentity, error) {
+	return append([]TokenIdentity(nil), u.identities...), nil
+}
+func (u *memoryUnit) GraduatedV4Pools(context.Context, int64) (map[common.Hash]common.Address, error) {
+	pools := make(map[common.Hash]common.Address, len(u.pools))
+	for poolID, token := range u.pools {
+		pools[poolID] = token
+	}
+	return pools, nil
+}
 
 type fakeSource struct {
 	headers            map[uint64]*types.Header

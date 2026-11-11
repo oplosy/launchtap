@@ -130,6 +130,9 @@ func readABI(path string) (abi.ABI, error) {
 	return parsed, nil
 }
 
+// EngineVersion is the launch engine whose ABI the decoder reads.
+func (d *Decoder) EngineVersion() uint16 { return d.engineVersion }
+
 func (d *Decoder) add(parsed abi.ABI, names []string, kind EmitterKind) error {
 	for _, name := range names {
 		event, ok := parsed.Events[name]

@@ -15,6 +15,20 @@
 
 ## Active
 
+### V4 swap sender backfill
+
+- **Date:** 2026-11-11
+- **Reason:** scope decision (Plan v2-B Task 7 wired V4 swaps into the live sender lookup only)
+- **Where it stopped:** The engine attaches `tx_from` to every `V4Swap` through the same batched
+  `SenderSource` lookup and miss counter as v1 pool swaps. A missed lookup stores the V4 swap with
+  a NULL `tx_from`, and nothing retries it: `internal/swapbackfill` only scans `pool_swaps`.
+- **Related files:** `backend/internal/swapbackfill/`, `backend/internal/indexer/engine.go`
+  (`attachSenders`), `v4_swaps.tx_from` in migration `00024_engine_v2_ledger.sql`
+- **Resume (next step):** Extend the backfill to `v4_swaps` rows with NULL `tx_from` once their
+  block is safe, and add the matching position-dirty mark when Task 9 introduces V4 positions.
+  Until then the "retries them once their block is safe" warning text is true for v1 swaps only.
+- **Pitfalls / notes:** The V4 `Swap.sender` is the router; never use it as the trader (pre-flight R4).
+
 ### P0-A external inputs: CoinGecko key and market-link identifiers
 
 - **Date:** 2026-11-05

@@ -71,9 +71,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	discovery, err := chain.NewDiscovererWithPairVerification(source, decoder, deployment.Factory, c.IndexerLogAddressBatchSize, func(ctx context.Context, launch chain.TokenLaunched) error {
-		return chain.VerifyLaunchPair(ctx, source, deployment.UniV2Factory, deployment.WETH, deployment.PairInitCodeHash, launch)
-	})
+	discovery, err := newDiscovery(source, decoder, deployment, c.IndexerLogAddressBatchSize)
 	if err != nil {
 		return err
 	}
@@ -259,4 +257,19 @@ func fanOutWake(ctx context.Context, in <-chan struct{}, outs ...chan<- struct{}
 			}
 		}
 	}
+}
+
+// newDiscovery builds the deployment engine's discoverer. Engine 1 checks every launch pair
+// against the Uniswap V2 factory; engine 2 checks every launch and graduated pool against the
+// manifest's V4 section.
+func newDiscovery(source *chain.Client, decoder *chain.Decoder, deployment deployments.Deployment, addressBatchSize uint64) (*chain.Discoverer, error) {
+	if deployment.EngineVersion == 2 {
+		if deployment.V4 == nil {
+			return nil, errors.New("engine-2 deployment has no V4 section")
+		}
+		return chain.NewDiscovererV2(source, decoder, deployment.Factory, addressBatchSize, chain.V4Config{PoolManager: deployment.V4.PoolManager, Locker: deployment.V4.Locker, Hook: deployment.V4.Hook})
+	}
+	return chain.NewDiscovererWithPairVerification(source, decoder, deployment.Factory, addressBatchSize, func(ctx context.Context, launch chain.TokenLaunched) error {
+		return chain.VerifyLaunchPair(ctx, source, deployment.UniV2Factory, deployment.WETH, deployment.PairInitCodeHash, launch)
+	})
 }

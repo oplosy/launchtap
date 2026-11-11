@@ -20,11 +20,13 @@ INSERT INTO tokens (
     chain_id, token_address, curve_address, lp_pair, weth, creator, protocol_treasury,
     engine_version, name, symbol, total_supply, initial_virtual_eth, initial_virtual_token,
     curve_tokens, lp_tokens, graduation_eth, trade_fee_bps, protocol_share_bps,
-    launch_block_number, launch_block_hash, launch_block_time, launch_tx_hash, launch_log_index
+    launch_block_number, launch_block_hash, launch_block_time, launch_tx_hash, launch_log_index,
+    hook, locker, anti_snipe_start_bps, anti_snipe_duration_seconds, lp_creator_share_bps
 ) SELECT launch.chain_id, launch.token_address, launch.curve_address, launch.lp_pair, launch.weth, launch.creator, launch.protocol_treasury,
     launch.engine_version, launch.name, launch.symbol, launch.total_supply, launch.virtual_eth, launch.virtual_token, launch.curve_tokens,
     launch.lp_tokens, launch.graduation_eth, launch.trade_fee_bps, launch.protocol_share_bps, launch.block_number, launch.block_hash,
-    launch.block_time, launch.tx_hash, launch.log_index
+    launch.block_time, launch.tx_hash, launch.log_index,
+    launch.hook, launch.locker, launch.anti_snipe_start_bps, launch.anti_snipe_duration_seconds, launch.lp_creator_share_bps
 FROM token_launches AS launch WHERE launch.chain_id = $1 AND launch.tx_hash = $2 AND launch.log_index = $3
 ON CONFLICT (chain_id, token_address) DO NOTHING;
 

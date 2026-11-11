@@ -131,6 +131,21 @@ func (a *Adapter) PromoteBlocks(ctx context.Context, chainID int64, safe, final 
 	}
 	return nil
 }
+func (a *Adapter) GraduatedV4Pools(ctx context.Context, chainID int64) (map[common.Hash]common.Address, error) {
+	rows, err := a.queries.ListGraduatedV4Pools(ctx, chainID)
+	if err != nil {
+		return nil, err
+	}
+	pools := make(map[common.Hash]common.Address, len(rows))
+	for _, row := range rows {
+		if row.PoolID == nil {
+			return nil, fmt.Errorf("graduated V4 pool of token %s has no pool id", common.Address(row.TokenAddress).Hex())
+		}
+		pools[common.Hash(*row.PoolID)] = common.Address(row.TokenAddress)
+	}
+	return pools, nil
+}
+
 func (a *Adapter) TokenIdentities(ctx context.Context, chainID int64) ([]indexer.TokenIdentity, error) {
 	rows, err := a.queries.ListTokenIdentities(ctx, chainID)
 	if err != nil {
