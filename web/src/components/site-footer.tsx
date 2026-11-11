@@ -5,16 +5,11 @@ import {
   ArrowUpRight,
   CaretDown,
   DiscordLogo,
-  FacebookLogo,
   GithubLogo,
   InstagramLogo,
-  LinkedinLogo,
-  MediumLogo,
   RedditLogo,
   TelegramLogo,
-  ThreadsLogo,
   TiktokLogo,
-  TwitchLogo,
   XLogo,
   YoutubeLogo,
   type Icon,
@@ -33,11 +28,6 @@ const SOCIAL: ReadonlyArray<{ label: string; icon: Icon }> = [
   { label: "Instagram", icon: InstagramLogo },
   { label: "TikTok", icon: TiktokLogo },
   { label: "Reddit", icon: RedditLogo },
-  { label: "LinkedIn", icon: LinkedinLogo },
-  { label: "Facebook", icon: FacebookLogo },
-  { label: "Threads", icon: ThreadsLogo },
-  { label: "Twitch", icon: TwitchLogo },
-  { label: "Medium", icon: MediumLogo },
 ];
 
 /**
