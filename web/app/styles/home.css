@@ -99,7 +99,7 @@
 /* From the forum: a field where posts fog in at random spots and fog out (forum-field.tsx). */
 .forum-field {
   position: relative;
-  height: 780px;
+  height: 624px;
   margin: 0;
   padding: 0;
   overflow: hidden;

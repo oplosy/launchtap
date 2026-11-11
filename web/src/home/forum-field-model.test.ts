@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextPost, overlaps, pickSpot, type Spot } from "./forum-field-model";
+import { layoutCells, nextPost, pickCell, placeInCell } from "./forum-field-model";
 
 /** Deterministic stand-in for Math.random: walks through the given values in a loop. */
 function sequence(...values: number[]) {
@@ -7,38 +7,45 @@ function sequence(...values: number[]) {
   return (): number => values[index++ % values.length] ?? 0;
 }
 
-describe("overlaps", () => {
-  const a: Spot = { x: 0, y: 0, w: 100, h: 50 };
-  it("counts the gap between two boxes as taken", () => {
-    expect(overlaps(a, { x: 110, y: 0, w: 100, h: 50 }, 16)).toBe(true);
-    expect(overlaps(a, { x: 120, y: 0, w: 100, h: 50 }, 16)).toBe(false);
-    expect(overlaps(a, { x: 0, y: 70, w: 100, h: 50 }, 16)).toBe(false);
+describe("layoutCells", () => {
+  it("splits the field into as many card-sized cells as fit, sharing the spare room", () => {
+    const cells = layoutCells({ width: 1296, height: 624 }, { w: 384, h: 176 }, 16);
+    expect(cells).toHaveLength(9);
+    expect(cells[0]).toEqual({ x: 0, y: 0, w: 432, h: 208 });
+    expect(cells[8]).toEqual({ x: 864, y: 416, w: 432, h: 208 });
+  });
+
+  it("has one column on a narrow field", () => {
+    const cells = layoutCells({ width: 358, height: 760 }, { w: 358, h: 176 }, 16);
+    expect(cells.map((cell) => cell.x)).toEqual([0, 0, 0, 0]);
+  });
+
+  it("has no cells when a card does not fit", () => {
+    expect(layoutCells({ width: 100, height: 600 }, { w: 384, h: 176 }, 16)).toEqual([]);
   });
 });
 
-describe("pickSpot", () => {
-  const area = { width: 400, height: 200 };
-  const size = { w: 100, h: 50 };
+describe("placeInCell", () => {
+  const cell = { x: 432, y: 208, w: 432, h: 208 };
+  const size = { w: 384, h: 176 };
+  it("shifts the card at random inside its cell, never past its edges", () => {
+    expect(placeInCell(cell, size, sequence(0, 0))).toEqual({ x: 432, y: 208, w: 384, h: 176 });
+    expect(placeInCell(cell, size, sequence(1, 1))).toEqual({ x: 480, y: 240, w: 384, h: 176 });
+  });
+});
 
-  it("keeps the box inside the area", () => {
-    const spot = pickSpot([], area, size, sequence(0.999, 0.999));
-    expect(spot).toEqual({ x: 300, y: 150, w: 100, h: 50 });
+describe("pickCell", () => {
+  it("picks a free cell other than the one just left", () => {
+    // Cells 0 and 2 are taken and 1 was just left, so only 3 remains.
+    expect(pickCell(4, new Set([0, 2]), 1, sequence(0))).toBe(3);
   });
 
-  it("skips spots that overlap a box already shown", () => {
-    const taken: Spot[] = [{ x: 0, y: 0, w: 100, h: 50 }];
-    // First try lands on the taken box, the second one is clear.
-    const spot = pickSpot(taken, area, size, sequence(0, 0, 0.75, 0.75));
-    expect(spot).toEqual({ x: 225, y: 113, w: 100, h: 50 });
+  it("falls back to the cell just left when it is the only free one", () => {
+    expect(pickCell(3, new Set([0, 2]), 1, sequence(0.5))).toBe(1);
   });
 
-  it("gives up when no free spot is found", () => {
-    const taken: Spot[] = [{ x: 0, y: 0, w: 400, h: 200 }];
-    expect(pickSpot(taken, area, size, Math.random)).toBeNull();
-  });
-
-  it("gives up when the box does not fit the area at all", () => {
-    expect(pickSpot([], { width: 50, height: 200 }, size, Math.random)).toBeNull();
+  it("returns null when every cell is taken", () => {
+    expect(pickCell(2, new Set([0, 1]), null, Math.random)).toBeNull();
   });
 });
 
