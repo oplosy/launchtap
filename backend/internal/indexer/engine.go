@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/Contictus/launchtap/backend/internal/chain"
@@ -18,6 +19,20 @@ import (
 var ErrCanonicalMismatch = errors.New("canonical chain mismatch")
 var ErrSafeViolation = errors.New("canonical mismatch at or below safe head")
 var ErrRPCUnhealthy = errors.New("indexer RPC unavailable")
+
+// ForeignDeploymentError stops an indexer whose chain already holds state for another
+// deployment. The ledger and its reorg deletes are chain-scoped, so two deployments on one
+// chain in one database would delete each other's rows (one deployment per chain, pre-flight
+// B2). It is not an RPC failure, so Run returns it instead of retrying.
+type ForeignDeploymentError struct {
+	ChainID      int64
+	DeploymentID string
+	Others       []string
+}
+
+func (e *ForeignDeploymentError) Error() string {
+	return fmt.Sprintf("chain %d already holds indexer state for deployment(s) %s; deployment %q needs its own database", e.ChainID, strings.Join(e.Others, ", "), e.DeploymentID)
+}
 
 // Keep these bounds aligned with the stdlib-only configuration package.
 const (
@@ -140,6 +155,13 @@ func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
 	var identities []TokenIdentity
 	if err = e.store.Transaction(ctx, func(ctx context.Context, u UnitOfWork) error {
 		var err error
+		others, err := u.ForeignDeployments(ctx, e.settings.ChainID, e.settings.DeploymentID)
+		if err != nil {
+			return err
+		}
+		if len(others) != 0 {
+			return &ForeignDeploymentError{ChainID: e.settings.ChainID, DeploymentID: e.settings.DeploymentID, Others: others}
+		}
 		state, err = u.ReadState(ctx, e.settings.ChainID, e.settings.DeploymentID)
 		if err != nil {
 			return err

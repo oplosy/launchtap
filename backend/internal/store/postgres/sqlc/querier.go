@@ -148,6 +148,7 @@ type Querier interface {
 	// Each row is keyed by its UTC-aligned group start (not the first stored source bucket), so
 	// sparse groups report a stable timestamp and the next-page cursor can skip a whole group.
 	ListCandlesAggregated(ctx context.Context, arg ListCandlesAggregatedParams) ([]ListCandlesAggregatedRow, error)
+	ListForeignSyncDeployments(ctx context.Context, arg ListForeignSyncDeploymentsParams) ([]string, error)
 	// Communities ranked by visible comments in the last window_hours by the database clock (NULL =
 	// all time), ties by newest comment.
 	// Same existence rule as the token comment list (TokenExists): a reorged token drops out.

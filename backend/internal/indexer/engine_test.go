@@ -29,6 +29,7 @@ type memoryUnit struct {
 	reorgCompleted bool
 	transactionID  int
 	actions        []memoryRecoveryAction
+	foreign        []string
 }
 type memoryStore struct {
 	unit             memoryUnit
@@ -63,6 +64,9 @@ func (u *memoryUnit) ReadState(_ context.Context, chainID int64, deployment stri
 	s.ChainID = chainID
 	s.DeploymentID = deployment
 	return s, nil
+}
+func (u *memoryUnit) ForeignDeployments(_ context.Context, _ int64, _ string) ([]string, error) {
+	return append([]string(nil), u.foreign...), nil
 }
 func (u *memoryUnit) WriteState(_ context.Context, s State) error {
 	if u.fail {
@@ -250,6 +254,28 @@ func newTestEngine(t *testing.T) (*Engine, *memoryStore, *fakeSource) {
 	}
 	return e, store, source
 }
+
+// One deployment per chain per database (pre-flight B2): ledger and reorg deletes are
+// chain-scoped, so a second deployment's rows on the same chain would corrupt both.
+func TestStepRefusesAnotherDeploymentOnTheSameChain(t *testing.T) {
+	e, store, _ := newTestEngine(t)
+	store.unit.foreign = []string{"robinhood-testnet-v1"}
+	advanced, err := e.Step(t.Context())
+	var foreign *ForeignDeploymentError
+	if advanced || !errors.As(err, &foreign) {
+		t.Fatalf("Step() = %t, %v, want ForeignDeploymentError", advanced, err)
+	}
+	if foreign.ChainID != 1 || foreign.DeploymentID != "local-test" || len(foreign.Others) != 1 || foreign.Others[0] != "robinhood-testnet-v1" {
+		t.Fatalf("error = %+v", foreign)
+	}
+	if store.unit.state.Observed != nil || len(store.committedActions) != 0 {
+		t.Fatalf("foreign deployment check wrote state: %+v %+v", store.unit.state, store.committedActions)
+	}
+	if err := e.Run(t.Context()); !errors.As(err, &foreign) {
+		t.Fatalf("Run() error = %v, want a fatal ForeignDeploymentError", err)
+	}
+}
+
 func TestWatermarksAreBoundedByCommittedChunk(t *testing.T) {
 	e, store, _ := newTestEngine(t)
 	if advanced, err := e.Step(t.Context()); err != nil || !advanced {

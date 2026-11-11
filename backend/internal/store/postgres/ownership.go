@@ -38,7 +38,10 @@ func AcquireOwnership(ctx context.Context, databaseURL string, chainID int64, de
 	if err != nil {
 		return nil, fmt.Errorf("open ownership connection: %w", err)
 	}
-	scope := sha256.Sum256(fmt.Appendf(nil, "launchpad/indexer/%d/%s", chainID, deploymentID))
+	// The lock is chain-scoped, not deployment-scoped: the ledger and reorg deletes are keyed by
+	// chain, so two deployments must never write one chain at the same time (pre-flight B2).
+	// deploymentID is still required so every owner states which deployment it serves.
+	scope := sha256.Sum256(fmt.Appendf(nil, "launchpad/indexer/chain/%d", chainID))
 	key := int64(binary.BigEndian.Uint64(scope[:8]))
 	var acquired bool
 	err = conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, key).Scan(&acquired)

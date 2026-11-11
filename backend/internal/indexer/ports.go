@@ -27,6 +27,8 @@ type TokenIdentity struct {
 
 type UnitOfWork interface {
 	ReadState(context.Context, int64, string) (State, error)
+	// ForeignDeployments lists the other deployments with indexer state on the chain.
+	ForeignDeployments(context.Context, int64, string) ([]string, error)
 	WriteState(context.Context, State) error
 	ReadBlock(context.Context, int64, int64) (ledger.IndexedBlock, bool, error)
 	UpsertIndexedBlock(context.Context, ledger.IndexedBlock) (ledger.UpsertResult, error)

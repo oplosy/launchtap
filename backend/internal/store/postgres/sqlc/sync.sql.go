@@ -45,6 +45,38 @@ func (q *Queries) GetSyncState(ctx context.Context, arg GetSyncStateParams) (Syn
 	return i, err
 }
 
+const listForeignSyncDeployments = `-- name: ListForeignSyncDeployments :many
+SELECT deployment_id
+FROM sync_state
+WHERE chain_id = $1 AND deployment_id <> $2
+ORDER BY deployment_id
+`
+
+type ListForeignSyncDeploymentsParams struct {
+	ChainID      int64
+	DeploymentID string
+}
+
+func (q *Queries) ListForeignSyncDeployments(ctx context.Context, arg ListForeignSyncDeploymentsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, listForeignSyncDeployments, arg.ChainID, arg.DeploymentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var deployment_id string
+		if err := rows.Scan(&deployment_id); err != nil {
+			return nil, err
+		}
+		items = append(items, deployment_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const notifyAPIRefresh = `-- name: NotifyAPIRefresh :exec
 SELECT pg_notify('api_refresh', $1::text)
 `

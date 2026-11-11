@@ -78,6 +78,13 @@ func (a *Adapter) ReadState(ctx context.Context, chainID int64, deployment strin
 	}
 	return indexer.State{ChainID: chainID, DeploymentID: deployment, Observed: syncBlock(chainID, state.ObservedNumber, state.ObservedHash, state.ObservedAt), Safe: syncBlock(chainID, state.SafeNumber, state.SafeHash, state.SafeAt), Finalized: syncBlock(chainID, state.FinalizedNumber, state.FinalizedHash, state.FinalizedAt)}, nil
 }
+func (a *Adapter) ForeignDeployments(ctx context.Context, chainID int64, deployment string) ([]string, error) {
+	others, err := a.queries.ListForeignSyncDeployments(ctx, sqlc.ListForeignSyncDeploymentsParams{ChainID: chainID, DeploymentID: deployment})
+	if err != nil {
+		return nil, fmt.Errorf("list other deployments on chain %d: %w", chainID, err)
+	}
+	return others, nil
+}
 func syncBlock(chainID int64, n pgtype.Int8, h *Hash, at pgtype.Timestamptz) *ledger.IndexedBlock {
 	if !n.Valid || h == nil || !at.Valid {
 		return nil
