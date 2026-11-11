@@ -28,7 +28,7 @@
 
 .token-list.home-card-grid[data-layout="grid"] {
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 36px;
+  gap: 40px 24px;
 }
 @media (max-width: 1279px) {
   .token-list.home-card-grid[data-layout="grid"] {
