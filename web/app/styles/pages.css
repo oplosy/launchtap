@@ -327,6 +327,7 @@
 
 /* Docs: a centred 720 px reading column; contents sit in the left gutter, or behind a button. */
 .docs-page {
+  padding-top: clamp(32px, 5vw, 64px);
   padding-bottom: 96px;
 }
 .docs-layout {

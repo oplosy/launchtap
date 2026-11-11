@@ -1,6 +1,5 @@
 import { ArrowSquareOut } from "@/components/icons";
 import { SafeExternalLink } from "@/components/primitives";
-import { PageHeader } from "@/components/layout";
 import { publicConfiguration } from "@/config/public";
 import { DocsNav } from "@/docs/docs-nav";
 
@@ -24,10 +23,7 @@ export default function DocsPage() {
   const explorer = configuration.deployment?.explorerBase ?? null;
   return (
     <div className="page-stack docs-page">
-      <PageHeader
-        title="Understand the route."
-        summary="A fixed-supply, non-custodial launch flow on Robinhood Chain. Read the contract rules before signing anything."
-      />
+      <h1 className="sr-only">Docs</h1>
       <div className="docs-layout">
         <DocsNav sections={SECTIONS} />
         <article className="docs-article">
