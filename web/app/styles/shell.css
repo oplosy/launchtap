@@ -153,9 +153,9 @@
 }
 .mega-menu-link {
   display: inline-block;
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 500;
-  line-height: 26px;
+  line-height: 30px;
   letter-spacing: var(--tracking-page);
   transition: color var(--dur-fast) var(--ease-out);
 }
