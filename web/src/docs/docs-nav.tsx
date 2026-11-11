@@ -46,7 +46,7 @@ export function DocsNav({ sections }: { sections: ReadonlyArray<{ id: string; la
             aria-current={active === id ? "location" : undefined}
             onClick={() => setOpen(false)}
           >
-            <span className="mono">0{index + 1}</span>
+            <span className="mono">{String(index + 1).padStart(2, "0")}</span>
             {label}
           </a>
         ))}
