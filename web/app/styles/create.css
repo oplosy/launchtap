@@ -1,4 +1,4 @@
-/* Create route: the numbered form on the left, a sticky live preview with the launch terms and
+/* Create route: the form on the left, a sticky live preview with the launch terms and
    action on the right (one column below 1024 px), plus the creator metadata editor. */
 .create-page {
   gap: 24px;
@@ -152,12 +152,6 @@
   align-items: baseline;
   gap: 12px;
   font: var(--type-section);
-}
-.launch-step {
-  color: var(--text-3);
-  font-family: var(--font-code);
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
 }
 .launch-field-row {
   display: grid;
