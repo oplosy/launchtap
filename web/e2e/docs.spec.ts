@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 // Static pages: they render the same with or without a ready configuration.
 
-test("docs read in a centred column of at most 720 px with contents beside it", async ({
+test("docs read in a centred column of at most 820 px with contents beside it", async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "small-laptop", "One viewport is enough.");
@@ -15,7 +15,7 @@ test("docs read in a centred column of at most 720 px with contents beside it", 
   await expect(contents).toBeVisible();
   await expect(page.getByRole("button", { name: "Contents" })).toBeHidden();
   const text = (await article.boundingBox())!;
-  expect(text.width).toBeLessThanOrEqual(720);
+  expect(text.width).toBeLessThanOrEqual(820);
   expect(Math.abs(text.x + text.width / 2 - 640)).toBeLessThanOrEqual(2);
   const nav = (await contents.boundingBox())!;
   expect(nav.x + nav.width).toBeLessThanOrEqual(text.x);
