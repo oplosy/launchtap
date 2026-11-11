@@ -834,22 +834,46 @@
   gap: 10px;
 }
 
-/* Forum / Memestock: one centred column; each post is an index row that opens its token. */
+/* Forum / Memestock: the feed of post cards, with the biggest launches in a rail beside it. */
 .forum-page {
   padding-top: clamp(24px, 3vw, 40px);
   padding-bottom: 96px;
 }
 .forum-layout {
   display: grid;
-  gap: 64px;
+  gap: 48px;
   width: 100%;
-  max-width: 800px;
+  max-width: 1120px;
   margin-inline: auto;
 }
 .forum-main {
   display: grid;
-  gap: 8px;
+  align-content: start;
+  gap: 16px;
   min-width: 0;
+}
+.forum-tabs {
+  justify-self: center;
+}
+.forum-tab {
+  display: inline-flex;
+  align-items: center;
+  height: 38px;
+  border-radius: var(--radius-pill);
+  color: var(--text-2);
+  padding: 0 16px;
+  font: var(--type-label);
+  position: relative;
+  z-index: 1;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.forum-tab:hover,
+.forum-tab[aria-current="page"] {
+  color: var(--text);
+}
+.forum-tabs:not(:has(> .slide-indicator[data-placed])) > .forum-tab[aria-current="page"] {
+  background: var(--canvas);
+  box-shadow: 0 0 0 1px var(--hairline-strong);
 }
 .forum-feed {
   display: grid;
@@ -865,39 +889,60 @@
   padding: 0;
   list-style: none;
 }
+.forum-post-list {
+  gap: 4px;
+}
 .forum-post {
   position: relative;
   display: grid;
-  gap: 8px;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
   min-width: 0;
-  border-bottom: 1px solid var(--hairline);
-  padding: 24px 4px;
+  border-radius: var(--radius-container);
+  padding: 18px 20px;
+  transition: background-color var(--dur-fast) var(--ease-out);
 }
-.forum-post:hover .forum-post-body {
-  color: var(--text);
+.forum-post:hover {
+  background: var(--fill);
+}
+.forum-art {
+  display: block;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  overflow: hidden;
+  border-radius: var(--radius-avatar);
+}
+.forum-art > * {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.forum-post-content {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
 }
 .forum-post-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 12px;
-  color: var(--text-2);
-  font-size: 13px;
+  gap: 4px 8px;
+  color: var(--text-3);
+  font-size: 14px;
+  line-height: 20px;
 }
-/* Links inside the row stay their own targets above the stretched row link. */
+/* Links inside the card stay their own targets above the stretched card link. */
 .forum-post-meta a {
   position: relative;
   z-index: 1;
-  color: var(--text);
+  color: var(--text-2);
 }
 .forum-post-meta a:hover,
 .forum-browse:hover {
+  color: var(--text);
   text-decoration: underline;
-}
-.forum-post-meta time,
-.forum-post-wallet {
-  color: var(--text-3);
-  font-size: 13px;
 }
 .forum-community {
   min-width: 0;
@@ -905,24 +950,23 @@
   color: var(--text);
   font-weight: 600;
 }
+.forum-post-meta .forum-community {
+  color: var(--text);
+}
 .forum-post-body {
   margin: 0;
-  color: var(--text-2);
+  color: var(--text);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   font: var(--type-body);
+  font-size: 18px;
   letter-spacing: var(--tracking-body);
-  transition: color var(--dur-fast) linear;
 }
+/* Laid over the whole card, outside the grid flow, so it adds no row of its own. */
 .forum-post-open {
-  justify-self: start;
-  color: var(--text-3);
-  font: var(--type-label);
-}
-.forum-post-open::after {
   position: absolute;
   inset: 0;
-  content: "";
+  border-radius: inherit;
 }
 .forum-post-open:focus-visible {
   outline: none;
@@ -937,9 +981,13 @@
   align-items: center;
   gap: 12px;
   min-height: 64px;
-  border-bottom: 1px solid var(--hairline);
-  padding: 8px 4px;
+  border-radius: var(--radius-container);
+  padding: 8px 16px;
   font-size: 14px;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.forum-community-row:hover {
+  background: var(--fill);
 }
 .forum-community-main {
   display: grid;
@@ -968,29 +1016,54 @@
 }
 .forum-sidebar {
   display: grid;
+  align-content: start;
   gap: 16px;
+  border-radius: var(--radius-container);
+  background: var(--fill);
+  padding: 24px 20px;
 }
 .forum-sidebar h2 {
   margin: 0;
   font: var(--type-section);
+  font-size: 20px;
+  line-height: 28px;
   text-align: center;
 }
 .forum-sidebar .forum-error,
 .forum-sidebar .forum-muted {
   text-align: center;
 }
-.forum-launch-list li {
+.forum-launch-list {
+  gap: 4px;
+}
+.forum-launch {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
-  align-items: baseline;
+  grid-template-columns: 16px 36px minmax(0, 1fr) auto;
+  align-items: center;
   gap: 12px;
-  border-bottom: 1px solid var(--hairline);
-  padding: 14px 4px;
+  padding: 6px 0;
   font-size: 14px;
+  line-height: 20px;
+}
+.forum-launch .forum-art {
+  width: 36px;
+  height: 36px;
+}
+/* The rail is already a --fill card; the button takes the page colour to stand off it. */
+.forum-launch .ui-button {
+  background: var(--canvas);
+}
+.forum-launch .ui-button:hover {
+  background: var(--hairline);
+}
+.forum-launch-main {
+  display: grid;
+  min-width: 0;
 }
 .forum-launch-cap {
   color: var(--text-2);
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 18px;
 }
 .forum-browse {
   justify-self: center;
@@ -1008,7 +1081,29 @@
   font-size: 14px;
   text-align: center;
 }
+@media (min-width: 1024px) {
+  .forum-layout {
+    grid-template-columns: minmax(0, 1fr) 340px;
+    align-items: start;
+  }
+  .forum-sidebar {
+    position: sticky;
+    top: calc(var(--nav-height) + 24px);
+  }
+}
 @media (max-width: 560px) {
+  .forum-post {
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 12px;
+    padding: 14px 12px;
+  }
+  .forum-post .forum-art {
+    width: 36px;
+    height: 36px;
+  }
+  .forum-post-body {
+    font-size: 17px;
+  }
   .forum-community-row {
     grid-template-columns: 24px minmax(0, 1fr) auto;
   }
