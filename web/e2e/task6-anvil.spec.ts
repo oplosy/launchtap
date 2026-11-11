@@ -460,7 +460,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await connectWallet(page);
     await page.getByLabel("Name", { exact: true }).fill("Revert Task 6");
     await page.getByLabel("Ticker").fill("RV6");
-    await page.getByLabel("Developer buy (ETH, optional)").fill("0.02");
+    await page.getByLabel("Developer buy", { exact: true }).fill("0.02");
     await page.getByRole("button", { name: "Review launch" }).click();
     await page.getByRole("button", { name: "Sign launch" }).click();
     await expect(page.locator(".transaction-error")).toContainText(
