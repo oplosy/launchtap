@@ -145,7 +145,7 @@ test("dropdowns open into a rounded, animated picker", async ({ page }) => {
 test("the footer is a list of sections that open one by one", async ({ page }) => {
   await page.goto("/docs");
   const footer = page.getByRole("contentinfo");
-  const sections = ["Product", "Data", "Resources", "Account"];
+  const sections = ["Product", "Data", "Resources", "Learn", "Protocol", "Account"];
   for (const name of sections) {
     const row = footer.locator("summary", { hasText: name });
     await expect(row).toBeVisible();

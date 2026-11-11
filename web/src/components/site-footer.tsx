@@ -85,6 +85,16 @@ export function SiteFooter() {
               <span className="ui-disabled-link">Explorer unavailable</span>
             )}
           </FooterSection>
+          <FooterSection label="Learn">
+            <Link href={"/docs#overview" as never}>How it works</Link>
+            <Link href={"/docs#curve" as never}>The bonding curve</Link>
+            <Link href={"/docs#graduation" as never}>Graduation</Link>
+          </FooterSection>
+          <FooterSection label="Protocol">
+            <Link href={"/docs#economics" as never}>Fees and economics</Link>
+            <Link href={"/docs#token" as never}>Token rules</Link>
+            <Link href={"/docs#governance" as never}>Pauses and governance</Link>
+          </FooterSection>
           <FooterSection label="Account">
             <Link href="/profile">Profile</Link>
             <Link href={"/explore?view=watchlist" as never}>Watchlist</Link>
@@ -109,7 +119,7 @@ export function SiteFooter() {
             </Link>
           </div>
         </aside>
-        {/* Wide layout: under the brand, in the row below the sections and the side column. */}
+        {/* Wide layout: in the brand's column, its last line level with the last section's rule. */}
         <div className="footer-aside-block footer-follow">
           <h2>Follow</h2>
           <ul className="footer-social" aria-label="Social media">
@@ -125,10 +135,7 @@ export function SiteFooter() {
       </div>
       <div className="footer-bottom">
         <p className="footer-meta">
-          © 2026 Launchpad <CoinGeckoAttribution />
-        </p>
-        <p className="footer-risk">
-          On-chain transactions may be irreversible. Tokens can be volatile or lose all value.
+          <strong>© 2026 Launchpad</strong> <CoinGeckoAttribution />
         </p>
       </div>
     </footer>
