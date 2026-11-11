@@ -23,6 +23,8 @@ type Discoverer struct {
 	factory          common.Address
 	addressBatchSize int
 	verifyLaunchPair func(context.Context, TokenLaunched) error
+	// v4 is set only for an engine-2 discoverer (NewDiscovererV2).
+	v4 *V4Config
 }
 
 func NewDiscoverer(source LogSource, decoder *Decoder, factory common.Address, addressBatchSize uint64) (*Discoverer, error) {
@@ -53,12 +55,17 @@ func NewDiscovererWithPairVerification(source LogSource, decoder *Decoder, facto
 type DiscoveryResult struct {
 	Logs     []types.Log
 	Launches []TokenLaunched
-	Emitters Emitters
+	// LaunchesV2 holds an engine-2 discoverer's verified launches; Launches stays empty.
+	LaunchesV2 []TokenLaunchedV2
+	Emitters   Emitters
 }
 
 func (d *Discoverer) Discover(ctx context.Context, from, to uint64, known Emitters) (DiscoveryResult, error) {
 	if from > to {
 		return DiscoveryResult{}, fmt.Errorf("invalid discovery range %d..%d", from, to)
+	}
+	if d.v4 != nil {
+		return d.discoverV2(ctx, from, to, known)
 	}
 	emitters := copyEmitters(known)
 	if emitters.Factory != (common.Address{}) && emitters.Factory != d.factory {
@@ -207,10 +214,17 @@ func (d *Discoverer) fetchByTopics(ctx context.Context, from, to uint64, topics 
 }
 
 func (d *Discoverer) fetchRange(ctx context.Context, from, to uint64, addresses []common.Address, topics []common.Hash) ([]types.Log, error) {
-	query := ethereum.FilterQuery{FromBlock: new(big.Int).SetUint64(from), ToBlock: new(big.Int).SetUint64(to), Addresses: addresses}
+	var positions [][]common.Hash
 	if len(topics) > 0 {
-		query.Topics = [][]common.Hash{topics}
+		positions = [][]common.Hash{topics}
 	}
+	return d.fetchRangeTopics(ctx, from, to, addresses, positions)
+}
+
+// fetchRangeTopics runs one filter with per-position topic sets, halving the block range while
+// the provider reports a capacity error.
+func (d *Discoverer) fetchRangeTopics(ctx context.Context, from, to uint64, addresses []common.Address, topics [][]common.Hash) ([]types.Log, error) {
+	query := ethereum.FilterQuery{FromBlock: new(big.Int).SetUint64(from), ToBlock: new(big.Int).SetUint64(to), Addresses: addresses, Topics: topics}
 	logs, err := d.source.FilterLogs(ctx, query)
 	if err == nil {
 		return logs, nil
@@ -222,11 +236,11 @@ func (d *Discoverer) fetchRange(ctx context.Context, from, to uint64, addresses 
 		return nil, fmt.Errorf("%w for block %d: %v", ErrRPCCapacity, from, err)
 	}
 	middle := from + (to-from)/2
-	left, leftErr := d.fetchRange(ctx, from, middle, addresses, topics)
+	left, leftErr := d.fetchRangeTopics(ctx, from, middle, addresses, topics)
 	if leftErr != nil {
 		return nil, leftErr
 	}
-	right, rightErr := d.fetchRange(ctx, middle+1, to, addresses, topics)
+	right, rightErr := d.fetchRangeTopics(ctx, middle+1, to, addresses, topics)
 	if rightErr != nil {
 		return nil, rightErr
 	}

@@ -57,6 +57,9 @@ func (s *fixtureLogSource) FilterLogs(_ context.Context, query ethereum.FilterQu
 				continue
 			}
 		}
+		if len(query.Topics) > 1 && len(query.Topics[1]) > 0 && (len(log.Topics) < 2 || !slices.Contains(query.Topics[1], log.Topics[1])) {
+			continue
+		}
 		result = append(result, log, log)
 	}
 	slices.Reverse(result)
