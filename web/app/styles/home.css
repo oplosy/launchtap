@@ -96,6 +96,57 @@
   outline: 2px solid var(--text);
   outline-offset: 2px;
 }
+/* From the forum: a field where posts fog in at random spots and fog out (forum-field.tsx). */
+.forum-field {
+  position: relative;
+  height: 780px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+}
+.forum-bubble {
+  position: absolute;
+  overflow: hidden;
+  align-content: start;
+  animation-name: forum-fog;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+/* Holding a card (pointer or keyboard) keeps it from fading out mid-read. */
+.forum-bubble:hover,
+.forum-bubble:focus-within {
+  animation-play-state: paused;
+}
+@keyframes forum-fog {
+  0% {
+    opacity: 0;
+    filter: blur(18px);
+    transform: translateY(14px) scale(0.96);
+    animation-timing-function: var(--ease-out);
+  }
+  15% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) scale(1);
+  }
+  85% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(-8px) scale(1);
+    animation-timing-function: var(--ease-in-out);
+  }
+  100% {
+    opacity: 0;
+    filter: blur(18px);
+    transform: translateY(-16px) scale(1.02);
+  }
+}
+@media (max-width: 639px) {
+  .forum-field {
+    height: 760px;
+  }
+}
 .home-skeleton {
   display: grid;
   gap: 12px;
