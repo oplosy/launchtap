@@ -39,23 +39,6 @@
   background: none;
   overflow: visible;
 }
-.launch-panel-head {
-  display: grid;
-  justify-items: center;
-  gap: 12px;
-  padding: 8px 0 40px;
-  text-align: center;
-}
-.launch-panel-head h1 {
-  font: var(--type-page);
-  letter-spacing: var(--tracking-page);
-}
-.launch-panel-head p {
-  max-width: 48ch;
-  color: var(--text-2);
-  font: var(--type-body);
-  letter-spacing: var(--tracking-body);
-}
 .launch-panel > .transaction-warning {
   margin: 0 0 24px;
 }
@@ -82,10 +65,6 @@
   width: 100%;
 }
 @media (min-width: 1024px) {
-  .launch-panel-head {
-    justify-items: start;
-    text-align: left;
-  }
   /* 60/40: the form on the left, the larger-type preview and terms on the right. */
   .launch-main {
     grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);

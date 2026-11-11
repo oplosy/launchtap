@@ -2344,10 +2344,10 @@ function LaunchPanelReady() {
       className="workspace-panel transaction-panel launch-panel"
       aria-labelledby="launch-title"
     >
-      <div className="launch-panel-head">
-        <h1 id="launch-title">Launch token</h1>
-        <p>Fixed supply. Bonding curve. Your wallet signs.</p>
-      </div>
+      {/* Named for assistive tech and the page outline; the form speaks for itself visually. */}
+      <h1 id="launch-title" className="sr-only">
+        Launch token
+      </h1>
       {error ? (
         <ErrorState title="Launch unavailable" description={error} />
       ) : (
