@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://launchtap.local/schemas/deployment-v2.json",
+  "title": "LaunchTap reviewed engine v2 deployment manifest",
+  "description": "An engine v2 deployment graduates into Uniswap V4 through a mined guard hook and locks the LP position in an LpFeeLocker. It has no Uniswap V2 pair, WETH or LP burn fields.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "deploymentId",
+    "name",
+    "environment",
+    "chainId",
+    "factory",
+    "startBlock",
+    "engineVersion",
+    "curveImplementation",
+    "poolManager",
+    "positionManager",
+    "permit2",
+    "hook",
+    "locker",
+    "pool",
+    "explorerBase",
+    "graduationEnabled",
+    "deployTransaction",
+    "bytecodeHashes",
+    "compiler",
+    "toolchain",
+    "governance",
+    "verification"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "deploymentId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "environment": { "enum": ["local", "testnet", "production"] },
+    "chainId": { "type": "integer", "minimum": 1 },
+    "factory": { "$ref": "#/$defs/address" },
+    "startBlock": { "type": "integer", "minimum": 0 },
+    "engineVersion": { "const": 2 },
+    "curveImplementation": { "$ref": "#/$defs/address" },
+    "poolManager": { "$ref": "#/$defs/address" },
+    "positionManager": { "$ref": "#/$defs/address" },
+    "permit2": { "$ref": "#/$defs/address" },
+    "hook": { "$ref": "#/$defs/address" },
+    "locker": { "$ref": "#/$defs/address" },
+    "pool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["currency0", "fee", "tickSpacing"],
+      "properties": {
+        "currency0": { "const": "0x0000000000000000000000000000000000000000" },
+        "fee": { "const": 10000 },
+        "tickSpacing": { "const": 200 }
+      }
+    },
+    "explorerBase": { "type": "string" },
+    "marketLinks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dexscreenerChain": { "type": "string", "pattern": "^[a-z0-9-]{1,32}$" },
+        "geckoterminalNetwork": { "type": "string", "pattern": "^[a-z0-9-]{1,32}$" }
+      }
+    },
+    "graduationEnabled": { "const": true },
+    "deployTransaction": { "$ref": "#/$defs/hash" },
+    "bytecodeHashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "launchFactory",
+        "bondingCurveV2",
+        "hook",
+        "locker",
+        "poolManager",
+        "positionManager",
+        "permit2"
+      ],
+      "properties": {
+        "launchFactory": { "$ref": "#/$defs/hash" },
+        "bondingCurveV2": { "$ref": "#/$defs/hash" },
+        "hook": { "$ref": "#/$defs/hash" },
+        "locker": { "$ref": "#/$defs/hash" },
+        "poolManager": { "$ref": "#/$defs/hash" },
+        "positionManager": { "$ref": "#/$defs/hash" },
+        "permit2": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "compiler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["solcVersion", "optimizer", "optimizerRuns", "viaIr", "evmVersion"],
+      "properties": {
+        "solcVersion": { "const": "0.8.36" },
+        "optimizer": { "const": true },
+        "optimizerRuns": { "const": 200 },
+        "viaIr": { "const": false },
+        "evmVersion": { "const": "cancun" }
+      }
+    },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["foundryVersion"],
+      "properties": { "foundryVersion": { "const": "1.8.1" } }
+    },
+    "governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pauseAuthority", "timelock", "protocolTreasury", "deployer"],
+      "properties": {
+        "pauseAuthority": { "$ref": "#/$defs/address" },
+        "timelock": { "$ref": "#/$defs/address" },
+        "protocolTreasury": { "$ref": "#/$defs/address" },
+        "deployer": { "$ref": "#/$defs/address" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dependenciesReviewed",
+        "hookAddressVerified",
+        "dependenciesWired",
+        "noResidualDeployerAuthority"
+      ],
+      "properties": {
+        "dependenciesReviewed": { "const": true },
+        "hookAddressVerified": { "const": true },
+        "dependenciesWired": { "const": true },
+        "noResidualDeployerAuthority": { "const": true }
+      }
+    }
+  },
+  "$defs": {
+    "address": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
+    "hash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" }
+  }
+}
