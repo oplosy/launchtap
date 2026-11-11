@@ -23,9 +23,6 @@
     grid-template-columns: 1fr;
   }
 }
-.discovery-count {
-  font-variant-numeric: tabular-nums;
-}
 
 /* Profile */
 .profile-layout {
