@@ -9,6 +9,7 @@ import { ApiProblem } from "@/api/problems";
 import type { Abi } from "viem";
 import { chainClockOffset, remainingTaxSeconds, snipeTaxLine } from "@/anti-snipe";
 import { reviewedV4Addresses, type V4Addresses } from "@/engine";
+import { recipientActions, validateProposedRecipient } from "@/fee-recipient";
 import { encodeV4ExactInSingle, planPermit2Sell, poolId, poolKey, poolMatchesApi } from "@/v4-swap";
 import { browserAbis, type ReviewedDeployment } from "@/contracts/generated";
 import { publicConfiguration } from "@/config/public";
@@ -1212,6 +1213,14 @@ function TradingPanelReady({
             description="No enabled reviewed Uniswap v2 router is configured for this chain. Trading is safely disabled."
           />
         )}
+        {engineVersion === 2 ? (
+          <V2CreatorPanel
+            tokenAddress={tokenAddress}
+            curveAddress={curveAddress}
+            locker={reviewedV4?.locker ?? null}
+            graduated={graduated}
+          />
+        ) : null}
       </section>
     );
   return (
@@ -1548,7 +1557,307 @@ function TradingPanelReady({
           </div>
         ) : null,
       )}
+      {engineVersion === 2 ? (
+        <V2CreatorPanel
+          tokenAddress={tokenAddress}
+          curveAddress={curveAddress}
+          locker={reviewedV4?.locker ?? null}
+          graduated={graduated}
+        />
+      ) : null}
     </section>
+  );
+}
+
+/**
+ * Engine-2 creator surface (Plan v2-C Task 6, spec §5.3): the creator (identity) and the fee
+ * recipient (payout) as separate facts, the two-step recipient change, and the LP fee locker
+ * claim. Every balance and role is read on-chain for the connected account; the offered
+ * actions mirror the curve's access checks (`recipientActions`).
+ */
+function V2CreatorPanel({
+  tokenAddress,
+  curveAddress,
+  locker,
+  graduated,
+}: {
+  tokenAddress: Address;
+  curveAddress: Address;
+  locker: Address | null;
+  graduated: boolean;
+}) {
+  const account = useAccount();
+  const readiness = useWalletReadiness();
+  const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
+  const configuration = publicConfiguration();
+  const [roles, setRoles] = useState<{
+    creator: string;
+    feeRecipient: string;
+    pendingFeeRecipient: string;
+  } | null>(null);
+  const [lockerOwed, setLockerOwed] = useState<{ eth: bigint; token: bigint } | null>(null);
+  const [refresh, setRefresh] = useState(0);
+  const [proposal, setProposal] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [state, setState] = useState<TransactionState>(() => createTransactionState());
+  const lockRef = useRef(false);
+  const curveAbi = browserAbis.curveV2 as Abi;
+  useEffect(() => {
+    if (!publicClient) return;
+    let cancelled = false;
+    void Promise.all([
+      publicClient.readContract({ address: curveAddress, abi: curveAbi, functionName: "creator" }),
+      publicClient.readContract({
+        address: curveAddress,
+        abi: curveAbi,
+        functionName: "feeRecipient",
+      }),
+      publicClient.readContract({
+        address: curveAddress,
+        abi: curveAbi,
+        functionName: "pendingFeeRecipient",
+      }),
+    ])
+      .then(([creator, feeRecipient, pendingFeeRecipient]) => {
+        if (!cancelled)
+          setRoles({
+            creator: String(creator),
+            feeRecipient: String(feeRecipient),
+            pendingFeeRecipient: String(pendingFeeRecipient),
+          });
+      })
+      .catch(() => {
+        if (!cancelled) setRoles(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [curveAbi, curveAddress, publicClient, refresh]);
+  useEffect(() => {
+    if (!publicClient || !locker || !account.address) return;
+    let cancelled = false;
+    void publicClient
+      .readContract({
+        address: locker,
+        abi: browserAbis.locker,
+        functionName: "owed",
+        args: [tokenAddress, account.address],
+      })
+      .then((result) => {
+        const [ethOwed, tokenOwed] = result as readonly [bigint, bigint];
+        if (!cancelled) setLockerOwed({ eth: ethOwed, token: tokenOwed });
+      })
+      .catch(() => {
+        if (!cancelled) setLockerOwed(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [account.address, locker, publicClient, refresh, tokenAddress]);
+  const actions = roles
+    ? recipientActions({
+        account: account.address,
+        feeRecipient: roles.feeRecipient,
+        pendingFeeRecipient: roles.pendingFeeRecipient,
+      })
+    : [];
+  const validation =
+    roles && proposal.trim() ? validateProposedRecipient(proposal, roles.feeRecipient) : null;
+  const canSign = Boolean(
+    publicClient &&
+    walletClient &&
+    account.address &&
+    readiness.selectedAccountVerified &&
+    readiness.chainId === configuration.chainId &&
+    !hasUnresolvedSubmission(state),
+  );
+  const run = async (
+    write: { address: Address; abi: Abi; functionName: string; args?: readonly unknown[] },
+    checkSimulation?: (result: unknown) => void,
+  ) => {
+    if (lockRef.current || !canSign) return;
+    lockRef.current = true;
+    setBusy(true);
+    let submittedHash: Address | undefined;
+    let failurePhase: "preflight" | "simulation" | "write" | "receipt" = "preflight";
+    try {
+      setState({ status: "validating" });
+      const [walletAccounts, latestChainId] = await Promise.all([
+        walletClient!.getAddresses(),
+        publicClient!.getChainId(),
+      ]);
+      if (
+        latestChainId !== configuration.chainId ||
+        walletAccounts[0]?.toLowerCase() !== account.address!.toLowerCase()
+      )
+        throw new Error("Wallet or network changed; review the action again.");
+      setState({ status: "simulating" });
+      failurePhase = "simulation";
+      const { result } = await publicClient!.simulateContract({
+        ...write,
+        account: account.address,
+      } as never);
+      checkSimulation?.(result);
+      setState({ status: "awaiting-signature" });
+      failurePhase = "write";
+      const hash = (await walletClient!.writeContract({
+        ...write,
+        account: account.address,
+      } as never)) as Address;
+      submittedHash = hash;
+      setState({ status: "submitted", hash });
+      failurePhase = "receipt";
+      const receipt = await publicClient!.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error("ReceiptReverted");
+      setState({ status: "mined", hash });
+      setProposal("");
+      setRefresh((value) => value + 1);
+    } catch (cause) {
+      setState({
+        status: classifyTransactionFailure(cause, failurePhase),
+        hash: submittedHash,
+        error: decodeTransactionError(cause).message,
+      });
+    } finally {
+      lockRef.current = false;
+      setBusy(false);
+    }
+  };
+  const hasPending = roles !== null && !/^0x0{40}$/i.test(roles.pendingFeeRecipient);
+  const proposeLabel = actions.includes("replace") ? "Replace proposal" : "Propose recipient";
+  return (
+    <div className="v2-creator">
+      <h3>Creator fees</h3>
+      <dl className="token-facts">
+        <dt>Creator</dt>
+        <dd className="mono">{roles?.creator ?? "Unavailable"}</dd>
+        <dt>Fee recipient</dt>
+        <dd className="mono">{roles?.feeRecipient ?? "Unavailable"}</dd>
+        {hasPending ? (
+          <>
+            <dt>Pending recipient</dt>
+            <dd className="mono">{roles!.pendingFeeRecipient}</dd>
+          </>
+        ) : null}
+        {locker ? (
+          <>
+            <dt>Your LP fees</dt>
+            <dd className="mono">
+              {lockerOwed === null
+                ? "Unavailable"
+                : `${eth(lockerOwed.eth)} + ${formatBaseUnits(lockerOwed.token, 18, 6)} tokens`}
+            </dd>
+          </>
+        ) : null}
+      </dl>
+      <small>
+        The creator is the launch identity; the fee recipient receives new creator fees. A change
+        takes effect only when the proposed address accepts it, and fees already credited stay with
+        the account they were credited to.
+      </small>
+      {locker && graduated ? (
+        <div className="transaction-actions">
+          <Button
+            size="sm"
+            disabled={busy || !canSign}
+            loading={state.status === "simulating" || state.status === "awaiting-signature"}
+            onClick={() =>
+              void run(
+                {
+                  address: locker,
+                  abi: browserAbis.locker as Abi,
+                  functionName: "claim",
+                  args: [tokenAddress],
+                },
+                (result) => {
+                  // `claim` collects pool fees first, so the simulation shows the full payout.
+                  const [ethAmount, tokenAmount] = result as readonly [bigint, bigint];
+                  if (ethAmount === 0n && tokenAmount === 0n) throw new Error("NothingToClaim");
+                },
+              )
+            }
+          >
+            Collect and claim LP fees
+          </Button>
+        </div>
+      ) : null}
+      {actions.includes("propose") || actions.includes("replace") ? (
+        <div className="transaction-form">
+          <Input
+            label="New fee recipient"
+            value={proposal}
+            disabled={busy}
+            onChange={(event) => setProposal(event.target.value)}
+            hint={
+              validation && !validation.ok
+                ? validation.error
+                : "The new address must accept before it receives fees."
+            }
+          />
+          <div className="transaction-actions">
+            <Button
+              size="sm"
+              disabled={busy || !canSign || !validation?.ok}
+              onClick={() =>
+                validation?.ok
+                  ? void run({
+                      address: curveAddress,
+                      abi: curveAbi,
+                      functionName: "proposeFeeRecipient",
+                      args: [validation.address],
+                    })
+                  : undefined
+              }
+            >
+              {proposeLabel}
+            </Button>
+            {actions.includes("cancel") ? (
+              <Button
+                size="sm"
+                variant="quiet"
+                disabled={busy || !canSign}
+                onClick={() =>
+                  void run({
+                    address: curveAddress,
+                    abi: curveAbi,
+                    functionName: "cancelFeeRecipientProposal",
+                  })
+                }
+              >
+                Cancel proposal
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+      {actions.includes("accept") ? (
+        <div className="transaction-actions">
+          <Button
+            size="sm"
+            disabled={busy || !canSign}
+            onClick={() =>
+              void run({
+                address: curveAddress,
+                abi: curveAbi,
+                functionName: "acceptFeeRecipient",
+              })
+            }
+          >
+            Accept fee recipient role
+          </Button>
+        </div>
+      ) : null}
+      {state.status !== "disconnected" ? (
+        <div className="transaction-progress" role="status">
+          <Badge tone={state.status === "mined" ? "success" : "warning"}>
+            {statusLabel(state.status)}
+          </Badge>
+          {state.hash ? <span className="mono">{state.hash}</span> : null}
+          {state.error ? <ErrorCopy error={new Error(state.error)} /> : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
