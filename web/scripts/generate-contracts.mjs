@@ -205,9 +205,9 @@ const factoryV2 = await abi("contracts/abi/v2/LaunchFactoryV2.json", allowV2.fac
 const curveV2 = await abi("contracts/abi/v2/BondingCurveV2.json", allowV2.curve, v2);
 const tokenV2 = await abi("contracts/abi/v2/LaunchTokenV2.json", allowV2.token, v2);
 const locker = await abi("contracts/abi/v2/LpFeeLocker.json", allowV2.locker, v2);
-const universalRouter = await readJson("contracts/abi/v2/external/UniversalRouter.json");
-const v4Quoter = await readJson("contracts/abi/v2/external/V4Quoter.json");
-const permit2 = await readJson("contracts/abi/v2/external/Permit2.json");
+const universalRouter = await readJson("contracts/abi/external-v4/UniversalRouter.json");
+const v4Quoter = await readJson("contracts/abi/external-v4/V4Quoter.json");
+const permit2 = await readJson("contracts/abi/external-v4/Permit2.json");
 
 // Reviewed V4 dependency records, keyed by chain. An engine-2 manifest is joined with the
 // record for its chain; no reviewed engine-2 manifest exists on a live chain yet.

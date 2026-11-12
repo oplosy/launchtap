@@ -9,6 +9,8 @@ on:
       - "backend/internal/apiserver/**"
       - "contracts/src/**"
       - "contracts/abi/v1/**"
+      - "contracts/abi/v2/**"
+      - "contracts/abi/external-v4/**"
       - "contracts/deployments/**"
       - ".github/workflows/web.yml"
   pull_request:

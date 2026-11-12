@@ -145,11 +145,11 @@ Vitest, Playwright. **No new web dependency:** Universal Router inputs are encod
 **Files:**
 - Modify: `web/scripts/generate-contracts.mjs`.
 - Regenerate: `web/src/contracts/generated.ts`.
-- Create, single-sourced in contracts: `contracts/abi/v2/external/UniversalRouter.json`
+- Create, single-sourced in contracts (outside `contracts/abi/v2`, which the backend mirrors byte for byte): `contracts/abi/external-v4/UniversalRouter.json`
   (`execute` only), `V4Quoter.json` (`quoteExactInputSingle` only) and `Permit2.json`
   (`approve` and `allowance` only).
   - Each fragment is extracted from the reviewed revision named in D1/D2. Its source
-    revision is recorded in `contracts/abi/v2/external/README.md`.
+    revision is recorded in `contracts/abi/external-v4/README.md`.
 - Test: `web/scripts/generate-contracts.test.mjs`, or the existing generator check.
 
 **Decisions:**
