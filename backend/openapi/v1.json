@@ -1958,6 +1958,14 @@
           "initial_virtual_token": {
             "type": "string"
           },
+          "launch_block": {
+            "description": "Block of the launch transaction; holders first acquiring in it were bundled with the launch.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "launch_time": {
+            "type": "string"
+          },
           "liquidity_eth": {
             "type": "string"
           },
@@ -2080,6 +2088,8 @@
           "ath_at",
           "price_change_24h_bps",
           "holder_count",
+          "launch_block",
+          "launch_time",
           "v2"
         ],
         "type": "object"
