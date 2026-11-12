@@ -47,6 +47,7 @@ import { isTokenEventForAddress } from "./sse-scope";
 import { TradingPanel } from "@/transactions-panel";
 import { MetadataEditor } from "./metadata-editor";
 import { PRICE_FLASH_MS, priceDirection } from "./price-flash";
+import { creatorHistoryLine } from "./creator-history";
 import { topHolderShare } from "./holder-concentration";
 import { launchFacts, type LaunchFacts } from "./launch-facts";
 import { v2Facts, type V2Facts } from "./v2-facts";
@@ -832,6 +833,12 @@ export function TokenDetail({
                 <SafeExternalLink href={market.geckoterminal}>GeckoTerminal</SafeExternalLink>
               ) : null}
             </div>
+            <CreatorLine
+              key={`${token.creator}:${token.address}`}
+              creator={token.creator}
+              tokenAddress={token.address}
+              apiBaseUrl={configuration.status === "ready" ? configuration.apiBaseUrl : null}
+            />
           </section>
           {!useFixture ? (
             <MetadataEditor
@@ -1276,6 +1283,41 @@ function Holders({
         ))}
       </div>
     </>
+  );
+}
+/**
+ * Who launched the token and what else that wallet launched here, from the public created-tokens
+ * list. Keyed by creator and token, so a new token starts without the previous history.
+ */
+function CreatorLine({
+  creator,
+  tokenAddress,
+  apiBaseUrl,
+}: {
+  creator: string;
+  tokenAddress: string;
+  apiBaseUrl: string | null;
+}) {
+  const parsed = parseTokenAddress(creator);
+  const [history, setHistory] = useState<string | null>(null);
+  useEffect(() => {
+    if (!parsed || !apiBaseUrl) return;
+    const controller = new AbortController();
+    void new ApiClient({ baseUrl: apiBaseUrl })
+      .listWalletCreated(parsed, { limit: 100 }, controller.signal)
+      .then((page) => {
+        if (!controller.signal.aborted)
+          setHistory(creatorHistoryLine(page.items ?? [], tokenAddress, Boolean(page.next_cursor)));
+      })
+      // The history is optional context; the creator link stays without it.
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [apiBaseUrl, parsed, tokenAddress]);
+  if (!parsed) return null;
+  return (
+    <p className="token-creator">
+      Created by <WalletLink address={parsed} />.{history ? ` ${history}` : null}
+    </p>
   );
 }
 /** Links an address to its wallet page; a missing or malformed address stays a dash. */
