@@ -94,14 +94,11 @@ Vitest, Playwright. **No new web dependency:** Universal Router inputs are encod
 - **D7 — Engine choice on the create page.** One deployment serves one engine (Plan v2-B B2).
   The visual-only `EngineToggle` becomes a read-only engine badge for the configured
   deployment. A fake choice would mislead.
-- **D8 — Launch facts before launch.** `LaunchFactoryV2` exposes only `futureDefaultsHash`,
-  not the profile.
-  - Before launch, the create page states the rule generically: a buy tax that decays
-    linearly to zero over the first window and goes to the protocol; the developer buy is
-    exempt.
-  - After launch, the token page shows the exact snapshotted profile from `v2.anti_snipe`.
-  - A reviewed manifest field holding the defaults is a later option. It is not in this
-    plan.
+- **D8 — Launch facts before launch.** The create page reads
+  `LaunchFactoryV2.futureDefaults()` through the reviewed RPC. It shows the exact anti-snipe
+  profile, the LP creator share and the launch fee that the next launch will snapshot. If
+  that read fails, the launch is blocked, as it is today when `launchFee` cannot be read.
+  After launch, the token page shows the snapshotted profile from `v2.anti_snipe`.
 
 ## Global Constraints
 
@@ -148,11 +145,11 @@ Vitest, Playwright. **No new web dependency:** Universal Router inputs are encod
 **Files:**
 - Modify: `web/scripts/generate-contracts.mjs`.
 - Regenerate: `web/src/contracts/generated.ts`.
-- Create, single-sourced in contracts: `contracts/abi/v2/external/UniversalRouter.json`
+- Create, single-sourced in contracts (outside `contracts/abi/v2`, which the backend mirrors byte for byte): `contracts/abi/external-v4/UniversalRouter.json`
   (`execute` only), `V4Quoter.json` (`quoteExactInputSingle` only) and `Permit2.json`
   (`approve` and `allowance` only).
   - Each fragment is extracted from the reviewed revision named in D1/D2. Its source
-    revision is recorded in `contracts/abi/v2/external/README.md`.
+    revision is recorded in `contracts/abi/external-v4/README.md`.
 - Test: `web/scripts/generate-contracts.test.mjs`, or the existing generator check.
 
 **Decisions:**
@@ -169,16 +166,16 @@ Vitest, Playwright. **No new web dependency:** Universal Router inputs are encod
 - No v2 manifest is listed as enabled, because none exists on a live chain yet.
 
 **Steps:**
-- [ ] **Red:** add generator tests:
+- [x] **Red:** add generator tests:
   - a synthetic engine-2 manifest plus V4 record produces the `v4` section;
   - a mismatched `poolManager` fails generation;
   - the existing v1 output is byte-identical.
 
   Expected: FAIL.
-- [ ] **Green:** implement, then run `npm run web-contracts-sync`. Expected: PASS, with
+- [x] **Green:** implement, then run `npm run web-contracts-sync`. Expected: PASS, with
   `web-contracts-diff` clean.
-- [ ] **Verify:** `npm run typecheck`, `npm test` and `npm run verify:bundle`.
-- [ ] **Commit:** `feat(web): add the v2 and V4 contract surface to reviewed deployments`.
+- [x] **Verify:** `npm run typecheck`, `npm test` and `npm run verify:bundle`.
+- [x] **Commit:** `feat(web): add the v2 and V4 contract surface to reviewed deployments`.
 
 ### Task 2: Engine selection, reviewed V4 addresses and the v2 Anvil fixture config
 
@@ -196,14 +193,14 @@ Vitest, Playwright. **No new web dependency:** Universal Router inputs are encod
   any is missing, malformed, or on the wrong chain.
 
 **Steps:**
-- [ ] **Red:** unit tests for:
+- [x] **Red:** unit tests for:
   - each fail-closed case;
   - a v1 fixture still resolving the V2 router;
   - the v2 fixture config requiring every V4 address.
 
   Expected: FAIL.
-- [ ] **Green:** implement. Expected: PASS.
-- [ ] **Commit:** `feat(web): select the engine per token and resolve reviewed V4 addresses`.
+- [x] **Green:** implement. Expected: PASS.
+- [x] **Commit:** `feat(web): select the engine per token and resolve reviewed V4 addresses`.
 
 ### Task 3: Curve buy with the anti-snipe line and countdown
 
@@ -222,14 +219,14 @@ Vitest, Playwright. **No new web dependency:** Universal Router inputs are encod
   `ends_at` and the chain head time (D6), and hides the line once the window is over.
 
 **Steps:**
-- [ ] **Red:** unit tests for:
+- [x] **Red:** unit tests for:
   - the countdown at the window start, the middle, the end and after it;
   - client clock skew of ±5 minutes not changing the result (Review Focus 5);
   - the summary rendering the tax line only while `snipeTax > 0`.
 
   Expected: FAIL.
-- [ ] **Green:** implement. Expected: PASS. v1 curve tests are unchanged.
-- [ ] **Commit:** `feat(web): show the anti-snipe tax and countdown on v2 curve buys`.
+- [x] **Green:** implement. Expected: PASS. v1 curve tests are unchanged.
+- [x] **Commit:** `feat(web): show the anti-snipe tax and countdown on v2 curve buys`.
 
 ### Task 4: Graduated v2 pool quote and buy through the Universal Router
 
@@ -255,16 +252,16 @@ Vitest, Playwright. **No new web dependency:** Universal Router inputs are encod
   the panel is disabled with a reason (Review Focus 2).
 
 **Steps:**
-- [ ] **Red:**
+- [x] **Red:**
   - `poolId` matches the `PoolManager` `Initialize` log's `topic1` in
     `contracts/fixtures/v2/event-logs-v2.json`, for that fixture's token and hook.
   - Encoder round-trip tests decode `inputs` with the reviewed ABI.
   - A mismatched API `pool_id` disables the panel.
 
   Expected: FAIL.
-- [ ] **Green:** implement the buy path: quote, review, simulate, then `execute` with
+- [x] **Green:** implement the buy path: quote, review, simulate, then `execute` with
   `value = amountIn` and the deadline from `transactionDeadline`. Expected: PASS.
-- [ ] **Commit:** `feat(web): buy graduated v2 tokens through the V4 Universal Router`.
+- [x] **Commit:** `feat(web): buy graduated v2 tokens through the V4 Universal Router`.
 
 ### Task 5: V4 sells with an exact Permit2 allowance
 
@@ -284,13 +281,13 @@ Vitest, Playwright. **No new web dependency:** Universal Router inputs are encod
   trusted: the flow re-approves exactly.
 
 **Steps:**
-- [ ] **Red:** unit tests for:
+- [x] **Red:** unit tests for:
   - the step planner on every allowance state;
   - the exact amounts and an expiration of at most the TTL (Review Focus 3).
 
   Expected: FAIL.
-- [ ] **Green:** implement. Expected: PASS.
-- [ ] **Commit:** `feat(web): sell graduated v2 tokens with an exact Permit2 allowance`.
+- [x] **Green:** implement. Expected: PASS.
+- [x] **Commit:** `feat(web): sell graduated v2 tokens with an exact Permit2 allowance`.
 
 ### Task 6: Creator surface: curve fees, locker fees and the fee recipient change
 
@@ -315,11 +312,11 @@ Vitest, Playwright. **No new web dependency:** Universal Router inputs are encod
 - Balances already credited stay with their account, and the copy says so.
 
 **Steps:**
-- [ ] **Red:** unit tests for the action matrix: for each role (creator, current recipient,
+- [x] **Red:** unit tests for the action matrix: for each role (creator, current recipient,
   pending recipient, stranger) and each state (no proposal, pending proposal), the
   offered actions. This pins Review Focus 4. Expected: FAIL.
-- [ ] **Green:** implement. Expected: PASS.
-- [ ] **Commit:** `feat(web): add v2 locker claims and the fee recipient change flow`.
+- [x] **Green:** implement. Expected: PASS.
+- [x] **Commit:** `feat(web): add v2 locker claims and the fee recipient change flow`.
 
 ### Task 7: v2 launch flow, create page and docs
 
@@ -343,14 +340,14 @@ Vitest, Playwright. **No new web dependency:** Universal Router inputs are encod
   - the two-step recipient change.
 
 **Steps:**
-- [ ] **Red:** extend the create-layout Playwright spec with these checks:
+- [x] **Red:** extend the create-layout Playwright spec with these checks:
   - the engine badge shows the configured engine;
   - the v2 rules copy is visible;
   - there is no engine choice control.
 
   Expected: FAIL.
-- [ ] **Green:** implement. Expected: PASS, and the accessibility spec stays green.
-- [ ] **Commit:** `feat(web): launch through engine v2 and describe its rules`.
+- [x] **Green:** implement. Expected: PASS, and the accessibility spec stays green.
+- [x] **Commit:** `feat(web): launch through engine v2 and describe its rules`.
 
 ### Task 8: v2 token facts and honest pool figures
 
@@ -370,14 +367,14 @@ Vitest, Playwright. **No new web dependency:** Universal Router inputs are encod
   the indexed spot price.
 
 **Steps:**
-- [ ] **Red:** component tests on the API fixtures from Plan v2-B Task 10:
+- [x] **Red:** component tests on the API fixtures from Plan v2-B Task 10:
   - v1 has no v2 block;
   - v2 before graduation shows no pool row;
   - v2 after graduation shows the pool facts and the liquidity placeholder.
 
   Expected: FAIL.
-- [ ] **Green:** implement. Expected: PASS.
-- [ ] **Commit:** `feat(web): show v2 launch, pool and fee recipient facts`.
+- [x] **Green:** implement. Expected: PASS.
+- [x] **Commit:** `feat(web): show v2 launch, pool and fee recipient facts`.
 
 ### Task 9: Anvil v2 web gate (needs D1)
 

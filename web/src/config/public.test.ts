@@ -61,6 +61,42 @@ describe("publicConfiguration", () => {
     expect(configuration.privyAppId).toBeNull();
   });
 
+  const v2Fixture = {
+    NEXT_PUBLIC_E2E_FIXTURE: "1",
+    NEXT_PUBLIC_V2_ANVIL_FACTORY: "0x0000000000000000000000000000000000000011",
+    NEXT_PUBLIC_V2_ANVIL_POOL_MANAGER: "0x0000000000000000000000000000000000000012",
+    NEXT_PUBLIC_V2_ANVIL_PERMIT2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    NEXT_PUBLIC_V2_ANVIL_UNIVERSAL_ROUTER: "0x0000000000000000000000000000000000000013",
+    NEXT_PUBLIC_V2_ANVIL_V4_QUOTER: "0x0000000000000000000000000000000000000014",
+    NEXT_PUBLIC_V2_ANVIL_HOOK: "0x0000000000000000000000000000000000002000",
+    NEXT_PUBLIC_V2_ANVIL_LOCKER: "0x0000000000000000000000000000000000000015",
+    NEXT_PUBLIC_TASK6_ANVIL_RPC_URL: "http://127.0.0.1:8545",
+    NEXT_PUBLIC_TASK6_ANVIL_API_URL: "http://127.0.0.1:18080",
+    NEXT_PUBLIC_TASK6_ANVIL_WEB_URL: "http://127.0.0.1:3000",
+  };
+
+  it("builds an engine-2 Anvil fixture deployment with every reviewed V4 address", () => {
+    const configuration = publicConfiguration(v2Fixture);
+    expect(configuration.status).toBe("ready");
+    expect(configuration.deploymentId).toBe("v2-anvil");
+    expect(configuration.deployment?.engineVersion).toBe(2);
+    expect(configuration.deployment?.uniswapV2Router02).toBeNull();
+    expect(configuration.deployment?.v4).toEqual({
+      poolManager: v2Fixture.NEXT_PUBLIC_V2_ANVIL_POOL_MANAGER,
+      permit2: v2Fixture.NEXT_PUBLIC_V2_ANVIL_PERMIT2,
+      universalRouter: v2Fixture.NEXT_PUBLIC_V2_ANVIL_UNIVERSAL_ROUTER,
+      v4Quoter: v2Fixture.NEXT_PUBLIC_V2_ANVIL_V4_QUOTER,
+      hook: v2Fixture.NEXT_PUBLIC_V2_ANVIL_HOOK,
+      locker: v2Fixture.NEXT_PUBLIC_V2_ANVIL_LOCKER,
+    });
+  });
+
+  it("fails closed when the engine-2 Anvil fixture misses any V4 address", () => {
+    for (const key of Object.keys(v2Fixture).filter((name) => name.startsWith("NEXT_PUBLIC_V2_"))) {
+      expect(publicConfiguration({ ...v2Fixture, [key]: "" }).status).toBe("fail-closed");
+    }
+  });
+
   it("rejects credentials or query material in public endpoints", () => {
     expect(
       publicConfiguration({

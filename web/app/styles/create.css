@@ -20,37 +20,16 @@
   font-size: 18px;
   line-height: 1;
 }
-/* Engine switch: a hairline track; the black pill slides to the picked engine. */
-.engine-toggle {
-  position: relative;
+/* Engine badge: read-only, the configured deployment decides the engine (Plan v2-C D7). */
+.engine-badge {
   display: inline-flex;
-  isolation: isolate;
+  align-items: center;
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-pill);
-  padding: 2px;
-}
-.engine-toggle > button {
-  position: relative;
-  z-index: 1;
-  min-width: 44px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  color: var(--text-2);
-  background: transparent;
   padding: 4px 12px;
+  color: var(--text-2);
   font-size: 12px;
   font-weight: 500;
-  cursor: pointer;
-  transition: color var(--dur-base) var(--ease-out);
-}
-.engine-toggle > button:hover {
-  color: var(--text);
-}
-.engine-toggle > button[aria-pressed="true"] {
-  color: var(--canvas);
-}
-.engine-toggle > .slide-indicator {
-  background: var(--text);
 }
 
 .launch-panel {

@@ -6,6 +6,12 @@ import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { formatBaseUnits, parseDecimal } from "@/amounts";
 import { ApiClient } from "@/api/client";
 import { ApiProblem } from "@/api/problems";
+import type { Abi } from "viem";
+import { chainClockOffset, remainingTaxSeconds, snipeTaxLine } from "@/anti-snipe";
+import { reviewedV4Addresses, type V4Addresses } from "@/engine";
+import { launchRulesV2 } from "@/launch-v2";
+import { recipientActions, validateProposedRecipient } from "@/fee-recipient";
+import { encodeV4ExactInSingle, planPermit2Sell, poolId, poolKey, poolMatchesApi } from "@/v4-swap";
 import { browserAbis, type ReviewedDeployment } from "@/contracts/generated";
 import { publicConfiguration } from "@/config/public";
 import { addressExplorerUrl } from "@/wallet/explorer";
@@ -430,6 +436,41 @@ function ReadinessGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Seconds left in the anti-snipe window by chain time (Plan v2-C D6): the latest block's
+ * timestamp fixes the offset to the client clock every 15 s, and a 1 s tick counts down.
+ */
+function useTaxSecondsLeft(
+  endsAt: string | null,
+  client:
+    { getBlock: (args: { blockTag: "latest" }) => Promise<{ timestamp: bigint }> } | undefined,
+): number {
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  useEffect(() => {
+    if (!endsAt || !client) return;
+    let cancelled = false;
+    let offset: number | null = null;
+    const sync = () =>
+      void client
+        .getBlock({ blockTag: "latest" })
+        .then((block) => {
+          if (!cancelled) offset = chainClockOffset(block.timestamp, Date.now());
+        })
+        .catch(() => undefined);
+    sync();
+    const syncTimer = setInterval(sync, 15_000);
+    const tick = setInterval(() => {
+      if (offset !== null) setSecondsLeft(remainingTaxSeconds(endsAt, Date.now() / 1000 + offset));
+    }, 1_000);
+    return () => {
+      cancelled = true;
+      clearInterval(syncTimer);
+      clearInterval(tick);
+    };
+  }, [endsAt, client]);
+  return endsAt && client ? secondsLeft : 0;
+}
+
 export function TradingPanel({
   token,
 }: {
@@ -440,6 +481,9 @@ export function TradingPanel({
     phase: string;
     name: string;
     symbol: string;
+    engineVersion?: number;
+    antiSnipeEndsAt?: string | null;
+    v2PoolId?: string | null;
   };
 }) {
   return (
@@ -459,6 +503,9 @@ function TradingPanelReady({
     phase: string;
     name: string;
     symbol: string;
+    engineVersion?: number;
+    antiSnipeEndsAt?: string | null;
+    v2PoolId?: string | null;
   };
 }) {
   const tokenAddress = safeAddress(token.address);
@@ -468,6 +515,10 @@ function TradingPanelReady({
   const safeCurveAddress =
     curveAddress ?? ("0x0000000000000000000000000000000000000000" as Address);
   const graduated = token.phase.toLowerCase() === "graduated";
+  // Engine 2 trades the curve through BondingCurveV2 (Plan v2-C Task 3); any other engine
+  // value leaves the panel unavailable instead of guessing an ABI.
+  const engineVersion = token.engineVersion ?? 1;
+  const curveAbi = (engineVersion === 2 ? browserAbis.curveV2 : browserAbis.curve) as Abi;
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [input, setInput] = useState("");
   const [slippage, setSlippage] = useState("5");
@@ -478,6 +529,7 @@ function TradingPanelReady({
     source: "backend" | "contract";
   } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [taxQuote, setTaxQuote] = useState<{ snipeTax: bigint; taxBps: number } | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [creatorClaimable, setCreatorClaimable] = useState<bigint | null>(null);
   const [refundClaimable, setRefundClaimable] = useState<bigint | null>(null);
@@ -541,6 +593,20 @@ function TradingPanelReady({
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
   const reviewedRouter = reviewedRouterAddress(configuration.deployment!, configuration.chainId);
+  const reviewedV4 =
+    engineVersion === 2
+      ? reviewedV4Addresses(configuration.deployment!, configuration.chainId)
+      : null;
+  // Plan v2-C D5: trade only the pool whose locally computed id equals the indexed one.
+  const v4PoolReady = Boolean(
+    reviewedV4 &&
+    tokenAddress &&
+    poolMatchesApi(
+      tokenAddress,
+      reviewedV4.hook,
+      token.v2PoolId ? { pool_id: token.v2PoolId } : null,
+    ),
+  );
   const reviewedWeth = safeAddress(configuration.deployment?.weth);
   const decimals = 18;
   const inputUnits = useMemo(() => {
@@ -582,12 +648,17 @@ function TradingPanelReady({
               parseQuoteQuantity(result.creator_fee, "creator fee"),
             source: "backend",
           });
+          setTaxQuote({
+            snipeTax: parseQuoteQuantity(result.snipe_tax, "snipe tax"),
+            taxBps: result.tax_bps,
+          });
           setQuoteError(null);
         }
       })
       .catch(() => {
         if (!cancelled) {
           setQuote(null);
+          setTaxQuote(null);
           setQuoteError("Informational quote unavailable. Refresh before trading.");
         }
       });
@@ -602,17 +673,26 @@ function TradingPanelReady({
     void Promise.all([
       publicClient.readContract({
         address: safeCurveAddress,
-        abi: browserAbis.curve,
+        abi: curveAbi,
         functionName: "creator",
       }),
+      // Engine 2 credits curve creator fees per account to the fee recipient in force at
+      // credit time, so the connected account reads its own balance (spec §5.3).
+      engineVersion === 2
+        ? publicClient.readContract({
+            address: safeCurveAddress,
+            abi: curveAbi,
+            functionName: "creatorFeesOwed",
+            args: [account.address],
+          })
+        : publicClient.readContract({
+            address: safeCurveAddress,
+            abi: curveAbi,
+            functionName: "unclaimedCreatorFees",
+          }),
       publicClient.readContract({
         address: safeCurveAddress,
-        abi: browserAbis.curve,
-        functionName: "unclaimedCreatorFees",
-      }),
-      publicClient.readContract({
-        address: safeCurveAddress,
-        abi: browserAbis.curve,
+        abi: curveAbi,
         functionName: "pendingRefund",
         args: [account.address],
       }),
@@ -620,7 +700,7 @@ function TradingPanelReady({
       .then(([creator, creatorFees, refund]) => {
         if (cancelled) return;
         setCreatorClaimable(
-          String(creator).toLowerCase() === account.address!.toLowerCase()
+          engineVersion === 2 || String(creator).toLowerCase() === account.address!.toLowerCase()
             ? (creatorFees as bigint)
             : 0n,
         );
@@ -635,9 +715,17 @@ function TradingPanelReady({
     return () => {
       cancelled = true;
     };
-  }, [account.address, curveAddress, publicClient, safeCurveAddress]);
+  }, [account.address, curveAbi, curveAddress, engineVersion, publicClient, safeCurveAddress]);
 
   const activeQuote = inputUnits && inputUnits > 0n ? quote : null;
+  const taxSecondsLeft = useTaxSecondsLeft(
+    engineVersion === 2 && !graduated ? (token.antiSnipeEndsAt ?? null) : null,
+    publicClient,
+  );
+  const taxLine =
+    activeQuote && side === "buy" && taxQuote
+      ? snipeTaxLine({ ...taxQuote, remainingSeconds: taxSecondsLeft })
+      : null;
   const minimum =
     activeQuote && slippageBps !== null ? minimumOutput(activeQuote.output, slippageBps) : null;
   const switchNetwork = () => void readiness.switchNetwork();
@@ -652,7 +740,7 @@ function TradingPanelReady({
     if (intentChainId === null) throw new Error("ChainUnavailable");
     const contractQuote = await publicClient!.readContract({
       address: safeCurveAddress,
-      abi: browserAbis.curve,
+      abi: curveAbi,
       functionName: quoteSide === "buy" ? "quoteBuy" : "quoteSell",
       args: [quantity],
     });
@@ -663,6 +751,18 @@ function TradingPanelReady({
     const fee =
       parseRuntimeQuantity((contractQuote as readonly unknown[])[2], "protocol fee") +
       parseRuntimeQuantity((contractQuote as readonly unknown[])[3], "creator fee");
+    // BondingCurveV2.quoteBuy returns the anti-snipe tax as its fifth value; sells are untaxed.
+    if (engineVersion === 2 && quoteSide === "buy") {
+      const taxBps = await publicClient!.readContract({
+        address: safeCurveAddress,
+        abi: curveAbi,
+        functionName: "currentTaxBps",
+      });
+      setTaxQuote({
+        snipeTax: parseRuntimeQuantity((contractQuote as readonly unknown[])[4], "snipe tax"),
+        taxBps: Number(taxBps),
+      });
+    } else setTaxQuote({ snipeTax: 0n, taxBps: 0 });
     const exactMinimum = minimumOutput(output, toleranceBps);
     const args =
       quoteSide === "buy"
@@ -709,7 +809,7 @@ function TradingPanelReady({
         throw new Error("Wallet or network changed. Review again after reconnecting.");
       const phase = await publicClient.readContract({
         address: safeCurveAddress,
-        abi: browserAbis.curve,
+        abi: curveAbi,
         functionName: "phase",
       });
       if (Number(phase) !== 0) throw new Error("WrongPhase");
@@ -777,7 +877,7 @@ function TradingPanelReady({
     try {
       const phase = await publicClient.readContract({
         address: safeCurveAddress,
-        abi: browserAbis.curve,
+        abi: curveAbi,
         functionName: "phase",
       });
       if (Number(phase) !== 0) throw new Error("WrongPhase");
@@ -877,14 +977,14 @@ function TradingPanelReady({
       setState({ status: "simulating" });
       const phaseBeforeSign = await publicClient.readContract({
         address: safeCurveAddress,
-        abi: browserAbis.curve,
+        abi: curveAbi,
         functionName: "phase",
       });
       if (Number(phaseBeforeSign) !== 0) throw new Error("WrongPhase");
       failurePhase = "simulation";
       await publicClient.simulateContract({
         address: reviewed.target as Address,
-        abi: browserAbis.curve,
+        abi: curveAbi,
         functionName: reviewed.functionName as "buy" | "sell",
         account: reviewed.account as Address,
         args: reviewed.args as never,
@@ -937,7 +1037,7 @@ function TradingPanelReady({
       failurePhase = "write";
       const hash = await walletClient.writeContract({
         address: reviewed.target as Address,
-        abi: browserAbis.curve,
+        abi: curveAbi,
         functionName: reviewed.functionName as "buy" | "sell",
         account: reviewed.account as Address,
         args: reviewed.args as never,
@@ -1000,16 +1100,24 @@ function TradingPanelReady({
         walletAccounts[0]?.toLowerCase() !== account.address.toLowerCase()
       )
         throw new Error("Wallet or network changed; review the claim again.");
-      if (kind === "creator") {
+      if (kind === "creator" && engineVersion === 2) {
+        const amount = await publicClient.readContract({
+          address: safeCurveAddress,
+          abi: curveAbi,
+          functionName: "creatorFeesOwed",
+          args: [account.address],
+        });
+        if ((amount as bigint) === 0n) throw new Error("NothingToClaim");
+      } else if (kind === "creator") {
         const [creator, amount] = await Promise.all([
           publicClient.readContract({
             address: safeCurveAddress,
-            abi: browserAbis.curve,
+            abi: curveAbi,
             functionName: "creator",
           }),
           publicClient.readContract({
             address: safeCurveAddress,
-            abi: browserAbis.curve,
+            abi: curveAbi,
             functionName: "unclaimedCreatorFees",
           }),
         ]);
@@ -1021,7 +1129,7 @@ function TradingPanelReady({
       } else {
         const amount = await publicClient.readContract({
           address: safeCurveAddress,
-          abi: browserAbis.curve,
+          abi: curveAbi,
           functionName: "pendingRefund",
           args: [account.address],
         });
@@ -1032,7 +1140,7 @@ function TradingPanelReady({
       failurePhase = "simulation";
       await publicClient.simulateContract({
         address: safeCurveAddress,
-        abi: browserAbis.curve,
+        abi: curveAbi,
         functionName,
         account: account.address,
       } as never);
@@ -1040,7 +1148,7 @@ function TradingPanelReady({
       failurePhase = "write";
       const hash = await walletClient.writeContract({
         address: safeCurveAddress,
-        abi: browserAbis.curve,
+        abi: curveAbi,
         functionName,
         account: account.address,
       } as never);
@@ -1069,7 +1177,7 @@ function TradingPanelReady({
     chainId === configuration.chainId,
   );
   const canSubmit = canTrade && confirming && (side !== "sell" || approvalTransaction.ready);
-  if (!tokenAddress || !curveAddress)
+  if (!tokenAddress || !curveAddress || (engineVersion !== 1 && engineVersion !== 2))
     return (
       <UnavailableState
         title="Trading unavailable"
@@ -1089,7 +1197,16 @@ function TradingPanelReady({
           </div>
           <Badge tone="success">Graduated</Badge>
         </div>
-        {reviewedRouter && reviewedWeth ? (
+        {engineVersion === 2 ? (
+          reviewedV4 && v4PoolReady ? (
+            <V4SwapPanel token={token} addresses={reviewedV4} />
+          ) : (
+            <UnavailableState
+              title="Pool unavailable"
+              description="No reviewed Uniswap V4 deployment is enabled for this chain, or the indexed pool does not match the reviewed pool key. Trading is safely disabled."
+            />
+          )
+        ) : reviewedRouter && reviewedWeth ? (
           <GraduatedSwapPanel token={token} router={reviewedRouter} weth={reviewedWeth} />
         ) : (
           <UnavailableState
@@ -1097,6 +1214,14 @@ function TradingPanelReady({
             description="No enabled reviewed Uniswap v2 router is configured for this chain. Trading is safely disabled."
           />
         )}
+        {engineVersion === 2 ? (
+          <V2CreatorPanel
+            tokenAddress={tokenAddress}
+            curveAddress={curveAddress}
+            locker={reviewedV4?.locker ?? null}
+            graduated={graduated}
+          />
+        ) : null}
       </section>
     );
   return (
@@ -1180,6 +1305,13 @@ function TradingPanelReady({
                 Fees <strong className="mono">{eth(quote.fee)}</strong>
                 <UsdLine wei={quote.fee} />
               </span>
+              {taxLine ? (
+                <span>
+                  Anti-snipe tax ({taxLine.rate}){" "}
+                  <strong className="mono">{eth(taxLine.amount)}</strong>
+                  {taxLine.timeLeft ? <small> ends in {taxLine.timeLeft}</small> : null}
+                </span>
+              ) : null}
               <span>
                 Minimum output{" "}
                 <strong className="mono">
@@ -1191,6 +1323,9 @@ function TradingPanelReady({
                 {quote.source === "backend"
                   ? "Informational API quote; contract quote is authoritative before signing."
                   : "Authoritative contract quote, read immediately before simulation."}
+                {taxLine
+                  ? " The tax only decreases, so a later block never gives less than the minimum output."
+                  : null}
               </small>
             </div>
           ) : null}
@@ -1423,7 +1558,903 @@ function TradingPanelReady({
           </div>
         ) : null,
       )}
+      {engineVersion === 2 ? (
+        <V2CreatorPanel
+          tokenAddress={tokenAddress}
+          curveAddress={curveAddress}
+          locker={reviewedV4?.locker ?? null}
+          graduated={graduated}
+        />
+      ) : null}
     </section>
+  );
+}
+
+/**
+ * Engine-2 creator surface (Plan v2-C Task 6, spec §5.3): the creator (identity) and the fee
+ * recipient (payout) as separate facts, the two-step recipient change, and the LP fee locker
+ * claim. Every balance and role is read on-chain for the connected account; the offered
+ * actions mirror the curve's access checks (`recipientActions`).
+ */
+function V2CreatorPanel({
+  tokenAddress,
+  curveAddress,
+  locker,
+  graduated,
+}: {
+  tokenAddress: Address;
+  curveAddress: Address;
+  locker: Address | null;
+  graduated: boolean;
+}) {
+  const account = useAccount();
+  const readiness = useWalletReadiness();
+  const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
+  const configuration = publicConfiguration();
+  const [roles, setRoles] = useState<{
+    creator: string;
+    feeRecipient: string;
+    pendingFeeRecipient: string;
+  } | null>(null);
+  const [lockerOwed, setLockerOwed] = useState<{ eth: bigint; token: bigint } | null>(null);
+  const [refresh, setRefresh] = useState(0);
+  const [proposal, setProposal] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [state, setState] = useState<TransactionState>(() => createTransactionState());
+  const lockRef = useRef(false);
+  const curveAbi = browserAbis.curveV2 as Abi;
+  useEffect(() => {
+    if (!publicClient) return;
+    let cancelled = false;
+    void Promise.all([
+      publicClient.readContract({ address: curveAddress, abi: curveAbi, functionName: "creator" }),
+      publicClient.readContract({
+        address: curveAddress,
+        abi: curveAbi,
+        functionName: "feeRecipient",
+      }),
+      publicClient.readContract({
+        address: curveAddress,
+        abi: curveAbi,
+        functionName: "pendingFeeRecipient",
+      }),
+    ])
+      .then(([creator, feeRecipient, pendingFeeRecipient]) => {
+        if (!cancelled)
+          setRoles({
+            creator: String(creator),
+            feeRecipient: String(feeRecipient),
+            pendingFeeRecipient: String(pendingFeeRecipient),
+          });
+      })
+      .catch(() => {
+        if (!cancelled) setRoles(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [curveAbi, curveAddress, publicClient, refresh]);
+  useEffect(() => {
+    if (!publicClient || !locker || !account.address) return;
+    let cancelled = false;
+    void publicClient
+      .readContract({
+        address: locker,
+        abi: browserAbis.locker,
+        functionName: "owed",
+        args: [tokenAddress, account.address],
+      })
+      .then((result) => {
+        const [ethOwed, tokenOwed] = result as readonly [bigint, bigint];
+        if (!cancelled) setLockerOwed({ eth: ethOwed, token: tokenOwed });
+      })
+      .catch(() => {
+        if (!cancelled) setLockerOwed(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [account.address, locker, publicClient, refresh, tokenAddress]);
+  const actions = roles
+    ? recipientActions({
+        account: account.address,
+        feeRecipient: roles.feeRecipient,
+        pendingFeeRecipient: roles.pendingFeeRecipient,
+      })
+    : [];
+  const validation =
+    roles && proposal.trim() ? validateProposedRecipient(proposal, roles.feeRecipient) : null;
+  const canSign = Boolean(
+    publicClient &&
+    walletClient &&
+    account.address &&
+    readiness.selectedAccountVerified &&
+    readiness.chainId === configuration.chainId &&
+    !hasUnresolvedSubmission(state),
+  );
+  const run = async (
+    write: { address: Address; abi: Abi; functionName: string; args?: readonly unknown[] },
+    checkSimulation?: (result: unknown) => void,
+  ) => {
+    if (lockRef.current || !canSign) return;
+    lockRef.current = true;
+    setBusy(true);
+    let submittedHash: Address | undefined;
+    let failurePhase: "preflight" | "simulation" | "write" | "receipt" = "preflight";
+    try {
+      setState({ status: "validating" });
+      const [walletAccounts, latestChainId] = await Promise.all([
+        walletClient!.getAddresses(),
+        publicClient!.getChainId(),
+      ]);
+      if (
+        latestChainId !== configuration.chainId ||
+        walletAccounts[0]?.toLowerCase() !== account.address!.toLowerCase()
+      )
+        throw new Error("Wallet or network changed; review the action again.");
+      setState({ status: "simulating" });
+      failurePhase = "simulation";
+      const { result } = await publicClient!.simulateContract({
+        ...write,
+        account: account.address,
+      } as never);
+      checkSimulation?.(result);
+      setState({ status: "awaiting-signature" });
+      failurePhase = "write";
+      const hash = (await walletClient!.writeContract({
+        ...write,
+        account: account.address,
+      } as never)) as Address;
+      submittedHash = hash;
+      setState({ status: "submitted", hash });
+      failurePhase = "receipt";
+      const receipt = await publicClient!.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error("ReceiptReverted");
+      setState({ status: "mined", hash });
+      setProposal("");
+      setRefresh((value) => value + 1);
+    } catch (cause) {
+      setState({
+        status: classifyTransactionFailure(cause, failurePhase),
+        hash: submittedHash,
+        error: decodeTransactionError(cause).message,
+      });
+    } finally {
+      lockRef.current = false;
+      setBusy(false);
+    }
+  };
+  const hasPending = roles !== null && !/^0x0{40}$/i.test(roles.pendingFeeRecipient);
+  const proposeLabel = actions.includes("replace") ? "Replace proposal" : "Propose recipient";
+  return (
+    <div className="v2-creator">
+      <h3>Creator fees</h3>
+      <dl className="token-facts">
+        <dt>Creator</dt>
+        <dd className="mono">{roles?.creator ?? "Unavailable"}</dd>
+        <dt>Fee recipient</dt>
+        <dd className="mono">{roles?.feeRecipient ?? "Unavailable"}</dd>
+        {hasPending ? (
+          <>
+            <dt>Pending recipient</dt>
+            <dd className="mono">{roles!.pendingFeeRecipient}</dd>
+          </>
+        ) : null}
+        {locker ? (
+          <>
+            <dt>Your LP fees</dt>
+            <dd className="mono">
+              {lockerOwed === null
+                ? "Unavailable"
+                : `${eth(lockerOwed.eth)} + ${formatBaseUnits(lockerOwed.token, 18, 6)} tokens`}
+            </dd>
+          </>
+        ) : null}
+      </dl>
+      <small>
+        The creator is the launch identity; the fee recipient receives new creator fees. A change
+        takes effect only when the proposed address accepts it, and fees already credited stay with
+        the account they were credited to.
+      </small>
+      {locker && graduated ? (
+        <div className="transaction-actions">
+          <Button
+            size="sm"
+            disabled={busy || !canSign}
+            loading={state.status === "simulating" || state.status === "awaiting-signature"}
+            onClick={() =>
+              void run(
+                {
+                  address: locker,
+                  abi: browserAbis.locker as Abi,
+                  functionName: "claim",
+                  args: [tokenAddress],
+                },
+                (result) => {
+                  // `claim` collects pool fees first, so the simulation shows the full payout.
+                  const [ethAmount, tokenAmount] = result as readonly [bigint, bigint];
+                  if (ethAmount === 0n && tokenAmount === 0n) throw new Error("NothingToClaim");
+                },
+              )
+            }
+          >
+            Collect and claim LP fees
+          </Button>
+        </div>
+      ) : null}
+      {actions.includes("propose") || actions.includes("replace") ? (
+        <div className="transaction-form">
+          <Input
+            label="New fee recipient"
+            value={proposal}
+            disabled={busy}
+            onChange={(event) => setProposal(event.target.value)}
+            hint={
+              validation && !validation.ok
+                ? validation.error
+                : "The new address must accept before it receives fees."
+            }
+          />
+          <div className="transaction-actions">
+            <Button
+              size="sm"
+              disabled={busy || !canSign || !validation?.ok}
+              onClick={() =>
+                validation?.ok
+                  ? void run({
+                      address: curveAddress,
+                      abi: curveAbi,
+                      functionName: "proposeFeeRecipient",
+                      args: [validation.address],
+                    })
+                  : undefined
+              }
+            >
+              {proposeLabel}
+            </Button>
+            {actions.includes("cancel") ? (
+              <Button
+                size="sm"
+                variant="quiet"
+                disabled={busy || !canSign}
+                onClick={() =>
+                  void run({
+                    address: curveAddress,
+                    abi: curveAbi,
+                    functionName: "cancelFeeRecipientProposal",
+                  })
+                }
+              >
+                Cancel proposal
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+      {actions.includes("accept") ? (
+        <div className="transaction-actions">
+          <Button
+            size="sm"
+            disabled={busy || !canSign}
+            onClick={() =>
+              void run({
+                address: curveAddress,
+                abi: curveAbi,
+                functionName: "acceptFeeRecipient",
+              })
+            }
+          >
+            Accept fee recipient role
+          </Button>
+        </div>
+      ) : null}
+      {state.status !== "disconnected" ? (
+        <div className="transaction-progress" role="status">
+          <Badge tone={state.status === "mined" ? "success" : "warning"}>
+            {statusLabel(state.status)}
+          </Badge>
+          {state.hash ? <span className="mono">{state.hash}</span> : null}
+          {state.error ? <ErrorCopy error={new Error(state.error)} /> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Graduated engine-2 trading through the reviewed Universal Router (Plan v2-C Tasks 4 and 5).
+ * The pool key is rebuilt from spec constants and checked against the API's pool id before
+ * this panel renders; quotes come from the reviewed V4Quoter immediately before review and
+ * again before signing; sells go through exact ERC-20 → Permit2 → router allowances (D3).
+ */
+function V4SwapPanel({
+  token,
+  addresses,
+}: {
+  token: { address: string; name: string; symbol: string };
+  addresses: V4Addresses;
+}) {
+  const tokenAddress = safeAddress(token.address);
+  const account = useAccount();
+  const readiness = useWalletReadiness();
+  const chainId = readiness.chainId;
+  const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
+  const configuration = publicConfiguration();
+  const router = addresses.universalRouter;
+  const routerExplorer = addressExplorerUrl(configuration, router);
+  const key = useMemo(
+    () => (tokenAddress ? poolKey(tokenAddress, addresses.hook) : null),
+    [addresses.hook, tokenAddress],
+  );
+  const transaction = usePersistedTransactionState(
+    "trade",
+    configuration.chainId,
+    account.address,
+    tokenAddress,
+    configuration.apiBaseUrl,
+  );
+  const { state, setState } = transaction;
+  const approvalTransaction = usePersistedTransactionState(
+    "approval",
+    configuration.chainId,
+    account.address,
+    tokenAddress,
+    configuration.apiBaseUrl,
+  );
+  const setApprovalTransactionState = approvalTransaction.setState;
+  const approvalHash = approvalTransaction.ready
+    ? (approvalTransaction.state.hash as Address | undefined)
+    : undefined;
+  const [side, setSide] = useState<"buy" | "sell">("buy");
+  const [input, setInput] = useState("");
+  const [slippage, setSlippage] = useState("5");
+  const [executionBusy, setExecutionBusy] = useState(false);
+  const [output, setOutput] = useState<bigint | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [reviewIntent, setReviewIntent] = useState<ReviewedWriteIntent | null>(null);
+  const [reviewNotice, setReviewNotice] = useState<string | null>(null);
+  const [reviewInput, setReviewInput] = useState<bigint | null>(null);
+  const lockRef = useRef(false);
+  const inputUnits = useMemo(() => {
+    try {
+      return input.trim() ? parseDecimal(input) : null;
+    } catch {
+      return null;
+    }
+  }, [input]);
+  const slippageBps = useMemo(() => parseSlippageBps(slippage), [slippage]);
+  const quoteExactIn = useCallback(
+    async (zeroForOne: boolean, amountIn: bigint) => {
+      const { result } = await publicClient!.simulateContract({
+        address: addresses.v4Quoter,
+        abi: browserAbis.v4Quoter,
+        functionName: "quoteExactInputSingle",
+        args: [{ poolKey: key!, zeroForOne, exactAmount: amountIn, hookData: "0x" }],
+      } as never);
+      return parseRuntimeQuantity((result as readonly unknown[])[0], "V4 quote output");
+    },
+    [addresses.v4Quoter, key, publicClient],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    if (!key || !inputUnits || inputUnits <= 0n || !publicClient) return;
+    void quoteExactIn(side === "buy", inputUnits)
+      .then((amount) => {
+        if (!cancelled) setOutput(amount);
+      })
+      .catch(() => {
+        if (!cancelled) setOutput(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [inputUnits, key, publicClient, quoteExactIn, side]);
+  const minimum =
+    output !== null && slippageBps !== null ? minimumOutput(output, slippageBps) : null;
+  const readSwapIntent = async (
+    accountAddress: Address,
+    quoteSide: "buy" | "sell",
+    quantity: bigint,
+    toleranceBps: bigint,
+    deadline: bigint,
+  ) => {
+    const intentChainId = configuration.chainId;
+    if (intentChainId === null || !key) throw new Error("ChainUnavailable");
+    const outputAmount = await quoteExactIn(quoteSide === "buy", quantity);
+    const minimumAmount = minimumOutput(outputAmount, toleranceBps);
+    const encoded = encodeV4ExactInSingle({
+      key,
+      zeroForOne: quoteSide === "buy",
+      amountIn: quantity,
+      amountOutMinimum: minimumAmount,
+    });
+    return {
+      intent: {
+        account: accountAddress,
+        target: router,
+        value: quoteSide === "buy" ? quantity : 0n,
+        args: [encoded.commands, encoded.inputs, deadline],
+        deadline,
+        minimumOutput: minimumAmount,
+        chainId: intentChainId,
+        functionName: "execute",
+      } satisfies ReviewedWriteIntent,
+      output: outputAmount,
+    };
+  };
+  const walletStillReviewed = async (reviewed: ReviewedWriteIntent) => {
+    const [accounts, latestChainId] = await Promise.all([
+      walletClient!.getAddresses(),
+      publicClient!.getChainId(),
+    ]);
+    return (
+      latestChainId === reviewed.chainId &&
+      accounts[0]?.toLowerCase() === reviewed.account.toLowerCase() &&
+      account.address?.toLowerCase() === reviewed.account.toLowerCase() &&
+      readiness.selectedAccountVerified
+    );
+  };
+  const prepareSwapReview = async () => {
+    if (
+      !key ||
+      !publicClient ||
+      !walletClient ||
+      !account.address ||
+      !inputUnits ||
+      slippageBps === null ||
+      chainId !== configuration.chainId ||
+      !readiness.selectedAccountVerified ||
+      !transaction.ready ||
+      (side === "sell" && !approvalTransaction.ready) ||
+      hasUnresolvedSubmission(state)
+    )
+      return;
+    try {
+      const [walletAccounts, currentChainId] = await Promise.all([
+        walletClient.getAddresses(),
+        publicClient.getChainId(),
+      ]);
+      if (
+        currentChainId !== configuration.chainId ||
+        walletAccounts[0]?.toLowerCase() !== account.address.toLowerCase()
+      )
+        throw new Error("Wallet or network changed. Review again after reconnecting.");
+      const deadline = transactionDeadline(currentUnixSeconds(), DEFAULT_TTL);
+      const fresh = await readSwapIntent(
+        account.address as Address,
+        side,
+        inputUnits,
+        slippageBps,
+        deadline,
+      );
+      setOutput(fresh.output);
+      setReviewInput(inputUnits);
+      setReviewIntent(fresh.intent);
+      setReviewNotice(null);
+      setConfirming(true);
+    } catch (cause) {
+      setReviewIntent(null);
+      setConfirming(false);
+      setReviewNotice(decodeTransactionError(cause).message);
+    }
+  };
+  const replaceSwapReview = (intent: ReviewedWriteIntent, refreshedOutput: bigint) => {
+    setOutput(refreshedOutput);
+    setReviewInput(inputUnits);
+    setReviewIntent(intent);
+    setReviewNotice(
+      "The wallet write details changed. Review the updated values, then confirm again.",
+    );
+  };
+  /** One exact allowance write: simulate, re-check the wallet, sign, wait for the receipt. */
+  const approvalWrite = async (
+    reviewed: ReviewedWriteIntent,
+    write: { address: Address; abi: Abi; functionName: string; args: readonly unknown[] },
+  ) => {
+    setApprovalTransactionState({ status: "simulating" });
+    await publicClient!.simulateContract({
+      ...write,
+      account: reviewed.account as Address,
+    } as never);
+    if (!(await walletStillReviewed(reviewed)))
+      throw new Error("The selected wallet or network changed during simulation.");
+    setApprovalTransactionState({ status: "awaiting-signature" });
+    const hash = (await walletClient!.writeContract({
+      ...write,
+      account: reviewed.account as Address,
+    } as never)) as Address;
+    setApprovalTransactionState({ status: "submitted", hash });
+    const receipt = await publicClient!.waitForTransactionReceipt({ hash });
+    if (receipt.status !== "success") throw new Error("ReceiptReverted");
+    setApprovalTransactionState({ status: "mined", hash });
+    return hash;
+  };
+  const execute = async () => {
+    if (
+      lockRef.current ||
+      !tokenAddress ||
+      !key ||
+      !publicClient ||
+      !walletClient ||
+      !account.address ||
+      inputUnits === null ||
+      slippageBps === null ||
+      !reviewIntent ||
+      reviewInput === null ||
+      !transaction.ready ||
+      (side === "sell" && !approvalTransaction.ready) ||
+      hasUnresolvedSubmission(state) ||
+      chainId !== configuration.chainId ||
+      !readiness.selectedAccountVerified
+    )
+      return;
+    lockRef.current = true;
+    setExecutionBusy(true);
+    const reviewed = reviewIntent;
+    const reviewedSide = side;
+    const reviewedInput = reviewInput;
+    const priorState = state;
+    let submittedHash: Address | undefined;
+    let approving = false;
+    let failurePhase: "preflight" | "simulation" | "write" | "receipt" = "preflight";
+    try {
+      if (!(await walletStillReviewed(reviewed))) {
+        setReviewNotice("The selected wallet or network changed. Return to review before signing.");
+        return;
+      }
+      const fresh = await readSwapIntent(
+        reviewed.account as Address,
+        reviewedSide,
+        reviewedInput,
+        slippageBps,
+        reviewed.deadline!,
+      );
+      if (!sameReviewedWriteIntent(reviewed, fresh.intent)) {
+        replaceSwapReview(fresh.intent, fresh.output);
+        return;
+      }
+      if (reviewedSide === "buy") {
+        const balance = await publicClient.getBalance({ address: reviewed.account as Address });
+        if (balance < reviewedInput) throw new Error("InsufficientETHBalance");
+      } else {
+        const [balance, erc20Allowance, permit2Allowance] = await Promise.all([
+          publicClient.readContract({
+            address: tokenAddress,
+            abi: browserAbis.tokenV2,
+            functionName: "balanceOf",
+            args: [reviewed.account as Address],
+          }),
+          publicClient.readContract({
+            address: tokenAddress,
+            abi: browserAbis.tokenV2,
+            functionName: "allowance",
+            args: [reviewed.account as Address, addresses.permit2],
+          }),
+          publicClient.readContract({
+            address: addresses.permit2,
+            abi: browserAbis.permit2,
+            functionName: "allowance",
+            args: [reviewed.account as Address, tokenAddress, router],
+          }),
+        ]);
+        if ((balance as bigint) < reviewedInput) throw new Error("ERC20InsufficientBalance");
+        const [permit2Amount, permit2Expiration] = permit2Allowance as readonly [
+          bigint,
+          number | bigint,
+          number | bigint,
+        ];
+        const steps = planPermit2Sell({
+          amount: reviewedInput,
+          erc20Allowance: erc20Allowance as bigint,
+          permit2: { amount: permit2Amount, expiration: BigInt(permit2Expiration) },
+          nowSeconds: currentUnixSeconds(),
+          ttlSeconds: DEFAULT_TTL,
+        });
+        if (steps.length > 1) {
+          approving = true;
+          failurePhase = "write";
+          const tokenWrite = (amount: bigint) => ({
+            address: tokenAddress,
+            abi: browserAbis.tokenV2 as Abi,
+            functionName: "approve",
+            args: [addresses.permit2, amount] as const,
+          });
+          for (const step of steps) {
+            if (step === "reset-erc20")
+              submittedHash = await approvalWrite(reviewed, tokenWrite(0n));
+            if (step === "approve-erc20")
+              submittedHash = await approvalWrite(reviewed, tokenWrite(reviewedInput));
+            if (step === "approve-permit2")
+              submittedHash = await approvalWrite(reviewed, {
+                address: addresses.permit2,
+                abi: browserAbis.permit2 as Abi,
+                functionName: "approve",
+                // Exact amount, expiring with the reviewed swap deadline (≤ the TTL).
+                args: [tokenAddress, router, reviewedInput, Number(reviewed.deadline!)],
+              });
+          }
+          setConfirming(false);
+          setReviewNotice("Allowances are set for this exact sell. Review the swap again to sign.");
+          return;
+        }
+      }
+      setState({ status: "simulating" });
+      failurePhase = "simulation";
+      await publicClient.simulateContract({
+        address: router,
+        abi: browserAbis.universalRouter,
+        functionName: "execute",
+        account: reviewed.account as Address,
+        args: reviewed.args as never,
+        value: reviewed.value,
+      } as never);
+      const finalQuote = await readSwapIntent(
+        reviewed.account as Address,
+        reviewedSide,
+        reviewedInput,
+        slippageBps,
+        reviewed.deadline!,
+      );
+      if (!(await walletStillReviewed(reviewed))) {
+        setReviewNotice("The selected wallet or network changed during simulation. Review again.");
+        setState(priorState);
+        return;
+      }
+      if (!sameReviewedWriteIntent(reviewed, finalQuote.intent)) {
+        replaceSwapReview(finalQuote.intent, finalQuote.output);
+        setState(priorState);
+        return;
+      }
+      setState({ status: "awaiting-signature" });
+      failurePhase = "write";
+      const hash = await walletClient.writeContract({
+        address: router,
+        abi: browserAbis.universalRouter,
+        functionName: "execute",
+        account: reviewed.account as Address,
+        args: reviewed.args as never,
+        value: reviewed.value,
+      } as never);
+      submittedHash = hash as Address;
+      setConfirming(false);
+      setReviewIntent(null);
+      setState({ status: "submitted", hash: submittedHash });
+      failurePhase = "receipt";
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error("ReceiptReverted");
+      setState({ status: "indexing", hash: submittedHash });
+    } catch (cause) {
+      const failure = {
+        status: classifyTransactionFailure(cause, failurePhase),
+        hash: submittedHash,
+        error: decodeTransactionError(cause).message,
+      } satisfies TransactionState;
+      if (approving) setApprovalTransactionState(failure);
+      else setState(failure);
+    } finally {
+      lockRef.current = false;
+      setExecutionBusy(false);
+    }
+  };
+  if (!tokenAddress || !key)
+    return (
+      <UnavailableState
+        title="Pool unavailable"
+        description="The token address is invalid for the reviewed V4 pool."
+      />
+    );
+  const ready = Boolean(
+    inputUnits &&
+    inputUnits > 0n &&
+    minimum !== null &&
+    readiness.selectedAccountVerified &&
+    chainId === configuration.chainId &&
+    transaction.ready &&
+    (side !== "sell" || approvalTransaction.ready) &&
+    !hasUnresolvedSubmission(state),
+  );
+  return (
+    <div className="graduated-swap">
+      {readiness.address && chainId !== configuration.chainId ? (
+        <div className="transaction-warning" role="alert">
+          Wrong network. Switch to {configuration.deployment?.name} before signing.
+          <Button size="sm" onClick={() => void readiness.switchNetwork()}>
+            Switch network
+          </Button>
+        </div>
+      ) : null}
+      <p className="transaction-risk">
+        Reviewed Universal Router only:{" "}
+        {routerExplorer ? (
+          <a href={routerExplorer} target="_blank" rel="noreferrer" className="mono">
+            {router}
+          </a>
+        ) : (
+          <span className="mono">{router}</span>
+        )}
+        . Pool <span className="mono">{poolId(key)}</span> charges a 1% LP fee. Third-party
+        liquidity in this pool dilutes the locked position&apos;s fee share. Sells approve Permit2
+        and this router for the exact sell amount only.
+      </p>
+      <TradeSideTabs
+        side={side}
+        label="Pool trade side"
+        disabled={executionBusy}
+        onChange={(next) => {
+          setSide(next);
+          setInput("");
+          setOutput(null);
+          setConfirming(false);
+          setReviewIntent(null);
+          setReviewNotice(null);
+        }}
+      >
+        <div className="transaction-form">
+          <Input
+            label={side === "buy" ? "ETH input" : `${token.symbol} input`}
+            value={input}
+            disabled={executionBusy}
+            onChange={(event) => {
+              setInput(event.target.value);
+              setConfirming(false);
+              setReviewIntent(null);
+            }}
+            inputMode="decimal"
+          />
+          {side === "buy" ? <TradeUsdHint ethInput={input} /> : <TradeUsdHint />}
+          <Input
+            label="Slippage tolerance (%)"
+            value={slippage}
+            disabled={executionBusy}
+            onChange={(event) => {
+              setSlippage(event.target.value);
+              setConfirming(false);
+              setReviewIntent(null);
+            }}
+            inputMode="decimal"
+            hint="At most 50%."
+          />
+          <SlippageChips
+            value={slippage}
+            disabled={executionBusy}
+            onPick={(value) => {
+              setSlippage(value);
+              setConfirming(false);
+              setReviewIntent(null);
+            }}
+          />
+          {output !== null ? (
+            <div className="quote-summary">
+              <span>
+                Pool output <strong className="mono">{formatBaseUnits(output, 18, 6)}</strong>
+                {side === "sell" ? <UsdLine wei={output} /> : null}
+              </span>
+              <span>
+                Minimum output{" "}
+                <strong className="mono">
+                  {minimum === null ? "—" : formatBaseUnits(minimum, 18, 6)}
+                </strong>
+                {side === "sell" && minimum !== null ? <UsdLine wei={minimum} /> : null}
+              </span>
+              <small>LP fee 1% of the input, taken by the pool and included in this quote.</small>
+            </div>
+          ) : null}
+        </div>
+        {confirming ? (
+          <div className="transaction-confirmation">
+            <h3>Confirm {side}</h3>
+            {reviewNotice ? (
+              <p className="transaction-warning" role="status">
+                {reviewNotice}
+              </p>
+            ) : null}
+            <dl>
+              <dt>Network</dt>
+              <dd>{configuration.deployment?.name}</dd>
+              <dt>Contract</dt>
+              <dd className="mono">{router}</dd>
+              <dt>Pool</dt>
+              <dd className="mono">{poolId(key)}</dd>
+              <dt>Input / minimum</dt>
+              <dd className="mono">
+                {reviewInput === null ? "—" : formatBaseUnits(reviewInput, 18, 6)} /{" "}
+                {reviewIntent?.minimumOutput === undefined
+                  ? "—"
+                  : formatBaseUnits(reviewIntent.minimumOutput, 18, 6)}
+              </dd>
+              <dt>Wallet</dt>
+              <dd className="mono">{reviewIntent?.account ?? "Unavailable"}</dd>
+              <dt>Chain ID</dt>
+              <dd className="mono">{reviewIntent?.chainId ?? "Unavailable"}</dd>
+              <dt>Function</dt>
+              <dd className="mono">execute(V4_SWAP: exact input single, settle all, take all)</dd>
+              <dt>Native value</dt>
+              <dd className="mono">
+                {reviewIntent
+                  ? `${eth(reviewIntent.value)} (${reviewIntent.value.toString()} wei)`
+                  : "Unavailable"}
+              </dd>
+              <dt>Slippage</dt>
+              <dd className="mono">{slippageBps === null ? "Invalid" : `${slippage}%`}</dd>
+              <dt>Fee</dt>
+              <dd className="mono">1% pool LP fee, included in the quoted output.</dd>
+              <dt>Deadline</dt>
+              <dd className="mono">
+                {reviewIntent?.deadline?.toString() ?? "Unavailable"} (Unix seconds)
+              </dd>
+              {side === "sell" ? (
+                <>
+                  <dt>Allowances</dt>
+                  <dd className="mono">
+                    approve({addresses.permit2}, {reviewInput?.toString() ?? "—"}) on {tokenAddress}
+                    ; Permit2.approve({tokenAddress}, {router}, {reviewInput?.toString() ?? "—"},{" "}
+                    {reviewIntent?.deadline?.toString() ?? "—"}). Already exact allowances are
+                    skipped.
+                  </dd>
+                </>
+              ) : null}
+            </dl>
+            <div className="transaction-actions">
+              <Button
+                variant="quiet"
+                disabled={executionBusy}
+                onClick={() => {
+                  setConfirming(false);
+                  setReviewIntent(null);
+                  setReviewNotice(null);
+                }}
+              >
+                Back
+              </Button>
+              <Button
+                variant="primary"
+                loading={state.status === "simulating" || state.status === "awaiting-signature"}
+                disabled={executionBusy || !ready || !reviewIntent || !transaction.ready}
+                onClick={() => void execute()}
+              >
+                Sign {side}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button
+            variant="primary"
+            size="lg"
+            disabled={executionBusy || !ready}
+            onClick={() => void prepareSwapReview()}
+          >
+            {side === "sell" && approvalHash ? "Resume sell" : `Review ${side}`}
+          </Button>
+        )}
+      </TradeSideTabs>
+      {state.status !== "disconnected" ? (
+        <div className="transaction-progress" role="status">
+          <Badge tone={state.status === "reverted" ? "danger" : "warning"}>
+            {statusLabel(state.status)}
+          </Badge>
+          {state.hash ? <span className="mono">{state.hash}</span> : null}
+          {state.error ? <ErrorCopy error={new Error(state.error)} /> : null}
+          {state.canonicalRefreshUnavailable ? (
+            <span className="transaction-error" role="alert">
+              Canonical status refresh unavailable. Showing the last known status.
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+      {approvalTransaction.state.status !== "disconnected" ? (
+        <div className="transaction-progress" role="status">
+          <Badge tone="warning">Approval {statusLabel(approvalTransaction.state.status)}</Badge>
+          {approvalTransaction.state.hash ? (
+            <span className="mono">{approvalTransaction.state.hash}</span>
+          ) : null}
+          {approvalTransaction.state.error ? (
+            <ErrorCopy error={new Error(approvalTransaction.state.error)} />
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -2064,13 +3095,17 @@ function LaunchPreview({
   symbol,
   launchFee,
   value,
+  v2Rules,
 }: {
   imageUrl: string;
   name: string;
   symbol: string;
   launchFee: bigint | null;
   value: bigint | null;
+  /** Engine 2 only; `null` while `futureDefaults()` is unread. */
+  v2Rules?: ReturnType<typeof launchRulesV2> | null;
 }) {
+  const v2 = v2Rules !== undefined;
   return (
     <aside className="launch-preview-card" aria-label="Token preview">
       <div className="launch-preview-image">
@@ -2105,10 +3140,35 @@ function LaunchPreview({
           <dt>Graduation</dt>
           <dd>4.2 ETH</dd>
         </div>
-        <div>
-          <dt>Liquidity</dt>
-          <dd>Initial LP burned</dd>
-        </div>
+        {v2 ? (
+          <>
+            <div>
+              <dt>Anti-snipe tax</dt>
+              <dd>
+                {v2Rules
+                  ? `${v2Rules.taxStart}, decaying to 0 over ${v2Rules.taxWindow}`
+                  : "Unavailable"}
+              </dd>
+            </div>
+            <div>
+              <dt>Pool fee</dt>
+              <dd>
+                {v2Rules
+                  ? `1% · ${v2Rules.lpCreatorShare} creator / ${v2Rules.lpProtocolShare} protocol`
+                  : "Unavailable"}
+              </dd>
+            </div>
+            <div>
+              <dt>Liquidity</dt>
+              <dd>Uniswap V4 position, locked forever</dd>
+            </div>
+          </>
+        ) : (
+          <div>
+            <dt>Liquidity</dt>
+            <dd>Initial LP burned</dd>
+          </div>
+        )}
       </dl>
     </aside>
   );
@@ -2144,6 +3204,11 @@ function LaunchPanelReady() {
   const [engineEnabled, setEngineEnabled] = useState<boolean | null>(null);
   const executionLockRef = useRef(false);
   const deployment = configuration.deployment as ReviewedDeployment;
+  // One deployment serves one engine (Plan v2-B B2). LaunchFactoryV2 has no per-engine switch;
+  // its launch reverts on its own pause, so the engine-enabled read is v1 only.
+  const engineVersion = deployment.engineVersion;
+  const factoryAbi = (engineVersion === 2 ? browserAbis.factoryV2 : browserAbis.factory) as Abi;
+  const [v2Rules, setV2Rules] = useState<ReturnType<typeof launchRulesV2> | null>(null);
   const factoryExplorer = deployment.factory
     ? addressExplorerUrl(configuration, deployment.factory as Address)
     : null;
@@ -2153,40 +3218,45 @@ function LaunchPanelReady() {
     void Promise.all([
       publicClient.readContract({
         address: deployment.factory as Address,
-        abi: browserAbis.factory,
+        abi: factoryAbi,
         functionName: "launchFee",
       }),
       publicClient.readContract({
         address: deployment.factory as Address,
-        abi: browserAbis.factory,
+        abi: factoryAbi,
         functionName: "futureDefaults",
       }),
       publicClient.readContract({
         address: deployment.factory as Address,
-        abi: browserAbis.factory,
+        abi: factoryAbi,
         functionName: "launchesPaused",
       }),
       publicClient.readContract({
         address: deployment.factory as Address,
-        abi: browserAbis.factory,
+        abi: factoryAbi,
         functionName: "tradingPaused",
       }),
-      publicClient.readContract({
-        address: deployment.factory as Address,
-        abi: browserAbis.factory,
-        functionName: "engineEnabled",
-        args: [1],
-      }),
+      engineVersion === 2
+        ? Promise.resolve(true)
+        : publicClient.readContract({
+            address: deployment.factory as Address,
+            abi: factoryAbi,
+            functionName: "engineEnabled",
+            args: [1],
+          }),
     ])
-      .then(([fee, , paused, trading, enabled]) => {
+      .then(([fee, defaults, paused, trading, enabled]) => {
         setLaunchFee(fee as bigint);
+        // Plan v2-C D8: the exact profile the next launch snapshots; a failed read blocks launch.
+        if (engineVersion === 2)
+          setV2Rules(launchRulesV2(defaults as Parameters<typeof launchRulesV2>[0]));
         setDefaultsRead(true);
         setLaunchesPaused(Boolean(paused));
         setTradingPaused(Boolean(trading));
         setEngineEnabled(Boolean(enabled));
       })
       .catch(() => setError("Factory configuration unavailable; launching is disabled."));
-  }, [deployment.factory, publicClient]);
+  }, [deployment.factory, engineVersion, factoryAbi, publicClient]);
   const buyUnits = useMemo(() => {
     try {
       return parseDecimal(buy || "0");
@@ -2236,7 +3306,7 @@ function LaunchPanelReady() {
         {
           name: name.trim(),
           symbol: symbol.trim(),
-          engineVersion: 1,
+          engineVersion,
           developerBuyGross: buyUnits!,
           minDeveloperTokensOut: 0n,
           deadline,
@@ -2246,25 +3316,27 @@ function LaunchPanelReady() {
         await Promise.all([
           publicClient.readContract({
             address: deployment.factory as Address,
-            abi: browserAbis.factory,
+            abi: factoryAbi,
             functionName: "launchFee",
           }) as Promise<bigint>,
           publicClient.readContract({
             address: deployment.factory as Address,
-            abi: browserAbis.factory,
+            abi: factoryAbi,
             functionName: "launchesPaused",
           }) as Promise<boolean>,
           publicClient.readContract({
             address: deployment.factory as Address,
-            abi: browserAbis.factory,
+            abi: factoryAbi,
             functionName: "tradingPaused",
           }) as Promise<boolean>,
-          publicClient.readContract({
-            address: deployment.factory as Address,
-            abi: browserAbis.factory,
-            functionName: "engineEnabled",
-            args: [1],
-          }) as Promise<boolean>,
+          (engineVersion === 2
+            ? Promise.resolve(true)
+            : publicClient.readContract({
+                address: deployment.factory as Address,
+                abi: factoryAbi,
+                functionName: "engineEnabled",
+                args: [1],
+              })) as Promise<boolean>,
         ]);
       if (!latestEngineEnabled) throw new Error("EngineDisabled");
       if (latestLaunchesPaused) throw new Error("LaunchesPaused");
@@ -2293,7 +3365,7 @@ function LaunchPanelReady() {
       failurePhase = "simulation";
       await publicClient.simulateContract({
         address: deployment.factory as Address,
-        abi: browserAbis.factory,
+        abi: factoryAbi,
         functionName: "launch",
         account: account.address,
         args,
@@ -2302,15 +3374,17 @@ function LaunchPanelReady() {
       const [beforeSignLaunchesPaused, beforeSignEngineEnabled] = await Promise.all([
         publicClient.readContract({
           address: deployment.factory as Address,
-          abi: browserAbis.factory,
+          abi: factoryAbi,
           functionName: "launchesPaused",
         }) as Promise<boolean>,
-        publicClient.readContract({
-          address: deployment.factory as Address,
-          abi: browserAbis.factory,
-          functionName: "engineEnabled",
-          args: [1],
-        }) as Promise<boolean>,
+        (engineVersion === 2
+          ? Promise.resolve(true)
+          : publicClient.readContract({
+              address: deployment.factory as Address,
+              abi: factoryAbi,
+              functionName: "engineEnabled",
+              args: [1],
+            })) as Promise<boolean>,
       ]);
       if (beforeSignLaunchesPaused) throw new Error("LaunchesPaused");
       if (!beforeSignEngineEnabled) throw new Error("EngineDisabled");
@@ -2336,7 +3410,7 @@ function LaunchPanelReady() {
       failurePhase = "write";
       const hash = await walletClient.writeContract({
         address: deployment.factory as Address,
-        abi: browserAbis.factory,
+        abi: factoryAbi,
         functionName: "launch",
         account: account.address,
         args,
@@ -2468,7 +3542,11 @@ function LaunchPanelReady() {
                       onChange={(event) => setBuy(event.target.value)}
                       inputMode="decimal"
                       placeholder="0 ETH, optional"
-                      info="Optional. Launch value is the launch fee plus this buy."
+                      info={
+                        engineVersion === 2
+                          ? "Optional. Launch value is the launch fee plus this buy. The developer buy is exempt from the anti-snipe tax."
+                          : "Optional. Launch value is the launch fee plus this buy."
+                      }
                     />
                   </div>
                 </section>
@@ -2481,6 +3559,7 @@ function LaunchPanelReady() {
                   symbol={symbol}
                   launchFee={launchFee}
                   value={value}
+                  v2Rules={engineVersion === 2 ? v2Rules : undefined}
                 />
                 {/*
                   The preview card already shows the fee and the exact launch value; factory state
@@ -2560,6 +3639,7 @@ function LaunchPanelReady() {
                       Object.keys(validMetadata).length > 0 ||
                       value === null ||
                       !defaultsRead ||
+                      (engineVersion === 2 && v2Rules === null) ||
                       launchesPaused !== false ||
                       engineEnabled !== true ||
                       !readiness.selectedAccountVerified ||
