@@ -241,6 +241,8 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await expect(buyTab).toHaveAttribute("aria-selected", "true");
     await expect(buyTab).toBeFocused();
     await page.getByLabel("ETH input").fill("0.001");
+    // A small buy on a fresh curve moves the price a little, measured against the indexed spot.
+    await expect(page.locator(".quote-summary")).toContainText(/Price impact \d+\.\d{2}%/);
     await page.getByRole("button", { name: "Review buy" }).click();
     const tradeReview = page.getByRole("region", { name: "Trade confirmation" });
     const reviewedField = (name: string) =>

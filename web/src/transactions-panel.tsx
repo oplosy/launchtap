@@ -36,6 +36,7 @@ import {
   createTransactionState,
   transitionTransaction,
 } from "@/transactions";
+import { curvePriceImpact } from "@/price-impact";
 import {
   readPersistedTransaction,
   writePersistedTransaction,
@@ -487,6 +488,8 @@ export function TradingPanel({
     engineVersion?: number;
     antiSnipeEndsAt?: string | null;
     v2PoolId?: string | null;
+    /** Last indexed spot price, wei per whole token; only used for the price-impact estimate. */
+    spotPriceWei?: string | null;
   };
 }) {
   return (
@@ -509,6 +512,8 @@ function TradingPanelReady({
     engineVersion?: number;
     antiSnipeEndsAt?: string | null;
     v2PoolId?: string | null;
+    /** Last indexed spot price, wei per whole token; only used for the price-impact estimate. */
+    spotPriceWei?: string | null;
   };
 }) {
   const tokenAddress = safeAddress(token.address);
@@ -535,6 +540,8 @@ function TradingPanelReady({
   } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [taxQuote, setTaxQuote] = useState<{ snipeTax: bigint; taxBps: number } | null>(null);
+  // ETH a buy actually spends (input minus a graduation-cap refund), or the tokens a sell spends.
+  const [quoteInputUsed, setQuoteInputUsed] = useState<bigint | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [creatorClaimable, setCreatorClaimable] = useState<bigint | null>(null);
   const [refundClaimable, setRefundClaimable] = useState<bigint | null>(null);
@@ -645,7 +652,8 @@ function TradingPanelReady({
           if (parseQuoteQuantity(result.input, "quote input") !== inputUnits)
             throw new Error("QuoteChanged");
           const output = parseQuoteQuantity(result.output, "quote output");
-          parseQuoteQuantity(result.refund, "quote refund");
+          const refund = parseQuoteQuantity(result.refund, "quote refund");
+          if (refund > inputUnits) throw new Error("QuoteChanged");
           parseQuoteQuantity(result.next_virtual_eth, "next virtual ETH");
           parseQuoteQuantity(result.next_virtual_token, "next virtual token");
           parseQuoteQuantity(result.reserve_source_block.toString(), "quote source block");
@@ -660,6 +668,7 @@ function TradingPanelReady({
             snipeTax: parseQuoteQuantity(result.snipe_tax, "snipe tax"),
             taxBps: result.tax_bps,
           });
+          setQuoteInputUsed(side === "buy" ? inputUnits - refund : inputUnits);
           setQuoteError(null);
         }
       })
@@ -667,6 +676,7 @@ function TradingPanelReady({
         if (!cancelled) {
           setQuote(null);
           setTaxQuote(null);
+          setQuoteInputUsed(null);
           setQuoteError("Informational quote unavailable. Refresh before trading.");
         }
       });
@@ -736,6 +746,20 @@ function TradingPanelReady({
       : null;
   const minimum =
     activeQuote && slippageBps !== null ? minimumOutput(activeQuote.output, slippageBps) : null;
+  // Shown only for an untaxed quote: the anti-snipe tax is a separate charge, not price movement.
+  const priceImpact =
+    activeQuote && quoteInputUsed !== null && taxQuote !== null && taxQuote.snipeTax === 0n
+      ? curvePriceImpact({
+          side,
+          input: quoteInputUsed,
+          output: activeQuote.output,
+          fee: activeQuote.fee,
+          spotPriceWad:
+            token.spotPriceWei && /^[1-9][0-9]*$/.test(token.spotPriceWei)
+              ? BigInt(token.spotPriceWei)
+              : null,
+        })
+      : null;
   const switchNetwork = () => void readiness.switchNetwork();
   const readCurveIntent = async (
     accountAddress: Address,
@@ -774,6 +798,11 @@ function TradingPanelReady({
         taxBps: Number(taxBps),
       });
     } else setTaxQuote({ snipeTax: 0n, taxBps: 0 });
+    setQuoteInputUsed(
+      quoteSide === "buy"
+        ? parseRuntimeQuantity((contractQuote as readonly unknown[])[0], "contract input used")
+        : quantity,
+    );
     const exactMinimum = minimumOutput(output, toleranceBps);
     const args =
       quoteSide === "buy"
@@ -1428,12 +1457,26 @@ function TradingPanelReady({
                 </strong>
                 {side === "sell" && minimum !== null ? <UsdLine wei={minimum} /> : null}
               </span>
+              {priceImpact ? (
+                <span>
+                  Price impact <strong className="mono">{priceImpact.percent}</strong>
+                </span>
+              ) : null}
+              {priceImpact?.high ? (
+                <p className="transaction-warning" role="status">
+                  This trade moves the price by {priceImpact.percent}. A smaller amount gets a
+                  better average price.
+                </p>
+              ) : null}
               <small>
                 {quote.source === "backend"
                   ? "Informational API quote; contract quote is authoritative before signing."
                   : "Authoritative contract quote, read immediately before simulation."}
                 {taxLine
                   ? " The tax only decreases, so a later block never gives less than the minimum output."
+                  : null}
+                {priceImpact
+                  ? " Price impact is measured against the last indexed spot price."
                   : null}
               </small>
             </div>

@@ -878,6 +878,7 @@ export function TokenDetail({
                 engineVersion: token.engine_version,
                 antiSnipeEndsAt: token.v2?.anti_snipe.ends_at ?? null,
                 v2PoolId: token.v2?.pool?.pool_id ?? null,
+                spotPriceWei: token.spot_price_eth,
               }}
             />
             <p className="token-aside-note">
