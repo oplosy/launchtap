@@ -570,13 +570,15 @@ function TradingPanelReady({
   const approvalHash = approvalTransaction.ready
     ? (approvalTransaction.state.hash as Address | undefined)
     : undefined;
+  // Engine-2 curve claims stay open after graduation (see claimRow); engine 1 is unchanged.
+  const claimsOpen = !graduated || engineVersion === 2;
   const creatorClaimTransaction = usePersistedTransactionState(
     "claim",
     configuration.chainId,
     account.address,
     tokenAddress,
     configuration.apiBaseUrl,
-    !graduated,
+    claimsOpen,
   );
   const refundClaimTransaction = usePersistedTransactionState(
     "refund",
@@ -584,7 +586,7 @@ function TradingPanelReady({
     account.address,
     tokenAddress,
     configuration.apiBaseUrl,
-    !graduated,
+    claimsOpen,
   );
   const creatorClaimState = creatorClaimTransaction.state;
   const setCreatorClaimState = creatorClaimTransaction.setState;
@@ -1169,6 +1171,78 @@ function TradingPanelReady({
       setClaimBusy(false);
     }
   };
+  // Curve claims stay open after graduation: engine-2 curve creator fees accrue per account
+  // and remain claimable on the curve once the token trades in its V4 pool (spec §5.3).
+  const claimRow = (
+    <>
+      <div className="claim-row">
+        <span>
+          Claimable creator fees:{" "}
+          {creatorClaimable === null ? "Unavailable" : eth(creatorClaimable)}
+          <br />
+          Claimable refund: {refundClaimable === null ? "Unavailable" : eth(refundClaimable)}
+        </span>
+        <div className="transaction-actions">
+          <Button
+            size="sm"
+            disabled={
+              creatorClaimable === null ||
+              creatorClaimable === 0n ||
+              claimBusy ||
+              !creatorClaimTransaction.ready ||
+              hasUnresolvedSubmission(creatorClaimState)
+            }
+            loading={
+              creatorClaimState.status === "simulating" ||
+              creatorClaimState.status === "awaiting-signature"
+            }
+            onClick={() => void executeClaim("creator")}
+          >
+            Claim creator fees
+          </Button>
+          <Button
+            size="sm"
+            disabled={
+              refundClaimable === null ||
+              refundClaimable === 0n ||
+              claimBusy ||
+              !refundClaimTransaction.ready ||
+              hasUnresolvedSubmission(refundClaimState)
+            }
+            loading={
+              refundClaimState.status === "simulating" ||
+              refundClaimState.status === "awaiting-signature"
+            }
+            onClick={() => void executeClaim("refund")}
+          >
+            Claim refund
+          </Button>
+        </div>
+      </div>
+      {[creatorClaimState, refundClaimState].map((claim) =>
+        claim.status !== "disconnected" ? (
+          <div className="transaction-progress" role="status" key={claim.hash ?? claim.status}>
+            <Badge
+              tone={
+                claim.status === "reverted" || claim.status === "rejected-signature"
+                  ? "danger"
+                  : "warning"
+              }
+            >
+              {statusLabel(claim.status)}
+            </Badge>
+            {claim.hash ? <span className="mono">{claim.hash}</span> : null}
+            {claim.error ? <ErrorCopy error={new Error(claim.error)} /> : null}
+            {claim.canonicalRefreshUnavailable ? (
+              <span className="transaction-error" role="alert">
+                Canonical status refresh unavailable. Showing the last known status.
+              </span>
+            ) : null}
+          </div>
+        ) : null,
+      )}
+    </>
+  );
   const canTrade = Boolean(
     inputUnits &&
     inputUnits > 0n &&
@@ -1214,6 +1288,7 @@ function TradingPanelReady({
             description="No enabled reviewed Uniswap v2 router is configured for this chain. Trading is safely disabled."
           />
         )}
+        {engineVersion === 2 ? claimRow : null}
         {engineVersion === 2 ? (
           <V2CreatorPanel
             tokenAddress={tokenAddress}
@@ -1492,72 +1567,7 @@ function TradingPanelReady({
           ) : null}
         </div>
       ) : null}
-      <div className="claim-row">
-        <span>
-          Claimable creator fees:{" "}
-          {creatorClaimable === null ? "Unavailable" : eth(creatorClaimable)}
-          <br />
-          Claimable refund: {refundClaimable === null ? "Unavailable" : eth(refundClaimable)}
-        </span>
-        <div className="transaction-actions">
-          <Button
-            size="sm"
-            disabled={
-              creatorClaimable === null ||
-              creatorClaimable === 0n ||
-              claimBusy ||
-              !creatorClaimTransaction.ready ||
-              hasUnresolvedSubmission(creatorClaimState)
-            }
-            loading={
-              creatorClaimState.status === "simulating" ||
-              creatorClaimState.status === "awaiting-signature"
-            }
-            onClick={() => void executeClaim("creator")}
-          >
-            Claim creator fees
-          </Button>
-          <Button
-            size="sm"
-            disabled={
-              refundClaimable === null ||
-              refundClaimable === 0n ||
-              claimBusy ||
-              !refundClaimTransaction.ready ||
-              hasUnresolvedSubmission(refundClaimState)
-            }
-            loading={
-              refundClaimState.status === "simulating" ||
-              refundClaimState.status === "awaiting-signature"
-            }
-            onClick={() => void executeClaim("refund")}
-          >
-            Claim refund
-          </Button>
-        </div>
-      </div>
-      {[creatorClaimState, refundClaimState].map((claim) =>
-        claim.status !== "disconnected" ? (
-          <div className="transaction-progress" role="status" key={claim.hash ?? claim.status}>
-            <Badge
-              tone={
-                claim.status === "reverted" || claim.status === "rejected-signature"
-                  ? "danger"
-                  : "warning"
-              }
-            >
-              {statusLabel(claim.status)}
-            </Badge>
-            {claim.hash ? <span className="mono">{claim.hash}</span> : null}
-            {claim.error ? <ErrorCopy error={new Error(claim.error)} /> : null}
-            {claim.canonicalRefreshUnavailable ? (
-              <span className="transaction-error" role="alert">
-                Canonical status refresh unavailable. Showing the last known status.
-              </span>
-            ) : null}
-          </div>
-        ) : null,
-      )}
+      {claimRow}
       {engineVersion === 2 ? (
         <V2CreatorPanel
           tokenAddress={tokenAddress}
