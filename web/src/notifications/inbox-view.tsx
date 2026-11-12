@@ -8,6 +8,7 @@ import { publicConfiguration } from "@/config/public";
 import { parseTokenAddress } from "@/token/address";
 import { useWatchlist, WatchlistAuthContext } from "@/watchlist/use-watchlist";
 import { appendInboxPage, describeInboxItem, INBOX_PAGE_SIZE, isUnread } from "./inbox-model";
+import { TelegramCard } from "./telegram-card";
 
 type InboxState =
   | { status: "idle" | "loading" | "error" }
@@ -143,71 +144,81 @@ export function InboxView() {
         }
       />
     );
-  if (state.status === "error")
-    return (
-      <ErrorState
-        title="Inbox unavailable"
-        description="Your notifications could not be loaded. Try again shortly."
-        action={<Button onClick={load}>Retry</Button>}
-      />
-    );
-  if (state.status !== "ready")
-    return (
-      <div className="history-state" role="status" aria-label="Loading notifications">
-        <Skeleton />
-        <Skeleton />
-        <Skeleton />
-      </div>
-    );
-  if (state.items.length === 0)
-    return (
-      <EmptyState
-        title="No notifications yet"
-        description="Star tokens to hear about their graduation and trades of 0.5 ETH or more from the last 30 days."
-        action={
-          <Link
-            className="ui-button ui-button-secondary ui-button-md"
-            href={"/explore?view=watchlist" as never}
-          >
-            Open watchlist
-          </Link>
-        }
-      />
-    );
+  // The Telegram card keeps its place (and state) above whatever the list shows.
   return (
-    <div className="inbox">
-      <ul className="inbox-list">
-        {state.items.map((item, index) => {
-          const address = parseTokenAddress(item.token);
-          const text = describeInboxItem(item);
-          const unread = isUnread(index, state.unread);
-          return (
-            <li key={item.id} className={unread ? "inbox-item is-unread" : "inbox-item"}>
-              {address ? (
-                <Link href={`/token/${address}` as never} className="inbox-item-text">
-                  {text}
-                </Link>
-              ) : (
-                <span className="inbox-item-text">{text}</span>
-              )}
-              {unread ? <span className="inbox-new">New</span> : null}
-              <time className="inbox-time mono" dateTime={item.block_time}>
-                {new Date(item.block_time).toLocaleString()}
-              </time>
-            </li>
-          );
-        })}
-      </ul>
-      {state.more === "error" ? (
-        <p className="inbox-more-error" role="alert">
-          More notifications could not be loaded.
-        </p>
-      ) : null}
-      {state.next ? (
-        <Button onClick={() => void loadMore()} disabled={state.more === "loading"}>
-          {state.more === "loading" ? "Loading…" : state.more === "error" ? "Retry" : "Load more"}
-        </Button>
-      ) : null}
+    <div className="inbox-page">
+      <TelegramCard baseUrl={baseUrl} auth={auth} />
+      {inboxContent()}
     </div>
   );
+
+  function inboxContent() {
+    if (state.status === "error")
+      return (
+        <ErrorState
+          title="Inbox unavailable"
+          description="Your notifications could not be loaded. Try again shortly."
+          action={<Button onClick={load}>Retry</Button>}
+        />
+      );
+    if (state.status !== "ready")
+      return (
+        <div className="history-state" role="status" aria-label="Loading notifications">
+          <Skeleton />
+          <Skeleton />
+          <Skeleton />
+        </div>
+      );
+    if (state.items.length === 0)
+      return (
+        <EmptyState
+          title="No notifications yet"
+          description="Star tokens to hear about their graduation and trades of 0.5 ETH or more from the last 30 days."
+          action={
+            <Link
+              className="ui-button ui-button-secondary ui-button-md"
+              href={"/explore?view=watchlist" as never}
+            >
+              Open watchlist
+            </Link>
+          }
+        />
+      );
+    return (
+      <div className="inbox">
+        <ul className="inbox-list">
+          {state.items.map((item, index) => {
+            const address = parseTokenAddress(item.token);
+            const text = describeInboxItem(item);
+            const unread = isUnread(index, state.unread);
+            return (
+              <li key={item.id} className={unread ? "inbox-item is-unread" : "inbox-item"}>
+                {address ? (
+                  <Link href={`/token/${address}` as never} className="inbox-item-text">
+                    {text}
+                  </Link>
+                ) : (
+                  <span className="inbox-item-text">{text}</span>
+                )}
+                {unread ? <span className="inbox-new">New</span> : null}
+                <time className="inbox-time mono" dateTime={item.block_time}>
+                  {new Date(item.block_time).toLocaleString()}
+                </time>
+              </li>
+            );
+          })}
+        </ul>
+        {state.more === "error" ? (
+          <p className="inbox-more-error" role="alert">
+            More notifications could not be loaded.
+          </p>
+        ) : null}
+        {state.next ? (
+          <Button onClick={() => void loadMore()} disabled={state.more === "loading"}>
+            {state.more === "loading" ? "Loading…" : state.more === "error" ? "Retry" : "Load more"}
+          </Button>
+        ) : null}
+      </div>
+    );
+  }
 }

@@ -25,8 +25,8 @@ func TestMigrationsUpDownUp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first migration up: %v", err)
 	}
-	assertMigrationResults(t, firstUp, []migrationResultWant{{version: 1, direction: "up"}, {version: 2, direction: "up"}, {version: 3, direction: "up"}, {version: 4, direction: "up"}, {version: 5, direction: "up"}, {version: 6, direction: "up"}, {version: 7, direction: "up"}, {version: 8, direction: "up"}, {version: 9, direction: "up"}, {version: 10, direction: "up"}, {version: 11, direction: "up"}, {version: 12, direction: "up"}, {version: 13, direction: "up"}, {version: 14, direction: "up"}, {version: 15, direction: "up"}, {version: 16, direction: "up"}, {version: 17, direction: "up"}, {version: 18, direction: "up"}, {version: 19, direction: "up"}, {version: 20, direction: "up"}, {version: 21, direction: "up"}, {version: 22, direction: "up"}, {version: 23, direction: "up"}, {version: 24, direction: "up"}, {version: 25, direction: "up"}, {version: 26, direction: "up"}, {version: 27, direction: "up"}})
-	assertMigrationStates(t, ctx, database.DB, map[int64]string{1: "applied", 2: "applied", 3: "applied", 4: "applied", 5: "applied", 6: "applied", 7: "applied", 8: "applied", 9: "applied", 10: "applied", 11: "applied", 12: "applied", 13: "applied", 14: "applied", 15: "applied", 16: "applied", 17: "applied", 18: "applied", 19: "applied", 20: "applied", 21: "applied", 22: "applied", 23: "applied", 24: "applied", 25: "applied", 26: "applied", 27: "applied"})
+	assertMigrationResults(t, firstUp, []migrationResultWant{{version: 1, direction: "up"}, {version: 2, direction: "up"}, {version: 3, direction: "up"}, {version: 4, direction: "up"}, {version: 5, direction: "up"}, {version: 6, direction: "up"}, {version: 7, direction: "up"}, {version: 8, direction: "up"}, {version: 9, direction: "up"}, {version: 10, direction: "up"}, {version: 11, direction: "up"}, {version: 12, direction: "up"}, {version: 13, direction: "up"}, {version: 14, direction: "up"}, {version: 15, direction: "up"}, {version: 16, direction: "up"}, {version: 17, direction: "up"}, {version: 18, direction: "up"}, {version: 19, direction: "up"}, {version: 20, direction: "up"}, {version: 21, direction: "up"}, {version: 22, direction: "up"}, {version: 23, direction: "up"}, {version: 24, direction: "up"}, {version: 25, direction: "up"}, {version: 26, direction: "up"}, {version: 27, direction: "up"}, {version: 28, direction: "up"}})
+	assertMigrationStates(t, ctx, database.DB, map[int64]string{1: "applied", 2: "applied", 3: "applied", 4: "applied", 5: "applied", 6: "applied", 7: "applied", 8: "applied", 9: "applied", 10: "applied", 11: "applied", 12: "applied", 13: "applied", 14: "applied", 15: "applied", 16: "applied", 17: "applied", 18: "applied", 19: "applied", 20: "applied", 21: "applied", 22: "applied", 23: "applied", 24: "applied", 25: "applied", 26: "applied", 27: "applied", 28: "applied"})
 	assertTableExists(t, ctx, database.DB, "sync_state", true)
 	assertTableExists(t, ctx, database.DB, "indexed_blocks", true)
 	assertTableExists(t, ctx, database.DB, "token_launches", true)
@@ -36,8 +36,8 @@ func TestMigrationsUpDownUp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("migration down: %v", err)
 	}
-	assertMigrationResults(t, down, []migrationResultWant{{version: 27, direction: "down"}})
-	assertMigrationStates(t, ctx, database.DB, map[int64]string{1: "applied", 2: "applied", 3: "applied", 4: "applied", 5: "applied", 6: "applied", 7: "applied", 8: "applied", 9: "applied", 10: "applied", 11: "applied", 12: "applied", 13: "applied", 14: "applied", 15: "applied", 16: "applied", 17: "applied", 18: "applied", 19: "applied", 20: "applied", 21: "applied", 22: "applied", 23: "applied", 24: "applied", 25: "applied", 26: "applied", 27: "pending"})
+	assertMigrationResults(t, down, []migrationResultWant{{version: 28, direction: "down"}})
+	assertMigrationStates(t, ctx, database.DB, map[int64]string{1: "applied", 2: "applied", 3: "applied", 4: "applied", 5: "applied", 6: "applied", 7: "applied", 8: "applied", 9: "applied", 10: "applied", 11: "applied", 12: "applied", 13: "applied", 14: "applied", 15: "applied", 16: "applied", 17: "applied", 18: "applied", 19: "applied", 20: "applied", 21: "applied", 22: "applied", 23: "applied", 24: "applied", 25: "applied", 26: "applied", 27: "applied", 28: "pending"})
 	assertTableExists(t, ctx, database.DB, "sync_state", true)
 	assertTableExists(t, ctx, database.DB, "indexed_blocks", true)
 	assertTableExists(t, ctx, database.DB, "token_launches", true)
@@ -47,8 +47,8 @@ func TestMigrationsUpDownUp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second migration up: %v", err)
 	}
-	assertMigrationResults(t, secondUp, []migrationResultWant{{version: 27, direction: "up"}})
-	assertMigrationStates(t, ctx, database.DB, map[int64]string{1: "applied", 2: "applied", 3: "applied", 4: "applied", 5: "applied", 6: "applied", 7: "applied", 8: "applied", 9: "applied", 10: "applied", 11: "applied", 12: "applied", 13: "applied", 14: "applied", 15: "applied", 16: "applied", 17: "applied", 18: "applied", 19: "applied", 20: "applied", 21: "applied", 22: "applied", 23: "applied", 24: "applied", 25: "applied", 26: "applied", 27: "applied"})
+	assertMigrationResults(t, secondUp, []migrationResultWant{{version: 28, direction: "up"}})
+	assertMigrationStates(t, ctx, database.DB, map[int64]string{1: "applied", 2: "applied", 3: "applied", 4: "applied", 5: "applied", 6: "applied", 7: "applied", 8: "applied", 9: "applied", 10: "applied", 11: "applied", 12: "applied", 13: "applied", 14: "applied", 15: "applied", 16: "applied", 17: "applied", 18: "applied", 19: "applied", 20: "applied", 21: "applied", 22: "applied", 23: "applied", 24: "applied", 25: "applied", 26: "applied", 27: "applied", 28: "applied"})
 	assertTableExists(t, ctx, database.DB, "sync_state", true)
 	assertTableExists(t, ctx, database.DB, "indexed_blocks", true)
 	assertTableExists(t, ctx, database.DB, "token_launches", true)
@@ -59,6 +59,9 @@ func TestMetadataLaunchIdentityMigrationQuarantinesLegacyRowsAndProtectsDown(t *
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("rollback Telegram links migration: %v", err)
+	}
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
 		t.Fatalf("rollback comment votes migration: %v", err)
 	}
@@ -164,9 +167,9 @@ func TestMetadataLaunchIdentityMigrationQuarantinesLegacyRowsAndProtectsDown(t *
 	`, chainID, token, txHash, imageContent, len(imageContent), imageHash[:], at); err != nil {
 		t.Fatal(err)
 	}
-	for range 17 {
+	for range 18 {
 		if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
-			t.Fatalf("rollback comment-votes/V4-swap-sender-index/engine-v2 projections/engine-v2/forum/inbox/windowed-leaderboard/social/claim-index/curve-index/wallet/feed/discovery/sort/index/UTC/price-change migrations before testing launch-identity guard: %v", err)
+			t.Fatalf("rollback Telegram-links/comment-votes/V4-swap-sender-index/engine-v2 projections/engine-v2/forum/inbox/windowed-leaderboard/social/claim-index/curve-index/wallet/feed/discovery/sort/index/UTC/price-change migrations before testing launch-identity guard: %v", err)
 		}
 	}
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err == nil || !strings.Contains(err.Error(), "multiple metadata or image rows exist") {

@@ -2050,6 +2050,106 @@
         ],
         "type": "object"
       },
+      "TelegramLinkBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/TelegramLinkBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "url": {
+            "description": "Telegram deep link; open it and press Start to connect the chat.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "expires_at"
+        ],
+        "type": "object"
+      },
+      "TelegramSettingsDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/TelegramSettingsDTO.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "graduations": {
+            "description": "Send graduations of watched tokens.",
+            "type": "boolean"
+          },
+          "large_trades": {
+            "description": "Send trades of at least min_trade_wei on watched tokens.",
+            "type": "boolean"
+          },
+          "min_trade_wei": {
+            "description": "Decimal wei, 0.5 ETH to 10,000 ETH.",
+            "maxLength": 80,
+            "type": "string"
+          }
+        },
+        "required": [
+          "graduations",
+          "large_trades",
+          "min_trade_wei"
+        ],
+        "type": "object"
+      },
+      "TelegramStatusBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/TelegramStatusBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "graduations": {
+            "type": "boolean"
+          },
+          "large_trades": {
+            "type": "boolean"
+          },
+          "linked": {
+            "type": "boolean"
+          },
+          "linked_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "min_trade_wei": {
+            "description": "Decimal wei; the default 0.5 ETH when not linked.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "linked",
+          "linked_at",
+          "graduations",
+          "large_trades",
+          "min_trade_wei"
+        ],
+        "type": "object"
+      },
       "TokenDTO": {
         "additionalProperties": false,
         "properties": {
@@ -4097,6 +4197,189 @@
         },
         "tags": [
           "profile"
+        ]
+      }
+    },
+    "/me/telegram": {
+      "delete": {
+        "operationId": "unlinkTelegram",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "telegram"
+        ]
+      },
+      "get": {
+        "operationId": "getTelegram",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramStatusBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "telegram"
+        ]
+      },
+      "put": {
+        "operationId": "updateTelegram",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelegramSettingsDTO"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramStatusBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "telegram"
+        ]
+      }
+    },
+    "/me/telegram/link": {
+      "post": {
+        "operationId": "createTelegramLink",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramLinkBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "telegram"
         ]
       }
     },

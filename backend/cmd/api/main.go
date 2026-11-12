@@ -39,6 +39,10 @@ func run() error {
 	if err := c.RequireAPI(); err != nil {
 		return err
 	}
+	telegramBot, err := config.TelegramBotUsername(os.Getenv)
+	if err != nil {
+		return err
+	}
 	verifier, err := privyauth.NewES256Verifier(c.PrivyAppID, c.PrivyVerificationKey)
 	if err != nil {
 		return err
@@ -93,6 +97,7 @@ func run() error {
 	server.RegisterProfileRoutes(apiserver.ProfileRoutes{Reader: storepostgres.ProfileReader{Pool: pool, DeploymentID: c.DeploymentID}, Verifier: verifier, ChainID: int64(c.ChainID)})
 	server.RegisterWatchlistRoutes(apiserver.WatchlistRoutes{Verifier: verifier, Store: storepostgres.WatchlistStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterInboxRoutes(apiserver.InboxRoutes{Verifier: verifier, Store: storepostgres.InboxStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
+	server.RegisterTelegramRoutes(apiserver.TelegramRoutes{Verifier: verifier, Store: storepostgres.TelegramStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, BotUsername: telegramBot})
 	server.RegisterForumRoutes(apiserver.ForumRoutes{Store: storepostgres.ForumStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterWatchersRoutes(apiserver.WatchersRoutes{Counter: storepostgres.WatchlistStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterCommentRoutes(apiserver.CommentRoutes{Verifier: verifier, Store: storepostgres.SocialStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})

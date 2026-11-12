@@ -37,6 +37,8 @@ sql:
             go_type: {type: "Hash"}
           - column: "token_images.sha256"
             go_type: {type: "Hash"}
+          - column: "telegram_link_codes.code_sha256"
+            go_type: {type: "Hash"}
           - column: "token_metadata.launch_tx_hash"
             go_type: {type: "Hash", pointer: true}
           - column: "token_images.launch_tx_hash"

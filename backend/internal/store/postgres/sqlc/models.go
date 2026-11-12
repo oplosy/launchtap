@@ -491,6 +491,28 @@ type SyncState struct {
 	FinalizedAt     pgtype.Timestamptz
 }
 
+type TelegramLink struct {
+	ChainID           int64
+	DeploymentID      string
+	PrivyDid          string
+	ChatID            int64
+	Graduations       bool
+	LargeTrades       bool
+	MinTradeWei       pgtype.Numeric
+	DeliveredBlock    int64
+	DeliveredTxIndex  int32
+	DeliveredLogIndex int32
+	LinkedAt          pgtype.Timestamptz
+}
+
+type TelegramLinkCode struct {
+	ChainID      int64
+	DeploymentID string
+	PrivyDid     string
+	CodeSha256   Hash
+	ExpiresAt    pgtype.Timestamptz
+}
+
 type Token struct {
 	ChainID                  int64
 	TokenAddress             Address

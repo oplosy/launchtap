@@ -228,6 +228,7 @@ below explains this expected state.
 | `backend/cmd/api/`                                                                                      | HTTP API process                                                                      |
 | `backend/cmd/indexer/`                                                                                  | Chain ingestion, canonical ledger, and projection worker process                      |
 | `backend/cmd/migrate/`                                                                                  | Explicit PostgreSQL migration runner                                                  |
+| `backend/cmd/telegram/`                                                                                 | Opt-in Telegram alert bot (one per deployment)                                                  |
 | `backend/internal/chain/`                                                                               | RPC, deployment verification, discovery, ABI decoding                                 |
 | `backend/internal/curve/`                                                                               | Stdlib-only deterministic Go mirror and vector tests                                  |
 | `backend/internal/indexer/`, `ledger/`, `launch/`, `trading/`, `holder/`, `token/`, `candle/`, `stats/` | Ingestion loop, canonical domain events, and feature projections/aggregation          |
@@ -285,6 +286,7 @@ contract is [`backend/openapi/v1.json`](backend/openapi/v1.json).
 | `GET /profile`                                         | Authenticated wallet-linked profile and claim/refund summary                            |
 | `GET`, `PUT /tokens/{token}/metadata`                  | Public metadata read; creator-authorized, revision-checked replacement                  |
 | `GET`, `PUT /tokens/{token}/image`                     | Public image read; creator-authorized image replacement                                 |
+| `GET`, `PUT`, `DELETE /me/telegram`, `POST /me/telegram/link` | Authenticated Telegram alert link, settings and unlink                           |
 | `GET /healthz`, `/readyz`, `/v1/healthz`, `/v1/readyz` | Process liveness and readiness; see [Operations](#operations-health-and-reorg-recovery) |
 
 ### Not implemented or not release-enabled
@@ -485,6 +487,9 @@ requires `DATABASE_URL`.
 | `INDEXER_WORKER_ID`              | `indexer-1` in example             | Required non-empty identity for the indexer writer process                                          |
 | `INDEXER_CONFIRMATIONS`          | Blank                              | Optional local-only finality override; do not use as production finality or on a non-local manifest |
 | `ETH_USD_SOURCE`                 | Blank                              | Configuration placeholder only; provider runtime adapter is not implemented                         |
+| `TELEGRAM_BOT_USERNAME`          | Blank                              | Telegram alert bot username (no `@`); blank turns the API's `/me/telegram` routes off (503)         |
+| `TELEGRAM_BOT_TOKEN`             | Blank                              | `cmd/telegram` only; BotFather token, a secret kept in the backend env file                         |
+| `TELEGRAM_WEB_ORIGIN`            | Blank                              | `cmd/telegram` only; public web origin for alert links (https, or http on localhost)                |
 
 Both API and indexer also accept `DEPLOYMENT_MANIFEST_PATH` as an optional overlay to select an
 explicit generated manifest; it is not part of `.env.example`. The E2E harness supplies its
