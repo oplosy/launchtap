@@ -1,5 +1,6 @@
-// Command backfill-swap-sender fills pool_swaps.tx_from for swaps whose sender lookup failed (or
-// that predate sender attribution) and marks the affected wallet positions for recompute.
+// Command backfill-swap-sender fills pool_swaps.tx_from and v4_swaps.tx_from for swaps whose
+// sender lookup failed (or that predate sender attribution) and marks the affected wallet
+// positions (v1) or token aggregates (V4) for recompute.
 //
 // It is one-off and resumable: tx_from IS NULL is the cursor, so a rerun only touches what is
 // still missing. Transactions the RPC cannot resolve are skipped for the run and the command

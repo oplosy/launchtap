@@ -15,18 +15,20 @@
 
 ## Active
 
-### V4 swap sender backfill
+### V4 swap sender backfill: index and positions
 
-- **Date:** 2026-11-11
-- **Reason:** scope decision (Plan v2-B Task 7 wired V4 swaps into the live sender lookup only)
-- **Where it stopped:** The engine attaches `tx_from` to every `V4Swap` through the same batched
-  `SenderSource` lookup and miss counter as v1 pool swaps. A missed lookup stores the V4 swap with
-  a NULL `tx_from`, and nothing retries it: `internal/swapbackfill` only scans `pool_swaps`.
-- **Related files:** `backend/internal/swapbackfill/`, `backend/internal/indexer/engine.go`
-  (`attachSenders`), `v4_swaps.tx_from` in migration `00024_engine_v2_ledger.sql`
-- **Resume (next step):** Extend the backfill to `v4_swaps` rows with NULL `tx_from` once their
-  block is safe, and add the matching position-dirty mark when Task 9 introduces V4 positions.
-  Until then the "retries them once their block is safe" warning text is true for v1 swaps only.
+- **Date:** 2026-11-12
+- **Reason:** scope decision (the backfill itself is done; these need a migration or V4 positions)
+- **Where it stopped:** `internal/swapbackfill` now fills NULL `tx_from` on `v4_swaps` too and
+  re-marks the graduated token's aggregate. Open: `v4_swaps` has no partial
+  `tx_from IS NULL` index (the v1 side has `pool_swaps_tx_from_null_idx`), so the scheduler's
+  per-pass count scans `v4_swaps`; and no position-dirty mark exists for V4 swaps because V4
+  positions are not projected.
+- **Related files:** `backend/internal/store/postgres/queries/projections.sql`
+  (`CountUnattributedPoolSwaps`), `backend/internal/store/postgres/swap_sender_backfill.go`
+- **Resume (next step):** add the index in the next schema migration (the down-migration tests
+  that expect the 00024/00025 guards on the first `down` need one extra step), and add the V4
+  position mark together with the V4 position projection (Engine v2 backend known limitations).
 - **Pitfalls / notes:** The V4 `Swap.sender` is the router; never use it as the trader (pre-flight R4).
 
 ### P0-A external inputs: CoinGecko key and market-link identifiers
@@ -197,6 +199,14 @@
   remove that once the backend projects real values.
 
 ## Done
+
+### V4 swap sender backfill
+
+- **Date:** 2026-11-12
+- **What closed:** the sender backfill (indexer scheduler and `cmd/backfill-swap-sender`) lists,
+  counts and fills NULL-sender `v4_swaps` with the same keyset walk as v1 pool swaps; each
+  filled V4 swap re-marks its graduated token's aggregate, as live ingest does. The indexer's
+  "retries them once their block is safe" warning is now true for V4 swaps too.
 
 ### Plan v2-C Task 9 follow-ups: persisted creator panel state
 

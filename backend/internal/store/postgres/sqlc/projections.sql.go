@@ -514,11 +514,14 @@ func (q *Queries) CompletePositionDirty(ctx context.Context, arg CompletePositio
 }
 
 const countUnattributedPoolSwaps = `-- name: CountUnattributedPoolSwaps :one
-SELECT count(*)::bigint AS pending
-FROM pool_swaps
-WHERE chain_id = $1::bigint
-  AND tx_from IS NULL
-  AND block_number <= $2::bigint
+SELECT (
+    (SELECT count(*) FROM pool_swaps AS swap
+     WHERE swap.chain_id = $1::bigint AND swap.tx_from IS NULL
+       AND swap.block_number <= $2::bigint)
+  + (SELECT count(*) FROM v4_swaps AS swap
+     WHERE swap.chain_id = $1::bigint AND swap.tx_from IS NULL
+       AND swap.block_number <= $2::bigint)
+)::bigint AS pending
 `
 
 type CountUnattributedPoolSwapsParams struct {
@@ -526,8 +529,9 @@ type CountUnattributedPoolSwapsParams struct {
 	ThroughBlock int64
 }
 
-// Pool swaps still without a sender at or below through_block (the indexer's safe head); served
-// by the partial index pool_swaps_tx_from_null_idx.
+// v1 pool swaps and V4 swaps still without a sender at or below through_block (the indexer's
+// safe head). The v1 side is served by the partial index pool_swaps_tx_from_null_idx; the V4
+// side has no such index yet (backlog.md).
 func (q *Queries) CountUnattributedPoolSwaps(ctx context.Context, arg CountUnattributedPoolSwapsParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countUnattributedPoolSwaps, arg.ChainID, arg.ThroughBlock)
 	var pending int64
@@ -805,14 +809,23 @@ func (q *Queries) ListSeedTokens(ctx context.Context, arg ListSeedTokensParams) 
 }
 
 const listUnattributedPoolSwaps = `-- name: ListUnattributedPoolSwaps :many
-SELECT tx_hash, block_number
-FROM pool_swaps
-WHERE chain_id = $1::bigint
-  AND tx_from IS NULL
-  AND block_number <= $2::bigint
-  AND (block_number, tx_hash) > ($3::bigint, $4::bytea)
-GROUP BY tx_hash, block_number
-ORDER BY block_number, tx_hash
+SELECT unattributed.tx_hash, unattributed.block_number
+FROM (
+    SELECT swap.tx_hash, swap.block_number
+    FROM pool_swaps AS swap
+    WHERE swap.chain_id = $1::bigint
+      AND swap.tx_from IS NULL
+      AND swap.block_number <= $2::bigint
+      AND (swap.block_number, swap.tx_hash) > ($3::bigint, $4::bytea)
+    UNION
+    SELECT swap.tx_hash, swap.block_number
+    FROM v4_swaps AS swap
+    WHERE swap.chain_id = $1::bigint
+      AND swap.tx_from IS NULL
+      AND swap.block_number <= $2::bigint
+      AND (swap.block_number, swap.tx_hash) > ($3::bigint, $4::bytea)
+) AS unattributed
+ORDER BY unattributed.block_number, unattributed.tx_hash
 LIMIT $5::int
 `
 
@@ -829,9 +842,9 @@ type ListUnattributedPoolSwapsRow struct {
 	BlockNumber int64
 }
 
-// Backfill cursor: distinct transactions that still have a pool swap without a sender, in
-// blocks at or below through_block, in (block_number, tx_hash) order, strictly after the keyset
-// position (after_block, after_hash).
+// Backfill cursor: distinct transactions that still have a v1 pool swap or a V4 swap without a
+// sender, in blocks at or below through_block, in (block_number, tx_hash) order, strictly after
+// the keyset position (after_block, after_hash). UNION merges a transaction present in both.
 func (q *Queries) ListUnattributedPoolSwaps(ctx context.Context, arg ListUnattributedPoolSwapsParams) ([]ListUnattributedPoolSwapsRow, error) {
 	rows, err := q.db.Query(ctx, listUnattributedPoolSwaps,
 		arg.ChainID,
@@ -1470,6 +1483,42 @@ func (q *Queries) SetPoolSwapTxFrom(ctx context.Context, arg SetPoolSwapTxFromPa
 			return nil, err
 		}
 		items = append(items, pair_address)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setV4SwapTxFrom = `-- name: SetV4SwapTxFrom :many
+UPDATE v4_swaps SET tx_from = $1::bytea
+WHERE chain_id = $2::bigint
+  AND tx_hash = $3::bytea
+  AND tx_from IS NULL
+RETURNING pool_id
+`
+
+type SetV4SwapTxFromParams struct {
+	TxFrom  []byte
+	ChainID int64
+	TxHash  []byte
+}
+
+// The V4 side of SetPoolSwapTxFrom: fills the sender of every still-unattributed V4 swap of the
+// transaction and returns the pools whose graduated token needs an aggregate re-mark.
+func (q *Queries) SetV4SwapTxFrom(ctx context.Context, arg SetV4SwapTxFromParams) ([]Hash, error) {
+	rows, err := q.db.Query(ctx, setV4SwapTxFrom, arg.TxFrom, arg.ChainID, arg.TxHash)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Hash{}
+	for rows.Next() {
+		var pool_id Hash
+		if err := rows.Scan(&pool_id); err != nil {
+			return nil, err
+		}
+		items = append(items, pool_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

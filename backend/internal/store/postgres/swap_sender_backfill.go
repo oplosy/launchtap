@@ -8,7 +8,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// UnattributedSwapTx is one transaction that still has a pool swap without a known sender.
+// UnattributedSwapTx is one transaction that still has a v1 pool swap or a V4 swap without a
+// known sender.
 type UnattributedSwapTx struct {
 	TxHash      common.Hash
 	BlockNumber int64
@@ -31,7 +32,8 @@ func (adapter *Adapter) ListUnattributedSwapTxs(ctx context.Context, chainID, th
 	return result, nil
 }
 
-// CountUnattributedSwaps counts the chain's pool swaps without a sender at or below throughBlock.
+// CountUnattributedSwaps counts the chain's v1 pool swaps and V4 swaps without a sender at or
+// below throughBlock.
 func (adapter *Adapter) CountUnattributedSwaps(ctx context.Context, chainID, throughBlock int64) (int64, error) {
 	pending, err := adapter.queries.CountUnattributedPoolSwaps(ctx, sqlc.CountUnattributedPoolSwapsParams{ChainID: chainID, ThroughBlock: throughBlock})
 	if err != nil {
@@ -40,9 +42,11 @@ func (adapter *Adapter) CountUnattributedSwaps(ctx context.Context, chainID, thr
 	return pending, nil
 }
 
-// AttributeSwapSender fills tx_from on every still-unattributed swap of txHash and marks the
-// affected (sender, token) positions dirty. It returns the number of swaps updated; a swap that
-// already has a sender is left alone, so a rerun updates nothing.
+// AttributeSwapSender fills tx_from on every still-unattributed v1 pool swap and V4 swap of
+// txHash. A v1 swap marks its (sender, token) position dirty; a V4 swap re-marks its graduated
+// token's aggregate, as IngestV4Swap does (V4 positions are not projected yet). It returns the
+// number of swaps updated; a swap that already has a sender is left alone, so a rerun updates
+// nothing.
 func (adapter *Adapter) AttributeSwapSender(ctx context.Context, chainID int64, txHash common.Hash, sender common.Address) (int, error) {
 	pairs, err := adapter.queries.SetPoolSwapTxFrom(ctx, sqlc.SetPoolSwapTxFromParams{ChainID: chainID, TxHash: txHash[:], TxFrom: sender[:]})
 	if err != nil {
@@ -58,7 +62,21 @@ func (adapter *Adapter) AttributeSwapSender(ctx context.Context, chainID int64, 
 			return 0, fmt.Errorf("mark pool swap position dirty: %w", err)
 		}
 	}
-	return len(pairs), nil
+	pools, err := adapter.queries.SetV4SwapTxFrom(ctx, sqlc.SetV4SwapTxFromParams{ChainID: chainID, TxHash: txHash[:], TxFrom: sender[:]})
+	if err != nil {
+		return 0, fmt.Errorf("set V4 swap sender: %w", err)
+	}
+	markedPools := make(map[sqlc.Hash]struct{}, len(pools))
+	for _, poolID := range pools {
+		if _, done := markedPools[poolID]; done {
+			continue
+		}
+		markedPools[poolID] = struct{}{}
+		if err := adapter.queries.MarkV4PoolTokenDirty(ctx, sqlc.MarkV4PoolTokenDirtyParams{ChainID: chainID, PoolID: &poolID}); err != nil {
+			return 0, fmt.Errorf("mark V4 pool token dirty: %w", err)
+		}
+	}
+	return len(pairs) + len(pools), nil
 }
 
 // PositionSeed counts what SeedPositionDirty found and wrote.

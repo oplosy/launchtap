@@ -649,27 +649,40 @@ ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregat
 SELECT now()::timestamptz AS now;
 
 -- name: ListUnattributedPoolSwaps :many
--- Backfill cursor: distinct transactions that still have a pool swap without a sender, in
--- blocks at or below through_block, in (block_number, tx_hash) order, strictly after the keyset
--- position (after_block, after_hash).
-SELECT tx_hash, block_number
-FROM pool_swaps
-WHERE chain_id = sqlc.arg(chain_id)::bigint
-  AND tx_from IS NULL
-  AND block_number <= sqlc.arg(through_block)::bigint
-  AND (block_number, tx_hash) > (sqlc.arg(after_block)::bigint, sqlc.arg(after_hash)::bytea)
-GROUP BY tx_hash, block_number
-ORDER BY block_number, tx_hash
+-- Backfill cursor: distinct transactions that still have a v1 pool swap or a V4 swap without a
+-- sender, in blocks at or below through_block, in (block_number, tx_hash) order, strictly after
+-- the keyset position (after_block, after_hash). UNION merges a transaction present in both.
+SELECT unattributed.tx_hash, unattributed.block_number
+FROM (
+    SELECT swap.tx_hash, swap.block_number
+    FROM pool_swaps AS swap
+    WHERE swap.chain_id = sqlc.arg(chain_id)::bigint
+      AND swap.tx_from IS NULL
+      AND swap.block_number <= sqlc.arg(through_block)::bigint
+      AND (swap.block_number, swap.tx_hash) > (sqlc.arg(after_block)::bigint, sqlc.arg(after_hash)::bytea)
+    UNION
+    SELECT swap.tx_hash, swap.block_number
+    FROM v4_swaps AS swap
+    WHERE swap.chain_id = sqlc.arg(chain_id)::bigint
+      AND swap.tx_from IS NULL
+      AND swap.block_number <= sqlc.arg(through_block)::bigint
+      AND (swap.block_number, swap.tx_hash) > (sqlc.arg(after_block)::bigint, sqlc.arg(after_hash)::bytea)
+) AS unattributed
+ORDER BY unattributed.block_number, unattributed.tx_hash
 LIMIT sqlc.arg(row_limit)::int;
 
 -- name: CountUnattributedPoolSwaps :one
--- Pool swaps still without a sender at or below through_block (the indexer's safe head); served
--- by the partial index pool_swaps_tx_from_null_idx.
-SELECT count(*)::bigint AS pending
-FROM pool_swaps
-WHERE chain_id = sqlc.arg(chain_id)::bigint
-  AND tx_from IS NULL
-  AND block_number <= sqlc.arg(through_block)::bigint;
+-- v1 pool swaps and V4 swaps still without a sender at or below through_block (the indexer's
+-- safe head). The v1 side is served by the partial index pool_swaps_tx_from_null_idx; the V4
+-- side has no such index yet (backlog.md).
+SELECT (
+    (SELECT count(*) FROM pool_swaps AS swap
+     WHERE swap.chain_id = sqlc.arg(chain_id)::bigint AND swap.tx_from IS NULL
+       AND swap.block_number <= sqlc.arg(through_block)::bigint)
+  + (SELECT count(*) FROM v4_swaps AS swap
+     WHERE swap.chain_id = sqlc.arg(chain_id)::bigint AND swap.tx_from IS NULL
+       AND swap.block_number <= sqlc.arg(through_block)::bigint)
+)::bigint AS pending;
 
 -- name: SetPoolSwapTxFrom :many
 -- Fills the sender of every still-unattributed swap in one transaction and returns the pairs
@@ -679,6 +692,15 @@ WHERE chain_id = sqlc.arg(chain_id)::bigint
   AND tx_hash = sqlc.arg(tx_hash)::bytea
   AND tx_from IS NULL
 RETURNING pair_address;
+
+-- name: SetV4SwapTxFrom :many
+-- The V4 side of SetPoolSwapTxFrom: fills the sender of every still-unattributed V4 swap of the
+-- transaction and returns the pools whose graduated token needs an aggregate re-mark.
+UPDATE v4_swaps SET tx_from = sqlc.arg(tx_from)::bytea
+WHERE chain_id = sqlc.arg(chain_id)::bigint
+  AND tx_hash = sqlc.arg(tx_hash)::bytea
+  AND tx_from IS NULL
+RETURNING pool_id;
 
 -- name: ListSeedTokens :many
 -- Keyset page of the chain's launched tokens for the chunked position seed. Every ledger row
