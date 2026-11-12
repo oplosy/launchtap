@@ -287,12 +287,11 @@ func TestPriceChangeBigintDownMigrationRejectsLossyNarrowing(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	for _, name := range []string{"forum reads", "notification inbox", "windowed leaderboard", "social", "position dirty claim index", "tokens curve index", "wallet positions", "live feed", "market discovery", "token sort metric", "read-path index", "UTC rebuild"} {
+	for _, name := range []string{"V4 swap sender index", "engine v2 projections", "engine v2 ledger", "forum reads", "notification inbox", "windowed leaderboard", "social", "position dirty claim index", "tokens curve index", "wallet positions", "live feed", "market discovery", "token sort metric", "read-path index", "UTC rebuild"} {
 		if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
 			t.Fatalf("rollback %s migration: %v", name, err)
 		}
 	}
-	pool := openPool(t, ctx, database.URL)
 
 	const chainID int64 = 48009
 	now := time.Now().UTC().Truncate(time.Second)
@@ -303,7 +302,13 @@ func TestPriceChangeBigintDownMigrationRejectsLossyNarrowing(t *testing.T) {
 		token: token, curve: curve, pair: pair, weth: weth,
 	})
 	callRebuild(t, ctx, database.DB, chainID, token)
-	if err := storepostgres.NewAdapter(pool).RecomputeTokenStats(ctx, chainID, common.Address(token)); err != nil {
+	// The current RecomputeTokenStats reads later schema (v4_pool_managers), so the row is
+	// written directly against the version-11 schema.
+	if _, err := database.DB.ExecContext(ctx, `
+		INSERT INTO token_stats (chain_id, token_address, spot_price_eth_wad, market_cap_eth_wad, fdv_eth_wad,
+			liquidity_eth_wad, ath_price_eth_wad, ath_at, updated_at)
+		VALUES ($1, $2, 1, 1, 1, 1, 1, now(), now())
+	`, chainID, token); err != nil {
 		t.Fatalf("create token stats row: %v", err)
 	}
 	if _, err := database.DB.ExecContext(ctx, `

@@ -47,6 +47,7 @@ import { isTokenEventForAddress } from "./sse-scope";
 import { TradingPanel } from "@/transactions-panel";
 import { MetadataEditor } from "./metadata-editor";
 import { PRICE_FLASH_MS, priceDirection } from "./price-flash";
+import { v2Facts, type V2Facts } from "./v2-facts";
 
 type TokenDetailProps = { address: `0x${string}` };
 type Tab = "trades" | "holders";
@@ -520,6 +521,8 @@ export function TokenDetail({
   if (tokenError || !token) return <TokenLoadError onRetry={() => window.location.reload()} />;
 
   const progress = Math.max(0, Math.min(100, token.graduation_progress_bps / 100));
+  const facts = v2Facts(token);
+  const liquidityIndexed = facts?.liquidityIndexed ?? true;
   const pagesItems: unknown[] = [];
   for (const page of pages) {
     for (const item of page.items ?? []) pagesItems.push(item);
@@ -684,18 +687,26 @@ export function TokenDetail({
                 value={amount(token.volume_24h_eth)}
                 eth={token.volume_24h_eth}
               />
-              <Metric
-                label="Liquidity"
-                value={amount(token.liquidity_eth)}
-                eth={token.liquidity_eth}
-              />
+              {liquidityIndexed ? (
+                <Metric
+                  label="Liquidity"
+                  value={amount(token.liquidity_eth)}
+                  eth={token.liquidity_eth}
+                />
+              ) : (
+                <Metric label="Pool liquidity" value="Not indexed yet" />
+              )}
               <Metric label="Holders" value={token.holder_count.toLocaleString("en-US")} />
-              <Metric
-                label="ETH reserve"
-                value={amount(token.eth_reserve)}
-                eth={token.eth_reserve}
-              />
-              <Metric label="Token reserve" value={safeTokenAmount(token.token_reserve)} />
+              {liquidityIndexed ? (
+                <>
+                  <Metric
+                    label="ETH reserve"
+                    value={amount(token.eth_reserve)}
+                    eth={token.eth_reserve}
+                  />
+                  <Metric label="Token reserve" value={safeTokenAmount(token.token_reserve)} />
+                </>
+              ) : null}
             </dl>
             <div
               className="graduation-progress"
@@ -715,6 +726,8 @@ export function TokenDetail({
               </p>
             </div>
           </section>
+
+          {facts ? <V2FactsPanel facts={facts} configuration={configuration} /> : null}
 
           <section className="token-history-panel" aria-labelledby="history-title">
             <div className="token-section-head">
@@ -855,6 +868,9 @@ export function TokenDetail({
                 phase: token.phase,
                 name: token.name,
                 symbol: token.symbol,
+                engineVersion: token.engine_version,
+                antiSnipeEndsAt: token.v2?.anti_snipe.ends_at ?? null,
+                v2PoolId: token.v2?.pool?.pool_id ?? null,
               }}
             />
             <p className="token-aside-note">
@@ -921,6 +937,88 @@ function safeTokenAmount(raw: string) {
 function safeMarketValue(raw: string) {
   return formatSignificantPrice(raw) ?? "Unavailable";
 }
+/** Engine-2 launch, pool and fee recipient facts (Plan v2-C Task 8), from the indexed API. */
+function V2FactsPanel({
+  facts,
+  configuration,
+}: {
+  facts: V2Facts;
+  configuration: Parameters<typeof addressExplorerUrl>[0];
+}) {
+  const link = (address: string) => {
+    const href = addressExplorerUrl(configuration, address as `0x${string}`);
+    return href ? (
+      <a className="mono" href={href} target="_blank" rel="noreferrer" title={address}>
+        {address}
+      </a>
+    ) : (
+      <span className="mono" title={address}>
+        {address}
+      </span>
+    );
+  };
+  return (
+    <section className="token-v2-facts" aria-labelledby="v2-facts-title">
+      <div className="token-section-head">
+        <h2 id="v2-facts-title">Engine v2</h2>
+      </div>
+      <dl className="token-summary-grid">
+        <div>
+          <dt>Anti-snipe tax</dt>
+          <dd title={facts.antiSnipe}>{facts.antiSnipe}</dd>
+        </div>
+        <div>
+          <dt>Tax ends</dt>
+          <dd>
+            <time dateTime={facts.antiSnipeEndsAt}>{facts.antiSnipeEndsAt}</time>
+          </dd>
+        </div>
+        <div>
+          <dt>Pool fee creator share</dt>
+          <dd>{facts.lpCreatorShare}</dd>
+        </div>
+        <div>
+          <dt>Fee recipient</dt>
+          <dd>{link(facts.feeRecipient)}</dd>
+        </div>
+        {facts.pendingFeeRecipient ? (
+          <div>
+            <dt>Pending recipient</dt>
+            <dd>{link(facts.pendingFeeRecipient)}</dd>
+          </div>
+        ) : null}
+        {facts.pool ? (
+          <>
+            <div>
+              <dt>Pool id</dt>
+              <dd className="mono" title={facts.pool.poolId}>
+                {facts.pool.poolId}
+              </dd>
+            </div>
+            <div>
+              <dt>Pool hook</dt>
+              <dd>{link(facts.pool.hook)}</dd>
+            </div>
+          </>
+        ) : null}
+        {facts.lockerOwed.map((owed) => (
+          <div key={owed.account}>
+            <dt title={owed.account}>Locker owes {owed.account.slice(0, 10)}…</dt>
+            <dd>
+              {amount(owed.eth)} + {safeTokenAmount(owed.token)} tokens
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {facts.pool ? (
+        <p className="token-aside-note">
+          Pool liquidity is not indexed yet; price comes from the indexed spot price.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function Metric({ label, value, eth }: { label: string; value: string; eth?: string }) {
   return (
     <div>

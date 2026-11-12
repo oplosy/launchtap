@@ -12,6 +12,9 @@ import (
 
 type Querier interface {
 	AffectedTokensAbove(ctx context.Context, arg AffectedTokensAboveParams) ([]Address, error)
+	// Applies one event's owed-balance deltas (creator_fee_deltas). Callers apply it only when the
+	// ledger row was newly inserted, so a replay never double-counts.
+	ApplyCreatorFeeDeltas(ctx context.Context, arg ApplyCreatorFeeDeltasParams) error
 	// The pair's opening Sync is emitted by pair.mint before the curve emits Graduated, so the
 	// per-Sync projection above sees the token still in the curve phase. Graduation therefore
 	// re-applies the pair's latest Sync, matching rebuild_token_projections.
@@ -22,6 +25,11 @@ type Querier interface {
 	ApplyTokenLaunchProjection(ctx context.Context, arg ApplyTokenLaunchProjectionParams) error
 	ApplyTradeReserveProjection(ctx context.Context, arg ApplyTradeReserveProjectionParams) error
 	ApplyTransferProjection(ctx context.Context, arg ApplyTransferProjectionParams) (pgtype.Bool, error)
+	// The V4 pool registry entry of an engine-2 graduation; rebuild_token_projections writes the same row.
+	ApplyV4PoolProjection(ctx context.Context, arg ApplyV4PoolProjectionParams) error
+	// The pool price after an engine-2 graduation or V4 swap. It replaces the curve row and any earlier
+	// pool price, so an out-of-order replay never moves the price backwards.
+	ApplyV4ReserveProjection(ctx context.Context, arg ApplyV4ReserveProjectionParams) error
 	// Creates the user row if needed. An existing ban keeps its original time and reason.
 	BanSocialUser(ctx context.Context, arg BanSocialUserParams) error
 	ClaimAggregationDirty(ctx context.Context, arg ClaimAggregationDirtyParams) ([]ClaimAggregationDirtyRow, error)
@@ -43,8 +51,9 @@ type Querier interface {
 	CompleteIndexerReorg(ctx context.Context, reorgID int64) (CompleteIndexerReorgRow, error)
 	CompletePositionDirty(ctx context.Context, arg CompletePositionDirtyParams) (int64, error)
 	CountTokenWatchers(ctx context.Context, arg CountTokenWatchersParams) (int64, error)
-	// Pool swaps still without a sender at or below through_block (the indexer's safe head); served
-	// by the partial index pool_swaps_tx_from_null_idx.
+	// v1 pool swaps and V4 swaps still without a sender at or below through_block (the indexer's
+	// safe head). The v1 side is served by the partial index pool_swaps_tx_from_null_idx; the V4
+	// side by v4_swaps_tx_from_null_idx.
 	CountUnattributedPoolSwaps(ctx context.Context, arg CountUnattributedPoolSwapsParams) (int64, error)
 	// Unread events after the owner's read position, counted up to 100.
 	CountUnreadInboxEvents(ctx context.Context, arg CountUnreadInboxEventsParams) (int64, error)
@@ -56,12 +65,16 @@ type Querier interface {
 	DatabaseNow(ctx context.Context) (pgtype.Timestamptz, error)
 	DeleteCreatorFeeClaimsAbove(ctx context.Context, arg DeleteCreatorFeeClaimsAboveParams) (int64, error)
 	DeleteEngineConfigurationsAbove(ctx context.Context, arg DeleteEngineConfigurationsAboveParams) (int64, error)
+	DeleteFeeRecipientAcceptancesAbove(ctx context.Context, arg DeleteFeeRecipientAcceptancesAboveParams) (int64, error)
+	DeleteFeeRecipientProposalsAbove(ctx context.Context, arg DeleteFeeRecipientProposalsAboveParams) (int64, error)
 	DeleteFutureDefaultsConfigurationsAbove(ctx context.Context, arg DeleteFutureDefaultsConfigurationsAboveParams) (int64, error)
 	DeleteFutureTreasuryConfigurationsAbove(ctx context.Context, arg DeleteFutureTreasuryConfigurationsAboveParams) (int64, error)
 	DeleteGraduationsAbove(ctx context.Context, arg DeleteGraduationsAboveParams) (int64, error)
 	DeleteIndexedBlocksAbove(ctx context.Context, arg DeleteIndexedBlocksAboveParams) (int64, error)
 	DeleteLaunchFeeClaimsAbove(ctx context.Context, arg DeleteLaunchFeeClaimsAboveParams) (int64, error)
 	DeleteLaunchPauseEventsAbove(ctx context.Context, arg DeleteLaunchPauseEventsAboveParams) (int64, error)
+	DeleteLpFeeClaimsAbove(ctx context.Context, arg DeleteLpFeeClaimsAboveParams) (int64, error)
+	DeleteLpFeeCollectionsAbove(ctx context.Context, arg DeleteLpFeeCollectionsAboveParams) (int64, error)
 	DeletePoolBurnsAbove(ctx context.Context, arg DeletePoolBurnsAboveParams) (int64, error)
 	DeletePoolMintsAbove(ctx context.Context, arg DeletePoolMintsAboveParams) (int64, error)
 	DeletePoolSwapsAbove(ctx context.Context, arg DeletePoolSwapsAboveParams) (int64, error)
@@ -69,16 +82,27 @@ type Querier interface {
 	DeleteProtocolFeeClaimsAbove(ctx context.Context, arg DeleteProtocolFeeClaimsAboveParams) (int64, error)
 	DeleteRefundClaimsAbove(ctx context.Context, arg DeleteRefundClaimsAboveParams) (int64, error)
 	DeleteRefundCreditsAbove(ctx context.Context, arg DeleteRefundCreditsAboveParams) (int64, error)
+	// Engine-2 ledger. V4 pool rows reference graduations, so they are deleted before them.
+	DeleteSnipeTaxClaimsAbove(ctx context.Context, arg DeleteSnipeTaxClaimsAboveParams) (int64, error)
 	DeleteTokenLaunchesAbove(ctx context.Context, arg DeleteTokenLaunchesAboveParams) (int64, error)
 	DeleteTokenStats(ctx context.Context, arg DeleteTokenStatsParams) (int64, error)
 	DeleteTradesAbove(ctx context.Context, arg DeleteTradesAboveParams) (int64, error)
 	DeleteTradingPauseEventsAbove(ctx context.Context, arg DeleteTradingPauseEventsAboveParams) (int64, error)
 	DeleteTransfersAbove(ctx context.Context, arg DeleteTransfersAboveParams) (int64, error)
+	DeleteV4LiquidityChangesAbove(ctx context.Context, arg DeleteV4LiquidityChangesAboveParams) (int64, error)
+	DeleteV4PoolInitializationsAbove(ctx context.Context, arg DeleteV4PoolInitializationsAboveParams) (int64, error)
+	DeleteV4SwapsAbove(ctx context.Context, arg DeleteV4SwapsAboveParams) (int64, error)
 	DeleteWalletPosition(ctx context.Context, arg DeleteWalletPositionParams) error
 	DeleteWalletRealizedLegs(ctx context.Context, arg DeleteWalletRealizedLegsParams) error
 	DeleteWatchlistEntry(ctx context.Context, arg DeleteWatchlistEntryParams) (int64, error)
 	EngineConfigurationMatchesEvent(ctx context.Context, arg EngineConfigurationMatchesEventParams) (pgtype.Bool, error)
+	// Opens a zero balance row for every account one event moves. ApplyCreatorFeeDeltas then adds
+	// the deltas with an UPDATE: an upsert would check a claim's negative proposed row against the
+	// non-negative CHECKs before resolving the conflict.
+	EnsureCreatorFeeAccounts(ctx context.Context, arg EnsureCreatorFeeAccountsParams) error
 	EnsureSocialUser(ctx context.Context, arg EnsureSocialUserParams) error
+	FeeRecipientAcceptanceMatchesEvent(ctx context.Context, arg FeeRecipientAcceptanceMatchesEventParams) (pgtype.Bool, error)
+	FeeRecipientProposalMatchesEvent(ctx context.Context, arg FeeRecipientProposalMatchesEventParams) (pgtype.Bool, error)
 	FindCommonAncestor(ctx context.Context, arg FindCommonAncestorParams) (FindCommonAncestorRow, error)
 	FutureDefaultsConfigurationMatchesEvent(ctx context.Context, arg FutureDefaultsConfigurationMatchesEventParams) (pgtype.Bool, error)
 	FutureTreasuryConfigurationMatchesEvent(ctx context.Context, arg FutureTreasuryConfigurationMatchesEventParams) (pgtype.Bool, error)
@@ -104,28 +128,39 @@ type Querier interface {
 	GetTokenImage(ctx context.Context, arg GetTokenImageParams) (GetTokenImageRow, error)
 	GetTokenMetadata(ctx context.Context, arg GetTokenMetadataParams) (GetTokenMetadataRow, error)
 	GetTokenQuoteState(ctx context.Context, arg GetTokenQuoteStateParams) (GetTokenQuoteStateRow, error)
+	// The engine-2 facts of a token. The fee recipient is the creator until the latest
+	// FeeRecipientAccepted; the pending recipient is the latest proposal unless a later acceptance
+	// consumed it or it was a cancellation (address zero).
+	GetTokenV2Facts(ctx context.Context, arg GetTokenV2FactsParams) (GetTokenV2FactsRow, error)
 	// Wallet page reads. A wallet with no activity has no wallet_totals row; the reader maps that to zeros.
 	GetWalletTotals(ctx context.Context, arg GetWalletTotalsParams) (GetWalletTotalsRow, error)
 	// The only username a wallet read may show: from public_wallet_usernames (published wallet of an
 	// unbanned user with a username).
 	GetWalletUsername(ctx context.Context, arg GetWalletUsernameParams) (string, error)
 	// Single source of the read-time position value (also used by ListWalletOpenPositions):
-	//   current_value = div(balance * eth_reserve, NULLIF(token_reserve, 0)), coalesced to 0
+	//   current_value = div(balance * eth_reserve, NULLIF(token_reserve, 0)), coalesced to 0; a
+	//   graduated engine-2 token ('v4' reserve) uses div(balance * v4_spot_price_wad, 1e18) instead.
 	// div() is exact truncating division; a missing token_reserves row or a zero token_reserve gives 0.
 	// unrealized PnL = current_value - remaining_cost, computed by the reader.
 	GetWalletValuation(ctx context.Context, arg GetWalletValuationParams) (GetWalletValuationRow, error)
 	GraduationMatchesEvent(ctx context.Context, arg GraduationMatchesEventParams) (pgtype.Bool, error)
+	GraduationV2MatchesEvent(ctx context.Context, arg GraduationV2MatchesEventParams) (pgtype.Bool, error)
 	HasCanonicalLaunch(ctx context.Context, arg HasCanonicalLaunchParams) (bool, error)
 	// The first hide wins: re-hiding keeps the original time and reason.
 	HideComment(ctx context.Context, arg HideCommentParams) error
 	InsertComment(ctx context.Context, arg InsertCommentParams) (TokenComment, error)
 	InsertCreatorFeeClaim(ctx context.Context, arg InsertCreatorFeeClaimParams) (int64, error)
 	InsertEngineConfiguration(ctx context.Context, arg InsertEngineConfigurationParams) (int64, error)
+	InsertFeeRecipientAcceptance(ctx context.Context, arg InsertFeeRecipientAcceptanceParams) (int64, error)
+	InsertFeeRecipientProposal(ctx context.Context, arg InsertFeeRecipientProposalParams) (int64, error)
 	InsertFutureDefaultsConfiguration(ctx context.Context, arg InsertFutureDefaultsConfigurationParams) (int64, error)
 	InsertFutureTreasuryConfiguration(ctx context.Context, arg InsertFutureTreasuryConfigurationParams) (int64, error)
 	InsertGraduation(ctx context.Context, arg InsertGraduationParams) (int64, error)
+	InsertGraduationV2(ctx context.Context, arg InsertGraduationV2Params) (int64, error)
 	InsertLaunchFeeClaim(ctx context.Context, arg InsertLaunchFeeClaimParams) (int64, error)
 	InsertLaunchPauseEvent(ctx context.Context, arg InsertLaunchPauseEventParams) (int64, error)
+	InsertLpFeeClaim(ctx context.Context, arg InsertLpFeeClaimParams) (int64, error)
+	InsertLpFeeCollection(ctx context.Context, arg InsertLpFeeCollectionParams) (int64, error)
 	InsertModerationAction(ctx context.Context, arg InsertModerationActionParams) error
 	InsertPoolBurn(ctx context.Context, arg InsertPoolBurnParams) (int64, error)
 	InsertPoolMint(ctx context.Context, arg InsertPoolMintParams) (int64, error)
@@ -135,10 +170,19 @@ type Querier interface {
 	InsertRefundClaim(ctx context.Context, arg InsertRefundClaimParams) (int64, error)
 	InsertRefundCredit(ctx context.Context, arg InsertRefundCreditParams) (int64, error)
 	InsertReport(ctx context.Context, arg InsertReportParams) (int64, error)
+	InsertSnipeTaxClaim(ctx context.Context, arg InsertSnipeTaxClaimParams) (int64, error)
 	InsertTokenLaunch(ctx context.Context, arg InsertTokenLaunchParams) (int64, error)
+	// Engine v2 (Plan v2-B Task 5). The v1 inserts above keep their exact v1 column set. A v2 row
+	// leaves the pair columns NULL and fills the v2 columns; the engine CHECKs and the deferred
+	// *_match_launch_engine triggers reject a row whose shape disagrees with its launch.
+	InsertTokenLaunchV2(ctx context.Context, arg InsertTokenLaunchV2Params) (int64, error)
 	InsertTrade(ctx context.Context, arg InsertTradeParams) (int64, error)
+	InsertTradeV2(ctx context.Context, arg InsertTradeV2Params) (int64, error)
 	InsertTradingPauseEvent(ctx context.Context, arg InsertTradingPauseEventParams) (int64, error)
 	InsertTransfer(ctx context.Context, arg InsertTransferParams) (int64, error)
+	InsertV4LiquidityChange(ctx context.Context, arg InsertV4LiquidityChangeParams) (int64, error)
+	InsertV4PoolInitialization(ctx context.Context, arg InsertV4PoolInitializationParams) (int64, error)
+	InsertV4Swap(ctx context.Context, arg InsertV4SwapParams) (int64, error)
 	InsertWalletRealizedLeg(ctx context.Context, arg InsertWalletRealizedLegParams) error
 	InsertWatchlistEntry(ctx context.Context, arg InsertWatchlistEntryParams) (int64, error)
 	IsPublicWallet(ctx context.Context, arg IsPublicWalletParams) (bool, error)
@@ -148,6 +192,7 @@ type Querier interface {
 	// Each row is keyed by its UTC-aligned group start (not the first stored source bucket), so
 	// sparse groups report a stable timestamp and the next-page cursor can skip a whole group.
 	ListCandlesAggregated(ctx context.Context, arg ListCandlesAggregatedParams) ([]ListCandlesAggregatedRow, error)
+	ListForeignSyncDeployments(ctx context.Context, arg ListForeignSyncDeploymentsParams) ([]string, error)
 	// Communities ranked by visible comments in the last window_hours by the database clock (NULL =
 	// all time), ties by newest comment.
 	// Same existence rule as the token comment list (TokenExists): a reorged token drops out.
@@ -156,14 +201,18 @@ type Querier interface {
 	// the same read-time author display and ban filter as ListTokenComments.
 	// Same existence rule as the token comment list (TokenExists): a reorged token drops out.
 	ListForumPosts(ctx context.Context, arg ListForumPostsParams) ([]ListForumPostsRow, error)
+	// Engine-2 pools graduated on the chain, read from the ledger so the discovery pool set
+	// survives a restart without depending on projections (Plan v2-B Task 6).
+	ListGraduatedV4Pools(ctx context.Context, chainID int64) ([]ListGraduatedV4PoolsRow, error)
 	ListGraduationsAfter(ctx context.Context, arg ListGraduationsAfterParams) ([]ListGraduationsAfterRow, error)
 	// Inbox page (spec P0-C4): events on the owner's watched tokens, at or after the watch started and
 	// within 30 days, strictly older than the cursor position, newest first. Each watched token
 	// contributes at most page_size rows through its own ordered index scan.
 	ListInboxEvents(ctx context.Context, arg ListInboxEventsParams) ([]ListInboxEventsRow, error)
 	ListLaunchesAfter(ctx context.Context, arg ListLaunchesAfterParams) ([]ListLaunchesAfterRow, error)
-	// R4 at read time: the zero address and every curve or pair address are never ranked. The factory
-	// is never marked dirty, so it never has totals.
+	// R4 at read time: the zero address, every curve or pair address, every engine-2 locker and the
+	// chain's V4 PoolManager are never ranked. The factory is never marked dirty, so it never has
+	// totals.
 	// Only wallets with a positive realized PnL rank; fewer than page_size rows is normal. Ties are
 	// broken by wallet address, so the order is deterministic.
 	ListLeaderboard(ctx context.Context, arg ListLeaderboardParams) ([]ListLeaderboardRow, error)
@@ -171,6 +220,7 @@ type Querier interface {
 	// within window_days of the transaction's clock (now()). Same exclusions, positive-only rule and
 	// tie-break. tokens_traded counts distinct tokens with a realized leg in the window.
 	ListLeaderboardWindow(ctx context.Context, arg ListLeaderboardWindowParams) ([]ListLeaderboardWindowRow, error)
+	ListLockerOwed(ctx context.Context, arg ListLockerOwedParams) ([]ListLockerOwedRow, error)
 	ListMarketTrades(ctx context.Context, arg ListMarketTradesParams) ([]ListMarketTradesRow, error)
 	ListMarketTradesAfter(ctx context.Context, arg ListMarketTradesAfterParams) ([]ListMarketTradesAfterRow, error)
 	// Comments with open reports, newest open report first. Policy: none; limit is the caller's.
@@ -179,7 +229,8 @@ type Querier interface {
 	// One leg per transaction that touched (wallet, token), ordered by (block, tx index) (R1):
 	// token_delta is the wallet's net transfers in the tx (a self-transfer nets to 0); ETH comes only
 	// from trades attributed to the wallet: curve trades by trader, pool swaps by tx_from on the
-	// token's own pair, valued on the pair's WETH side.
+	// token's own pair, valued on the pair's WETH side, and V4 swaps by tx_from on the token's
+	// graduated pool, valued on the swapper's native-ETH delta (amount0 < 0 paid, > 0 received).
 	// Every leg's block is an indexed canonical block (ledger rows reference indexed_blocks), so the
 	// inner join drops nothing; it supplies the block time the windowed leaderboard filters on.
 	ListPositionLegs(ctx context.Context, arg ListPositionLegsParams) ([]ListPositionLegsRow, error)
@@ -207,9 +258,9 @@ type Querier interface {
 	ListTokenIdentities(ctx context.Context, chainID int64) ([]ListTokenIdentitiesRow, error)
 	ListTokenPhaseCounts(ctx context.Context, chainID int64) ([]ListTokenPhaseCountsRow, error)
 	ListTrendingTokens(ctx context.Context, arg ListTrendingTokensParams) ([]ListTrendingTokensRow, error)
-	// Backfill cursor: distinct transactions that still have a pool swap without a sender, in
-	// blocks at or below through_block, in (block_number, tx_hash) order, strictly after the keyset
-	// position (after_block, after_hash).
+	// Backfill cursor: distinct transactions that still have a v1 pool swap or a V4 swap without a
+	// sender, in blocks at or below through_block, in (block_number, tx_hash) order, strictly after
+	// the keyset position (after_block, after_hash). UNION merges a transaction present in both.
 	ListUnattributedPoolSwaps(ctx context.Context, arg ListUnattributedPoolSwapsParams) ([]ListUnattributedPoolSwapsRow, error)
 	// Closed positions (balance 0) carry no value, newest activity first.
 	ListWalletClosedPositions(ctx context.Context, arg ListWalletClosedPositionsParams) ([]ListWalletClosedPositionsRow, error)
@@ -229,6 +280,8 @@ type Querier interface {
 	LockWalletTotals(ctx context.Context, arg LockWalletTotalsParams) error
 	// Serializes cap check + insert per owner. The key is hashed in SQL.
 	LockWatchlistOwner(ctx context.Context, ownerKey string) error
+	LpFeeClaimMatchesEvent(ctx context.Context, arg LpFeeClaimMatchesEventParams) (pgtype.Bool, error)
+	LpFeeCollectionMatchesEvent(ctx context.Context, arg LpFeeCollectionMatchesEventParams) (pgtype.Bool, error)
 	// Moves the read position forward only; an older position leaves the row unchanged.
 	MarkInboxRead(ctx context.Context, arg MarkInboxReadParams) error
 	MarkPairTokenDirty(ctx context.Context, arg MarkPairTokenDirtyParams) error
@@ -246,6 +299,11 @@ type Querier interface {
 	// missed while the sweeper was down are recomputed.
 	MarkTokensWithVolumeDirty(ctx context.Context, chainID int64) (int64, error)
 	MarkTransferPositionsDirty(ctx context.Context, arg MarkTransferPositionsDirtyParams) error
+	MarkV4PoolTokenDirty(ctx context.Context, arg MarkV4PoolTokenDirtyParams) error
+	// The V4 side of MarkPoolSwapPositionDirty: marks (tx_from, graduated token of the pool) dirty.
+	// A NULL tx_from (sender not yet known) is a no-op; the zero address, the factory, the curve, the
+	// locker and the PoolManager never get a position (token_holder_excluded).
+	MarkV4SwapPositionDirty(ctx context.Context, arg MarkV4SwapPositionDirtyParams) error
 	NotifyAPIRefresh(ctx context.Context, payload string) error
 	PoolBurnMatchesEvent(ctx context.Context, arg PoolBurnMatchesEventParams) (pgtype.Bool, error)
 	PoolMintMatchesEvent(ctx context.Context, arg PoolMintMatchesEventParams) (pgtype.Bool, error)
@@ -274,6 +332,7 @@ type Querier interface {
 	RecordIndexerReorg(ctx context.Context, arg RecordIndexerReorgParams) (int64, error)
 	RefundClaimMatchesEvent(ctx context.Context, arg RefundClaimMatchesEventParams) (pgtype.Bool, error)
 	RefundCreditMatchesEvent(ctx context.Context, arg RefundCreditMatchesEventParams) (pgtype.Bool, error)
+	RegisterV4PoolManager(ctx context.Context, arg RegisterV4PoolManagerParams) ([]byte, error)
 	ReleaseUsername(ctx context.Context, arg ReleaseUsernameParams) error
 	ReplaceTokenImage(ctx context.Context, arg ReplaceTokenImageParams) (int64, error)
 	ReplaceTokenMetadata(ctx context.Context, arg ReplaceTokenMetadataParams) (int64, error)
@@ -292,11 +351,17 @@ type Querier interface {
 	// that need a position re-mark.
 	SetPoolSwapTxFrom(ctx context.Context, arg SetPoolSwapTxFromParams) ([]Address, error)
 	SetUsername(ctx context.Context, arg SetUsernameParams) error
+	// The V4 side of SetPoolSwapTxFrom: fills the sender of every still-unattributed V4 swap of the
+	// transaction and returns the pools whose graduated token needs an aggregate re-mark.
+	SetV4SwapTxFrom(ctx context.Context, arg SetV4SwapTxFromParams) ([]Hash, error)
+	SnipeTaxClaimMatchesEvent(ctx context.Context, arg SnipeTaxClaimMatchesEventParams) (pgtype.Bool, error)
 	// True when the DID has a user row or at least one comment in scope.
 	SocialDIDKnown(ctx context.Context, arg SocialDIDKnownParams) (bool, error)
 	TokenExists(ctx context.Context, arg TokenExistsParams) (bool, error)
 	TokenLaunchMatchesEvent(ctx context.Context, arg TokenLaunchMatchesEventParams) (pgtype.Bool, error)
+	TokenLaunchV2MatchesEvent(ctx context.Context, arg TokenLaunchV2MatchesEventParams) (pgtype.Bool, error)
 	TradeMatchesEvent(ctx context.Context, arg TradeMatchesEventParams) (pgtype.Bool, error)
+	TradeV2MatchesEvent(ctx context.Context, arg TradeV2MatchesEventParams) (pgtype.Bool, error)
 	TradingPauseEventMatchesEvent(ctx context.Context, arg TradingPauseEventMatchesEventParams) (pgtype.Bool, error)
 	TransferMatchesEvent(ctx context.Context, arg TransferMatchesEventParams) (pgtype.Bool, error)
 	UnbanSocialUser(ctx context.Context, arg UnbanSocialUserParams) (int64, error)
@@ -307,6 +372,10 @@ type Querier interface {
 	// A name is unavailable to the caller when another user holds it, or another user released it
 	// within hold_seconds (database clock). The caller's own releases never block it.
 	UsernameUnavailable(ctx context.Context, arg UsernameUnavailableParams) (pgtype.Bool, error)
+	V4LiquidityChangeMatchesEvent(ctx context.Context, arg V4LiquidityChangeMatchesEventParams) (pgtype.Bool, error)
+	V4PoolInitializationMatchesEvent(ctx context.Context, arg V4PoolInitializationMatchesEventParams) (pgtype.Bool, error)
+	// tx_from is enrichment, not event identity: the match below ignores it.
+	V4SwapMatchesEvent(ctx context.Context, arg V4SwapMatchesEventParams) (pgtype.Bool, error)
 	// R5: attribution is chain-wide. Backed by the partial index pool_swaps_tx_from_null_idx.
 	WalletAttributionComplete(ctx context.Context, chainID int64) (bool, error)
 }

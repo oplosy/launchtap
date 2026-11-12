@@ -143,6 +143,49 @@ LEFT JOIN token_stats AS s ON s.chain_id = t.chain_id AND s.token_address = t.to
 WHERE t.chain_id = sqlc.arg(chain_id)
   AND t.token_address = sqlc.arg(token_address);
 
+-- The engine-2 facts of a token. The fee recipient is the creator until the latest
+-- FeeRecipientAccepted; the pending recipient is the latest proposal unless a later acceptance
+-- consumed it or it was a cancellation (address zero).
+-- name: GetTokenV2Facts :one
+SELECT COALESCE(t.anti_snipe_start_bps, 0)::INTEGER AS anti_snipe_start_bps,
+       COALESCE(t.anti_snipe_duration_seconds, 0)::BIGINT AS anti_snipe_duration_seconds,
+       COALESCE(t.lp_creator_share_bps, 0)::INTEGER AS lp_creator_share_bps,
+       pool.pool_id::BYTEA AS pool_id, pool.position_token_id::NUMERIC AS position_token_id, pool.hook::BYTEA AS pool_hook,
+       COALESCE(accepted.next_recipient, t.creator)::BYTEA AS fee_recipient,
+       CASE WHEN proposal.next_recipient <> decode(repeat('00', 20), 'hex')
+             AND (accepted.block_number IS NULL
+                  OR (accepted.block_number, accepted.transaction_index, accepted.log_index)
+                     < (proposal.block_number, proposal.transaction_index, proposal.log_index))
+            THEN proposal.next_recipient
+       END::BYTEA AS pending_fee_recipient
+FROM tokens AS t
+LEFT JOIN v4_pools AS pool ON pool.chain_id = t.chain_id AND pool.token_address = t.token_address
+LEFT JOIN LATERAL (
+    SELECT acceptance.next_recipient, acceptance.block_number, acceptance.transaction_index, acceptance.log_index
+    FROM fee_recipient_acceptances AS acceptance
+    WHERE acceptance.chain_id = t.chain_id AND acceptance.token_address = t.token_address
+    ORDER BY acceptance.block_number DESC, acceptance.transaction_index DESC, acceptance.log_index DESC
+    LIMIT 1
+) AS accepted ON TRUE
+LEFT JOIN LATERAL (
+    SELECT candidate.next_recipient, candidate.block_number, candidate.transaction_index, candidate.log_index
+    FROM fee_recipient_proposals AS candidate
+    WHERE candidate.chain_id = t.chain_id AND candidate.token_address = t.token_address
+    ORDER BY candidate.block_number DESC, candidate.transaction_index DESC, candidate.log_index DESC
+    LIMIT 1
+) AS proposal ON TRUE
+WHERE t.chain_id = sqlc.arg(chain_id)
+  AND t.token_address = sqlc.arg(token_address)
+  AND t.engine_version = 2;
+
+-- name: ListLockerOwed :many
+SELECT account, locker_eth_owed, locker_token_owed
+FROM creator_fee_balances
+WHERE chain_id = sqlc.arg(chain_id)
+  AND token_address = sqlc.arg(token_address)
+  AND (locker_eth_owed > 0 OR locker_token_owed > 0)
+ORDER BY account;
+
 -- name: GetTokenQuoteState :one
 SELECT t.phase, t.total_supply, t.curve_tokens, t.lp_tokens, t.graduation_eth,
        t.initial_virtual_eth, t.initial_virtual_token, t.trade_fee_bps,
@@ -150,7 +193,10 @@ SELECT t.phase, t.total_supply, t.curve_tokens, t.lp_tokens, t.graduation_eth,
        COALESCE(r.eth_reserve, t.initial_virtual_eth) AS eth_reserve,
        COALESCE(r.token_reserve, t.initial_virtual_token) AS token_reserve,
        COALESCE(r.source_block_number, t.launch_block_number) AS reserve_block_number,
-       COALESCE(r.source_block_hash, t.launch_block_hash) AS reserve_block_hash
+       COALESCE(r.source_block_hash, t.launch_block_hash) AS reserve_block_hash,
+       t.engine_version, t.launch_block_time,
+       COALESCE(t.anti_snipe_start_bps, 0)::INTEGER AS anti_snipe_start_bps,
+       COALESCE(t.anti_snipe_duration_seconds, 0)::BIGINT AS anti_snipe_duration_seconds
 FROM tokens AS t
 LEFT JOIN token_reserves AS r USING (chain_id, token_address)
 WHERE t.chain_id = sqlc.arg(chain_id)
@@ -187,13 +233,12 @@ LIMIT sqlc.arg(page_size)::integer;
 SELECT h.holder_address, h.balance, h.first_acquired_block_number
 FROM holder_balances AS h
 JOIN tokens AS t USING (chain_id, token_address)
+LEFT JOIN v4_pool_managers AS manager ON manager.chain_id = t.chain_id
 WHERE h.chain_id = sqlc.arg(chain_id)
   AND h.token_address = sqlc.arg(token_address)
   AND h.balance > 0
-  AND h.holder_address <> decode(repeat('00', 20), 'hex')
-  AND h.holder_address <> decode(repeat('00', 18) || 'dead', 'hex')
-  AND h.holder_address <> t.curve_address
-  AND h.holder_address <> t.lp_pair
+  AND NOT token_holder_excluded(t.engine_version, h.holder_address, t.curve_address, t.lp_pair,
+                                t.locker, manager.pool_manager)
   AND (sqlc.narg(after_balance)::numeric IS NULL OR
        (h.balance, h.holder_address) < (sqlc.narg(after_balance)::numeric, sqlc.narg(after_address)::bytea))
 ORDER BY h.balance DESC, h.holder_address DESC
@@ -531,7 +576,8 @@ SELECT count(*)::bigint FROM tokens
 WHERE chain_id = sqlc.arg(chain_id) AND creator = sqlc.arg(wallet);
 
 -- Single source of the read-time position value (also used by ListWalletOpenPositions):
---   current_value = div(balance * eth_reserve, NULLIF(token_reserve, 0)), coalesced to 0
+--   current_value = div(balance * eth_reserve, NULLIF(token_reserve, 0)), coalesced to 0; a
+--   graduated engine-2 token ('v4' reserve) uses div(balance * v4_spot_price_wad, 1e18) instead.
 -- div() is exact truncating division; a missing token_reserves row or a zero token_reserve gives 0.
 -- unrealized PnL = current_value - remaining_cost, computed by the reader.
 -- name: GetWalletValuation :one
@@ -539,7 +585,10 @@ SELECT COALESCE(sum(valued.current_value), 0)::numeric AS portfolio_value,
        COALESCE(sum(valued.remaining_cost), 0)::numeric AS open_cost
 FROM (
     SELECT p.remaining_cost,
-           COALESCE(div(p.balance * r.eth_reserve, NULLIF(r.token_reserve, 0)), 0)::numeric AS current_value
+           COALESCE(CASE WHEN r.reserve_source = 'v4'
+                         THEN div(p.balance * v4_spot_price_wad(r.sqrt_price_x96), 1000000000000000000)
+                         ELSE div(p.balance * r.eth_reserve, NULLIF(r.token_reserve, 0))
+                    END, 0)::numeric AS current_value
     FROM wallet_positions AS p
     JOIN tokens AS t ON t.chain_id = p.chain_id AND t.token_address = p.token_address
     LEFT JOIN token_reserves AS r ON r.chain_id = p.chain_id AND r.token_address = p.token_address
@@ -555,7 +604,10 @@ SELECT valued.token_address, valued.name, valued.symbol, valued.phase, valued.ba
 FROM (
     SELECT p.token_address, t.name, t.symbol, t.phase, p.balance, p.remaining_cost, p.realized_pnl,
            p.transferred_in, p.trade_count, p.last_block_number,
-           COALESCE(div(p.balance * r.eth_reserve, NULLIF(r.token_reserve, 0)), 0)::numeric AS current_value
+           COALESCE(CASE WHEN r.reserve_source = 'v4'
+                         THEN div(p.balance * v4_spot_price_wad(r.sqrt_price_x96), 1000000000000000000)
+                         ELSE div(p.balance * r.eth_reserve, NULLIF(r.token_reserve, 0))
+                    END, 0)::numeric AS current_value
     FROM wallet_positions AS p
     JOIN tokens AS t ON t.chain_id = p.chain_id AND t.token_address = p.token_address
     LEFT JOIN token_reserves AS r ON r.chain_id = p.chain_id AND r.token_address = p.token_address
@@ -603,8 +655,9 @@ WHERE t.chain_id = sqlc.arg(chain_id) AND t.creator = sqlc.arg(wallet)
 ORDER BY t.launch_block_number DESC, t.token_address DESC
 LIMIT sqlc.arg(page_size)::integer;
 
--- R4 at read time: the zero address and every curve or pair address are never ranked. The factory
--- is never marked dirty, so it never has totals.
+-- R4 at read time: the zero address, every curve or pair address, every engine-2 locker and the
+-- chain's V4 PoolManager are never ranked. The factory is never marked dirty, so it never has
+-- totals.
 -- name: ListLeaderboard :many
 -- Only wallets with a positive realized PnL rank; fewer than page_size rows is normal. Ties are
 -- broken by wallet address, so the order is deterministic.
@@ -617,6 +670,8 @@ WHERE w.chain_id = sqlc.arg(chain_id)
   AND w.wallet <> decode(repeat('00', 20), 'hex')
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.curve_address = w.wallet)
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.lp_pair = w.wallet)
+  AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.locker = w.wallet)
+  AND NOT EXISTS (SELECT 1 FROM v4_pool_managers AS m WHERE m.chain_id = w.chain_id AND m.pool_manager = w.wallet)
 ORDER BY w.realized_pnl DESC, w.wallet
 LIMIT sqlc.arg(page_size)::integer;
 
@@ -640,5 +695,7 @@ WHERE w.realized_pnl > 0
   AND w.wallet <> decode(repeat('00', 20), 'hex')
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = sqlc.arg(chain_id) AND t.curve_address = w.wallet)
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = sqlc.arg(chain_id) AND t.lp_pair = w.wallet)
+  AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = sqlc.arg(chain_id) AND t.locker = w.wallet)
+  AND NOT EXISTS (SELECT 1 FROM v4_pool_managers AS m WHERE m.chain_id = sqlc.arg(chain_id) AND m.pool_manager = w.wallet)
 ORDER BY w.realized_pnl DESC, w.wallet
 LIMIT sqlc.arg(page_size)::integer;

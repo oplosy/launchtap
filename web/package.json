@@ -22,6 +22,7 @@
     "test:e2e": "playwright test",
     "test:e2e:live": "node scripts/run-e2e-live-strip.mjs",
     "test:anvil": "node scripts/run-anvil-task6-gate.mjs",
+    "test:anvil-v2": "node scripts/run-anvil-v2-gate.mjs",
     "web-api-sync": "node scripts/generate-api.mjs --write",
     "web-api-diff": "node scripts/generate-api.mjs --check",
     "web-contracts-sync": "node scripts/generate-contracts.mjs --write",

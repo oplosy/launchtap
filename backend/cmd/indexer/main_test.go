@@ -144,6 +144,7 @@ func startupDeployment() (deployments.Deployment, map[string]string) {
 	return deployments.Deployment{
 		ChainID:             4663,
 		DeploymentID:        "robinhood-mainnet",
+		EngineVersion:       1,
 		Factory:             addresses[0],
 		CurveImplementation: addresses[1],
 		WETH:                addresses[2],

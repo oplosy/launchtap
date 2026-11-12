@@ -54,8 +54,9 @@
   `x402`, which pulls wagmi 2 → WalletConnect 2.21.1 → `decode-uri-component` 0.2.2, and zod 3
   still arrives through `x402`, Reown and `abitype`; wagmi 3 changes nothing. Details:
   `docs/audits/runtime-advisory-review-2026-11-06.md`. The upgrade was not done.
-  **Re-checked 2026-11-09:** the newest release, `@privy-io/react-auth` 3.51.3, still depends
-  on `x402` ^0.7.1, which requires wagmi ^2.15.6 and zod ^3.24.2, so both highs remain.
+  **Re-checked 2026-11-09 and 2026-11-12:** the newest release, `@privy-io/react-auth` 3.51.3,
+  still depends on `x402` ^0.7.1 (latest 1.2.0 of `x402` itself still requires wagmi ^2.15.6
+  and zod ^3.24.2), so both highs remain.
 - **Resume (next step):** Before 2027-02-01, re-run the trial install from that document with
   the then-current Privy release. Upgrade only once `npm audit --omit=dev` on the trial tree no
   longer reports the two highs; otherwise renew the allowlist entries with a fresh impact review.
@@ -150,7 +151,83 @@
 
 ---
 
+### Engine v2 protocol revenue projection
+
+- **Date:** 2026-11-12
+- **Reason:** scope decision (no consumer exists: no API field, no screen, no spec)
+- **Where it stopped:** the other engine v2 backend limitations are closed (see Done). Plan v2-B
+  lists a protocol revenue projection (`snipe_tax` and the graduation `eth_remainder`, with
+  `SnipeTaxClaimed` as its own claim stream), but nothing reads protocol revenue for engine 1
+  either, so a projection now would be unread.
+- **Related files:** `docs/plans/2026-11-11-v2-engine-backend.md` ("Protocol revenue"),
+  `backend/internal/store/postgres/migrations/00025_engine_v2_projections.sql`
+- **Resume (next step):** owner decides where protocol revenue is shown (an analytics card, an
+  operator-only endpoint, or nowhere); then spec the read model for both engines and build the
+  projection with its first consumer.
+- **Pitfalls / notes:** treasury fee claims already exist as ledger rows; derive revenue from the
+  ledger, never from on-chain balance reads.
+
 ## Done
+
+### Engine v2 backend limitations: V4 positions, valuation, leaderboard
+
+- **Date:** 2026-11-12
+- **What closed:**
+  - V4 swaps are priced position legs of their `tx_from` (`ListPositionLegs`), marked dirty on
+    ingest, in the sender backfill, in the position seed and on reorg, with the zero address,
+    factory, curve, locker and PoolManager excluded (`token_holder_excluded`).
+  - Graduated engine-2 holdings are valued at the V4 spot price (`GetWalletValuation`,
+    `ListWalletOpenPositions`) instead of 0.
+  - Both leaderboards exclude every engine-2 locker and the chain's PoolManager.
+  - Migration 00026 adds `v4_swaps_tx_from_null_idx` for the backfill's per-pass count.
+  - V4 pool liquidity stays NULL by design (Plan v2-B pre-flight R5: no full-range math; the
+    locker position is shown separately). Won't fix; the token page keeps its "not indexed yet"
+    liquidity cell.
+- **Left open:** the protocol revenue projection (Active).
+
+### Plan v2-C Task 9 follow-up: pool id link
+
+- **Date:** 2026-11-12
+- **What closed:** won't fix. A V4 pool id is a `bytes32` key inside the PoolManager, not an
+  address, and the chain explorer has no V4 pool page, so a link would point nowhere. The token
+  page keeps showing the pool id as copyable text.
+
+### V4 swap sender backfill
+
+- **Date:** 2026-11-12
+- **What closed:** the sender backfill (indexer scheduler and `cmd/backfill-swap-sender`) lists,
+  counts and fills NULL-sender `v4_swaps` with the same keyset walk as v1 pool swaps; each
+  filled V4 swap re-marks its graduated token's aggregate, as live ingest does. The indexer's
+  "retries them once their block is safe" warning is now true for V4 swaps too.
+
+### Plan v2-C Task 9 follow-ups: persisted creator panel state
+
+- **Date:** 2026-11-12
+- **What closed:** `V2CreatorPanel` writes (propose, cancel, accept, LP fee claim) persist under
+  the `v2-creator` transaction action. A reload restores the hash and status, a restored
+  `submitted`/`rpc-failure` hash settles on its receipt, and the lock holds until it does. The
+  Anvil v2 gate reloads after the replace and checks the restored hash.
+
+### Plan v2-C Task 9 follow-ups: notice, cancel/replace, creator panel lock
+
+- **Date:** 2026-11-12
+- **What closed:** the gate now drives proposal cancel and replace. `V4SwapPanel` shows its
+  review notice outside the confirmation (the Permit2 "Allowances are set" message and failed
+  review errors were set while the confirmation closed, so they were never visible).
+  `V2CreatorPanel` treated its own `mined` state as unresolved, so after one successful write
+  every creator action stayed disabled until a reload; a mined write is now final there.
+
+### Plan v2-C D1 and Task 9: Anvil v2 web gate
+
+- **Date:** 2026-11-12
+- **What closed:** D1 approved by the owner. Universal Router 2.1.2 is pinned and built in the
+  test-only `router` profile (runtime equal to mainnet), deployed with `V4Quoter` by
+  `deploy-v2-local.ps1 -WithRouter`. `npm run test:anvil-v2` runs the full Task 9 lifecycle in
+  the browser and in CI next to the Task 6 gate. It found four defects, each fixed in its owning
+  task: the missing `minHopPriceX36` (Task 4), the v2 fixture wallet stack (Task 2), V4 swaps
+  absent from `/v1/transactions` (Plan v2-B), and curve claims hidden after graduation (Task 6).
+- **Windows note:** the router's nested submodules exceed MAX_PATH; set `core.longpaths` (see
+  `AGENTS.md` setup).
 
 ### P0-C2 signed-in e2e coverage
 

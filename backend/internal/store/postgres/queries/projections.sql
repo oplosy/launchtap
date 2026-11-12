@@ -9,7 +9,9 @@ WITH reserves AS (DELETE FROM token_reserves WHERE token_reserves.chain_id=$1 AN
 holders AS (DELETE FROM holder_balances WHERE holder_balances.chain_id=$1 AND holder_balances.token_address=$2),
 buckets AS (DELETE FROM candles WHERE candles.chain_id=$1 AND candles.token_address=$2),
 stats AS (DELETE FROM token_stats WHERE token_stats.chain_id=$1 AND token_stats.token_address=$2),
-dirty AS (DELETE FROM aggregation_dirty WHERE aggregation_dirty.chain_id=$1 AND aggregation_dirty.token_address=$2)
+dirty AS (DELETE FROM aggregation_dirty WHERE aggregation_dirty.chain_id=$1 AND aggregation_dirty.token_address=$2),
+pools AS (DELETE FROM v4_pools WHERE v4_pools.chain_id=$1 AND v4_pools.token_address=$2),
+fees AS (DELETE FROM creator_fee_balances WHERE creator_fee_balances.chain_id=$1 AND creator_fee_balances.token_address=$2)
 DELETE FROM tokens WHERE tokens.chain_id=$1 AND tokens.token_address=$2;
 
 -- name: DeleteTokenStats :execrows
@@ -20,11 +22,13 @@ INSERT INTO tokens (
     chain_id, token_address, curve_address, lp_pair, weth, creator, protocol_treasury,
     engine_version, name, symbol, total_supply, initial_virtual_eth, initial_virtual_token,
     curve_tokens, lp_tokens, graduation_eth, trade_fee_bps, protocol_share_bps,
-    launch_block_number, launch_block_hash, launch_block_time, launch_tx_hash, launch_log_index
+    launch_block_number, launch_block_hash, launch_block_time, launch_tx_hash, launch_log_index,
+    hook, locker, anti_snipe_start_bps, anti_snipe_duration_seconds, lp_creator_share_bps
 ) SELECT launch.chain_id, launch.token_address, launch.curve_address, launch.lp_pair, launch.weth, launch.creator, launch.protocol_treasury,
     launch.engine_version, launch.name, launch.symbol, launch.total_supply, launch.virtual_eth, launch.virtual_token, launch.curve_tokens,
     launch.lp_tokens, launch.graduation_eth, launch.trade_fee_bps, launch.protocol_share_bps, launch.block_number, launch.block_hash,
-    launch.block_time, launch.tx_hash, launch.log_index
+    launch.block_time, launch.tx_hash, launch.log_index,
+    launch.hook, launch.locker, launch.anti_snipe_start_bps, launch.anti_snipe_duration_seconds, launch.lp_creator_share_bps
 FROM token_launches AS launch WHERE launch.chain_id = $1 AND launch.tx_hash = $2 AND launch.log_index = $3
 ON CONFLICT (chain_id, token_address) DO NOTHING;
 
@@ -69,6 +73,64 @@ JOIN LATERAL (
 WHERE graduation.chain_id=$1 AND graduation.tx_hash=$2 AND graduation.log_index=$3
 ON CONFLICT (chain_id, token_address) DO UPDATE SET reserve_source=EXCLUDED.reserve_source, eth_reserve=EXCLUDED.eth_reserve, token_reserve=EXCLUDED.token_reserve, source_block_number=EXCLUDED.source_block_number, source_block_hash=EXCLUDED.source_block_hash, source_block_time=EXCLUDED.source_block_time, source_tx_hash=EXCLUDED.source_tx_hash, source_log_index=EXCLUDED.source_log_index
 WHERE (EXCLUDED.source_block_number, (SELECT transaction_index FROM pool_syncs WHERE chain_id=EXCLUDED.chain_id AND tx_hash=EXCLUDED.source_tx_hash AND log_index=EXCLUDED.source_log_index), EXCLUDED.source_log_index) > (token_reserves.source_block_number, COALESCE(CASE token_reserves.reserve_source WHEN 'curve' THEN (SELECT transaction_index FROM trades WHERE chain_id=token_reserves.chain_id AND tx_hash=token_reserves.source_tx_hash AND log_index=token_reserves.source_log_index) ELSE (SELECT transaction_index FROM pool_syncs WHERE chain_id=token_reserves.chain_id AND tx_hash=token_reserves.source_tx_hash AND log_index=token_reserves.source_log_index) END, -1), token_reserves.source_log_index);
+
+-- The V4 pool registry entry of an engine-2 graduation; rebuild_token_projections writes the same row.
+-- name: ApplyV4PoolProjection :exec
+INSERT INTO v4_pools (chain_id, pool_id, token_address, position_token_id, hook)
+SELECT graduation.chain_id, graduation.pool_id, graduation.token_address, graduation.position_token_id, launch.hook
+FROM graduations AS graduation
+JOIN token_launches AS launch ON launch.chain_id=graduation.chain_id AND launch.token_address=graduation.token_address
+WHERE graduation.chain_id=$1 AND graduation.tx_hash=$2 AND graduation.log_index=$3 AND graduation.pool_id IS NOT NULL
+ON CONFLICT (chain_id, pool_id) DO NOTHING;
+
+-- The pool price after an engine-2 graduation or V4 swap. It replaces the curve row and any earlier
+-- pool price, so an out-of-order replay never moves the price backwards.
+-- name: ApplyV4ReserveProjection :exec
+INSERT INTO token_reserves (chain_id, token_address, reserve_source, eth_reserve, token_reserve, sqrt_price_x96, source_block_number, source_block_hash, source_block_time, source_tx_hash, source_log_index)
+SELECT price.chain_id, price.token_address, 'v4', NULL, NULL, price.sqrt_price_x96, price.block_number, price.block_hash, price.block_time, price.tx_hash, price.log_index
+FROM v4_price_events AS price WHERE price.chain_id=$1 AND price.tx_hash=$2 AND price.log_index=$3
+ON CONFLICT (chain_id, token_address) DO UPDATE SET reserve_source=EXCLUDED.reserve_source, eth_reserve=NULL, token_reserve=NULL, sqrt_price_x96=EXCLUDED.sqrt_price_x96, source_block_number=EXCLUDED.source_block_number, source_block_hash=EXCLUDED.source_block_hash, source_block_time=EXCLUDED.source_block_time, source_tx_hash=EXCLUDED.source_tx_hash, source_log_index=EXCLUDED.source_log_index
+WHERE token_reserves.reserve_source <> 'v4'
+   OR (EXCLUDED.source_block_number, (SELECT price.transaction_index FROM v4_price_events AS price WHERE price.chain_id=$1 AND price.tx_hash=$2 AND price.log_index=$3), EXCLUDED.source_log_index) > (token_reserves.source_block_number, COALESCE((SELECT price.transaction_index FROM v4_price_events AS price WHERE price.chain_id=token_reserves.chain_id AND price.tx_hash=token_reserves.source_tx_hash AND price.log_index=token_reserves.source_log_index), -1), token_reserves.source_log_index);
+
+-- Opens a zero balance row for every account one event moves. ApplyCreatorFeeDeltas then adds
+-- the deltas with an UPDATE: an upsert would check a claim's negative proposed row against the
+-- non-negative CHECKs before resolving the conflict.
+-- name: EnsureCreatorFeeAccounts :exec
+INSERT INTO creator_fee_balances (chain_id, token_address, account, curve_eth_owed, locker_eth_owed, locker_token_owed)
+SELECT DISTINCT delta.chain_id, delta.token_address, delta.account, 0, 0, 0
+FROM creator_fee_deltas AS delta WHERE delta.chain_id=$1 AND delta.tx_hash=$2 AND delta.log_index=$3
+ON CONFLICT (chain_id, token_address, account) DO NOTHING;
+
+-- Applies one event's owed-balance deltas (creator_fee_deltas). Callers apply it only when the
+-- ledger row was newly inserted, so a replay never double-counts.
+-- name: ApplyCreatorFeeDeltas :exec
+UPDATE creator_fee_balances AS balance SET
+    curve_eth_owed=balance.curve_eth_owed+delta.curve_eth_delta,
+    locker_eth_owed=balance.locker_eth_owed+delta.locker_eth_delta,
+    locker_token_owed=balance.locker_token_owed+delta.locker_token_delta
+FROM (
+    SELECT event.chain_id, event.token_address, event.account, sum(event.curve_eth_delta) AS curve_eth_delta,
+           sum(event.locker_eth_delta) AS locker_eth_delta, sum(event.locker_token_delta) AS locker_token_delta
+    FROM creator_fee_deltas AS event WHERE event.chain_id=$1 AND event.tx_hash=$2 AND event.log_index=$3
+    GROUP BY event.chain_id, event.token_address, event.account
+) AS delta
+WHERE balance.chain_id=delta.chain_id AND balance.token_address=delta.token_address AND balance.account=delta.account;
+
+-- name: MarkV4PoolTokenDirty :exec
+INSERT INTO aggregation_dirty (chain_id, token_address, generation)
+SELECT graduation.chain_id, graduation.token_address, nextval('aggregation_dirty_generation_seq') FROM graduations AS graduation WHERE graduation.chain_id=$1 AND graduation.pool_id=$2
+ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregation_dirty_generation_seq');
+
+-- name: RegisterV4PoolManager :one
+WITH inserted AS (
+    INSERT INTO v4_pool_managers (chain_id, pool_manager) VALUES ($1, $2)
+    ON CONFLICT (chain_id) DO NOTHING
+    RETURNING pool_manager
+)
+SELECT pool_manager FROM inserted
+UNION ALL
+SELECT existing.pool_manager FROM v4_pool_managers AS existing WHERE existing.chain_id=$1 AND NOT EXISTS (SELECT 1 FROM inserted);
 
 -- name: ApplyTransferProjection :one
 WITH deltas AS (
@@ -181,6 +243,22 @@ WHERE token.chain_id = sqlc.arg(chain_id)::bigint AND token.lp_pair = sqlc.arg(p
   )
 ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq');
 
+-- name: MarkV4SwapPositionDirty :exec
+-- The V4 side of MarkPoolSwapPositionDirty: marks (tx_from, graduated token of the pool) dirty.
+-- A NULL tx_from (sender not yet known) is a no-op; the zero address, the factory, the curve, the
+-- locker and the PoolManager never get a position (token_holder_excluded).
+INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
+SELECT graduation.chain_id, sqlc.arg(tx_from)::bytea, graduation.token_address, nextval('position_dirty_generation_seq')
+FROM graduations AS graduation
+JOIN tokens AS token ON token.chain_id = graduation.chain_id AND token.token_address = graduation.token_address
+LEFT JOIN v4_pool_managers AS manager ON manager.chain_id = graduation.chain_id
+WHERE graduation.chain_id = sqlc.arg(chain_id)::bigint AND graduation.pool_id = sqlc.arg(pool_id)::bytea
+  AND sqlc.arg(tx_from)::bytea IS NOT NULL
+  AND sqlc.arg(tx_from)::bytea <> sqlc.arg(factory)::bytea
+  AND NOT token_holder_excluded(token.engine_version, sqlc.arg(tx_from)::bytea, token.curve_address,
+                                token.lp_pair, token.locker, manager.pool_manager)
+ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq');
+
 -- name: ClearLaunchPositionDirty :exec
 -- The launch mint Transfer(0 -> curve) is ingested before the tokens row exists (the token
 -- constructor logs it before TokenLaunched), so the exclusion lookup could not see the curve.
@@ -264,7 +342,8 @@ WHERE chain_id = sqlc.arg(chain_id)
 -- One leg per transaction that touched (wallet, token), ordered by (block, tx index) (R1):
 -- token_delta is the wallet's net transfers in the tx (a self-transfer nets to 0); ETH comes only
 -- from trades attributed to the wallet: curve trades by trader, pool swaps by tx_from on the
--- token's own pair, valued on the pair's WETH side.
+-- token's own pair, valued on the pair's WETH side, and V4 swaps by tx_from on the token's
+-- graduated pool, valued on the swapper's native-ETH delta (amount0 < 0 paid, > 0 received).
 -- name: ListPositionLegs :many
 WITH token AS (
     SELECT t.lp_pair, t.token_is_token0
@@ -300,16 +379,28 @@ WITH token AS (
     JOIN token ON swap.pair_address = token.lp_pair
     WHERE swap.chain_id = sqlc.arg(chain_id)::bigint AND swap.tx_from = sqlc.arg(wallet)::bytea
     GROUP BY swap.tx_hash, swap.block_number, swap.transaction_index
+), v4_swap_legs AS (
+    SELECT swap.tx_hash, swap.block_number, swap.transaction_index,
+        sum(CASE WHEN swap.amount0_delta < 0 THEN -swap.amount0_delta ELSE 0 END) AS eth_paid,
+        sum(CASE WHEN swap.amount0_delta > 0 THEN swap.amount0_delta ELSE 0 END) AS eth_received
+    FROM v4_swaps AS swap
+    JOIN graduations AS graduation
+      ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
+    WHERE swap.chain_id = sqlc.arg(chain_id)::bigint AND swap.tx_from = sqlc.arg(wallet)::bytea
+      AND graduation.token_address = sqlc.arg(token_address)::bytea
+    GROUP BY swap.tx_hash, swap.block_number, swap.transaction_index
 ), legs AS (
     SELECT
-        COALESCE(transfer_legs.block_number, trade_legs.block_number, swap_legs.block_number) AS block_number,
-        COALESCE(transfer_legs.transaction_index, trade_legs.transaction_index, swap_legs.transaction_index) AS transaction_index,
+        COALESCE(transfer_legs.block_number, trade_legs.block_number, swap_legs.block_number, v4_swap_legs.block_number) AS block_number,
+        COALESCE(transfer_legs.transaction_index, trade_legs.transaction_index, swap_legs.transaction_index, v4_swap_legs.transaction_index) AS transaction_index,
         COALESCE(transfer_legs.token_delta, 0) AS token_delta,
-        COALESCE(trade_legs.eth_paid, 0) + COALESCE(swap_legs.eth_paid, 0) AS eth_paid,
-        COALESCE(trade_legs.eth_received, 0) + COALESCE(swap_legs.eth_received, 0) AS eth_received
+        COALESCE(trade_legs.eth_paid, 0) + COALESCE(swap_legs.eth_paid, 0) + COALESCE(v4_swap_legs.eth_paid, 0) AS eth_paid,
+        COALESCE(trade_legs.eth_received, 0) + COALESCE(swap_legs.eth_received, 0) + COALESCE(v4_swap_legs.eth_received, 0) AS eth_received
     FROM transfer_legs
     FULL OUTER JOIN trade_legs ON trade_legs.tx_hash = transfer_legs.tx_hash
     FULL OUTER JOIN swap_legs ON swap_legs.tx_hash = COALESCE(transfer_legs.tx_hash, trade_legs.tx_hash)
+    FULL OUTER JOIN v4_swap_legs
+      ON v4_swap_legs.tx_hash = COALESCE(transfer_legs.tx_hash, trade_legs.tx_hash, swap_legs.tx_hash)
 )
 -- Every leg's block is an indexed canonical block (ledger rows reference indexed_blocks), so the
 -- inner join drops nothing; it supplies the block time the windowed leaderboard filters on.
@@ -388,16 +479,26 @@ WITH clock AS (
         t.initial_virtual_eth * 1000000000000000000 / NULLIF(t.initial_virtual_token, 0) AS launch_price,
         t.launch_block_time,
         -- Before the first trade there is no reserve row; the curve still quotes from its
-        -- initial virtual reserves, matching GetTokenDetail and GetTokenQuoteState.
-        COALESCE(COALESCE(reserve.eth_reserve, t.initial_virtual_eth) * 1000000000000000000
-            / NULLIF(COALESCE(reserve.token_reserve, t.initial_virtual_token), 0), 0) AS spot_price,
-        COALESCE(reserve.eth_reserve, t.initial_virtual_eth, 0) AS liquidity,
+        -- initial virtual reserves, matching GetTokenDetail and GetTokenQuoteState. A graduated
+        -- engine-2 token prices from its V4 pool and reports no liquidity figure.
+        CASE WHEN reserve.reserve_source = 'v4'
+            THEN COALESCE(v4_spot_price_wad(reserve.sqrt_price_x96), 0)
+            ELSE COALESCE(COALESCE(reserve.eth_reserve, t.initial_virtual_eth) * 1000000000000000000
+                / NULLIF(COALESCE(reserve.token_reserve, t.initial_virtual_token), 0), 0)
+        END AS spot_price,
+        CASE WHEN reserve.reserve_source = 'v4' THEN NULL
+            ELSE COALESCE(reserve.eth_reserve, t.initial_virtual_eth, 0)
+        END AS liquidity,
         t.total_supply,
         t.curve_address,
-        t.lp_pair
+        t.lp_pair,
+        t.engine_version,
+        t.locker,
+        manager.pool_manager
     FROM tokens AS t
     LEFT JOIN token_reserves AS reserve
       ON reserve.chain_id = t.chain_id AND reserve.token_address = t.token_address
+    LEFT JOIN v4_pool_managers AS manager ON manager.chain_id = t.chain_id
     WHERE t.chain_id = $1 AND t.token_address = $2
 -- Every trade is bucketed into all four candle intervals; ATH, baseline, latest, and volume
 -- read only the finest ('1m') series so each trade is counted once.
@@ -438,12 +539,8 @@ WITH clock AS (
         ), 0) AS non_circulating,
         count(*) FILTER (
             WHERE h.balance > 0
-              AND h.holder_address NOT IN (
-                  p.curve_address,
-                  p.lp_pair,
-                  decode('0000000000000000000000000000000000000000', 'hex'),
-                  decode('000000000000000000000000000000000000dead', 'hex')
-              )
+              AND NOT token_holder_excluded(p.engine_version, h.holder_address, p.curve_address,
+                                            p.lp_pair, p.locker, p.pool_manager)
         )::INTEGER AS holder_count
     FROM prices AS p
     LEFT JOIN holder_balances AS h
@@ -581,27 +678,40 @@ ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregat
 SELECT now()::timestamptz AS now;
 
 -- name: ListUnattributedPoolSwaps :many
--- Backfill cursor: distinct transactions that still have a pool swap without a sender, in
--- blocks at or below through_block, in (block_number, tx_hash) order, strictly after the keyset
--- position (after_block, after_hash).
-SELECT tx_hash, block_number
-FROM pool_swaps
-WHERE chain_id = sqlc.arg(chain_id)::bigint
-  AND tx_from IS NULL
-  AND block_number <= sqlc.arg(through_block)::bigint
-  AND (block_number, tx_hash) > (sqlc.arg(after_block)::bigint, sqlc.arg(after_hash)::bytea)
-GROUP BY tx_hash, block_number
-ORDER BY block_number, tx_hash
+-- Backfill cursor: distinct transactions that still have a v1 pool swap or a V4 swap without a
+-- sender, in blocks at or below through_block, in (block_number, tx_hash) order, strictly after
+-- the keyset position (after_block, after_hash). UNION merges a transaction present in both.
+SELECT unattributed.tx_hash, unattributed.block_number
+FROM (
+    SELECT swap.tx_hash, swap.block_number
+    FROM pool_swaps AS swap
+    WHERE swap.chain_id = sqlc.arg(chain_id)::bigint
+      AND swap.tx_from IS NULL
+      AND swap.block_number <= sqlc.arg(through_block)::bigint
+      AND (swap.block_number, swap.tx_hash) > (sqlc.arg(after_block)::bigint, sqlc.arg(after_hash)::bytea)
+    UNION
+    SELECT swap.tx_hash, swap.block_number
+    FROM v4_swaps AS swap
+    WHERE swap.chain_id = sqlc.arg(chain_id)::bigint
+      AND swap.tx_from IS NULL
+      AND swap.block_number <= sqlc.arg(through_block)::bigint
+      AND (swap.block_number, swap.tx_hash) > (sqlc.arg(after_block)::bigint, sqlc.arg(after_hash)::bytea)
+) AS unattributed
+ORDER BY unattributed.block_number, unattributed.tx_hash
 LIMIT sqlc.arg(row_limit)::int;
 
 -- name: CountUnattributedPoolSwaps :one
--- Pool swaps still without a sender at or below through_block (the indexer's safe head); served
--- by the partial index pool_swaps_tx_from_null_idx.
-SELECT count(*)::bigint AS pending
-FROM pool_swaps
-WHERE chain_id = sqlc.arg(chain_id)::bigint
-  AND tx_from IS NULL
-  AND block_number <= sqlc.arg(through_block)::bigint;
+-- v1 pool swaps and V4 swaps still without a sender at or below through_block (the indexer's
+-- safe head). The v1 side is served by the partial index pool_swaps_tx_from_null_idx; the V4
+-- side by v4_swaps_tx_from_null_idx.
+SELECT (
+    (SELECT count(*) FROM pool_swaps AS swap
+     WHERE swap.chain_id = sqlc.arg(chain_id)::bigint AND swap.tx_from IS NULL
+       AND swap.block_number <= sqlc.arg(through_block)::bigint)
+  + (SELECT count(*) FROM v4_swaps AS swap
+     WHERE swap.chain_id = sqlc.arg(chain_id)::bigint AND swap.tx_from IS NULL
+       AND swap.block_number <= sqlc.arg(through_block)::bigint)
+)::bigint AS pending;
 
 -- name: SetPoolSwapTxFrom :many
 -- Fills the sender of every still-unattributed swap in one transaction and returns the pairs
@@ -611,6 +721,15 @@ WHERE chain_id = sqlc.arg(chain_id)::bigint
   AND tx_hash = sqlc.arg(tx_hash)::bytea
   AND tx_from IS NULL
 RETURNING pair_address;
+
+-- name: SetV4SwapTxFrom :many
+-- The V4 side of SetPoolSwapTxFrom: fills the sender of every still-unattributed V4 swap of the
+-- transaction and returns the pools whose graduated token needs an aggregate re-mark.
+UPDATE v4_swaps SET tx_from = sqlc.arg(tx_from)::bytea
+WHERE chain_id = sqlc.arg(chain_id)::bigint
+  AND tx_hash = sqlc.arg(tx_hash)::bytea
+  AND tx_from IS NULL
+RETURNING pool_id;
 
 -- name: ListSeedTokens :many
 -- Keyset page of the chain's launched tokens for the chunked position seed. Every ledger row
@@ -638,6 +757,11 @@ WITH pairs AS (
         JOIN tokens AS token ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
         WHERE swap.chain_id = sqlc.arg(chain_id)::bigint AND swap.tx_from IS NOT NULL
           AND token.token_address = sqlc.arg(token_address)::bytea
+        UNION
+        SELECT swap.tx_from, graduation.token_address FROM v4_swaps AS swap
+        JOIN graduations AS graduation ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
+        WHERE swap.chain_id = sqlc.arg(chain_id)::bigint AND swap.tx_from IS NOT NULL
+          AND graduation.token_address = sqlc.arg(token_address)::bytea
         UNION
         SELECT transfer.from_address, transfer.token_address FROM transfers AS transfer
         WHERE transfer.chain_id = sqlc.arg(chain_id)::bigint AND transfer.token_address = sqlc.arg(token_address)::bytea

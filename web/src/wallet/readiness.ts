@@ -3,7 +3,7 @@
 import { usePrivy } from "@privy-io/react-auth";
 import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { useEffect, useState } from "react";
-import { publicConfiguration } from "@/config/public";
+import { isAnvilWalletFixture, publicConfiguration } from "@/config/public";
 import type { TransactionReadiness } from "@/transactions";
 
 export type WalletReadinessStatus =
@@ -129,7 +129,7 @@ export function useWalletReadiness(): WalletReadiness {
   const chainId = providerChainId ?? wagmiChainId;
   const { switchChainAsync } = useSwitchChain();
   const configurationReady = configuration.status === "ready";
-  const e2eFixture = configuration.deploymentId === "task6-anvil";
+  const e2eFixture = isAnvilWalletFixture(configuration);
   const selectedAddress = isConnected ? address : undefined;
   const linkedWallets =
     e2eFixture && selectedAddress

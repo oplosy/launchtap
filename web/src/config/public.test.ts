@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { publicConfiguration } from "./public";
+import { isAnvilWalletFixture, publicConfiguration } from "./public";
 
 describe("publicConfiguration", () => {
   it("fails closed for missing values", () => {
@@ -59,6 +59,62 @@ describe("publicConfiguration", () => {
 
     expect(configuration.status).toBe("ready");
     expect(configuration.privyAppId).toBeNull();
+  });
+
+  const v2Fixture = {
+    NEXT_PUBLIC_E2E_FIXTURE: "1",
+    NEXT_PUBLIC_V2_ANVIL_FACTORY: "0x0000000000000000000000000000000000000011",
+    NEXT_PUBLIC_V2_ANVIL_POOL_MANAGER: "0x0000000000000000000000000000000000000012",
+    NEXT_PUBLIC_V2_ANVIL_PERMIT2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    NEXT_PUBLIC_V2_ANVIL_UNIVERSAL_ROUTER: "0x0000000000000000000000000000000000000013",
+    NEXT_PUBLIC_V2_ANVIL_V4_QUOTER: "0x0000000000000000000000000000000000000014",
+    NEXT_PUBLIC_V2_ANVIL_HOOK: "0x0000000000000000000000000000000000002000",
+    NEXT_PUBLIC_V2_ANVIL_LOCKER: "0x0000000000000000000000000000000000000015",
+    NEXT_PUBLIC_TASK6_ANVIL_RPC_URL: "http://127.0.0.1:8545",
+    NEXT_PUBLIC_TASK6_ANVIL_API_URL: "http://127.0.0.1:18080",
+    NEXT_PUBLIC_TASK6_ANVIL_WEB_URL: "http://127.0.0.1:3000",
+  };
+
+  it("builds an engine-2 Anvil fixture deployment with every reviewed V4 address", () => {
+    const configuration = publicConfiguration(v2Fixture);
+    expect(configuration.status).toBe("ready");
+    expect(configuration.deploymentId).toBe("v2-anvil");
+    expect(configuration.deployment?.engineVersion).toBe(2);
+    expect(configuration.deployment?.uniswapV2Router02).toBeNull();
+    expect(configuration.deployment?.v4).toEqual({
+      poolManager: v2Fixture.NEXT_PUBLIC_V2_ANVIL_POOL_MANAGER,
+      permit2: v2Fixture.NEXT_PUBLIC_V2_ANVIL_PERMIT2,
+      universalRouter: v2Fixture.NEXT_PUBLIC_V2_ANVIL_UNIVERSAL_ROUTER,
+      v4Quoter: v2Fixture.NEXT_PUBLIC_V2_ANVIL_V4_QUOTER,
+      hook: v2Fixture.NEXT_PUBLIC_V2_ANVIL_HOOK,
+      locker: v2Fixture.NEXT_PUBLIC_V2_ANVIL_LOCKER,
+    });
+  });
+
+  it("fails closed when the engine-2 Anvil fixture misses any V4 address", () => {
+    for (const key of Object.keys(v2Fixture).filter((name) => name.startsWith("NEXT_PUBLIC_V2_"))) {
+      expect(publicConfiguration({ ...v2Fixture, [key]: "" }).status).toBe("fail-closed");
+    }
+  });
+
+  it("signs through the injected wallet for both Anvil fixtures and never for a reviewed deployment", () => {
+    // Plan v2-C Task 9: the engine-2 fixture uses the same injected-wallet stack as Task 6.
+    expect(isAnvilWalletFixture(publicConfiguration(v2Fixture))).toBe(true);
+    expect(
+      isAnvilWalletFixture(
+        publicConfiguration({
+          NEXT_PUBLIC_E2E_FIXTURE: "1",
+          NEXT_PUBLIC_TASK6_ANVIL_FACTORY: "0x0000000000000000000000000000000000000021",
+          NEXT_PUBLIC_TASK6_ANVIL_WETH: "0x0000000000000000000000000000000000000022",
+          NEXT_PUBLIC_TASK6_ANVIL_ROUTER: "0x0000000000000000000000000000000000000023",
+          NEXT_PUBLIC_TASK6_ANVIL_UNISWAP_FACTORY: "0x0000000000000000000000000000000000000024",
+          NEXT_PUBLIC_TASK6_ANVIL_RPC_URL: "http://127.0.0.1:8545",
+          NEXT_PUBLIC_TASK6_ANVIL_API_URL: "http://127.0.0.1:18080",
+        }),
+      ),
+    ).toBe(true);
+    expect(isAnvilWalletFixture(publicConfiguration({}))).toBe(false);
+    expect(isAnvilWalletFixture({ deploymentId: "robinhood-testnet" })).toBe(false);
   });
 
   it("rejects credentials or query material in public endpoints", () => {

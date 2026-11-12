@@ -19,6 +19,13 @@ const fixtureUniswapFactory = process.env.TASK6_ANVIL_UNISWAP_FACTORY ?? "";
 const fixtureRpc = process.env.TASK6_ANVIL_RPC_URL ?? "";
 const fixtureApi = process.env.TASK6_ANVIL_API_URL ?? "";
 const mockApiPort = Number(process.env.TASK7_MOCK_API_PORT ?? "3418");
+// The Anvil v2 gate's V4 addresses (Plan v2-C Task 9). Empty outside that gate, which leaves the
+// v2 fixture off and every other suite on its existing configuration.
+const v2AnvilEnv = Object.fromEntries(
+  ["FACTORY", "POOL_MANAGER", "PERMIT2", "UNIVERSAL_ROUTER", "V4_QUOTER", "HOOK", "LOCKER"].map(
+    (name) => [`NEXT_PUBLIC_V2_ANVIL_${name}`, process.env[`V2_ANVIL_${name}`] ?? ""],
+  ),
+);
 
 export default defineConfig({
   testDir: "./e2e",
@@ -54,6 +61,7 @@ export default defineConfig({
         NEXT_PUBLIC_TASK6_ANVIL_RPC_URL: fixtureRpc,
         NEXT_PUBLIC_TASK6_ANVIL_API_URL: fixtureApi,
         NEXT_PUBLIC_TASK6_ANVIL_WEB_URL: `http://127.0.0.1:${webPort}`,
+        ...v2AnvilEnv,
         API_INTERNAL_BASE_URL: fixtureApi || `http://127.0.0.1:${mockApiPort}`,
         NEXT_PUBLIC_WEB_ORIGIN: `http://127.0.0.1:${webPort}`,
         PORT: String(webPort),

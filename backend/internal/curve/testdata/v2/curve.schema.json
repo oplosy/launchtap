@@ -1,0 +1,335 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Contictus/launchtap/contracts/vectors/v2/curve.schema.json",
+  "title": "Launchpad V2 curve differential vectors",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "engineVersion",
+    "amountEncoding",
+    "parameters",
+    "cases"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "./curve.schema.json"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "engineVersion": {
+      "const": 2
+    },
+    "amountEncoding": {
+      "const": "uint256-decimal-string"
+    },
+    "parameters": {
+      "$ref": "#/$defs/parameters"
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 10,
+      "items": {
+        "$ref": "#/$defs/case"
+      }
+    }
+  },
+  "$defs": {
+    "amount": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalSupply",
+        "curveTokens",
+        "lpTokens",
+        "graduationEth",
+        "initialVirtualEth",
+        "initialVirtualToken",
+        "tradeFeeBps",
+        "protocolShareBps",
+        "antiSnipeStartBps",
+        "antiSnipeDurationSeconds",
+        "lpCreatorShareBps"
+      ],
+      "properties": {
+        "totalSupply": {
+          "$ref": "#/$defs/amount"
+        },
+        "curveTokens": {
+          "$ref": "#/$defs/amount"
+        },
+        "lpTokens": {
+          "$ref": "#/$defs/amount"
+        },
+        "graduationEth": {
+          "$ref": "#/$defs/amount"
+        },
+        "initialVirtualEth": {
+          "$ref": "#/$defs/amount"
+        },
+        "initialVirtualToken": {
+          "$ref": "#/$defs/amount"
+        },
+        "tradeFeeBps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9999
+        },
+        "protocolShareBps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "antiSnipeStartBps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9000
+        },
+        "antiSnipeDurationSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 300
+        },
+        "lpCreatorShareBps": {
+          "$ref": "#/$defs/bps"
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phase",
+        "virtualEth",
+        "virtualToken",
+        "tokensSold",
+        "realCurveEth",
+        "protocolFees",
+        "creatorFees",
+        "snipeTax"
+      ],
+      "properties": {
+        "phase": {
+          "enum": [
+            "curve",
+            "graduated"
+          ]
+        },
+        "virtualEth": {
+          "$ref": "#/$defs/amount"
+        },
+        "virtualToken": {
+          "$ref": "#/$defs/amount"
+        },
+        "tokensSold": {
+          "$ref": "#/$defs/amount"
+        },
+        "realCurveEth": {
+          "$ref": "#/$defs/amount"
+        },
+        "protocolFees": {
+          "$ref": "#/$defs/amount"
+        },
+        "creatorFees": {
+          "$ref": "#/$defs/amount"
+        },
+        "snipeTax": {
+          "$ref": "#/$defs/amount"
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ethGross",
+        "tokensIn"
+      ],
+      "properties": {
+        "ethGross": {
+          "$ref": "#/$defs/amount"
+        },
+        "tokensIn": {
+          "$ref": "#/$defs/amount"
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ethGross",
+        "ethRefund",
+        "ethOut",
+        "tokenAmount",
+        "protocolFee",
+        "creatorFee",
+        "snipeTax",
+        "taxBps",
+        "graduates"
+      ],
+      "properties": {
+        "ethGross": {
+          "$ref": "#/$defs/amount"
+        },
+        "ethRefund": {
+          "$ref": "#/$defs/amount"
+        },
+        "ethOut": {
+          "$ref": "#/$defs/amount"
+        },
+        "tokenAmount": {
+          "$ref": "#/$defs/amount"
+        },
+        "protocolFee": {
+          "$ref": "#/$defs/amount"
+        },
+        "creatorFee": {
+          "$ref": "#/$defs/amount"
+        },
+        "snipeTax": {
+          "$ref": "#/$defs/amount"
+        },
+        "taxBps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9000
+        },
+        "graduates": {
+          "type": "boolean"
+        }
+      }
+    },
+    "revert": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "data"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "data": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]+$"
+        }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "operation",
+        "secondsSinceLaunch",
+        "initialState",
+        "input",
+        "output",
+        "nextState",
+        "graduation",
+        "expectedRevert"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$"
+        },
+        "operation": {
+          "enum": [
+            "buy",
+            "sell"
+          ]
+        },
+        "secondsSinceLaunch": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "initialState": {
+          "$ref": "#/$defs/state"
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        },
+        "output": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/output"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nextState": {
+          "$ref": "#/$defs/state"
+        },
+        "graduation": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/graduation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expectedRevert": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/revert"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "bps": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10000
+    },
+    "graduation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ethToPool",
+        "tokensToPool",
+        "liquidity",
+        "sqrtPriceX96",
+        "ethRemainder",
+        "tokenRemainder"
+      ],
+      "properties": {
+        "ethToPool": {
+          "$ref": "#/$defs/amount"
+        },
+        "tokensToPool": {
+          "$ref": "#/$defs/amount"
+        },
+        "liquidity": {
+          "$ref": "#/$defs/amount"
+        },
+        "sqrtPriceX96": {
+          "$ref": "#/$defs/amount"
+        },
+        "ethRemainder": {
+          "$ref": "#/$defs/amount"
+        },
+        "tokenRemainder": {
+          "$ref": "#/$defs/amount"
+        }
+      }
+    }
+  }
+}

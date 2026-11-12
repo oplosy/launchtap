@@ -75,3 +75,13 @@ test("focusing an input changes its border colour", async ({ page }, testInfo) =
   await name.focus();
   await expect.poll(border).not.toBe(before);
 });
+
+test("the engine is a read-only badge for the configured deployment", async ({ page }) => {
+  await installRpc(page);
+  await page.goto("/create");
+  await expect(page.getByRole("textbox", { name: "Name" })).toBeVisible();
+  // The TASK6 fixture is an engine-1 deployment (Plan v2-C D7).
+  await expect(page.locator(".engine-badge")).toHaveText("Engine v1");
+  await expect(page.getByRole("group", { name: "Launch engine" })).toHaveCount(0);
+  await expect(page.locator("button[aria-pressed]", { hasText: /^V[12]$/ })).toHaveCount(0);
+});

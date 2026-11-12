@@ -7,6 +7,9 @@ libs = ["lib"]
 remappings = [
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
     "forge-std/=lib/forge-std/src/",
+    "@uniswap/v4-core/=lib/v4-periphery/lib/v4-core/",
+    "@uniswap/v4-periphery/=lib/v4-periphery/",
+    "permit2/=lib/v4-periphery/lib/permit2/",
 ]
 auto_detect_remappings = false
 solc_version = "0.8.36"
@@ -20,10 +23,73 @@ fs_permissions = [
     { access = "read-write", path = "./vectors" },
     { access = "read-write", path = "./fixtures" },
     { access = "read", path = "./deployments" },
+    { access = "read", path = "./out-v4" },
+    { access = "read", path = "./out-router" },
 ]
 
 [profile.fork]
 test = "fork-test"
+
+# Test-only build of the Uniswap v4 deployables (PoolManager, PositionManager) with the
+# upstream compiler and settings (solc 0.8.26, via-IR, upstream optimizer runs and remappings).
+# The default profile pins solc 0.8.36, which those exact-pragma sources cannot use; tests
+# load these artifacts with `vm.deployCode("out-v4/...")`. Mainnet uses the live deployments.
+[profile.v4]
+src = "v4-deployables"
+test = "v4-deployables"
+script = "v4-deployables"
+out = "out-v4"
+cache_path = "cache-v4"
+remappings = [
+    "@uniswap/v4-core/=lib/v4-periphery/lib/v4-core/",
+    "@uniswap/v4-periphery/=lib/v4-periphery/",
+    "@openzeppelin/=lib/v4-periphery/lib/v4-core/lib/openzeppelin-contracts/",
+    "openzeppelin-contracts/=lib/v4-periphery/lib/v4-core/lib/openzeppelin-contracts/",
+    "solmate/=lib/v4-periphery/lib/v4-core/lib/solmate/",
+    "permit2/=lib/v4-periphery/lib/permit2/",
+]
+solc_version = "0.8.26"
+via_ir = true
+optimizer_runs = 44444444
+bytecode_hash = "none"
+deny = "never"
+additional_compiler_profiles = [{ name = "posm", via_ir = true, optimizer_runs = 500 }]
+compilation_restrictions = [
+    { paths = "lib/v4-periphery/src/PositionManager.sol", optimizer_runs = 500 },
+]
+
+# Test-only build of Uniswap Universal Router 2.1.2 for the Anvil v2 web gate (Plan v2-C D1).
+# `lib/universal-router` is pinned to release/2.1.x, whose sources and these settings reproduce
+# the reviewed mainnet router byte for byte outside its deployment-context immutables (own
+# address, chain id, EIP-712 domain separator). v2-core and v3-core are the npm versions the
+# upstream lockfile resolves, as git submodules. Mainnet uses the live deployment.
+[profile.router]
+src = "router-deployables"
+test = "router-deployables"
+script = "router-deployables"
+out = "out-router"
+cache_path = "cache-router"
+remappings = [
+    "@uniswap/v2-core/=lib/uniswap-v2-core/",
+    "@uniswap/v3-core/=lib/uniswap-v3-core/",
+    "@uniswap/v3-periphery/=lib/universal-router/lib/v3-periphery/",
+    "@uniswap/v4-core/=lib/universal-router/lib/v4-periphery/lib/v4-core/",
+    "@uniswap/v4-periphery/=lib/universal-router/lib/v4-periphery/",
+    "@openzeppelin/=lib/universal-router/lib/v4-periphery/lib/v4-core/lib/openzeppelin-contracts/",
+    "permit2/=lib/universal-router/lib/permit2/",
+    "solmate/=lib/universal-router/lib/solmate/",
+    "lib/universal-router/lib/v4-periphery/lib/v4-core/:openzeppelin-contracts/=lib/universal-router/lib/v4-periphery/lib/v4-core/lib/openzeppelin-contracts/",
+    "lib/universal-router/lib/permit2/:openzeppelin-contracts/=lib/universal-router/lib/permit2/lib/openzeppelin-contracts/",
+]
+solc_version = "0.8.26"
+via_ir = true
+optimizer_runs = 4444
+bytecode_hash = "none"
+deny = "never"
+additional_compiler_profiles = [{ name = "universal-router", via_ir = true, optimizer_runs = 3000 }]
+compilation_restrictions = [
+    { paths = "lib/universal-router/contracts/UniversalRouter.sol", optimizer_runs = 3000 },
+]
 
 [fmt]
 line_length = 100

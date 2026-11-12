@@ -5,8 +5,11 @@ test.describe("Task 6 transaction safety shell", () => {
     page,
   }) => {
     await page.goto("/create");
-    await expect(page.getByRole("group", { name: "Launch engine" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Transactions unavailable" })).toBeVisible();
+    // Plan v2-C D7: the engine is a read-only badge of the configured deployment, never a choice;
+    // without a reviewed deployment there is no engine to show.
+    await expect(page.getByRole("group", { name: "Launch engine" })).toHaveCount(0);
+    await expect(page.locator(".engine-badge")).toHaveCount(0);
     await expect(page.getByText(/No transaction can be submitted/)).toBeVisible();
     await expect(page.getByRole("button", { name: /Sign|Review launch/i })).toHaveCount(0);
   });

@@ -8,7 +8,7 @@ const wad = (value: string) => `${BigInt(value) * 10n ** 18n}`;
 const wadFraction = (numerator: bigint, denominator: bigint) =>
   `${(numerator * 10n ** 18n) / denominator}`;
 
-async function installFixture(page: Page) {
+async function installFixture(page: Page, tokenOverrides: Record<string, unknown> = {}) {
   const candleRequests: string[] = [];
   type FixtureCandle = {
     start: string;
@@ -144,6 +144,7 @@ async function installFixture(page: Page) {
         volume_24h_eth: wad("20"),
         weth: tokenAddress,
         x_url: "https://x.com/fixture",
+        ...tokenOverrides,
       }),
     });
   });
@@ -351,4 +352,45 @@ test("token page offers Share on X and Copy link", async ({ page }) => {
   expect(href.searchParams.get("text")).toBe("$FIX on Launchpad");
   expect(href.searchParams.get("url")).toContain(`/token/${tokenAddress}`);
   await expect(page.getByRole("button", { name: "Copy link" })).toBeVisible();
+});
+
+test("a graduated v2 token shows its pool facts and no fake liquidity", async ({ page }) => {
+  const recipient = "0x00000000000000000000000000000000000000a1";
+  const poolId = `0x${"ab".repeat(32)}`;
+  await installFixture(page, {
+    engine_version: 2,
+    phase: "graduated",
+    liquidity_eth: "0",
+    eth_reserve: "0",
+    token_reserve: "0",
+    v2: {
+      anti_snipe: { start_bps: 2000, duration_seconds: 600, ends_at: "2026-09-10T12:10:00Z" },
+      fee_recipient: recipient,
+      pending_fee_recipient: null,
+      lp_creator_share_bps: 5000,
+      locker_owed: [{ account: recipient, eth: wad("1"), token: "0" }],
+      pool: {
+        pool_id: poolId,
+        hook: "0x0000000000000000000000000000000000002000",
+        position_token_id: "7",
+      },
+    },
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`/token/${tokenAddress}?fixture=populated`);
+  const facts = page.getByRole("region", { name: "Engine v2" });
+  await expect(facts).toBeVisible();
+  await expect(facts).toContainText("20%, decaying to 0 over 10 min");
+  await expect(facts).toContainText(poolId);
+  await expect(facts).toContainText(recipient);
+  await expect(page.getByText("Not indexed yet", { exact: true })).toBeVisible();
+  await expect(page.getByText("ETH reserve")).toHaveCount(0);
+});
+
+test("an engine-1 token shows no v2 facts", async ({ page }) => {
+  await installFixture(page);
+  await page.goto(`/token/${tokenAddress}?fixture=populated`);
+  await expect(page.getByRole("heading", { name: "Fixture Route" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Engine v2" })).toHaveCount(0);
+  await expect(page.getByText("ETH reserve")).toBeVisible();
 });

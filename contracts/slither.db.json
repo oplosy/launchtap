@@ -38,5 +38,101 @@
     "description": "LaunchFactory._validateDeveloperBuy(address,LaunchTypes.LaunchRequest,LaunchTypes.CurveParameters) (src/LaunchFactory.sol#264-278) ignores return value by (None,tokensOut,None,None,None,None) = IBondingCurveV1(curve).quoteBuy(request.developerBuyGross) (src/LaunchFactory.sol#273)\n",
     "id": "f80749dca281fcbb9fc9a7aad6036b6a1d550de6a62b7d17bbacea91acc740e0",
     "first_markdown_element": "src/LaunchFactory.sol#L264-L278"
+  },
+  {
+    "check": "unused-return",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "description": "BondingCurveV2._graduate() (src/v2/BondingCurveV2.sol#556-605) ignores return value by IPoolManager(_poolManager).initialize(key,result.sqrtPriceX96) (src/v2/BondingCurveV2.sol#565)\n",
+    "id": "4ca8f97ccc19c8d7aa63e4b2b54a73e2e1d34d14fc11877289360f1c1ff67273",
+    "first_markdown_element": "src/v2/BondingCurveV2.sol#L556-L605"
+  },
+  {
+    "check": "uninitialized-local",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "description": "BondingCurveV2._graduate().result (src/v2/BondingCurveV2.sol#561) is a local variable never initialized\n",
+    "id": "8e6ff3b4374474a4bf5359502181c4301e36ae50b27557ca03e9698b9c3a7623",
+    "first_markdown_element": "src/v2/BondingCurveV2.sol#L561"
+  },
+  {
+    "check": "incorrect-equality",
+    "impact": "Medium",
+    "confidence": "High",
+    "description": "BondingCurveV2._creditCreatorFees(uint256) (src/v2/BondingCurveV2.sol#676-681) uses a dangerous strict equality:\n\t- amount == 0 (src/v2/BondingCurveV2.sol#677)\n",
+    "id": "d7f902e3a962c95a42e899cee8ba6dea680661843b6f76201f90eee6dd65a7c6",
+    "first_markdown_element": "src/v2/BondingCurveV2.sol#L676-L681"
+  },
+  {
+    "check": "incorrect-equality",
+    "impact": "Medium",
+    "confidence": "High",
+    "description": "BondingCurveV2._takeCreatorFees(address) (src/v2/BondingCurveV2.sol#683-690) uses a dangerous strict equality:\n\t- amount == 0 (src/v2/BondingCurveV2.sol#685)\n",
+    "id": "9f448040a1fc0fa340046535760607ed567babe367b74164d11771cf22341107",
+    "first_markdown_element": "src/v2/BondingCurveV2.sol#L683-L690"
+  },
+  {
+    "check": "incorrect-equality",
+    "impact": "Medium",
+    "confidence": "High",
+    "description": "BondingCurveV2._takeRefund(address) (src/v2/BondingCurveV2.sol#692-699) uses a dangerous strict equality:\n\t- amount == 0 (src/v2/BondingCurveV2.sol#694)\n",
+    "id": "ec88f1bc3dbddf02270e056930c2e0ee5eb90afbb7bc52089ed1bbdab327bf1b",
+    "first_markdown_element": "src/v2/BondingCurveV2.sol#L692-L699"
+  },
+  {
+    "check": "incorrect-equality",
+    "impact": "Medium",
+    "confidence": "High",
+    "description": "BondingCurveV2._sendOrCredit(address,uint256) (src/v2/BondingCurveV2.sol#701-716) uses a dangerous strict equality:\n\t- amount == 0 (src/v2/BondingCurveV2.sol#702)\n",
+    "id": "d7b3a0c6cf8e4c9bf8d3fbce35f89ee4bcccace55bb79de125e5293e1709a920",
+    "first_markdown_element": "src/v2/BondingCurveV2.sol#L701-L716"
+  },
+  {
+    "check": "unused-return",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "description": "BondingCurveV2.initialize(LaunchTypesV2.CurveInitializationV2) (src/v2/BondingCurveV2.sol#83-157) ignores return value by GraduationMath.sqrtPriceX96(parameters.graduationEth,parameters.lpTokens) (src/v2/BondingCurveV2.sol#122)\n",
+    "id": "00335391cb4af953b460610de71f6496b226213af0934e9b4fe90ab2f8b52392",
+    "first_markdown_element": "src/v2/BondingCurveV2.sol#L83-L157"
+  },
+  {
+    "check": "arbitrary-send-eth",
+    "impact": "High",
+    "confidence": "Medium",
+    "description": "LaunchFactoryV2._callDeveloperBuy(IBondingCurveV2,address,uint256,uint256,uint256) (src/v2/LaunchFactoryV2.sol#321-331) sends eth to arbitrary user\n\tDangerous calls:\n\t- curve.buyFor{value: gross}(creator,creator,creator,minTokensOut,deadline) (src/v2/LaunchFactoryV2.sol#330)\n",
+    "id": "787b838cd5b5ccfeeb1f473c495d9ee648112145c9bfc6afc731b7a7009efd1a",
+    "first_markdown_element": "src/v2/LaunchFactoryV2.sol#L321-L331"
+  },
+  {
+    "check": "unused-return",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "description": "LaunchFactoryV2._setFutureDefaults(LaunchTypesV2.FactoryDefaultsV2) (src/v2/LaunchFactoryV2.sol#422-443) ignores return value by GraduationMath.sqrtPriceX96(defaults.parameters.graduationEth,defaults.parameters.lpTokens) (src/v2/LaunchFactoryV2.sol#437)\n",
+    "id": "34408261c5bb09be36c6a858d2b56c2da66555d121cb5d9a0454f46fe3db6cd0",
+    "first_markdown_element": "src/v2/LaunchFactoryV2.sol#L422-L443"
+  },
+  {
+    "check": "incorrect-equality",
+    "impact": "Medium",
+    "confidence": "High",
+    "description": "LpFeeLocker._collect(address) (src/v2/LpFeeLocker.sol#135-152) uses a dangerous strict equality:\n\t- ethAmount == 0 && tokenAmount == 0 (src/v2/LpFeeLocker.sol#146)\n",
+    "id": "5d9facb6f8122c1b723da31190ea3fdae41fa47a1d96c7cc332570bbdbbebd6f",
+    "first_markdown_element": "src/v2/LpFeeLocker.sol#L135-L152"
+  },
+  {
+    "check": "unused-return",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "description": "LpFeeLocker.registerPosition(address,uint256) (src/v2/LpFeeLocker.sol#62-81) ignores return value by (key,None) = POSITION_MANAGER.getPoolAndPositionInfo(tokenId) (src/v2/LpFeeLocker.sol#72)\n",
+    "id": "ae6045ccec6cbe4bd9759cd26d2a211d06a08902ac5716a512dd80407860a014",
+    "first_markdown_element": "src/v2/LpFeeLocker.sol#L62-L81"
+  },
+  {
+    "check": "reentrancy-no-eth",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "description": "Reentrancy in LpFeeLocker.claim(address) (src/v2/LpFeeLocker.sol#93-115):\n\tExternal calls:\n\t- _collect(token) (src/v2/LpFeeLocker.sol#98)\n\t\t- POSITION_MANAGER.modifyLiquidities(_collectData(tokenId,token),block.timestamp) (src/v2/LpFeeLocker.sol#142)\n\tState variables written after the call(s):\n\t- _ethOwed[token][msg.sender] = 0 (src/v2/LpFeeLocker.sol#104)\n\tLpFeeLocker._ethOwed (src/v2/LpFeeLocker.sol#36) can be used in cross function reentrancies:\n\t- LpFeeLocker.owed(address,address) (src/v2/LpFeeLocker.sol#123-129)\n\t- _tokenOwed[token][msg.sender] = 0 (src/v2/LpFeeLocker.sol#105)\n\tLpFeeLocker._tokenOwed (src/v2/LpFeeLocker.sol#37) can be used in cross function reentrancies:\n\t- LpFeeLocker.owed(address,address) (src/v2/LpFeeLocker.sol#123-129)\n",
+    "id": "b3256d5f9d28bacae93ae67cd62d362f2ab4703c3eb3abc702fbfe4531a0252b",
+    "first_markdown_element": "src/v2/LpFeeLocker.sol#L93-L115"
   }
 ]

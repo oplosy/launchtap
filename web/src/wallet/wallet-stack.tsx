@@ -5,7 +5,7 @@ import { WagmiProvider as PrivyWagmiProvider } from "@privy-io/wagmi";
 import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, type PropsWithChildren } from "react";
-import { publicConfiguration } from "@/config/public";
+import { isAnvilWalletFixture, publicConfiguration } from "@/config/public";
 import { createWeb3Config } from "./config";
 import { PrivyWalletConnectionBridge, WagmiWalletConnectionBridge } from "./connection";
 
@@ -22,7 +22,7 @@ export function WalletStack({
   const [queryClient] = useState(() => new QueryClient());
 
   if (!web3) return children;
-  if (configuration.deploymentId === "task6-anvil" && !configuration.privyAppId)
+  if (isAnvilWalletFixture(configuration) && !configuration.privyAppId)
     return (
       <WagmiProvider config={web3.config}>
         <QueryClientProvider client={queryClient}>
@@ -33,7 +33,7 @@ export function WalletStack({
       </WagmiProvider>
     );
   if (!configuration.privyAppId) return children;
-  if (configuration.deploymentId === "task6-anvil")
+  if (isAnvilWalletFixture(configuration))
     return (
       <WagmiProvider config={web3.config}>
         <PrivyProvider appId={configuration.privyAppId}>

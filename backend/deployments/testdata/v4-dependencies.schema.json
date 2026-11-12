@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://launchtap.local/schemas/v4-dependencies-v1.json",
+  "title": "LaunchTap reviewed Uniswap v4 chain dependencies",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "target",
+    "chainId",
+    "reviewed",
+    "poolManager",
+    "positionManager",
+    "permit2",
+    "universalRouter",
+    "positionDescriptor",
+    "stateView",
+    "v4Quoter",
+    "weth9",
+    "bytecodeHashes",
+    "forkVerification",
+    "evidence",
+    "sources"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "target": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$"
+    },
+    "chainId": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "reviewed": {
+      "const": true
+    },
+    "poolManager": {
+      "$ref": "#/$defs/address"
+    },
+    "positionManager": {
+      "$ref": "#/$defs/address"
+    },
+    "permit2": {
+      "$ref": "#/$defs/address"
+    },
+    "universalRouter": {
+      "$ref": "#/$defs/address"
+    },
+    "positionDescriptor": {
+      "$ref": "#/$defs/address"
+    },
+    "stateView": {
+      "$ref": "#/$defs/address"
+    },
+    "v4Quoter": {
+      "$ref": "#/$defs/address"
+    },
+    "weth9": {
+      "$ref": "#/$defs/address"
+    },
+    "bytecodeHashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "poolManager",
+        "positionManager",
+        "permit2",
+        "universalRouter"
+      ],
+      "properties": {
+        "poolManager": {
+          "$ref": "#/$defs/hash"
+        },
+        "positionManager": {
+          "$ref": "#/$defs/hash"
+        },
+        "permit2": {
+          "$ref": "#/$defs/hash"
+        },
+        "universalRouter": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "forkVerification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "blockNumber",
+        "blockHash",
+        "observedRpcProvider",
+        "archiveRpcProvider",
+        "rpcEnvironmentVariable",
+        "archiveRequired"
+      ],
+      "properties": {
+        "blockNumber": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "blockHash": {
+          "$ref": "#/$defs/hash"
+        },
+        "observedRpcProvider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "archiveRpcProvider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rpcEnvironmentVariable": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "archiveRequired": {
+          "const": true
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "poolManager",
+        "positionManager",
+        "permit2",
+        "universalRouter"
+      ],
+      "properties": {
+        "poolManager": {
+          "type": "string",
+          "minLength": 1
+        },
+        "positionManager": {
+          "type": "string",
+          "minLength": 1
+        },
+        "permit2": {
+          "type": "string",
+          "minLength": 1
+        },
+        "universalRouter": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "uniswapV4Deployments",
+        "uniswapDeploymentsFeed",
+        "uniswapDeploymentsFeedCommit",
+        "chainRpc"
+      ],
+      "properties": {
+        "uniswapV4Deployments": {
+          "$ref": "#/$defs/url"
+        },
+        "uniswapDeploymentsFeed": {
+          "$ref": "#/$defs/url"
+        },
+        "uniswapDeploymentsFeedCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "chainRpc": {
+          "$ref": "#/$defs/url"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "address": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{40}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{64}$"
+    },
+    "url": {
+      "type": "string",
+      "pattern": "^https://"
+    }
+  }
+}

@@ -300,20 +300,23 @@ func (adapter *Adapter) IngestTrade(ctx context.Context, event ledger.Trade) (le
 	if err != nil || !result.Inserted {
 		return result, err
 	}
+	return result, adapter.applyTradeProjections(ctx, event)
+}
+
+// applyTradeProjections updates the curve reserves and candles from a stored curve trade and
+// marks the token and the trader's position dirty. Engine 1 and 2 trades share it.
+func (adapter *Adapter) applyTradeProjections(ctx context.Context, event ledger.Trade) error {
 	identity := projectionIdentity(event.EventCoordinates)
 	if err := adapter.queries.ApplyTradeReserveProjection(ctx, sqlc.ApplyTradeReserveProjectionParams(identity)); err != nil {
-		return ledger.InsertResult{}, fmt.Errorf("apply trade reserve projection: %w", err)
+		return fmt.Errorf("apply trade reserve projection: %w", err)
 	}
 	if err := adapter.queries.ApplyMarketTradeCandles(ctx, sqlc.ApplyMarketTradeCandlesParams(identity)); err != nil {
-		return ledger.InsertResult{}, fmt.Errorf("apply trade candles: %w", err)
+		return fmt.Errorf("apply trade candles: %w", err)
 	}
 	if err := adapter.queries.MarkTokenDirty(ctx, sqlc.MarkTokenDirtyParams{ChainID: event.ChainID, TokenAddress: sqlc.Address(event.Token)}); err != nil {
-		return ledger.InsertResult{}, fmt.Errorf("mark token dirty: %w", err)
+		return fmt.Errorf("mark token dirty: %w", err)
 	}
-	if err := adapter.markPositionDirty(ctx, event.ChainID, event.Trader, event.Token); err != nil {
-		return ledger.InsertResult{}, err
-	}
-	return result, nil
+	return adapter.markPositionDirty(ctx, event.ChainID, event.Trader, event.Token)
 }
 
 func (adapter *Adapter) IngestGraduation(ctx context.Context, event ledger.Graduation) (ledger.InsertResult, error) {
@@ -368,7 +371,7 @@ func (adapter *Adapter) IngestPoolSync(ctx context.Context, event ledger.PoolSyn
 	if err := adapter.queries.ApplyPoolSyncReserveProjection(ctx, sqlc.ApplyPoolSyncReserveProjectionParams(identity)); err != nil {
 		return ledger.InsertResult{}, fmt.Errorf("apply pool sync reserve projection: %w", err)
 	}
-	if err := adapter.queries.MarkPairTokenDirty(ctx, sqlc.MarkPairTokenDirtyParams{ChainID: event.ChainID, LpPair: sqlc.Address(event.Pair)}); err != nil {
+	if err := adapter.queries.MarkPairTokenDirty(ctx, sqlc.MarkPairTokenDirtyParams{ChainID: event.ChainID, LpPair: addressPointer(event.Pair)}); err != nil {
 		return ledger.InsertResult{}, fmt.Errorf("mark pair token dirty: %w", err)
 	}
 	return result, nil
@@ -383,7 +386,7 @@ func (adapter *Adapter) IngestPoolSwap(ctx context.Context, event ledger.PoolSwa
 	if err := adapter.queries.ApplyMarketTradeCandles(ctx, sqlc.ApplyMarketTradeCandlesParams(identity)); err != nil {
 		return ledger.InsertResult{}, fmt.Errorf("apply pool swap candles: %w", err)
 	}
-	if err := adapter.queries.MarkPairTokenDirty(ctx, sqlc.MarkPairTokenDirtyParams{ChainID: event.ChainID, LpPair: sqlc.Address(event.Pair)}); err != nil {
+	if err := adapter.queries.MarkPairTokenDirty(ctx, sqlc.MarkPairTokenDirtyParams{ChainID: event.ChainID, LpPair: addressPointer(event.Pair)}); err != nil {
 		return ledger.InsertResult{}, fmt.Errorf("mark pair token dirty: %w", err)
 	}
 	var txFrom []byte
@@ -396,12 +399,11 @@ func (adapter *Adapter) IngestPoolSwap(ctx context.Context, event ledger.PoolSwa
 	return result, nil
 }
 
+// IngestCreatorFeeClaim debits an engine-2 creator fee balance; for an engine-1 token the delta
+// is a no-op.
 func (adapter *Adapter) IngestCreatorFeeClaim(ctx context.Context, event ledger.CreatorFeeClaim) (ledger.InsertResult, error) {
 	result, err := adapter.InsertCreatorFeeClaim(ctx, event)
-	if err != nil || !result.Inserted {
-		return result, err
-	}
-	return result, adapter.markTokenDirty(ctx, event.ChainID, event.Token)
+	return adapter.applyCreatorFeeDeltasIfInserted(ctx, result, err, event.EventCoordinates, event.Token)
 }
 
 func (adapter *Adapter) IngestProtocolFeeClaim(ctx context.Context, event ledger.ProtocolFeeClaim) (ledger.InsertResult, error) {
@@ -474,7 +476,7 @@ func (adapter *Adapter) markTokenDirty(ctx context.Context, chainID int64, token
 }
 
 func (adapter *Adapter) markPairTokenDirty(ctx context.Context, chainID int64, pair common.Address) error {
-	if err := adapter.queries.MarkPairTokenDirty(ctx, sqlc.MarkPairTokenDirtyParams{ChainID: chainID, LpPair: sqlc.Address(pair)}); err != nil {
+	if err := adapter.queries.MarkPairTokenDirty(ctx, sqlc.MarkPairTokenDirtyParams{ChainID: chainID, LpPair: addressPointer(pair)}); err != nil {
 		return fmt.Errorf("mark pair token dirty: %w", err)
 	}
 	return nil
@@ -707,6 +709,39 @@ func (adapter *Adapter) DeleteCanonicalAbove(ctx context.Context, chainID, ances
 		},
 		func(ctx context.Context) error {
 			_, err := adapter.queries.DeleteFutureTreasuryConfigurationsAbove(ctx, sqlc.DeleteFutureTreasuryConfigurationsAboveParams(arg))
+			return err
+		},
+		// Engine-2 ledger. V4 pool rows reference their graduation, so they go before it.
+		func(ctx context.Context) error {
+			_, err := adapter.queries.DeleteSnipeTaxClaimsAbove(ctx, sqlc.DeleteSnipeTaxClaimsAboveParams(arg))
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := adapter.queries.DeleteFeeRecipientProposalsAbove(ctx, sqlc.DeleteFeeRecipientProposalsAboveParams(arg))
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := adapter.queries.DeleteFeeRecipientAcceptancesAbove(ctx, sqlc.DeleteFeeRecipientAcceptancesAboveParams(arg))
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := adapter.queries.DeleteLpFeeCollectionsAbove(ctx, sqlc.DeleteLpFeeCollectionsAboveParams(arg))
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := adapter.queries.DeleteLpFeeClaimsAbove(ctx, sqlc.DeleteLpFeeClaimsAboveParams(arg))
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := adapter.queries.DeleteV4SwapsAbove(ctx, sqlc.DeleteV4SwapsAboveParams(arg))
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := adapter.queries.DeleteV4LiquidityChangesAbove(ctx, sqlc.DeleteV4LiquidityChangesAboveParams(arg))
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := adapter.queries.DeleteV4PoolInitializationsAbove(ctx, sqlc.DeleteV4PoolInitializationsAboveParams(arg))
 			return err
 		},
 		func(ctx context.Context) error {

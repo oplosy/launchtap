@@ -22,7 +22,9 @@ tasks:
   integration:
     desc: Run integration-tagged tests with the race detector.
     cmds:
-      - go test -tags=integration ./... -race
+      # postgrestest runs close to go test's default 10m package timeout under -race on slower
+      # machines (and while verify runs its other tasks in parallel); the CI job keeps its own cap.
+      - go test -tags=integration ./... -race -timeout=20m
 
   lint:
     desc: Run the pinned golangci-lint tool.
@@ -92,6 +94,20 @@ tasks:
       - cmd: pwsh -File scripts/run-anvil-indexer-e2e.ps1
         platforms: [linux, darwin]
 
+  anvil-v2-indexer-e2e:
+    desc: Drive an engine-2 launch through graduation, a reorg, V4 swaps and LP fee claims on Anvil.
+    cmds:
+      - cmd: powershell -ExecutionPolicy Bypass -File scripts/run-anvil-v2-indexer-e2e.ps1
+        platforms: [windows]
+      - cmd: pwsh -File scripts/run-anvil-v2-indexer-e2e.ps1
+        platforms: [linux, darwin]
+
+  anvil-e2e:
+    desc: Run both Anvil end-to-end suites one after the other; both compile contracts/out.
+    cmds:
+      - task: anvil-indexer-e2e
+      - task: anvil-v2-indexer-e2e
+
   verify:
     desc: Run the full backend gate -- format, build, test, integration, lint, and drift checks.
     deps:
@@ -106,4 +122,4 @@ tasks:
       - event-abis-diff
       - deployments-diff
       - openapi-diff
-      - anvil-indexer-e2e
+      - anvil-e2e

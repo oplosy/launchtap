@@ -297,7 +297,7 @@ func manifestFS(t *testing.T, manifests map[string]string) fstest.MapFS {
 	if err != nil {
 		t.Fatalf("fs.Sub() error = %v", err)
 	}
-	for _, name := range []string{deploymentSchemaPath, dependenciesSchemaPath, disabledSchemaPath} {
+	for _, name := range []string{deploymentSchemaPath, deploymentV2SchemaPath, dependenciesSchemaPath, disabledSchemaPath, v4SchemaPath} {
 		body, err := fs.ReadFile(root, name)
 		if err != nil {
 			t.Fatalf("read schema %q: %v", name, err)
@@ -322,4 +322,20 @@ func mutateManifest(t *testing.T, source string, mutate func(map[string]any)) st
 		t.Fatalf("encode fixture: %v", err)
 	}
 	return string(body)
+}
+
+func TestLoadValidatesV4DependencyRecordWithItsOwnSchema(t *testing.T) {
+	root, err := fs.Sub(embeddedArtifacts, "testdata")
+	if err != nil {
+		t.Fatalf("fs.Sub() error = %v", err)
+	}
+	if _, err := Load(root); err != nil {
+		t.Fatalf("Load() error = %v for the reviewed v4 dependency record", err)
+	}
+
+	files := manifestFS(t, nil)
+	files["config/invalid-v4.json"] = &fstest.MapFile{Data: []byte(`{"schemaVersion":1}`)}
+	if _, err := Load(files); err == nil {
+		t.Fatal("Load() error = nil for invalid v4 dependency record")
+	}
 }

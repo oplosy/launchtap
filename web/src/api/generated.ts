@@ -547,6 +547,14 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AntiSnipeDTO: {
+            /** Format: int32 */
+            duration_seconds: number;
+            /** @description RFC 3339 time at which the anti-snipe tax reaches zero. */
+            ends_at: string;
+            /** Format: int32 */
+            start_bps: number;
+        };
         BurstItem: {
             /**
              * Format: int64
@@ -928,6 +936,11 @@ export interface components {
             /** @description Username published on this wallet, or null. */
             username: string | null;
         };
+        LockerOwedDTO: {
+            account: string;
+            eth: string;
+            token: string;
+        };
         MetadataBody: {
             /**
              * Format: uri
@@ -1089,6 +1102,15 @@ export interface components {
             /** Format: int64 */
             reserve_source_block: number;
             reserve_source_hash: string;
+            /** @description Engine-2 anti-snipe tax taken from a buy at the indexed head's block time; 0 for engine 1, sells and after the window. */
+            snipe_tax: string;
+            /**
+             * Format: int32
+             * @description Engine-2 anti-snipe rate in force at the indexed head's block time; 0 for engine 1 and after the window.
+             */
+            tax_bps: number;
+            /** @description RFC 3339 time at which the anti-snipe tax reaches zero; empty when no tax is in force. */
+            tax_ends_at: string;
         };
         QuoteInputBody: {
             /**
@@ -1214,6 +1236,8 @@ export interface components {
             total_supply: string;
             /** Format: int32 */
             trade_fee_bps: number;
+            /** @description Engine-2 launch, pool and fee facts; null for engine 1. */
+            v2: components["schemas"]["TokenV2DTO"];
             volume_24h_eth: string;
             weth: string;
             x_url: string;
@@ -1238,6 +1262,17 @@ export interface components {
             next_cursor?: string;
             snapshot: components["schemas"]["SnapshotDTO"];
         };
+        TokenV2DTO: {
+            anti_snipe: components["schemas"]["AntiSnipeDTO"];
+            fee_recipient: string;
+            /** @description What the LP fee locker owes each account, by account. */
+            locker_owed: components["schemas"]["LockerOwedDTO"][] | null;
+            /** Format: int32 */
+            lp_creator_share_bps: number;
+            pending_fee_recipient: string | null;
+            /** @description The graduated Uniswap V4 pool; null before graduation. */
+            pool: components["schemas"]["V2PoolDTO"];
+        } | null;
         TradeBurstFeedEvent: {
             /** Format: int64 */
             chain_id: number;
@@ -1319,6 +1354,11 @@ export interface components {
             volume_24h_eth: string;
             window_volume_eth: string;
         };
+        V2PoolDTO: {
+            hook: string;
+            pool_id: string;
+            position_token_id: string;
+        } | null;
         WalletCreatedBody: {
             /**
              * Format: uri

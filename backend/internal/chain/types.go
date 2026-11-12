@@ -16,6 +16,10 @@ const (
 	EmitterCurve
 	EmitterToken
 	EmitterPair
+	// EmitterLocker is an engine-2 deployment's LP fee locker.
+	EmitterLocker
+	// EmitterPoolManager is the singleton Uniswap V4 PoolManager, scoped to known pools.
+	EmitterPoolManager
 )
 
 type LogCoordinates struct {
@@ -130,6 +134,11 @@ type Emitters struct {
 	Curves  AddressSet
 	Tokens  AddressSet
 	Pairs   AddressSet
+	// Locker and PoolManager are set only for engine 2. PoolManager logs are accepted only for
+	// a pool id in Pools (pool id -> token): the PoolManager emits for every pool on the chain.
+	Locker      common.Address
+	PoolManager common.Address
+	Pools       map[common.Hash]common.Address
 }
 
 func (e Emitters) Kind(address common.Address) (EmitterKind, bool) {
@@ -144,6 +153,12 @@ func (e Emitters) Kind(address common.Address) (EmitterKind, bool) {
 	}
 	if _, ok := e.Pairs[address]; ok {
 		return EmitterPair, true
+	}
+	if address == e.Locker && e.Locker != (common.Address{}) {
+		return EmitterLocker, true
+	}
+	if address == e.PoolManager && e.PoolManager != (common.Address{}) {
+		return EmitterPoolManager, true
 	}
 	return 0, false
 }

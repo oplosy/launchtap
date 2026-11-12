@@ -17,6 +17,8 @@ var (
 	ErrChainIDMismatch     = errors.New("RPC chain ID does not match configured deployment")
 	ErrBytecodeMismatch    = errors.New("runtime bytecode hash mismatch")
 	ErrPairMismatch        = errors.New("pair address mismatch")
+	ErrLaunchMismatch      = errors.New("launch does not match the deployment manifest")
+	ErrPoolMismatch        = errors.New("V4 pool does not match the launch pool key")
 )
 
 type ChainIDMismatchError struct {

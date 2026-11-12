@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { EngineToggle } from "@/components/engine-toggle";
+import { EngineBadge } from "@/components/engine-toggle";
 import { LaunchPanel } from "@/transactions-panel";
 
 export default function CreatePage() {
@@ -9,7 +9,7 @@ export default function CreatePage() {
         <Link className="ui-button ui-button-secondary ui-button-sm create-back-button" href="/">
           <span aria-hidden="true">‹</span> Back
         </Link>
-        <EngineToggle />
+        <EngineBadge />
       </div>
       <LaunchPanel />
     </div>
