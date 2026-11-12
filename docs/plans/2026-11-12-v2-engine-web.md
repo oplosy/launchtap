@@ -59,12 +59,14 @@ Vitest, Playwright. **No new web dependency:** Universal Router inputs are encod
   - **Approval:** adding a dependency needs the product owner's approval
     (`CLAUDE.md`). Tasks 1–8 do not depend on D1 and can start before it is decided.
 - **D2 — Encode router inputs against the deployed router's revision.**
-  - The pinned `lib/v4-periphery` has `ExactInputSingleParams.minHopPriceX36`. The mainnet
-    record says `PositionManager` is a different periphery revision than the pinned build,
-    and `UniversalRouter` v2.1.2 is also older than the pin.
-  - The browser must encode `SWAP_EXACT_IN_SINGLE` for the revision of the reviewed router.
-    The encoding module names that revision in its doc comment, and Task 9 proves it end to
-    end.
+  - The browser must encode `SWAP_EXACT_IN_SINGLE` for the revision of the reviewed router,
+    and the encoding module names that revision in its doc comment.
+  - **Resolved 2026-11-12 (Task 9):** Universal Router 2.1.2 is `Uniswap/universal-router`
+    `release/2.1.x`, built against v4-periphery `545a5d2a` (#564). That revision **has**
+    `ExactInputSingleParams.minHopPriceX36`, and its calldata decoder needs nine static words
+    before `hookData`. The first Task 4 encoding omitted the field and could not have
+    executed. The fix encodes `minHopPriceX36 = 0` (off), because `amountOutMinimum` already
+    bounds a single hop. The Task 9 gate signs this through a router built from that source.
 - **D3 — Sells use an on-chain Permit2 allowance, not a signature.**
   - Flow:
     1. An exact ERC-20 `approve(token → Permit2)`, reset to zero first when non-zero, as the
