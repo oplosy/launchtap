@@ -302,7 +302,10 @@ function usePersistedTransactionState(
       !ready ||
       !state.hash ||
       !apiBaseUrl ||
+      // Approvals and the engine-2 creator writes have no canonical event to observe; they
+      // settle on the receipt alone.
       action === "approval" ||
+      action === "v2-creator" ||
       state.status === "finalized" ||
       state.status === "receipt-reverted" ||
       state.status === "reverted"
@@ -1611,9 +1614,37 @@ function V2CreatorPanel({
   const [refresh, setRefresh] = useState(0);
   const [proposal, setProposal] = useState("");
   const [busy, setBusy] = useState(false);
-  const [state, setState] = useState<TransactionState>(() => createTransactionState());
+  // Persisted so a reload mid-transaction keeps the hash and the lock (Plan v2-C Task 9).
+  const creatorTransaction = usePersistedTransactionState(
+    "v2-creator",
+    configuration.chainId,
+    account.address,
+    tokenAddress,
+    configuration.apiBaseUrl,
+  );
+  const { state, setState, ready } = creatorTransaction;
   const lockRef = useRef(false);
   const curveAbi = browserAbis.curveV2 as Abi;
+  // A restored hash whose outcome is unknown settles on its receipt; no indexer event follows.
+  useEffect(() => {
+    if (!ready || !publicClient || lockRef.current || !state.hash) return;
+    if (state.status !== "submitted" && state.status !== "rpc-failure") return;
+    const hash = state.hash as Address;
+    let cancelled = false;
+    void publicClient
+      .waitForTransactionReceipt({ hash })
+      .then((receipt) => {
+        if (cancelled) return;
+        setState({ status: receipt.status === "success" ? "mined" : "receipt-reverted", hash });
+        setRefresh((value) => value + 1);
+      })
+      .catch(() => {
+        // The receipt stays unknown; the lock holds until the next attempt finds it.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [publicClient, ready, setState, state.hash, state.status]);
   useEffect(() => {
     if (!publicClient) return;
     let cancelled = false;
@@ -1686,6 +1717,7 @@ function V2CreatorPanel({
     account.address &&
     readiness.selectedAccountVerified &&
     readiness.chainId === configuration.chainId &&
+    ready &&
     !outcomeUnknown,
   );
   const run = async (

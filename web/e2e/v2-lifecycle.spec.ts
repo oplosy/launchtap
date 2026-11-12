@@ -363,7 +363,9 @@ test.describe("Anvil v2 lifecycle gate", () => {
         if (address) await creatorPanel.getByLabel("New fee recipient").fill(address);
         const sentBefore = (await sentHashes(page)).length;
         await creatorPanel.getByRole("button", { name }).click();
-        await receiptOf(await nextSentHash(page, sentBefore));
+        const hash = await nextSentHash(page, sentBefore);
+        await receiptOf(hash);
+        return hash;
       };
 
       // Propose, then cancel: the pending row disappears and the chain holds no proposal.
@@ -381,11 +383,17 @@ test.describe("Anvil v2 lifecycle gate", () => {
       await expect(creatorPanel).toContainText(`Pending recipient${discardedRecipient}`, {
         timeout: 15_000,
       });
-      await recipientAction("Replace proposal", nextRecipient);
+      const replaceHash = await recipientAction("Replace proposal", nextRecipient);
       await expect(creatorPanel).toContainText(`Pending recipient${nextRecipient}`, {
         timeout: 15_000,
       });
       expect(await pendingOnChain()).toBe(nextRecipient);
+
+      // A reload keeps the creator write's outcome: the status line restores from storage.
+      await page.reload();
+      const restoredStatus = creatorPanel.getByRole("status");
+      await expect(restoredStatus).toContainText("Mined", { timeout: 15_000 });
+      await expect(restoredStatus).toContainText(replaceHash);
       let before: number;
 
       const context = await browser.newContext({ baseURL: page.url() });
