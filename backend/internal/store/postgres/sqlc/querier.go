@@ -51,8 +51,9 @@ type Querier interface {
 	CompleteIndexerReorg(ctx context.Context, reorgID int64) (CompleteIndexerReorgRow, error)
 	CompletePositionDirty(ctx context.Context, arg CompletePositionDirtyParams) (int64, error)
 	CountTokenWatchers(ctx context.Context, arg CountTokenWatchersParams) (int64, error)
-	// Pool swaps still without a sender at or below through_block (the indexer's safe head); served
-	// by the partial index pool_swaps_tx_from_null_idx.
+	// v1 pool swaps and V4 swaps still without a sender at or below through_block (the indexer's
+	// safe head). The v1 side is served by the partial index pool_swaps_tx_from_null_idx; the V4
+	// side has no such index yet (backlog.md).
 	CountUnattributedPoolSwaps(ctx context.Context, arg CountUnattributedPoolSwapsParams) (int64, error)
 	// Unread events after the owner's read position, counted up to 100.
 	CountUnreadInboxEvents(ctx context.Context, arg CountUnreadInboxEventsParams) (int64, error)
@@ -254,9 +255,9 @@ type Querier interface {
 	ListTokenIdentities(ctx context.Context, chainID int64) ([]ListTokenIdentitiesRow, error)
 	ListTokenPhaseCounts(ctx context.Context, chainID int64) ([]ListTokenPhaseCountsRow, error)
 	ListTrendingTokens(ctx context.Context, arg ListTrendingTokensParams) ([]ListTrendingTokensRow, error)
-	// Backfill cursor: distinct transactions that still have a pool swap without a sender, in
-	// blocks at or below through_block, in (block_number, tx_hash) order, strictly after the keyset
-	// position (after_block, after_hash).
+	// Backfill cursor: distinct transactions that still have a v1 pool swap or a V4 swap without a
+	// sender, in blocks at or below through_block, in (block_number, tx_hash) order, strictly after
+	// the keyset position (after_block, after_hash). UNION merges a transaction present in both.
 	ListUnattributedPoolSwaps(ctx context.Context, arg ListUnattributedPoolSwapsParams) ([]ListUnattributedPoolSwapsRow, error)
 	// Closed positions (balance 0) carry no value, newest activity first.
 	ListWalletClosedPositions(ctx context.Context, arg ListWalletClosedPositionsParams) ([]ListWalletClosedPositionsRow, error)
@@ -343,6 +344,9 @@ type Querier interface {
 	// that need a position re-mark.
 	SetPoolSwapTxFrom(ctx context.Context, arg SetPoolSwapTxFromParams) ([]Address, error)
 	SetUsername(ctx context.Context, arg SetUsernameParams) error
+	// The V4 side of SetPoolSwapTxFrom: fills the sender of every still-unattributed V4 swap of the
+	// transaction and returns the pools whose graduated token needs an aggregate re-mark.
+	SetV4SwapTxFrom(ctx context.Context, arg SetV4SwapTxFromParams) ([]Hash, error)
 	SnipeTaxClaimMatchesEvent(ctx context.Context, arg SnipeTaxClaimMatchesEventParams) (pgtype.Bool, error)
 	// True when the DID has a user row or at least one comment in scope.
 	SocialDIDKnown(ctx context.Context, arg SocialDIDKnownParams) (bool, error)

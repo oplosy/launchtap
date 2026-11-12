@@ -1,5 +1,6 @@
-// Package swapbackfill fills pool_swaps.tx_from for swaps whose sender lookup failed (or that
-// predate sender attribution) and marks the affected wallet positions for recompute.
+// Package swapbackfill fills pool_swaps.tx_from and v4_swaps.tx_from for swaps whose sender
+// lookup failed (or that predate sender attribution) and marks the affected wallet positions
+// (v1) or token aggregates (V4) for recompute.
 //
 // It is resumable: tx_from IS NULL is the cursor, so a rerun only touches what is still missing.
 package swapbackfill
@@ -44,7 +45,7 @@ type Cursor struct {
 	Hash  common.Hash
 }
 
-// SwapTx is one transaction that still has a pool swap without a known sender.
+// SwapTx is one transaction that still has a v1 pool swap or a V4 swap without a known sender.
 type SwapTx struct {
 	Hash  common.Hash
 	Block int64
@@ -189,8 +190,8 @@ type PostgresStore struct {
 	DeploymentID string
 }
 
-// CountUnattributed counts the chain's pool swaps with a NULL sender in blocks at or below
-// throughBlock (served by the partial index pool_swaps_tx_from_null_idx).
+// CountUnattributed counts the chain's v1 pool swaps and V4 swaps with a NULL sender in blocks
+// at or below throughBlock.
 func (s PostgresStore) CountUnattributed(ctx context.Context, throughBlock int64) (int64, error) {
 	return storepostgres.NewAdapter(s.Pool).CountUnattributedSwaps(ctx, s.ChainID, throughBlock)
 }
