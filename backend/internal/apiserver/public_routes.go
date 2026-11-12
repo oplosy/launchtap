@@ -323,7 +323,7 @@ type earlyWalletDTO struct {
 type earlyClusterDTO struct {
 	WalletCount     int              `json:"wallet_count"`
 	Balance         string           `json:"balance" doc:"What every wallet of the cluster holds now."`
-	Links           []string         `json:"links" doc:"Link kinds present: same_transaction, token_transfer."`
+	Links           []string         `json:"links" doc:"Link kinds present: same_transaction, token_transfer, funding_source."`
 	IncludesCreator bool             `json:"includes_creator"`
 	Wallets         []earlyWalletDTO `json:"wallets" doc:"At most 20 wallets, largest balance first."`
 }
@@ -335,6 +335,7 @@ type earlyBuyersBody struct {
 	EarlyBalance     string            `json:"early_balance" doc:"What every early wallet holds now."`
 	ClusterCount     int               `json:"cluster_count"`
 	Clusters         []earlyClusterDTO `json:"clusters" doc:"At most 10 clusters, largest combined balance first."`
+	FundingChecked   int               `json:"funding_checked" doc:"Early wallets whose funding source has been checked; funding_source links cover only these."`
 }
 type earlyBuyersOutput struct{ Body earlyBuyersBody }
 
@@ -350,7 +351,7 @@ func (r PublicRoutes) earlyBuyers(ctx context.Context, in *addressInput) (*early
 	if e != nil {
 		return nil, mapReadError(ctx, e)
 	}
-	body := earlyBuyersBody{Snapshot: snapDTO(v.Snapshot, v.Finality), WindowSeconds: earlybuyer.WindowSeconds, WindowOpen: v.WindowOpen, EarlyWalletCount: v.EarlyWalletCount, EarlyBalance: decimal(v.EarlyBalance), ClusterCount: v.ClusterCount, Clusters: make([]earlyClusterDTO, 0, len(v.Clusters))}
+	body := earlyBuyersBody{Snapshot: snapDTO(v.Snapshot, v.Finality), WindowSeconds: earlybuyer.WindowSeconds, WindowOpen: v.WindowOpen, EarlyWalletCount: v.EarlyWalletCount, EarlyBalance: decimal(v.EarlyBalance), ClusterCount: v.ClusterCount, Clusters: make([]earlyClusterDTO, 0, len(v.Clusters)), FundingChecked: v.FundingChecked}
 	for _, c := range v.Clusters {
 		dto := earlyClusterDTO{WalletCount: c.WalletCount, Balance: decimal(c.Balance), Links: append([]string{}, c.Links...), IncludesCreator: c.IncludesCreator, Wallets: make([]earlyWalletDTO, 0, len(c.Wallets))}
 		for _, w := range c.Wallets {

@@ -113,7 +113,8 @@ async function installFixture(page: Page, tokenOverrides: Record<string, unknown
       return;
     }
     if (url.pathname.endsWith("/early-buyers")) {
-      // Three early wallets; the creator and one other were delivered in one transaction.
+      // Three early wallets; the creator and one other were delivered in one transaction and
+      // got their first ETH from the same wallet; two of the three were funding-checked.
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -124,11 +125,12 @@ async function installFixture(page: Page, tokenOverrides: Record<string, unknown
           early_wallet_count: 3,
           early_balance: wad("300"),
           cluster_count: 1,
+          funding_checked: 2,
           clusters: [
             {
               wallet_count: 2,
               balance: wad("250"),
-              links: ["same_transaction"],
+              links: ["same_transaction", "funding_source"],
               includes_creator: true,
               wallets: [
                 { address: "0x0000000000000000000000000000000000000002", balance: wad("150") },
@@ -281,8 +283,9 @@ test("populated token detail renders controls, pages, and responsive captures", 
   );
   const group = earlyBuyers.locator("details").first();
   await expect(group.locator("summary")).toHaveText(
-    "2 wallets hold 25.00% of the supply: received tokens in the same transaction Creator",
+    "2 wallets hold 25.00% of the supply: received tokens in the same transaction and funded by the same wallet Creator",
   );
+  await expect(earlyBuyers).toContainText("Funding sources checked for 2 of 3 early wallets.");
   await group.locator("summary").click();
   await expect(group.getByRole("link")).toHaveCount(2);
   await earlyBuyers.screenshot({

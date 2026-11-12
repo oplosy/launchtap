@@ -15,6 +15,7 @@ function body(overrides: Partial<Body> = {}): Body {
     early_wallet_count: 4,
     early_balance: tokens(200_000_000),
     cluster_count: 1,
+    funding_checked: 0,
     clusters: [
       {
         wallet_count: 3,
@@ -50,7 +51,28 @@ describe("early buyers view", () => {
       ],
       emptyGroups: null,
       moreGroups: 0,
+      funding: null,
     });
+  });
+
+  it("states funding coverage only once some wallets were checked, and reads the funding link", () => {
+    const view = earlyBuyersView(
+      body({
+        funding_checked: 3,
+        clusters: [
+          {
+            wallet_count: 2,
+            balance: "0",
+            links: ["token_transfer", "funding_source"],
+            includes_creator: false,
+            wallets: null,
+          },
+        ],
+      }),
+      supply,
+    );
+    expect(view?.funding).toBe("Funding sources checked for 3 of 4 early wallets.");
+    expect(view?.groups[0]?.links).toBe("moved tokens between them and funded by the same wallet");
   });
 
   it("says when no early wallets are linked, and when the window is still open", () => {
@@ -76,6 +98,7 @@ describe("early buyers view", () => {
       groups: [],
       emptyGroups: null,
       moreGroups: 0,
+      funding: null,
     });
   });
 

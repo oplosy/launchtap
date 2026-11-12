@@ -123,6 +123,13 @@ type FeeRecipientProposal struct {
 	NextRecipient    Address
 }
 
+type FundingExcludedFunder struct {
+	ChainID int64
+	Address Address
+	Label   string
+	AddedAt pgtype.Timestamptz
+}
+
 type FutureDefaultsConfiguration struct {
 	ChainID          int64
 	BlockNumber      int64
@@ -793,6 +800,17 @@ type V4Swap struct {
 	Tick             int32
 	Fee              int32
 	TxFrom           *Address
+}
+
+type WalletFunding struct {
+	ChainID      int64
+	Wallet       Address
+	Status       string
+	Funder       *Address
+	FundedBlock  pgtype.Int8
+	FundingTx    *Hash
+	CheckedBlock int64
+	ResolvedAt   pgtype.Timestamptz
 }
 
 type WalletPosition struct {

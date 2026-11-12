@@ -125,6 +125,9 @@ type Querier interface {
 	// creator, and whether the snapshot block is still inside the early window. A pruned or missing
 	// snapshot block falls back to the current time.
 	GetEarlyBuyerToken(ctx context.Context, arg GetEarlyBuyerTokenParams) (GetEarlyBuyerTokenRow, error)
+	// Early-buyer clusters Level 2 (docs/specs/2026-11-12-funding-source-clusters-design.md).
+	// The finalized head the indexer has observed; NULL until finality is known.
+	GetFundingFinalizedHead(ctx context.Context, arg GetFundingFinalizedHeadParams) (pgtype.Int8, error)
 	GetIndexedBlockByHash(ctx context.Context, arg GetIndexedBlockByHashParams) (IndexedBlock, error)
 	GetIndexedBlockByNumber(ctx context.Context, arg GetIndexedBlockByNumberParams) (IndexedBlock, error)
 	GetKingOfTheHill(ctx context.Context, chainID int64) (GetKingOfTheHillRow, error)
@@ -200,6 +203,8 @@ type Querier interface {
 	InsertV4LiquidityChange(ctx context.Context, arg InsertV4LiquidityChangeParams) (int64, error)
 	InsertV4PoolInitialization(ctx context.Context, arg InsertV4PoolInitializationParams) (int64, error)
 	InsertV4Swap(ctx context.Context, arg InsertV4SwapParams) (int64, error)
+	// Rows are immutable: a second resolution of the same wallet keeps the first.
+	InsertWalletFunding(ctx context.Context, arg InsertWalletFundingParams) error
 	InsertWalletRealizedLeg(ctx context.Context, arg InsertWalletRealizedLegParams) error
 	InsertWatchlistEntry(ctx context.Context, arg InsertWatchlistEntryParams) (int64, error)
 	IsPublicWallet(ctx context.Context, arg IsPublicWalletParams) (bool, error)
@@ -302,11 +307,18 @@ type Querier interface {
 	// Closed positions (balance 0) carry no value, newest activity first.
 	ListWalletClosedPositions(ctx context.Context, arg ListWalletClosedPositionsParams) ([]ListWalletClosedPositionsRow, error)
 	ListWalletCreated(ctx context.Context, arg ListWalletCreatedParams) ([]ListWalletCreatedRow, error)
+	// Funding rows of the given wallets, with whether the funder must be ignored: an operator
+	// exclusion or any token's curve.
+	ListWalletFundingFor(ctx context.Context, arg ListWalletFundingForParams) ([]ListWalletFundingForRow, error)
 	// Open positions in one page, largest value first. current_value is the single-source expression
 	// documented on GetWalletValuation; keep the two identical. Not keyset-paginated: the order is a live
 	// value, so the reader asks for MaxOpenPositions+1 rows and reports truncation.
 	ListWalletOpenPositions(ctx context.Context, arg ListWalletOpenPositionsParams) ([]ListWalletOpenPositionsRow, error)
 	ListWalletTrades(ctx context.Context, arg ListWalletTradesParams) ([]ListWalletTradesRow, error)
+	// Early wallets of any token (same rule as ListEarlyCurveDeliveries) with no funding row yet,
+	// whose first early delivery is at or below the finalized head, oldest first. skip holds wallets
+	// the worker is backing off.
+	ListWalletsAwaitingFunding(ctx context.Context, arg ListWalletsAwaitingFundingParams) ([]Address, error)
 	// Token columns are NULL when the token row is gone (no FK); the casts keep sqlc from
 	// applying the non-nullable Address/Uint256/Hash overrides to them.
 	ListWatchlist(ctx context.Context, arg ListWatchlistParams) ([]ListWatchlistRow, error)

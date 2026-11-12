@@ -6,14 +6,16 @@ import (
 	"math/big"
 
 	"github.com/Contictus/launchtap/backend/internal/earlybuyer"
+	"github.com/Contictus/launchtap/backend/internal/funding"
 	"github.com/Contictus/launchtap/backend/internal/store/postgres/sqlc"
 	"github.com/Contictus/launchtap/backend/internal/token"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/jackc/pgx/v5"
 )
 
-// ReadEarlyBuyers reads the early curve deliveries, the token transfers touching those wallets
-// and the involved wallets' balances in one snapshot, then groups them (earlybuyer.Group).
+// ReadEarlyBuyers reads the early curve deliveries, the token transfers touching those wallets,
+// the involved wallets' balances and the early wallets' funding rows in one snapshot, then groups
+// them (earlybuyer.Group).
 func (r MarketReader) ReadEarlyBuyers(ctx context.Context, q earlybuyer.Query) (earlybuyer.Report, error) {
 	var out earlybuyer.Report
 	err := withReadSnapshotBeginner(ctx, r.Pool, q.ChainID, r.DeploymentID, func(ctx context.Context, a *Adapter, s ReadSnapshot) error {
@@ -73,6 +75,18 @@ func (r MarketReader) ReadEarlyBuyers(ctx context.Context, q earlybuyer.Query) (
 			}
 			for _, row := range balanceRows {
 				in.Balances[common.Address(row.HolderAddress)] = row.Balance.BigInt()
+			}
+			// Level 2: funding rows written by cmd/funding; none exist while the worker is off.
+			fundingRows, err := a.queries.ListWalletFundingFor(ctx, sqlc.ListWalletFundingForParams{ChainID: q.ChainID, Wallets: earlyWallets})
+			if err != nil {
+				return err
+			}
+			in.FundingChecked = len(fundingRows)
+			in.Funders = map[common.Address]common.Address{}
+			for _, row := range fundingRows {
+				if row.Status == string(funding.StatusFunded) && row.Funder != nil && !row.FunderIgnored {
+					in.Funders[common.Address(row.Wallet)] = common.Address(*row.Funder)
+				}
 			}
 		}
 		out.Result = earlybuyer.Group(in)

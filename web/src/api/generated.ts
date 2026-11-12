@@ -764,6 +764,11 @@ export interface components {
             early_balance: string;
             /** Format: int64 */
             early_wallet_count: number;
+            /**
+             * Format: int64
+             * @description Early wallets whose funding source has been checked; funding_source links cover only these.
+             */
+            funding_checked: number;
             snapshot: components["schemas"]["SnapshotDTO"];
             /** @description The early window had not ended at the snapshot block. */
             window_open: boolean;
@@ -774,7 +779,7 @@ export interface components {
             /** @description What every wallet of the cluster holds now. */
             balance: string;
             includes_creator: boolean;
-            /** @description Link kinds present: same_transaction, token_transfer. */
+            /** @description Link kinds present: same_transaction, token_transfer, funding_source. */
             links: string[] | null;
             /** Format: int64 */
             wallet_count: number;

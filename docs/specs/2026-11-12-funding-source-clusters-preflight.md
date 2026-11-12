@@ -1,6 +1,8 @@
 # Early-buyer clusters Level 2 (funding source): pre-flight
 
-Status: Claude pre-flight, 2026-11-12. Not built. The owner asked for the deferred work to be
+Status: Claude pre-flight, 2026-11-12. Superseded: the owner asked for Level 2 to be built anyway;
+option A is built off by default, see `docs/specs/2026-11-12-funding-source-clusters-design.md`.
+Original status: not built. The owner asked for the deferred work to be
 done while away; this records why Level 2 stops at a data-source decision the owner has to make.
 Follows `docs/specs/2026-11-12-early-buyer-clusters-design.md` (Level 1, shipped).
 

@@ -23,12 +23,15 @@ export type EarlyBuyersView = {
   emptyGroups: string | null;
   /** Groups beyond the listed ones. */
   moreGroups: number;
+  /** Funding-source coverage; null while no early wallet has been checked (worker off). */
+  funding: string | null;
 };
 
 const CANONICAL = /^(0|[1-9][0-9]*)$/;
 const LINK_TEXT: Record<string, string> = {
   same_transaction: "received tokens in the same transaction",
   token_transfer: "moved tokens between them",
+  funding_source: "funded by the same wallet",
 };
 
 export function earlyBuyersView(body: Body, totalSupply: string): EarlyBuyersView | null {
@@ -45,6 +48,7 @@ export function earlyBuyersView(body: Body, totalSupply: string): EarlyBuyersVie
       groups: [],
       emptyGroups: null,
       moreGroups: 0,
+      funding: null,
     };
   const one = body.early_wallet_count === 1;
   const summary =
@@ -70,5 +74,9 @@ export function earlyBuyersView(body: Body, totalSupply: string): EarlyBuyersVie
     groups,
     emptyGroups: groups.length ? null : "No linked early wallets found.",
     moreGroups: Math.max(0, body.cluster_count - groups.length),
+    funding:
+      body.funding_checked > 0
+        ? `Funding sources checked for ${body.funding_checked} of ${body.early_wallet_count} early wallets.`
+        : null,
   };
 }

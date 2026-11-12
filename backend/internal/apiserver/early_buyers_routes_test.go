@@ -37,10 +37,11 @@ func TestEarlyBuyersWireContract(t *testing.T) {
 			EarlyWalletCount: 3,
 			EarlyBalance:     big.NewInt(90),
 			ClusterCount:     1,
+			FundingChecked:   2,
 			Clusters: []earlybuyer.Cluster{{
 				WalletCount:     2,
 				Balance:         big.NewInt(80),
-				Links:           []string{earlybuyer.LinkSameTransaction},
+				Links:           []string{earlybuyer.LinkSameTransaction, earlybuyer.LinkFundingSource},
 				IncludesCreator: true,
 				Wallets:         []earlybuyer.Wallet{{Address: walletA, Balance: big.NewInt(50)}, {Address: walletB, Balance: big.NewInt(30)}},
 			}},
@@ -62,7 +63,7 @@ func TestEarlyBuyersWireContract(t *testing.T) {
 	}
 	for _, want := range []string{
 		`"window_seconds":60`, `"window_open":true`, `"early_wallet_count":3`, `"early_balance":"90"`,
-		`"cluster_count":1`, `"wallet_count":2`, `"balance":"80"`, `"links":["same_transaction"]`,
+		`"cluster_count":1`, `"wallet_count":2`, `"balance":"80"`, `"links":["same_transaction","funding_source"]`, `"funding_checked":2`,
 		`"includes_creator":true`, `"address":"` + walletA.Hex() + `","balance":"50"`, `"as_of_block":42`,
 	} {
 		if !strings.Contains(w.Body.String(), want) {
