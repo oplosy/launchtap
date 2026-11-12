@@ -37,7 +37,13 @@ $requiredPins = @(
     "UNISWAP_V4_PERIPHERY_COMMIT",
     "UNISWAP_V4_CORE_VERSION",
     "UNISWAP_V4_CORE_COMMIT",
-    "PERMIT2_COMMIT"
+    "PERMIT2_COMMIT",
+    "UNISWAP_UNIVERSAL_ROUTER_COMMIT",
+    "UNISWAP_UNIVERSAL_ROUTER_V4_PERIPHERY_COMMIT",
+    "UNISWAP_V2_CORE_VERSION",
+    "UNISWAP_V2_CORE_COMMIT",
+    "UNISWAP_V3_CORE_VERSION",
+    "UNISWAP_V3_CORE_COMMIT"
 )
 foreach ($requiredPin in $requiredPins) {
     if (-not $pins.ContainsKey($requiredPin)) {
@@ -100,6 +106,36 @@ $dependencies = @(
         Submodule = "lib/permit2"
         Url = "https://github.com/Uniswap/permit2"
         Commit = $pins["PERMIT2_COMMIT"]
+    },
+    @{
+        Name = "Uniswap Universal Router"
+        Path = Join-Path $contractsRoot "lib/universal-router"
+        Submodule = "contracts/lib/universal-router"
+        Url = "https://github.com/Uniswap/universal-router.git"
+        Commit = $pins["UNISWAP_UNIVERSAL_ROUTER_COMMIT"]
+    },
+    # The router's own v4-periphery decides the V4 swap encoding the browser signs (Plan v2-C D2).
+    @{
+        Name = "Universal Router v4-periphery"
+        Path = Join-Path $contractsRoot "lib/universal-router/lib/v4-periphery"
+        GitmodulesRoot = Join-Path $contractsRoot "lib/universal-router"
+        Submodule = "lib/v4-periphery"
+        Url = "https://github.com/Uniswap/v4-periphery"
+        Commit = $pins["UNISWAP_UNIVERSAL_ROUTER_V4_PERIPHERY_COMMIT"]
+    },
+    @{
+        Name = "Uniswap v2-core"
+        Path = Join-Path $contractsRoot "lib/uniswap-v2-core"
+        Submodule = "contracts/lib/uniswap-v2-core"
+        Url = "https://github.com/Uniswap/v2-core.git"
+        Commit = $pins["UNISWAP_V2_CORE_COMMIT"]
+    },
+    @{
+        Name = "Uniswap v3-core"
+        Path = Join-Path $contractsRoot "lib/uniswap-v3-core"
+        Submodule = "contracts/lib/uniswap-v3-core"
+        Url = "https://github.com/Uniswap/v3-core.git"
+        Commit = $pins["UNISWAP_V3_CORE_COMMIT"]
     }
 )
 
@@ -113,7 +149,9 @@ foreach ($dependency in $dependencies) {
         Fail "$($dependency.Name) expected $($dependency.Commit), got $actualCommit"
     }
 
-    $dirty = (& git -C $dependency.Path status --porcelain | Out-String).Trim()
+    # Universal Router nests submodules deep enough to exceed the Windows path limit;
+    # core.longpaths reaches every nested git status (no effect on other platforms).
+    $dirty = (& git -c core.longpaths=true -C $dependency.Path status --porcelain | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or $dirty.Length -ne 0) {
         Fail "$($dependency.Name) has local changes"
     }
@@ -145,6 +183,21 @@ $foundryDependencies = @(
         Path = "lib/v4-periphery"
         Version = $null
         Commit = $pins["UNISWAP_V4_PERIPHERY_COMMIT"]
+    },
+    @{
+        Path = "lib/universal-router"
+        Version = $null
+        Commit = $pins["UNISWAP_UNIVERSAL_ROUTER_COMMIT"]
+    },
+    @{
+        Path = "lib/uniswap-v2-core"
+        Version = $pins["UNISWAP_V2_CORE_VERSION"]
+        Commit = $pins["UNISWAP_V2_CORE_COMMIT"]
+    },
+    @{
+        Path = "lib/uniswap-v3-core"
+        Version = $pins["UNISWAP_V3_CORE_VERSION"]
+        Commit = $pins["UNISWAP_V3_CORE_COMMIT"]
     }
 )
 foreach ($dependency in $foundryDependencies) {
