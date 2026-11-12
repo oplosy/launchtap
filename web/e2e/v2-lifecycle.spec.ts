@@ -16,8 +16,10 @@ import { formatBaseUnits } from "../src/amounts";
 // backend indexer and the API. Run through `npm run test:anvil-v2`.
 
 const creator = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" as const;
-// Anvil account 5: never a protocol role in the local deployment.
+// Anvil accounts 5 and 6: never a protocol role in the local deployment.
 const nextRecipient = "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc" as const;
+const discardedRecipient = "0x976EA74026E726554dB657fA54763abd0C3a0aa9" as const;
+const zeroAddress = "0x0000000000000000000000000000000000000000";
 
 const env = {
   rpc: process.env.TASK6_ANVIL_RPC_URL ?? "",
@@ -286,6 +288,8 @@ test.describe("Anvil v2 lifecycle gate", () => {
       await expect(page.getByRole("button", { name: "Resume sell" })).toBeVisible({
         timeout: 30_000,
       });
+      // The panel says why the swap is not signed yet.
+      await expect(page.getByText("Allowances are set for this exact sell.")).toBeVisible();
       const approvals = (await sentHashes(page)).slice(before);
       expect(approvals.length).toBeGreaterThanOrEqual(2);
       for (const hash of approvals) await receiptOf(hash as Hash);
@@ -349,11 +353,40 @@ test.describe("Anvil v2 lifecycle gate", () => {
     await test.step("two-step fee recipient change and a claim by the new recipient", async () => {
       await page.reload();
       const creatorPanel = page.locator(".v2-creator");
-      await creatorPanel.getByLabel("New fee recipient").fill(nextRecipient);
-      let before = (await sentHashes(page)).length;
-      await creatorPanel.getByRole("button", { name: "Propose recipient" }).click();
-      await receiptOf(await nextSentHash(page, before));
-      await expect(creatorPanel).toContainText(nextRecipient, { timeout: 15_000 });
+      const pendingOnChain = () =>
+        client.readContract({
+          address: curve,
+          abi: browserAbis.curveV2,
+          functionName: "pendingFeeRecipient",
+        });
+      const recipientAction = async (name: string, address?: string) => {
+        if (address) await creatorPanel.getByLabel("New fee recipient").fill(address);
+        const sentBefore = (await sentHashes(page)).length;
+        await creatorPanel.getByRole("button", { name }).click();
+        await receiptOf(await nextSentHash(page, sentBefore));
+      };
+
+      // Propose, then cancel: the pending row disappears and the chain holds no proposal.
+      await recipientAction("Propose recipient", discardedRecipient);
+      await expect(creatorPanel).toContainText(`Pending recipient${discardedRecipient}`, {
+        timeout: 15_000,
+      });
+      expect(await pendingOnChain()).toBe(discardedRecipient);
+      await recipientAction("Cancel proposal");
+      await expect(creatorPanel.getByText("Pending recipient")).toHaveCount(0, { timeout: 15_000 });
+      expect(await pendingOnChain()).toBe(zeroAddress);
+
+      // Propose again, then replace the proposal with the account that will accept it.
+      await recipientAction("Propose recipient", discardedRecipient);
+      await expect(creatorPanel).toContainText(`Pending recipient${discardedRecipient}`, {
+        timeout: 15_000,
+      });
+      await recipientAction("Replace proposal", nextRecipient);
+      await expect(creatorPanel).toContainText(`Pending recipient${nextRecipient}`, {
+        timeout: 15_000,
+      });
+      expect(await pendingOnChain()).toBe(nextRecipient);
+      let before: number;
 
       const context = await browser.newContext({ baseURL: page.url() });
       const recipientPage = await context.newPage();

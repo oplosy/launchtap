@@ -2315,6 +2315,7 @@ function V4SwapPanel({
               setInput(event.target.value);
               setConfirming(false);
               setReviewIntent(null);
+              setReviewNotice(null);
             }}
             inputMode="decimal"
           />
@@ -2434,14 +2435,23 @@ function V4SwapPanel({
             </div>
           </div>
         ) : (
-          <Button
-            variant="primary"
-            size="lg"
-            disabled={executionBusy || !ready}
-            onClick={() => void prepareSwapReview()}
-          >
-            {side === "sell" && approvalHash ? "Resume sell" : `Review ${side}`}
-          </Button>
+          <>
+            {/* A notice set while the confirmation closes (allowances mined, a failed review)
+                must stay visible next to the action it explains. */}
+            {reviewNotice ? (
+              <p className="transaction-warning" role="status">
+                {reviewNotice}
+              </p>
+            ) : null}
+            <Button
+              variant="primary"
+              size="lg"
+              disabled={executionBusy || !ready}
+              onClick={() => void prepareSwapReview()}
+            >
+              {side === "sell" && approvalHash ? "Resume sell" : `Review ${side}`}
+            </Button>
+          </>
         )}
       </TradeSideTabs>
       {state.status !== "disconnected" ? (
