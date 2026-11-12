@@ -77,6 +77,8 @@ type tokenDetailDTO struct {
 	ATHAt                 string      `json:"ath_at"`
 	PriceChange24hBPS     int64       `json:"price_change_24h_bps" minimum:"-9007199254740991" maximum:"9007199254740991"`
 	HolderCount           int64       `json:"holder_count"`
+	LaunchBlock           int64       `json:"launch_block" doc:"Block of the launch transaction; holders first acquiring in it were bundled with the launch."`
+	LaunchTime            string      `json:"launch_time"`
 	V2                    *tokenV2DTO `json:"v2" doc:"Engine-2 launch, pool and fee facts; null for engine 1."`
 }
 
@@ -228,7 +230,7 @@ func (r PublicRoutes) detail(ctx context.Context, in *addressInput) (*detailOutp
 	if e != nil {
 		return nil, mapReadError(ctx, e)
 	}
-	d := tokenDetailDTO{Snapshot: snapDTO(v.Snapshot, v.Finality), Address: v.Address.Hex(), Curve: v.Curve.Hex(), Pair: v.Pair.Hex(), WETH: v.WETH.Hex(), Creator: v.Creator.Hex(), ProtocolTreasury: v.ProtocolTreasury.Hex(), Name: v.Name, Symbol: v.Symbol, Phase: v.Phase, EngineVersion: v.EngineVersion, TotalSupply: decimal(v.TotalSupply), InitialVirtualETH: decimal(v.InitialVirtualETH), InitialVirtualToken: decimal(v.InitialVirtualToken), CurveTokens: decimal(v.CurveTokens), LPTokens: decimal(v.LPTokens), GraduationETH: decimal(v.GraduationETH), TradeFeeBPS: v.TradeFeeBPS, ProtocolShareBPS: v.ProtocolShareBPS, ReserveSource: v.ReserveSource, ETHReserve: decimal(v.ETHReserve), TokenReserve: decimal(v.TokenReserve), RealCurveETH: decimal(v.RealCurveETH), GraduationProgressBPS: v.GraduationProgressBPS, ReserveBlock: v.ReserveBlock, ReserveHash: v.ReserveHash.Hex(), Description: v.Description, ImageURL: v.ImageURL, XURL: v.XURL, TelegramURL: v.TelegramURL, SpotPriceETH: decimal(v.SpotPriceETH), MarketCapETH: decimal(v.MarketCapETH), FDVETH: decimal(v.FDVETH), LiquidityETH: decimal(v.LiquidityETH), ATHPriceETH: decimal(v.ATHPriceETH), Volume24hETH: decimal(v.Volume24hETH), ATHAt: v.ATHAt.UTC().Format(time.RFC3339Nano), PriceChange24hBPS: v.PriceChange24hBPS, HolderCount: v.HolderCount, V2: v2DTO(v)}
+	d := tokenDetailDTO{Snapshot: snapDTO(v.Snapshot, v.Finality), Address: v.Address.Hex(), Curve: v.Curve.Hex(), Pair: v.Pair.Hex(), WETH: v.WETH.Hex(), Creator: v.Creator.Hex(), ProtocolTreasury: v.ProtocolTreasury.Hex(), Name: v.Name, Symbol: v.Symbol, Phase: v.Phase, EngineVersion: v.EngineVersion, TotalSupply: decimal(v.TotalSupply), InitialVirtualETH: decimal(v.InitialVirtualETH), InitialVirtualToken: decimal(v.InitialVirtualToken), CurveTokens: decimal(v.CurveTokens), LPTokens: decimal(v.LPTokens), GraduationETH: decimal(v.GraduationETH), TradeFeeBPS: v.TradeFeeBPS, ProtocolShareBPS: v.ProtocolShareBPS, ReserveSource: v.ReserveSource, ETHReserve: decimal(v.ETHReserve), TokenReserve: decimal(v.TokenReserve), RealCurveETH: decimal(v.RealCurveETH), GraduationProgressBPS: v.GraduationProgressBPS, ReserveBlock: v.ReserveBlock, ReserveHash: v.ReserveHash.Hex(), Description: v.Description, ImageURL: v.ImageURL, XURL: v.XURL, TelegramURL: v.TelegramURL, SpotPriceETH: decimal(v.SpotPriceETH), MarketCapETH: decimal(v.MarketCapETH), FDVETH: decimal(v.FDVETH), LiquidityETH: decimal(v.LiquidityETH), ATHPriceETH: decimal(v.ATHPriceETH), Volume24hETH: decimal(v.Volume24hETH), ATHAt: v.ATHAt.UTC().Format(time.RFC3339Nano), PriceChange24hBPS: v.PriceChange24hBPS, HolderCount: v.HolderCount, LaunchBlock: v.LaunchBlock, LaunchTime: v.LaunchTime.UTC().Format("2006-01-02T15:04:05.000000Z"), V2: v2DTO(v)}
 	return &detailOutput{Body: d}, nil
 }
 func cursor(value string) (*pagination.Cursor, error) {

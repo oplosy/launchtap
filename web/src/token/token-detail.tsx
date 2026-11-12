@@ -48,7 +48,7 @@ import { TradingPanel } from "@/transactions-panel";
 import { MetadataEditor } from "./metadata-editor";
 import { PRICE_FLASH_MS, priceDirection } from "./price-flash";
 import { creatorHistoryLine } from "./creator-history";
-import { topHolderShare } from "./holder-concentration";
+import { launchBlockHolders, topHolderShare } from "./holder-concentration";
 import { launchFacts, type LaunchFacts } from "./launch-facts";
 import { v2Facts, type V2Facts } from "./v2-facts";
 
@@ -778,6 +778,8 @@ export function TokenDetail({
                     <Holders
                       items={holderItems}
                       totalSupply={token.total_supply}
+                      launchBlock={token.launch_block}
+                      hasMore={Boolean(nextCursor)}
                       loading={collectionLoading}
                       error={collectionError}
                     />
@@ -1224,11 +1226,15 @@ function Trades({
 function Holders({
   items,
   totalSupply,
+  launchBlock,
+  hasMore,
   loading,
   error,
 }: {
   items: components["schemas"]["HolderDTO"][];
   totalSupply: string;
+  launchBlock: number | undefined;
+  hasMore: boolean;
   loading: boolean;
   error: Error | null;
 }) {
@@ -1253,6 +1259,7 @@ function Holders({
     items.map((item) => item.balance),
     totalSupply,
   );
+  const launchLine = launchBlockHolders(items, launchBlock, totalSupply, hasMore);
   return (
     <>
       {concentration ? (
@@ -1262,6 +1269,7 @@ function Holders({
           excluded from the list).
         </p>
       ) : null}
+      {launchLine ? <p className="holder-concentration">{launchLine}</p> : null}
       <div className="history-table" role="table" aria-label="Token holders">
         <div className="history-row history-heading" role="row">
           <span>Address</span>

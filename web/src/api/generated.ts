@@ -1212,6 +1212,12 @@ export interface components {
             image_url: string;
             initial_virtual_eth: string;
             initial_virtual_token: string;
+            /**
+             * Format: int64
+             * @description Block of the launch transaction; holders first acquiring in it were bundled with the launch.
+             */
+            launch_block: number;
+            launch_time: string;
             liquidity_eth: string;
             lp_tokens: string;
             market_cap_eth: string;

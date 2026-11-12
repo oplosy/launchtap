@@ -145,6 +145,9 @@ async function installFixture(page: Page, tokenOverrides: Record<string, unknown
         image_url: "javascript:alert(1)",
         initial_virtual_eth: wad("1"),
         initial_virtual_token: wad("1000"),
+        // The one fixture holder first acquired at block 120, the launch block.
+        launch_block: 120,
+        launch_time: "2026-09-10T12:00:00.000000Z",
         liquidity_eth: wad("50"),
         lp_tokens: wad("10"),
         market_cap_eth: wad("500"),
@@ -238,8 +241,11 @@ test("populated token detail renders controls, pages, and responsive captures", 
   await page.getByRole("tab", { name: "Holders" }).click();
   await expect(page.getByRole("table", { name: "Token holders" })).toContainText("100");
   // One holder of 100 out of the 1,000 supply.
-  await expect(page.locator(".holder-concentration")).toHaveText(
+  await expect(page.locator(".holder-concentration").first()).toHaveText(
     /^Top 1 holder owns 10\.00% of the supply/,
+  );
+  await expect(page.locator(".holder-concentration").nth(1)).toHaveText(
+    "1 holder first got in at the launch block (bundled with the launch, including any launch buy by the creator) and still holds 10.00% of the supply.",
   );
   await page.getByRole("tab", { name: "Recent trades" }).click();
   await page.getByRole("button", { name: "Candles" }).click();

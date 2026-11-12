@@ -84,7 +84,7 @@ func TestPublicReadWireContracts(t *testing.T) {
 		path string
 		want []string
 	}{
-		{"/v1/tokens/" + tokenAddress.Hex(), []string{`"total_supply":"1000"`, `"address":"` + tokenAddress.Hex() + `"`, `"finality":"safe"`, `"price_change_24h_bps":2147490000`}},
+		{"/v1/tokens/" + tokenAddress.Hex(), []string{`"total_supply":"1000"`, `"address":"` + tokenAddress.Hex() + `"`, `"finality":"safe"`, `"price_change_24h_bps":2147490000`, `"launch_block":1`}},
 		{"/v1/tokens/" + tokenAddress.Hex() + "/trades", []string{`"execution_price":"5"`, `"trader":"` + trader.Hex() + `"`, `"next_cursor":"next-trade"`}},
 		{"/v1/tokens/" + tokenAddress.Hex() + "/holders", []string{`"balance":"9"`, `"address":"` + trader.Hex() + `"`, `"next_cursor":"next-holder"`}},
 		{"/v1/stats/protocol", []string{`"volume_24h_eth":"22"`, `"trades_all_time":24`, `"as_of_block":42`}},
