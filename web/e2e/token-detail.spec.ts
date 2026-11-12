@@ -112,6 +112,34 @@ async function installFixture(page: Page, tokenOverrides: Record<string, unknown
       });
       return;
     }
+    if (url.pathname.endsWith("/early-buyers")) {
+      // Three early wallets; the creator and one other were delivered in one transaction.
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          snapshot,
+          window_seconds: 60,
+          window_open: false,
+          early_wallet_count: 3,
+          early_balance: wad("300"),
+          cluster_count: 1,
+          clusters: [
+            {
+              wallet_count: 2,
+              balance: wad("250"),
+              links: ["same_transaction"],
+              includes_creator: true,
+              wallets: [
+                { address: "0x0000000000000000000000000000000000000002", balance: wad("150") },
+                { address: tokenAddress, balance: wad("100") },
+              ],
+            },
+          ],
+        }),
+      });
+      return;
+    }
     if (url.pathname.endsWith("/holders")) {
       await route.fulfill({
         status: 200,
@@ -247,6 +275,19 @@ test("populated token detail renders controls, pages, and responsive captures", 
   await expect(page.locator(".holder-concentration").nth(1)).toHaveText(
     "1 holder first got in at the launch block (bundled with the launch, including any launch buy by the creator) and still holds 10.00% of the supply.",
   );
+  const earlyBuyers = page.getByRole("region", { name: "Linked early wallets" });
+  await expect(earlyBuyers).toContainText(
+    "3 wallets got tokens from the curve in the first 60 seconds and hold 30.00% of the supply now.",
+  );
+  const group = earlyBuyers.locator("details").first();
+  await expect(group.locator("summary")).toHaveText(
+    "2 wallets hold 25.00% of the supply: received tokens in the same transaction Creator",
+  );
+  await group.locator("summary").click();
+  await expect(group.getByRole("link")).toHaveCount(2);
+  await earlyBuyers.screenshot({
+    path: path.resolve(process.cwd(), "../.impeccable/review/early-buyers.png"),
+  });
   await page.getByRole("tab", { name: "Recent trades" }).click();
   await page.getByRole("button", { name: "Candles" }).click();
   await expect(page.locator(".market-chart")).toBeVisible();

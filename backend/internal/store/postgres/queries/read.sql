@@ -699,3 +699,53 @@ WHERE w.realized_pnl > 0
   AND NOT EXISTS (SELECT 1 FROM v4_pool_managers AS m WHERE m.chain_id = sqlc.arg(chain_id) AND m.pool_manager = w.wallet)
 ORDER BY w.realized_pnl DESC, w.wallet
 LIMIT sqlc.arg(page_size)::integer;
+
+-- Early-buyer clusters (docs/specs/2026-11-12-early-buyer-clusters-design.md). The token's
+-- creator, and whether the snapshot block is still inside the early window. A pruned or missing
+-- snapshot block falls back to the current time.
+-- name: GetEarlyBuyerToken :one
+SELECT t.creator,
+       COALESCE((SELECT b.block_time FROM indexed_blocks AS b
+                 WHERE b.chain_id = t.chain_id
+                   AND b.block_number = sqlc.arg(snapshot_block)::bigint
+                   AND b.block_hash = sqlc.arg(snapshot_hash)::bytea
+                 LIMIT 1), now())
+         < t.launch_block_time + make_interval(secs => sqlc.arg(window_seconds)::integer) AS window_open
+FROM tokens AS t
+WHERE t.chain_id = sqlc.arg(chain_id) AND t.token_address = sqlc.arg(token_address);
+
+-- Curve deliveries (a Transfer from the curve is a buy output) within the early window of the
+-- launch block's time, infrastructure recipients excluded.
+-- name: ListEarlyCurveDeliveries :many
+SELECT tr.tx_hash, tr.to_address
+FROM tokens AS t
+JOIN transfers AS tr ON tr.chain_id = t.chain_id AND tr.token_address = t.token_address
+LEFT JOIN v4_pool_managers AS manager ON manager.chain_id = t.chain_id
+WHERE t.chain_id = sqlc.arg(chain_id) AND t.token_address = sqlc.arg(token_address)
+  AND tr.from_address = t.curve_address
+  AND tr.block_number >= t.launch_block_number
+  AND tr.block_time <= t.launch_block_time + make_interval(secs => sqlc.arg(window_seconds)::integer)
+  AND NOT token_holder_excluded(t.engine_version, tr.to_address, t.curve_address, t.lp_pair,
+                                t.locker, manager.pool_manager)
+ORDER BY tr.block_number, tr.transaction_index, tr.log_index;
+
+-- Transfers of the token touching one of the given wallets, between two non-infrastructure
+-- wallets.
+-- name: ListTokenTransfersTouching :many
+SELECT tr.from_address, tr.to_address
+FROM tokens AS t
+JOIN transfers AS tr ON tr.chain_id = t.chain_id AND tr.token_address = t.token_address
+LEFT JOIN v4_pool_managers AS manager ON manager.chain_id = t.chain_id
+WHERE t.chain_id = sqlc.arg(chain_id) AND t.token_address = sqlc.arg(token_address)
+  AND (tr.from_address = ANY(sqlc.arg(wallets)::bytea[]) OR tr.to_address = ANY(sqlc.arg(wallets)::bytea[]))
+  AND tr.from_address <> tr.to_address
+  AND NOT token_holder_excluded(t.engine_version, tr.from_address, t.curve_address, t.lp_pair,
+                                t.locker, manager.pool_manager)
+  AND NOT token_holder_excluded(t.engine_version, tr.to_address, t.curve_address, t.lp_pair,
+                                t.locker, manager.pool_manager);
+
+-- name: ListHolderBalancesFor :many
+SELECT holder_address, balance
+FROM holder_balances
+WHERE chain_id = sqlc.arg(chain_id) AND token_address = sqlc.arg(token_address)
+  AND holder_address = ANY(sqlc.arg(wallets)::bytea[]) AND balance > 0;

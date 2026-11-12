@@ -109,6 +109,10 @@ type Querier interface {
 	GetCanonicalTransaction(ctx context.Context, arg GetCanonicalTransactionParams) ([]GetCanonicalTransactionRow, error)
 	// Locks the comment row so concurrent moderation of one comment serializes.
 	GetCommentForModeration(ctx context.Context, arg GetCommentForModerationParams) (GetCommentForModerationRow, error)
+	// Early-buyer clusters (docs/specs/2026-11-12-early-buyer-clusters-design.md). The token's
+	// creator, and whether the snapshot block is still inside the early window. A pruned or missing
+	// snapshot block falls back to the current time.
+	GetEarlyBuyerToken(ctx context.Context, arg GetEarlyBuyerTokenParams) (GetEarlyBuyerTokenRow, error)
 	GetIndexedBlockByHash(ctx context.Context, arg GetIndexedBlockByHashParams) (IndexedBlock, error)
 	GetIndexedBlockByNumber(ctx context.Context, arg GetIndexedBlockByNumberParams) (IndexedBlock, error)
 	GetKingOfTheHill(ctx context.Context, chainID int64) (GetKingOfTheHillRow, error)
@@ -192,6 +196,9 @@ type Querier interface {
 	// Each row is keyed by its UTC-aligned group start (not the first stored source bucket), so
 	// sparse groups report a stable timestamp and the next-page cursor can skip a whole group.
 	ListCandlesAggregated(ctx context.Context, arg ListCandlesAggregatedParams) ([]ListCandlesAggregatedRow, error)
+	// Curve deliveries (a Transfer from the curve is a buy output) within the early window of the
+	// launch block's time, infrastructure recipients excluded.
+	ListEarlyCurveDeliveries(ctx context.Context, arg ListEarlyCurveDeliveriesParams) ([]ListEarlyCurveDeliveriesRow, error)
 	ListForeignSyncDeployments(ctx context.Context, arg ListForeignSyncDeploymentsParams) ([]string, error)
 	// Communities ranked by visible comments in the last window_hours by the database clock (NULL =
 	// all time), ties by newest comment.
@@ -205,6 +212,7 @@ type Querier interface {
 	// survives a restart without depending on projections (Plan v2-B Task 6).
 	ListGraduatedV4Pools(ctx context.Context, chainID int64) ([]ListGraduatedV4PoolsRow, error)
 	ListGraduationsAfter(ctx context.Context, arg ListGraduationsAfterParams) ([]ListGraduationsAfterRow, error)
+	ListHolderBalancesFor(ctx context.Context, arg ListHolderBalancesForParams) ([]ListHolderBalancesForRow, error)
 	// Inbox page (spec P0-C4): events on the owner's watched tokens, at or after the watch started and
 	// within 30 days, strictly older than the cursor position, newest first. Each watched token
 	// contributes at most page_size rows through its own ordered index scan.
@@ -257,6 +265,9 @@ type Querier interface {
 	ListTokenHolders(ctx context.Context, arg ListTokenHoldersParams) ([]ListTokenHoldersRow, error)
 	ListTokenIdentities(ctx context.Context, chainID int64) ([]ListTokenIdentitiesRow, error)
 	ListTokenPhaseCounts(ctx context.Context, chainID int64) ([]ListTokenPhaseCountsRow, error)
+	// Transfers of the token touching one of the given wallets, between two non-infrastructure
+	// wallets.
+	ListTokenTransfersTouching(ctx context.Context, arg ListTokenTransfersTouchingParams) ([]ListTokenTransfersTouchingRow, error)
 	ListTrendingTokens(ctx context.Context, arg ListTrendingTokensParams) ([]ListTrendingTokensRow, error)
 	// Backfill cursor: distinct transactions that still have a v1 pool swap or a V4 swap without a
 	// sender, in blocks at or below through_block, in (block_number, tx_hash) order, strictly after

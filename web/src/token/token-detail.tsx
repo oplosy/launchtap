@@ -48,6 +48,7 @@ import { TradingPanel } from "@/transactions-panel";
 import { MetadataEditor } from "./metadata-editor";
 import { PRICE_FLASH_MS, priceDirection } from "./price-flash";
 import { creatorHistoryLine } from "./creator-history";
+import { earlyBuyersView, type EarlyBuyersView } from "./early-buyers";
 import { launchBlockHolders, topHolderShare } from "./holder-concentration";
 import { launchFacts, type LaunchFacts } from "./launch-facts";
 import { v2Facts, type V2Facts } from "./v2-facts";
@@ -775,14 +776,24 @@ export function TokenDetail({
                   value: "holders",
                   label: "Holders",
                   panel: (
-                    <Holders
-                      items={holderItems}
-                      totalSupply={token.total_supply}
-                      launchBlock={token.launch_block}
-                      hasMore={Boolean(nextCursor)}
-                      loading={collectionLoading}
-                      error={collectionError}
-                    />
+                    <>
+                      <Holders
+                        items={holderItems}
+                        totalSupply={token.total_supply}
+                        launchBlock={token.launch_block}
+                        hasMore={Boolean(nextCursor)}
+                        loading={collectionLoading}
+                        error={collectionError}
+                      />
+                      <EarlyBuyers
+                        key={token.address}
+                        tokenAddress={token.address}
+                        totalSupply={token.total_supply}
+                        apiBaseUrl={
+                          configuration.status === "ready" ? configuration.apiBaseUrl : null
+                        }
+                      />
+                    </>
                   ),
                 },
               ]}
@@ -1326,6 +1337,75 @@ function CreatorLine({
     <p className="token-creator">
       Created by <WalletLink address={parsed} />.{history ? ` ${history}` : null}
     </p>
+  );
+}
+/**
+ * Early wallets linked by same-transaction deliveries or token transfers (early-buyer clusters
+ * spec). Keyed by token, so a new token starts empty; an unavailable read shows nothing.
+ */
+function EarlyBuyers({
+  tokenAddress,
+  totalSupply,
+  apiBaseUrl,
+}: {
+  tokenAddress: string;
+  totalSupply: string;
+  apiBaseUrl: string | null;
+}) {
+  const [view, setView] = useState<EarlyBuyersView | null>(null);
+  useEffect(() => {
+    if (!apiBaseUrl) return;
+    const controller = new AbortController();
+    void new ApiClient({ baseUrl: apiBaseUrl })
+      .getEarlyBuyers(tokenAddress, controller.signal)
+      .then((body) => {
+        if (!controller.signal.aborted) setView(earlyBuyersView(body, totalSupply));
+      })
+      // Optional context under the holders list; the list stays without it.
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [apiBaseUrl, tokenAddress, totalSupply]);
+  if (!view) return null;
+  return (
+    <section className="early-buyers" aria-labelledby="early-buyers-title">
+      <h3 id="early-buyers-title">Linked early wallets</h3>
+      <p>{view.summary}</p>
+      {view.groups.length ? (
+        <ul className="early-buyers-groups">
+          {view.groups.map((group, index) => (
+            <li key={group.wallets[0]?.address ?? index}>
+              <details>
+                <summary>
+                  <strong>{group.title}</strong>
+                  {group.links ? <span>: {group.links}</span> : null}
+                  {group.includesCreator ? (
+                    <>
+                      {" "}
+                      <span className="early-buyers-creator">Creator</span>
+                    </>
+                  ) : null}
+                </summary>
+                <ul className="early-buyers-wallets">
+                  {group.wallets.map((wallet) => (
+                    <li key={wallet.address}>
+                      <WalletLink address={wallet.address} />
+                      <span className="mono">{safeTokenAmount(wallet.balance)}</span>
+                    </li>
+                  ))}
+                </ul>
+                {group.unlisted ? <p>and {group.unlisted} more</p> : null}
+              </details>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {view.emptyGroups ? <p>{view.emptyGroups}</p> : null}
+      {view.moreGroups ? <p>and {view.moreGroups} more linked groups</p> : null}
+      <p className="early-buyers-note">
+        Links are on-chain facts: tokens delivered by the curve to several wallets in one
+        transaction, or tokens moved between those wallets. A link does not prove one owner.
+      </p>
+    </section>
   );
 }
 /** Links an address to its wallet page; a missing or malformed address stays a dash. */
