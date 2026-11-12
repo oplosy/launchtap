@@ -263,7 +263,7 @@ test("populated token detail renders controls, pages, and responsive captures", 
   await expect(launchFactsPanel).toContainText("1% to the protocol, 99% to the creator");
   await expect(launchFactsPanel).toContainText("Left to graduate");
   await launchFactsPanel.screenshot({
-    path: path.resolve(process.cwd(), "../.impeccable/review/v1-launch-facts.png"),
+    path: path.resolve(process.cwd(), "test-results/screenshots/v1-launch-facts.png"),
   });
   await expect(page.locator(".token-creator")).toHaveText(
     "Created by 0x000000…000001. Launched 1 other token on Launchpad; 1 graduated.",
@@ -289,7 +289,7 @@ test("populated token detail renders controls, pages, and responsive captures", 
   await group.locator("summary").click();
   await expect(group.getByRole("link")).toHaveCount(2);
   await earlyBuyers.screenshot({
-    path: path.resolve(process.cwd(), "../.impeccable/review/early-buyers.png"),
+    path: path.resolve(process.cwd(), "test-results/screenshots/early-buyers.png"),
   });
   await page.getByRole("tab", { name: "Recent trades" }).click();
   await page.getByRole("button", { name: "Candles" }).click();
@@ -331,19 +331,19 @@ test("populated token detail renders controls, pages, and responsive captures", 
     .not.toBe(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(1280);
   await page.screenshot({
-    path: path.resolve(process.cwd(), "../.impeccable/review/task5-token-wide.png"),
+    path: path.resolve(process.cwd(), "test-results/screenshots/task5-token-wide.png"),
     fullPage: true,
   });
   await page.setViewportSize({ width: 768, height: 900 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(768);
   await page.screenshot({
-    path: path.resolve(process.cwd(), "../.impeccable/review/task5-token-tablet.png"),
+    path: path.resolve(process.cwd(), "test-results/screenshots/task5-token-tablet.png"),
     fullPage: true,
   });
   await page.setViewportSize({ width: 360, height: 800 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
   await page.screenshot({
-    path: path.resolve(process.cwd(), "../.impeccable/review/task5-token-mobile.png"),
+    path: path.resolve(process.cwd(), "test-results/screenshots/task5-token-mobile.png"),
     fullPage: true,
   });
 });

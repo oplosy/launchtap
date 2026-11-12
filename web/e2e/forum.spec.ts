@@ -154,7 +154,7 @@ test("forum tabs are centred over the feed and a whole post card opens its token
   const feed = (await page.getByRole("region", { name: "Forum posts" }).boundingBox())!;
   expect(Math.abs(box.x + box.width / 2 - (feed.x + feed.width / 2))).toBeLessThanOrEqual(2);
   await page.screenshot({
-    path: `../.impeccable/review/rebuild-forum-${testInfo.project.name}.png`,
+    path: `test-results/screenshots/rebuild-forum-${testInfo.project.name}.png`,
     fullPage: true,
     animations: "disabled",
   });

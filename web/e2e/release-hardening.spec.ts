@@ -328,9 +328,8 @@ test("reduced motion preserves route content without authored transition motion"
   await page.screenshot({
     path: path.resolve(
       process.cwd(),
-      "..",
-      ".impeccable",
-      "review",
+      "test-results",
+      "screenshots",
       `task8-release-${testInfo.project.name}.png`,
     ),
     fullPage: true,

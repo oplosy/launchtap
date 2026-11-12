@@ -163,7 +163,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.getByLabel("Ticker", { exact: true }).fill("B6");
     await page.getByRole("button", { name: "Review launch" }).click();
     await expect(page.getByRole("heading", { name: "Confirm launch" })).toBeVisible();
-    const evidenceDir = path.resolve(process.cwd(), "..", ".impeccable", "review");
+    const evidenceDir = path.resolve(process.cwd(), "test-results", "screenshots");
     fs.mkdirSync(evidenceDir, { recursive: true });
     await page.screenshot({
       path: path.join(evidenceDir, `task6-create-confirm-${testInfo.project.name}.png`),
@@ -304,7 +304,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
           (window as unknown as { __task6WriteRequests: unknown[] }).__task6WriteRequests.length,
       );
     expect(await pageWriteCount()).toBe(0);
-    const evidenceDir = path.resolve(process.cwd(), "..", ".impeccable", "review");
+    const evidenceDir = path.resolve(process.cwd(), "test-results", "screenshots");
     fs.mkdirSync(evidenceDir, { recursive: true });
     await page.screenshot({
       path: path.join(evidenceDir, `task6-trade-confirm-${testInfo.project.name}.png`),
@@ -616,7 +616,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.getByLabel("ETH input").fill("0.001");
     await page.getByRole("button", { name: "Review buy" }).click();
     await expect(page.getByText(/0 ETH router fee/i)).toBeVisible();
-    const evidenceDir = path.resolve(process.cwd(), "..", ".impeccable", "review");
+    const evidenceDir = path.resolve(process.cwd(), "test-results", "screenshots");
     fs.mkdirSync(evidenceDir, { recursive: true });
     await page.screenshot({
       path: path.join(evidenceDir, `task6-graduated-confirm-${testInfo.project.name}.png`),

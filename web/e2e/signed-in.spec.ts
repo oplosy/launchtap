@@ -243,7 +243,7 @@ test("a holder votes on a comment, switches and clears the vote, and sees refusa
   await expect(up).toHaveAttribute("aria-pressed", "true");
   await expect(first.getByRole("group", { name: "Vote, 4 points" })).toBeVisible();
   await first.screenshot({
-    path: "../.impeccable/review/comment-votes.png",
+    path: "test-results/screenshots/comment-votes.png",
     animations: "disabled",
   });
   await down.click();
@@ -439,7 +439,7 @@ test("Telegram alerts connect through a deep link, save settings and disconnect"
   expect(puts).toEqual([
     { graduations: false, large_trades: true, min_trade_wei: "2500000000000000000" },
   ]);
-  await page.screenshot({ path: "../.impeccable/review/telegram-alerts.png", fullPage: true });
+  await page.screenshot({ path: "test-results/screenshots/telegram-alerts.png", fullPage: true });
 
   await card.getByRole("button", { name: "Disconnect" }).click();
   await expect(card.getByRole("button", { name: "Connect Telegram" })).toBeVisible();

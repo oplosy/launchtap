@@ -42,3 +42,6 @@ pnpm-debug.log*
 .idea/
 .vscode/
 *.swp
+
+# Retired design-review captures; Playwright now writes them to web/test-results/screenshots/.
+.impeccable/
