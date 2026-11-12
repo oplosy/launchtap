@@ -259,7 +259,11 @@ func TestEngineV2Projections(t *testing.T) {
 	}
 	assertRebuildMatchesIncremental(t, ctx, database, adapter, chainID, token)
 
-	// The engine-1 projection schema cannot hold these rows, so the migration's Down refuses.
+	// The engine-1 projection schema cannot hold these rows, so the migration's Down refuses (after
+	// the V4 swap sender index, which rolls back freely).
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the V4 swap sender index: %v", err)
+	}
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err == nil || !strings.Contains(err.Error(), "engine v2 projection rows exist") {
 		t.Fatalf("down with v2 projection rows error = %v, want refusal", err)
 	}

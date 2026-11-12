@@ -595,7 +595,10 @@ SELECT COALESCE(sum(valued.current_value), 0)::numeric AS portfolio_value,
        COALESCE(sum(valued.remaining_cost), 0)::numeric AS open_cost
 FROM (
     SELECT p.remaining_cost,
-           COALESCE(div(p.balance * r.eth_reserve, NULLIF(r.token_reserve, 0)), 0)::numeric AS current_value
+           COALESCE(CASE WHEN r.reserve_source = 'v4'
+                         THEN div(p.balance * v4_spot_price_wad(r.sqrt_price_x96), 1000000000000000000)
+                         ELSE div(p.balance * r.eth_reserve, NULLIF(r.token_reserve, 0))
+                    END, 0)::numeric AS current_value
     FROM wallet_positions AS p
     JOIN tokens AS t ON t.chain_id = p.chain_id AND t.token_address = p.token_address
     LEFT JOIN token_reserves AS r ON r.chain_id = p.chain_id AND r.token_address = p.token_address
@@ -615,7 +618,8 @@ type GetWalletValuationRow struct {
 
 // Single source of the read-time position value (also used by ListWalletOpenPositions):
 //
-//	current_value = div(balance * eth_reserve, NULLIF(token_reserve, 0)), coalesced to 0
+//	current_value = div(balance * eth_reserve, NULLIF(token_reserve, 0)), coalesced to 0; a
+//	graduated engine-2 token ('v4' reserve) uses div(balance * v4_spot_price_wad, 1e18) instead.
 //
 // div() is exact truncating division; a missing token_reserves row or a zero token_reserve gives 0.
 // unrealized PnL = current_value - remaining_cost, computed by the reader.
@@ -854,6 +858,8 @@ WHERE w.chain_id = $2
   AND w.wallet <> decode(repeat('00', 20), 'hex')
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.curve_address = w.wallet)
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.lp_pair = w.wallet)
+  AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.locker = w.wallet)
+  AND NOT EXISTS (SELECT 1 FROM v4_pool_managers AS m WHERE m.chain_id = w.chain_id AND m.pool_manager = w.wallet)
 ORDER BY w.realized_pnl DESC, w.wallet
 LIMIT $3::integer
 `
@@ -871,8 +877,9 @@ type ListLeaderboardRow struct {
 	Username     pgtype.Text
 }
 
-// R4 at read time: the zero address and every curve or pair address are never ranked. The factory
-// is never marked dirty, so it never has totals.
+// R4 at read time: the zero address, every curve or pair address, every engine-2 locker and the
+// chain's V4 PoolManager are never ranked. The factory is never marked dirty, so it never has
+// totals.
 // Only wallets with a positive realized PnL rank; fewer than page_size rows is normal. Ties are
 // broken by wallet address, so the order is deterministic.
 func (q *Queries) ListLeaderboard(ctx context.Context, arg ListLeaderboardParams) ([]ListLeaderboardRow, error) {
@@ -917,6 +924,8 @@ WHERE w.realized_pnl > 0
   AND w.wallet <> decode(repeat('00', 20), 'hex')
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = $1 AND t.curve_address = w.wallet)
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = $1 AND t.lp_pair = w.wallet)
+  AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = $1 AND t.locker = w.wallet)
+  AND NOT EXISTS (SELECT 1 FROM v4_pool_managers AS m WHERE m.chain_id = $1 AND m.pool_manager = w.wallet)
 ORDER BY w.realized_pnl DESC, w.wallet
 LIMIT $3::integer
 `
@@ -2135,7 +2144,10 @@ SELECT valued.token_address, valued.name, valued.symbol, valued.phase, valued.ba
 FROM (
     SELECT p.token_address, t.name, t.symbol, t.phase, p.balance, p.remaining_cost, p.realized_pnl,
            p.transferred_in, p.trade_count, p.last_block_number,
-           COALESCE(div(p.balance * r.eth_reserve, NULLIF(r.token_reserve, 0)), 0)::numeric AS current_value
+           COALESCE(CASE WHEN r.reserve_source = 'v4'
+                         THEN div(p.balance * v4_spot_price_wad(r.sqrt_price_x96), 1000000000000000000)
+                         ELSE div(p.balance * r.eth_reserve, NULLIF(r.token_reserve, 0))
+                    END, 0)::numeric AS current_value
     FROM wallet_positions AS p
     JOIN tokens AS t ON t.chain_id = p.chain_id AND t.token_address = p.token_address
     LEFT JOIN token_reserves AS r ON r.chain_id = p.chain_id AND r.token_address = p.token_address
