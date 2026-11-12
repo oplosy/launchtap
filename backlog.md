@@ -164,6 +164,37 @@
 
 ---
 
+### Plan v2-C D1: approve the local Universal Router dependency
+
+- **Date:** 2026-11-12
+- **Reason:** scope decision (adding a dependency needs the product owner's approval)
+- **Where it stopped:** `docs/plans/2026-11-12-v2-engine-web.md` D1. The local V4 stack has no
+  `UniversalRouter`, so the Anvil v2 web gate (Task 9) cannot sign a real V4 swap. Tasks 1-8 do
+  not depend on it.
+- **Related files:** `contracts/script/v2/DeployLocalV2.s.sol`, `contracts/foundry.toml`,
+  `contracts/deployments/config/robinhood-mainnet-v4.json`
+- **Resume (next step):** Approve (or reject) adding `Uniswap/universal-router` as a submodule
+  pinned to the mainnet v2.1.2 source revision, built in a test-only profile. The alternative is
+  a mainnet-fork gate, which needs the fork RPC secret (operator item above).
+- **Pitfalls / notes:** The router revision decides the `SWAP_EXACT_IN_SINGLE` struct layout
+  (plan D2); the pinned `lib/v4-periphery` is newer than the deployed router.
+
+### Engine v2 backend known limitations
+
+- **Date:** 2026-11-12
+- **Reason:** scope decision (left out of Plan v2-B, merged in oplosy/launchtap#27)
+- **Where it stopped:** For graduated v2 tokens, `liquidity_eth`, `eth_reserve` and
+  `token_reserve` fall back via COALESCE (V4 liquidity is not projected); v4 wallet
+  valuation is 0; the leaderboard does not exclude the locker or the PoolManager; there is no
+  protocol-revenue projection.
+- **Related files:** `backend/internal/store/postgres/migrations/00025_engine_v2_projections.sql`,
+  `backend/internal/store/postgres/queries/read.sql`, `backend/internal/apiserver/public_routes.go`
+- **Resume (next step):** Project V4 liquidity from `v4_liquidity_changes`, value v4 holdings
+  from the pool spot price, exclude the locker and PoolManager from the leaderboard, then make
+  the API fields nullable for v4 in one coordinated web/API change.
+- **Pitfalls / notes:** Plan v2-C Task 8 shows "not indexed yet" instead of these placeholders;
+  remove that once the backend projects real values.
+
 ## Done
 
 ### P0-C2 signed-in e2e coverage
