@@ -47,7 +47,7 @@ func TestTelegramLinkDeliveryAndRelink(t *testing.T) {
 	}
 	setSafe(12)
 	l.watch(inboxDeployment, "did:me", positionToken, l.blockTime(10))
-	l.tradeOn(positionToken, 12, 0, 0x81, 2*halfETH)  // at the cursor block: never sent
+	l.tradeOn(positionToken, 12, 0, 0x81, 2*halfETH)   // at the cursor block: never sent
 	l.tradeOn(positionToken, 13, 0, 0x82, 6*halfETH/5) // 0.6 ETH
 	l.tradeOn(positionToken, 14, 0, 0x83, 4*halfETH)   // 2 ETH
 	l.tradeOn(positionToken, 15, 0, 0x84, 6*halfETH)   // 3 ETH, above the safe head at first

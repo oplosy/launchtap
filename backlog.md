@@ -137,6 +137,23 @@
 - **Pitfalls / notes:** the tape must stay a client-side widget with its own failure state so a
   provider outage never blocks the forum.
 
+### Telegram alerts: bot and process setup
+
+- **Date:** 2026-11-12
+- **Reason:** scope decision (owner input: a bot account and a secret)
+- **Where it stopped:** the feature is built and tested
+  (`docs/specs/2026-11-12-telegram-alerts-design.md`): link codes, settings and unlink on the
+  API, the `cmd/telegram` worker, the "Telegram alerts" card on `/notifications`. It is off
+  everywhere because no bot exists yet, and Compose does not start `cmd/telegram`.
+- **Related files:** `backend/cmd/telegram/main.go`, `deploy/README.md`, `deploy/compose.yaml`,
+  `deploy/backend.env.example`.
+- **Resume (next step):** owner creates the bot with BotFather; put `TELEGRAM_BOT_TOKEN` in
+  `BACKEND_ENV_FILE`, set `TELEGRAM_BOT_USERNAME` and `TELEGRAM_WEB_ORIGIN`, then add a
+  `telegram` service (same backend image, `telegram` binary, one replica) to Compose and
+  `deploy/check.ps1`.
+- **Pitfalls / notes:** run exactly one worker per deployment (an advisory lock refuses a second
+  one); the bot was never exercised against the real Bot API, only a fake server.
+
 ### <short title>
 - **Date:** YYYY-MM-DD
 - **Reason:** time | limit (~__%) | scope decision
@@ -149,6 +166,16 @@
 ---
 
 ## Done
+
+### Telegram alerts
+
+- **Date:** 2026-11-12
+- **What closed:** the notes.md "cheap v1 win" Telegram alerts, per
+  `docs/specs/2026-11-12-telegram-alerts-design.md`: opt-in through a one-time deep link
+  (SHA-256-stored, 15 minutes, single use), one private chat per account, settings for
+  graduations, large trades and a 0.5-10,000 ETH threshold, delivery of the account's inbox
+  events from safe blocks only behind a forward-only cursor (migration 00028), plain-text
+  messages, `/stop` and 403 unlink. The bot setup itself stays an active item.
 
 ### Engine v2 protocol revenue projection
 

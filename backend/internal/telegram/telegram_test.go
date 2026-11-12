@@ -19,7 +19,7 @@ func TestNewCodeIsAStartParameterAndHashesToItsDigest(t *testing.T) {
 		t.Fatalf("code length = %d, want 43", len(code))
 	}
 	for _, c := range code {
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
+		if !isCodeChar(byte(c)) {
 			t.Fatalf("code %q has %q outside the start-parameter alphabet", code, c)
 		}
 	}

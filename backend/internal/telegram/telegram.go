@@ -57,11 +57,16 @@ func HashCode(code string) ([32]byte, error) {
 	}
 	for i := 0; i < len(code); i++ {
 		c := code[i]
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
+		if !isCodeChar(c) {
 			return [32]byte{}, ErrInvalidCode
 		}
 	}
 	return sha256.Sum256([]byte(code)), nil
+}
+
+// isCodeChar reports whether c is in the start-parameter alphabet [A-Za-z0-9_-].
+func isCodeChar(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_'
 }
 
 // Settings choose which inbox events a linked chat receives.

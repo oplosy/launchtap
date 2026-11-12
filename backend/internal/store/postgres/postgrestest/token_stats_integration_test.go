@@ -287,7 +287,7 @@ func TestPriceChangeBigintDownMigrationRejectsLossyNarrowing(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	for _, name := range []string{"comment votes", "V4 swap sender index", "engine v2 projections", "engine v2 ledger", "forum reads", "notification inbox", "windowed leaderboard", "social", "position dirty claim index", "tokens curve index", "wallet positions", "live feed", "market discovery", "token sort metric", "read-path index", "UTC rebuild"} {
+	for _, name := range []string{"Telegram links", "comment votes", "V4 swap sender index", "engine v2 projections", "engine v2 ledger", "forum reads", "notification inbox", "windowed leaderboard", "social", "position dirty claim index", "tokens curve index", "wallet positions", "live feed", "market discovery", "token sort metric", "read-path index", "UTC rebuild"} {
 		if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
 			t.Fatalf("rollback %s migration: %v", name, err)
 		}
