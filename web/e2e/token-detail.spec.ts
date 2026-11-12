@@ -201,8 +201,20 @@ test("populated token detail renders controls, pages, and responsive captures", 
   await expect.poll(() => candleRequests.length).toBe(2);
   expect(new URLSearchParams(candleRequests[1]).get("interval")).toBe("6h");
   expect(new URLSearchParams(candleRequests[1]).get("limit")).toBe("100");
+  // Engine-1 launch facts: graduation seeds 70 ETH against 10 tokens out of a 1,000 supply.
+  const launchFactsPanel = page.locator(".token-launch-facts");
+  await expect(launchFactsPanel.getByRole("heading", { name: "Launch facts" })).toBeVisible();
+  await expect(launchFactsPanel).toContainText("1% to the protocol, 99% to the creator");
+  await expect(launchFactsPanel).toContainText("Left to graduate");
+  await launchFactsPanel.screenshot({
+    path: path.resolve(process.cwd(), "../.impeccable/review/v1-launch-facts.png"),
+  });
   await page.getByRole("tab", { name: "Holders" }).click();
   await expect(page.getByRole("table", { name: "Token holders" })).toContainText("100");
+  // One holder of 100 out of the 1,000 supply.
+  await expect(page.locator(".holder-concentration")).toHaveText(
+    /^Top 1 holder owns 10\.00% of the supply/,
+  );
   await page.getByRole("tab", { name: "Recent trades" }).click();
   await page.getByRole("button", { name: "Candles" }).click();
   await expect(page.locator(".market-chart")).toBeVisible();

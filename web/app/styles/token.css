@@ -463,6 +463,21 @@
 .token-sheet-head {
   display: none;
 }
+.holder-concentration {
+  margin-bottom: 12px;
+  color: var(--text-2);
+  font-size: 13.5px;
+}
+.token-launch-guarantees {
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+  padding-left: 18px;
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.5;
+  list-style: disc;
+}
 .token-aside-note {
   color: var(--text-3);
   padding: 0 4px;

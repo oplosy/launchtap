@@ -47,6 +47,8 @@ import { isTokenEventForAddress } from "./sse-scope";
 import { TradingPanel } from "@/transactions-panel";
 import { MetadataEditor } from "./metadata-editor";
 import { PRICE_FLASH_MS, priceDirection } from "./price-flash";
+import { topHolderShare } from "./holder-concentration";
+import { launchFacts, type LaunchFacts } from "./launch-facts";
 import { v2Facts, type V2Facts } from "./v2-facts";
 
 type TokenDetailProps = { address: `0x${string}` };
@@ -522,6 +524,7 @@ export function TokenDetail({
 
   const progress = Math.max(0, Math.min(100, token.graduation_progress_bps / 100));
   const facts = v2Facts(token);
+  const engineOneFacts = launchFacts(token);
   const liquidityIndexed = facts?.liquidityIndexed ?? true;
   const pagesItems: unknown[] = [];
   for (const page of pages) {
@@ -728,6 +731,9 @@ export function TokenDetail({
           </section>
 
           {facts ? <V2FactsPanel facts={facts} configuration={configuration} /> : null}
+          {engineOneFacts ? (
+            <LaunchFactsPanel token={token} facts={engineOneFacts} configuration={configuration} />
+          ) : null}
 
           <section className="token-history-panel" aria-labelledby="history-title">
             <div className="token-section-head">
@@ -770,6 +776,7 @@ export function TokenDetail({
                   panel: (
                     <Holders
                       items={holderItems}
+                      totalSupply={token.total_supply}
                       loading={collectionLoading}
                       error={collectionError}
                     />
@@ -1019,6 +1026,107 @@ function V2FactsPanel({
   );
 }
 
+/**
+ * Engine-1 launch facts: what LaunchToken and BondingCurveV1 guarantee by construction, with
+ * the curve and pair as evidence links, and the pair the curve seeds at graduation.
+ */
+function LaunchFactsPanel({
+  token,
+  facts,
+  configuration,
+}: {
+  token: {
+    curve: string;
+    pair: string;
+    phase: string;
+    total_supply: string;
+    curve_tokens: string;
+    lp_tokens: string;
+  };
+  facts: LaunchFacts;
+  configuration: Parameters<typeof addressExplorerUrl>[0];
+}) {
+  const graduated = token.phase.toLowerCase() === "graduated";
+  const link = (address: string) => {
+    const href = addressExplorerUrl(configuration, address as `0x${string}`);
+    return href ? (
+      <a className="mono" href={href} target="_blank" rel="noreferrer" title={address}>
+        {address}
+      </a>
+    ) : (
+      <span className="mono" title={address}>
+        {address}
+      </span>
+    );
+  };
+  const openingPrice = formatSignificantPrice(facts.graduation.openingPriceWad);
+  return (
+    <section className="token-launch-facts" aria-labelledby="launch-facts-title">
+      <div className="token-section-head">
+        <h2 id="launch-facts-title">Launch facts</h2>
+      </div>
+      <dl className="token-summary-grid">
+        <div>
+          <dt>Fixed supply</dt>
+          <dd>{safeTokenAmount(token.total_supply)}</dd>
+        </div>
+        <div>
+          <dt>On the curve</dt>
+          <dd>{safeTokenAmount(token.curve_tokens)}</dd>
+        </div>
+        <div>
+          <dt>Seeded into the pool</dt>
+          <dd>{safeTokenAmount(token.lp_tokens)}</dd>
+        </div>
+        <div>
+          <dt>Curve trade fee</dt>
+          <dd title={facts.feeSplit}>{facts.tradeFee}</dd>
+        </div>
+        <div>
+          <dt>Pool opens at</dt>
+          <dd>{openingPrice === null ? "Unavailable" : `${openingPrice} ETH`}</dd>
+        </div>
+        <div>
+          <dt>Market cap at graduation</dt>
+          <dd>
+            {amount(facts.graduation.marketCapWei)}
+            <UsdLine wei={facts.graduation.marketCapWei} />
+          </dd>
+        </div>
+        {facts.graduation.remainingEthWei !== null ? (
+          <div>
+            <dt>Left to graduate</dt>
+            <dd>{amount(facts.graduation.remainingEthWei)}</dd>
+          </div>
+        ) : null}
+        <div>
+          <dt>Curve</dt>
+          <dd>{link(token.curve)}</dd>
+        </div>
+        <div>
+          <dt>Pool</dt>
+          <dd>{link(token.pair)}</dd>
+        </div>
+      </dl>
+      <ul className="token-launch-guarantees">
+        <li>The whole supply was minted once at launch; the token has no mint function.</li>
+        <li>The token contract has no owner, no transfer tax and no blacklist.</li>
+        <li>
+          {graduated
+            ? "Until graduation only the curve could move tokens to or from itself or the pool, so nobody could seed the pool early."
+            : "Until graduation only the curve can move tokens to or from itself or the pool, so nobody can seed the pool early."}
+        </li>
+        <li>
+          {graduated
+            ? "At graduation the pool's LP tokens were minted to 0x…dEaD, so the liquidity can never be withdrawn."
+            : "At graduation the pool's LP tokens are minted to 0x…dEaD, so the liquidity can never be withdrawn."}
+        </li>
+        <li>Curve fee split: {facts.feeSplit}.</li>
+      </ul>
+    </section>
+  );
+}
+
 function Metric({ label, value, eth }: { label: string; value: string; eth?: string }) {
   return (
     <div>
@@ -1107,10 +1215,12 @@ function Trades({
 }
 function Holders({
   items,
+  totalSupply,
   loading,
   error,
 }: {
   items: components["schemas"]["HolderDTO"][];
+  totalSupply: string;
   loading: boolean;
   error: Error | null;
 }) {
@@ -1130,27 +1240,41 @@ function Holders({
     return (
       <EmptyState title="No holders yet" description="No holder balances are available yet." />
     );
+  // The list arrives largest first with the curve, pool, locker and burn addresses excluded.
+  const concentration = topHolderShare(
+    items.map((item) => item.balance),
+    totalSupply,
+  );
   return (
-    <div className="history-table" role="table" aria-label="Token holders">
-      <div className="history-row history-heading" role="row">
-        <span>Address</span>
-        <span>Balance</span>
-        <span>First acquired block</span>
-      </div>
-      {items.map((item) => (
-        <div className="history-row holder-row" role="row" key={item.address}>
-          <span className="mono">
-            <WalletLink address={item.address} />
-          </span>
-          <span className="mono">{safeTokenAmount(item.balance)}</span>
-          <span className="mono">
-            {Number.isSafeInteger(item.first_acquired_block)
-              ? item.first_acquired_block.toLocaleString("en-US")
-              : "Unavailable"}
-          </span>
+    <>
+      {concentration ? (
+        <p className="holder-concentration">
+          Top {concentration.holders} {concentration.holders === 1 ? "holder owns" : "holders own"}{" "}
+          <strong>{concentration.percent}</strong> of the supply (curve, pool and burned tokens
+          excluded from the list).
+        </p>
+      ) : null}
+      <div className="history-table" role="table" aria-label="Token holders">
+        <div className="history-row history-heading" role="row">
+          <span>Address</span>
+          <span>Balance</span>
+          <span>First acquired block</span>
         </div>
-      ))}
-    </div>
+        {items.map((item) => (
+          <div className="history-row holder-row" role="row" key={item.address}>
+            <span className="mono">
+              <WalletLink address={item.address} />
+            </span>
+            <span className="mono">{safeTokenAmount(item.balance)}</span>
+            <span className="mono">
+              {Number.isSafeInteger(item.first_acquired_block)
+                ? item.first_acquired_block.toLocaleString("en-US")
+                : "Unavailable"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 /** Links an address to its wallet page; a missing or malformed address stays a dash. */
