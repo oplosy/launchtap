@@ -9,6 +9,7 @@ export type TokenDetailResponse = components["schemas"]["TokenDetailDTO"];
 export type CandleResponse = components["schemas"]["CandleBody"];
 export type TradesResponse = components["schemas"]["TradesBody"];
 export type HoldersResponse = components["schemas"]["HoldersBody"];
+export type EarlyBuyersResponse = components["schemas"]["EarlyBuyersBody"];
 export type QuoteResponse = components["schemas"]["QuoteBody"];
 export type CanonicalTransactionResponse = components["schemas"]["CanonicalObservationBody"];
 export type EthUsdReference = components["schemas"]["EthUsdBody"];
@@ -439,6 +440,13 @@ export class ApiClient {
     signal?: AbortSignal,
   ) {
     return this.getCursorCollection<HoldersResponse>(address, "holders", options, signal);
+  }
+
+  getEarlyBuyers(address: string, signal?: AbortSignal) {
+    return this.request<EarlyBuyersResponse>(
+      `/v1/tokens/${encodeURIComponent(address)}/early-buyers`,
+      { signal },
+    );
   }
 
   private getCursorCollection<T>(

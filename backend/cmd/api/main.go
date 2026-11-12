@@ -86,7 +86,7 @@ func run() error {
 	tokens := storepostgres.TokenReader{Pool: pool, DeploymentID: c.DeploymentID}
 	market := storepostgres.MarketReader{Pool: pool, DeploymentID: c.DeploymentID}
 	protocol := storepostgres.ProtocolReader{Pool: pool, DeploymentID: c.DeploymentID}
-	server.RegisterPublicRoutes(apiserver.PublicRoutes{Tokens: tokens, Market: market, Protocol: protocol, ProtocolDaily: protocol, ChainID: int64(c.ChainID)})
+	server.RegisterPublicRoutes(apiserver.PublicRoutes{Tokens: tokens, Market: market, EarlyBuyers: market, Protocol: protocol, ProtocolDaily: protocol, ChainID: int64(c.ChainID)})
 	server.RegisterQuoteRoutes(apiserver.QuoteRoutes{Provider: quote.Service{Reader: tokens, ChainID: int64(c.ChainID)}})
 	hub := realtime.NewHub(1000, 64)
 	server.RegisterMetadataRoutes(apiserver.MetadataRoutes{Store: storepostgres.MetadataStore{Pool: pool, DeploymentID: c.DeploymentID}, Verifier: verifier, ChainID: int64(c.ChainID)})

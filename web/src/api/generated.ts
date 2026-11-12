@@ -367,6 +367,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tokens/{token}/early-buyers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Wallets that received tokens from the curve within the early window after launch, grouped by same-transaction deliveries and token transfers between them. */
+        get: operations["getEarlyBuyers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tokens/{token}/holders": {
         parameters: {
             query?: never;
@@ -660,6 +677,42 @@ export interface components {
             comment_count: number;
             items: components["schemas"]["CommentDTO"][] | null;
             next_cursor?: string;
+        };
+        EarlyBuyersBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/EarlyBuyersBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            cluster_count: number;
+            /** @description At most 10 clusters, largest combined balance first. */
+            clusters: components["schemas"]["EarlyClusterDTO"][] | null;
+            /** @description What every early wallet holds now. */
+            early_balance: string;
+            /** Format: int64 */
+            early_wallet_count: number;
+            snapshot: components["schemas"]["SnapshotDTO"];
+            /** @description The early window had not ended at the snapshot block. */
+            window_open: boolean;
+            /** Format: int64 */
+            window_seconds: number;
+        };
+        EarlyClusterDTO: {
+            /** @description What every wallet of the cluster holds now. */
+            balance: string;
+            includes_creator: boolean;
+            /** @description Link kinds present: same_transaction, token_transfer. */
+            links: string[] | null;
+            /** Format: int64 */
+            wallet_count: number;
+            /** @description At most 20 wallets, largest balance first. */
+            wallets: components["schemas"]["EarlyWalletDTO"][] | null;
+        };
+        EarlyWalletDTO: {
+            address: string;
+            balance: string;
         };
         EligibilityBody: {
             /**
@@ -2488,6 +2541,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CandleBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getEarlyBuyers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EarlyBuyersBody"];
                 };
             };
             /** @description Error */

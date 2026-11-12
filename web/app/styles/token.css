@@ -473,6 +473,54 @@
   color: var(--text-2);
   font-size: 13.5px;
 }
+.early-buyers {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.early-buyers h3 {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+.early-buyers-groups {
+  display: grid;
+  gap: 6px;
+}
+.early-buyers-groups summary {
+  cursor: pointer;
+}
+.early-buyers-groups strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.early-buyers-creator {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--fill);
+  color: var(--text);
+  font-size: 12px;
+}
+.early-buyers-wallets {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 4px 18px;
+}
+.early-buyers-wallets li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.early-buyers-note {
+  color: var(--text-3);
+  font-size: 12.5px;
+}
 .token-launch-guarantees {
   display: grid;
   gap: 6px;

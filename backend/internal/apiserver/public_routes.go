@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Contictus/launchtap/backend/internal/earlybuyer"
 	"github.com/Contictus/launchtap/backend/internal/holder"
 	"github.com/Contictus/launchtap/backend/internal/pagination"
 	"github.com/Contictus/launchtap/backend/internal/stats"
@@ -24,6 +25,8 @@ type PublicRoutes struct {
 		trading.Reader
 		holder.Reader
 	}
+	// EarlyBuyers serves the early-buyer clusters read; nil answers 503.
+	EarlyBuyers   earlybuyer.Reader
 	Protocol      stats.Reader
 	ProtocolDaily stats.DailyReader
 	ChainID       int64
@@ -181,6 +184,7 @@ func (r PublicRoutes) Register(api huma.API) {
 	huma.Register(api, huma.Operation{OperationID: "getToken", Method: http.MethodGet, Path: "/tokens/{token}", Tags: []string{"tokens"}}, r.detail)
 	huma.Register(api, huma.Operation{OperationID: "listTrades", Method: http.MethodGet, Path: "/tokens/{token}/trades", Tags: []string{"market"}}, r.trades)
 	huma.Register(api, huma.Operation{OperationID: "listHolders", Method: http.MethodGet, Path: "/tokens/{token}/holders", Tags: []string{"market"}}, r.holders)
+	huma.Register(api, huma.Operation{OperationID: "getEarlyBuyers", Method: http.MethodGet, Path: "/tokens/{token}/early-buyers", Tags: []string{"market"}, Description: "Wallets that received tokens from the curve within the early window after launch, grouped by same-transaction deliveries and token transfers between them."}, r.earlyBuyers)
 	huma.Register(api, huma.Operation{OperationID: "getProtocolStats", Method: http.MethodGet, Path: "/stats/protocol", Tags: []string{"stats"}}, r.protocol)
 	huma.Register(api, huma.Operation{OperationID: "listProtocolDaily", Method: http.MethodGet, Path: "/stats/protocol/daily", Tags: []string{"stats"}}, r.protocolDaily)
 }
@@ -289,6 +293,51 @@ func (r PublicRoutes) holders(ctx context.Context, in *pageInput) (*holdersOutpu
 		body.Items = append(body.Items, holderDTO{Address: v.Address.Hex(), Balance: decimal(v.Balance), FirstAcquiredBlock: v.FirstAcquiredBlock})
 	}
 	return &holdersOutput{Body: body}, nil
+}
+
+type earlyWalletDTO struct {
+	Address string `json:"address"`
+	Balance string `json:"balance"`
+}
+type earlyClusterDTO struct {
+	WalletCount     int              `json:"wallet_count"`
+	Balance         string           `json:"balance" doc:"What every wallet of the cluster holds now."`
+	Links           []string         `json:"links" doc:"Link kinds present: same_transaction, token_transfer."`
+	IncludesCreator bool             `json:"includes_creator"`
+	Wallets         []earlyWalletDTO `json:"wallets" doc:"At most 20 wallets, largest balance first."`
+}
+type earlyBuyersBody struct {
+	Snapshot         snapshotDTO       `json:"snapshot"`
+	WindowSeconds    int               `json:"window_seconds"`
+	WindowOpen       bool              `json:"window_open" doc:"The early window had not ended at the snapshot block."`
+	EarlyWalletCount int               `json:"early_wallet_count"`
+	EarlyBalance     string            `json:"early_balance" doc:"What every early wallet holds now."`
+	ClusterCount     int               `json:"cluster_count"`
+	Clusters         []earlyClusterDTO `json:"clusters" doc:"At most 10 clusters, largest combined balance first."`
+}
+type earlyBuyersOutput struct{ Body earlyBuyersBody }
+
+func (r PublicRoutes) earlyBuyers(ctx context.Context, in *addressInput) (*earlyBuyersOutput, error) {
+	a, e := address(in.Token)
+	if e != nil {
+		return nil, e
+	}
+	if r.EarlyBuyers == nil {
+		return nil, apiProblem(http.StatusServiceUnavailable, "early_buyers_unavailable", "Early-buyer reads are not configured")
+	}
+	v, e := r.EarlyBuyers.ReadEarlyBuyers(ctx, earlybuyer.Query{ChainID: r.ChainID, Token: a})
+	if e != nil {
+		return nil, mapReadError(ctx, e)
+	}
+	body := earlyBuyersBody{Snapshot: snapDTO(v.Snapshot, v.Finality), WindowSeconds: earlybuyer.WindowSeconds, WindowOpen: v.WindowOpen, EarlyWalletCount: v.EarlyWalletCount, EarlyBalance: decimal(v.EarlyBalance), ClusterCount: v.ClusterCount, Clusters: make([]earlyClusterDTO, 0, len(v.Clusters))}
+	for _, c := range v.Clusters {
+		dto := earlyClusterDTO{WalletCount: c.WalletCount, Balance: decimal(c.Balance), Links: append([]string{}, c.Links...), IncludesCreator: c.IncludesCreator, Wallets: make([]earlyWalletDTO, 0, len(c.Wallets))}
+		for _, w := range c.Wallets {
+			dto.Wallets = append(dto.Wallets, earlyWalletDTO{Address: w.Address.Hex(), Balance: decimal(w.Balance)})
+		}
+		body.Clusters = append(body.Clusters, dto)
+	}
+	return &earlyBuyersOutput{Body: body}, nil
 }
 func (r PublicRoutes) protocol(ctx context.Context, _ *struct{}) (*protocolOutput, error) {
 	v, e := r.Protocol.ReadProtocol(ctx, r.ChainID)

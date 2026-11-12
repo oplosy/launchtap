@@ -4,13 +4,13 @@
 
 const CANONICAL = /^(0|[1-9][0-9]*)$/;
 
-function positiveSupply(totalSupply: string): bigint | null {
+export function positiveSupply(totalSupply: string): bigint | null {
   if (!CANONICAL.test(totalSupply)) return null;
   const supply = BigInt(totalSupply);
   return supply === 0n ? null : supply;
 }
 
-function percentOfSupply(held: bigint, supply: bigint): string {
+export function percentOfSupply(held: bigint, supply: bigint): string {
   const hundredths = (held * 10_000n) / supply;
   const fraction = (hundredths % 100n).toString().padStart(2, "0");
   return `${hundredths / 100n}.${fraction}%`;

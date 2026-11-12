@@ -360,6 +360,123 @@
         ],
         "type": "object"
       },
+      "EarlyBuyersBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/EarlyBuyersBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "cluster_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "clusters": {
+            "description": "At most 10 clusters, largest combined balance first.",
+            "items": {
+              "$ref": "#/components/schemas/EarlyClusterDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "early_balance": {
+            "description": "What every early wallet holds now.",
+            "type": "string"
+          },
+          "early_wallet_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          },
+          "window_open": {
+            "description": "The early window had not ended at the snapshot block.",
+            "type": "boolean"
+          },
+          "window_seconds": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "snapshot",
+          "window_seconds",
+          "window_open",
+          "early_wallet_count",
+          "early_balance",
+          "cluster_count",
+          "clusters"
+        ],
+        "type": "object"
+      },
+      "EarlyClusterDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "balance": {
+            "description": "What every wallet of the cluster holds now.",
+            "type": "string"
+          },
+          "includes_creator": {
+            "type": "boolean"
+          },
+          "links": {
+            "description": "Link kinds present: same_transaction, token_transfer.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "wallet_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "wallets": {
+            "description": "At most 20 wallets, largest balance first.",
+            "items": {
+              "$ref": "#/components/schemas/EarlyWalletDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "wallet_count",
+          "balance",
+          "links",
+          "includes_creator",
+          "wallets"
+        ],
+        "type": "object"
+      },
+      "EarlyWalletDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "balance": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "balance"
+        ],
+        "type": "object"
+      },
       "EligibilityBody": {
         "additionalProperties": false,
         "properties": {
@@ -4556,6 +4673,47 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CandleBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "market"
+        ]
+      }
+    },
+    "/tokens/{token}/early-buyers": {
+      "get": {
+        "description": "Wallets that received tokens from the curve within the early window after launch, grouped by same-transaction deliveries and token transfers between them.",
+        "operationId": "getEarlyBuyers",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EarlyBuyersBody"
                 }
               }
             },
