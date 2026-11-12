@@ -1,4 +1,4 @@
-import { reviewedDeployments } from "@/contracts/generated";
+import { reviewedDeployments, type ReviewedV4Deployment } from "@/contracts/generated";
 
 // E2E fixture origin; matches the `npm run dev` and Playwright port, kept off 3000 to avoid local collisions.
 export const DEFAULT_E2E_WEB_URL = "http://127.0.0.1:3417";
@@ -28,6 +28,61 @@ function publicEndpoint(value: string | null): string | null {
   }
 }
 
+const isAddress = (value: string | null): value is string =>
+  value !== null && /^0x[0-9a-fA-F]{40}$/.test(value);
+
+/**
+ * The engine-2 Anvil fixture (Plan v2-C Task 2): a local v2 deployment whose every V4 address
+ * comes from the gate's environment. Any missing or malformed address leaves the fixture off,
+ * so the configuration falls through to the reviewed path and fails closed.
+ */
+function v2AnvilFixture(env: Record<string, string | undefined>): PublicConfiguration | null {
+  const read = (name: string) => nonEmpty(env[`NEXT_PUBLIC_V2_ANVIL_${name}`]);
+  const factory = read("FACTORY");
+  const v4 = {
+    poolManager: read("POOL_MANAGER"),
+    permit2: read("PERMIT2"),
+    universalRouter: read("UNIVERSAL_ROUTER"),
+    v4Quoter: read("V4_QUOTER"),
+    hook: read("HOOK"),
+    locker: read("LOCKER"),
+  };
+  const fixtureApi = publicEndpoint(nonEmpty(env.NEXT_PUBLIC_TASK6_ANVIL_API_URL));
+  const webBase =
+    publicEndpoint(nonEmpty(env.NEXT_PUBLIC_TASK6_ANVIL_WEB_URL)) ?? DEFAULT_E2E_WEB_URL;
+  const rpcUrl = publicEndpoint(`${webBase}/e2e/rpc`);
+  if (
+    !isAddress(factory) ||
+    !Object.values(v4).every(isAddress) ||
+    !publicEndpoint(nonEmpty(env.NEXT_PUBLIC_TASK6_ANVIL_RPC_URL)) ||
+    !fixtureApi ||
+    !rpcUrl
+  )
+    return null;
+  return {
+    status: "ready",
+    privyAppId: env.NEXT_PUBLIC_LOCAL_DEV === "1" ? null : "cl_e2e_fixture_1234567890",
+    chainId: 31337,
+    deploymentId: "v2-anvil",
+    apiBaseUrl: fixtureApi,
+    rpcUrl,
+    deployment: {
+      deploymentId: "v2-anvil",
+      chainId: 31337,
+      name: "Anvil engine v2",
+      engineVersion: 2,
+      enabled: true,
+      factory,
+      explorerBase: null,
+      marketLinks: null,
+      weth: null,
+      uniswapV2Factory: null,
+      uniswapV2Router02: null,
+      v4: v4 as ReviewedV4Deployment,
+    },
+  };
+}
+
 export function publicConfiguration(
   env: Record<string, string | undefined> = {
     NEXT_PUBLIC_E2E_FIXTURE: process.env.NEXT_PUBLIC_E2E_FIXTURE,
@@ -39,6 +94,13 @@ export function publicConfiguration(
     NEXT_PUBLIC_TASK6_ANVIL_RPC_URL: process.env.NEXT_PUBLIC_TASK6_ANVIL_RPC_URL,
     NEXT_PUBLIC_TASK6_ANVIL_API_URL: process.env.NEXT_PUBLIC_TASK6_ANVIL_API_URL,
     NEXT_PUBLIC_TASK6_ANVIL_WEB_URL: process.env.NEXT_PUBLIC_TASK6_ANVIL_WEB_URL,
+    NEXT_PUBLIC_V2_ANVIL_FACTORY: process.env.NEXT_PUBLIC_V2_ANVIL_FACTORY,
+    NEXT_PUBLIC_V2_ANVIL_POOL_MANAGER: process.env.NEXT_PUBLIC_V2_ANVIL_POOL_MANAGER,
+    NEXT_PUBLIC_V2_ANVIL_PERMIT2: process.env.NEXT_PUBLIC_V2_ANVIL_PERMIT2,
+    NEXT_PUBLIC_V2_ANVIL_UNIVERSAL_ROUTER: process.env.NEXT_PUBLIC_V2_ANVIL_UNIVERSAL_ROUTER,
+    NEXT_PUBLIC_V2_ANVIL_V4_QUOTER: process.env.NEXT_PUBLIC_V2_ANVIL_V4_QUOTER,
+    NEXT_PUBLIC_V2_ANVIL_HOOK: process.env.NEXT_PUBLIC_V2_ANVIL_HOOK,
+    NEXT_PUBLIC_V2_ANVIL_LOCKER: process.env.NEXT_PUBLIC_V2_ANVIL_LOCKER,
     NEXT_PUBLIC_PRIVY_APP_ID: process.env.NEXT_PUBLIC_PRIVY_APP_ID,
     NEXT_PUBLIC_DEPLOYMENT_ID: process.env.NEXT_PUBLIC_DEPLOYMENT_ID,
     NEXT_PUBLIC_CHAIN_ID: process.env.NEXT_PUBLIC_CHAIN_ID,
@@ -47,6 +109,8 @@ export function publicConfiguration(
   },
 ): PublicConfiguration {
   if (env.NEXT_PUBLIC_E2E_FIXTURE === "1") {
+    const v2 = v2AnvilFixture(env);
+    if (v2) return v2;
     const factory = nonEmpty(env.NEXT_PUBLIC_TASK6_ANVIL_FACTORY);
     const fixtureWeth = nonEmpty(env.NEXT_PUBLIC_TASK6_ANVIL_WETH);
     const fixtureRouter = nonEmpty(env.NEXT_PUBLIC_TASK6_ANVIL_ROUTER);
@@ -89,6 +153,8 @@ export function publicConfiguration(
           weth: fixtureWeth,
           uniswapV2Factory: fixtureUniswapFactory,
           uniswapV2Router02: fixtureRouter,
+          engineVersion: 1,
+          v4: null,
         } as (typeof reviewedDeployments)[number],
       };
     }
