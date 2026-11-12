@@ -169,8 +169,9 @@
 - **Date:** 2026-11-12
 - **Reason:** scope decision (adding a dependency needs the product owner's approval)
 - **Where it stopped:** `docs/plans/2026-11-12-v2-engine-web.md` D1. The local V4 stack has no
-  `UniversalRouter`, so the Anvil v2 web gate (Task 9) cannot sign a real V4 swap. Tasks 1-8 do
-  not depend on it.
+  `UniversalRouter`, so the Anvil v2 web gate (Task 9) cannot sign a real V4 swap. Tasks 1-8 are
+  implemented on branch `task/v2-engine-web` (2026-11-12) with unit and mocked-browser coverage
+  only: no v2 deployment exists on a live chain, so no v2 write has run in a real wallet yet.
 - **Related files:** `contracts/script/v2/DeployLocalV2.s.sol`, `contracts/foundry.toml`,
   `contracts/deployments/config/robinhood-mainnet-v4.json`
 - **Resume (next step):** Approve (or reject) adding `Uniswap/universal-router` as a submodule
@@ -178,6 +179,13 @@
   a mainnet-fork gate, which needs the fork RPC secret (operator item above).
 - **Pitfalls / notes:** The router revision decides the `SWAP_EXACT_IN_SINGLE` struct layout
   (plan D2); the pinned `lib/v4-periphery` is newer than the deployed router.
+- **Task 9 must prove, end to end:** the V4 buy and the Permit2 sell (`web/src/v4-swap.ts`,
+  `V4SwapPanel`), the locker claim and the recipient propose/cancel/accept flow
+  (`V2CreatorPanel`), and the v2 launch with `futureDefaults()` facts. Two v1-parity gaps were
+  left on purpose: `V2CreatorPanel` keeps its transaction state in memory, not in the persisted
+  transaction storage (a reload mid-transaction loses the hash display, not the transaction), and
+  the token page links the pool hook but shows the pool id as text, because a pool id is not an
+  explorer address.
 
 ### Engine v2 backend known limitations
 
