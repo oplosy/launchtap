@@ -29,7 +29,9 @@ type PublicRoutes struct {
 	EarlyBuyers   earlybuyer.Reader
 	Protocol      stats.Reader
 	ProtocolDaily stats.DailyReader
-	ChainID       int64
+	// Revenue serves the protocol revenue read; nil answers 503.
+	Revenue stats.RevenueReader
+	ChainID int64
 }
 type addressInput struct {
 	Token string `path:"token"`
@@ -179,6 +181,24 @@ type protocolDailyBody struct {
 	Items    []protocolDailyDTO `json:"items"`
 }
 type protocolDailyOutput struct{ Body protocolDailyBody }
+type revenueSourceDTO struct {
+	Engine1 string `json:"engine_1"`
+	Engine2 string `json:"engine_2"`
+	Total   string `json:"total"`
+}
+type revenueSourcesDTO struct {
+	LaunchFees          revenueSourceDTO `json:"launch_fees"`
+	TradeFees           revenueSourceDTO `json:"trade_fees"`
+	SnipeTax            revenueSourceDTO `json:"snipe_tax"`
+	GraduationRemainder revenueSourceDTO `json:"graduation_remainder"`
+	LPFees              revenueSourceDTO `json:"lp_fees"`
+}
+type revenueBody struct {
+	Snapshot snapshotDTO       `json:"snapshot"`
+	Total    string            `json:"total"`
+	Sources  revenueSourcesDTO `json:"sources"`
+}
+type revenueOutput struct{ Body revenueBody }
 
 func (r PublicRoutes) Register(api huma.API) {
 	huma.Register(api, huma.Operation{OperationID: "getToken", Method: http.MethodGet, Path: "/tokens/{token}", Tags: []string{"tokens"}}, r.detail)
@@ -187,6 +207,7 @@ func (r PublicRoutes) Register(api huma.API) {
 	huma.Register(api, huma.Operation{OperationID: "getEarlyBuyers", Method: http.MethodGet, Path: "/tokens/{token}/early-buyers", Tags: []string{"market"}, Description: "Wallets that received tokens from the curve within the early window after launch, grouped by same-transaction deliveries and token transfers between them."}, r.earlyBuyers)
 	huma.Register(api, huma.Operation{OperationID: "getProtocolStats", Method: http.MethodGet, Path: "/stats/protocol", Tags: []string{"stats"}}, r.protocol)
 	huma.Register(api, huma.Operation{OperationID: "listProtocolDaily", Method: http.MethodGet, Path: "/stats/protocol/daily", Tags: []string{"stats"}}, r.protocolDaily)
+	huma.Register(api, huma.Operation{OperationID: "getProtocolRevenue", Method: http.MethodGet, Path: "/stats/protocol/revenue", Tags: []string{"stats"}, Description: "ETH credited to the protocol, all-time, by source and engine (earned basis, wei)."}, r.protocolRevenue)
 }
 func address(value string) (common.Address, error) {
 	if !common.IsHexAddress(value) {
@@ -345,6 +366,23 @@ func (r PublicRoutes) protocol(ctx context.Context, _ *struct{}) (*protocolOutpu
 		return nil, mapReadError(ctx, e)
 	}
 	return &protocolOutput{Body: protocolDTO{Snapshot: snapDTO(v.Snapshot, v.Finality), Volume24hETH: decimal(v.Volume24hETH), VolumeAllTimeETH: decimal(v.VolumeAllTimeETH), Launches24h: v.Launches24h, LaunchesAllTime: v.LaunchesAllTime, Trades24h: v.Trades24h, TradesAllTime: v.TradesAllTime, Graduations24h: v.Graduations24h, GraduationsAllTime: v.GraduationsAllTime, UpdatedAt: v.UpdatedAt.UTC().Format(time.RFC3339Nano)}}, nil
+}
+
+func (r PublicRoutes) protocolRevenue(ctx context.Context, _ *struct{}) (*revenueOutput, error) {
+	if r.Revenue == nil {
+		return nil, apiProblem(http.StatusServiceUnavailable, "stats_unavailable", "Protocol revenue is unavailable")
+	}
+	v, e := r.Revenue.ReadProtocolRevenue(ctx, r.ChainID)
+	if e != nil {
+		return nil, mapReadError(ctx, e)
+	}
+	source := func(s stats.RevenueSource) revenueSourceDTO {
+		return revenueSourceDTO{Engine1: decimal(s.Engine1), Engine2: decimal(s.Engine2), Total: decimal(s.Total)}
+	}
+	return &revenueOutput{Body: revenueBody{Snapshot: snapDTO(v.Snapshot, v.Finality), Total: decimal(v.Total), Sources: revenueSourcesDTO{
+		LaunchFees: source(v.LaunchFees), TradeFees: source(v.TradeFees), SnipeTax: source(v.SnipeTax),
+		GraduationRemainder: source(v.GraduationRemainder), LPFees: source(v.LPFees),
+	}}}, nil
 }
 
 func (r PublicRoutes) protocolDaily(ctx context.Context, in *protocolDailyInput) (*protocolDailyOutput, error) {

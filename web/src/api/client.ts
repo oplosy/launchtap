@@ -4,6 +4,7 @@ import { mapProblem } from "./problems";
 export type ProtocolDailyResponse =
   paths["/stats/protocol/daily"]["get"]["responses"][200]["content"]["application/json"];
 export type ProtocolDailyItem = components["schemas"]["ProtocolDailyDTO"];
+export type ProtocolRevenueResponse = components["schemas"]["RevenueBody"];
 export type TokenListResponse = components["schemas"]["TokenListBody"];
 export type TokenDetailResponse = components["schemas"]["TokenDetailDTO"];
 export type CandleResponse = components["schemas"]["CandleBody"];
@@ -219,6 +220,10 @@ export class ApiClient {
 
   getProtocol(signal?: AbortSignal) {
     return this.request<components["schemas"]["ProtocolDTO"]>("/v1/stats/protocol", { signal });
+  }
+
+  getProtocolRevenue(signal?: AbortSignal) {
+    return this.request<ProtocolRevenueResponse>("/v1/stats/protocol/revenue", { signal });
   }
 
   getProfile(auth: AuthHeaders, signal?: AbortSignal) {

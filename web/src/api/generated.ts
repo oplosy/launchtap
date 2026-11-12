@@ -255,6 +255,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/stats/protocol/revenue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description ETH credited to the protocol, all-time, by source and engine (earned basis, wei). */
+        get: operations["getProtocolRevenue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tokens": {
         parameters: {
             query?: never;
@@ -1205,6 +1222,29 @@ export interface components {
             readonly $schema?: string;
             /** @description One of spam, scam, abuse, other. */
             reason: string;
+        };
+        RevenueBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/RevenueBody.json
+             */
+            readonly $schema?: string;
+            snapshot: components["schemas"]["SnapshotDTO"];
+            sources: components["schemas"]["RevenueSourcesDTO"];
+            total: string;
+        };
+        RevenueSourceDTO: {
+            engine_1: string;
+            engine_2: string;
+            total: string;
+        };
+        RevenueSourcesDTO: {
+            graduation_remainder: components["schemas"]["RevenueSourceDTO"];
+            launch_fees: components["schemas"]["RevenueSourceDTO"];
+            lp_fees: components["schemas"]["RevenueSourceDTO"];
+            snipe_tax: components["schemas"]["RevenueSourceDTO"];
+            trade_fees: components["schemas"]["RevenueSourceDTO"];
         };
         RevisionBody: {
             /**
@@ -2268,6 +2308,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProtocolDailyBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getProtocolRevenue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevenueBody"];
                 };
             };
             /** @description Error */
