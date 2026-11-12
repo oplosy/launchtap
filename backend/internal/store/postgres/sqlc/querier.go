@@ -127,6 +127,10 @@ type Querier interface {
 	GetTokenImage(ctx context.Context, arg GetTokenImageParams) (GetTokenImageRow, error)
 	GetTokenMetadata(ctx context.Context, arg GetTokenMetadataParams) (GetTokenMetadataRow, error)
 	GetTokenQuoteState(ctx context.Context, arg GetTokenQuoteStateParams) (GetTokenQuoteStateRow, error)
+	// The engine-2 facts of a token. The fee recipient is the creator until the latest
+	// FeeRecipientAccepted; the pending recipient is the latest proposal unless a later acceptance
+	// consumed it or it was a cancellation (address zero).
+	GetTokenV2Facts(ctx context.Context, arg GetTokenV2FactsParams) (GetTokenV2FactsRow, error)
 	// Wallet page reads. A wallet with no activity has no wallet_totals row; the reader maps that to zeros.
 	GetWalletTotals(ctx context.Context, arg GetWalletTotalsParams) (GetWalletTotalsRow, error)
 	// The only username a wallet read may show: from public_wallet_usernames (published wallet of an
@@ -213,6 +217,7 @@ type Querier interface {
 	// within window_days of the transaction's clock (now()). Same exclusions, positive-only rule and
 	// tie-break. tokens_traded counts distinct tokens with a realized leg in the window.
 	ListLeaderboardWindow(ctx context.Context, arg ListLeaderboardWindowParams) ([]ListLeaderboardWindowRow, error)
+	ListLockerOwed(ctx context.Context, arg ListLockerOwedParams) ([]ListLockerOwedRow, error)
 	ListMarketTrades(ctx context.Context, arg ListMarketTradesParams) ([]ListMarketTradesRow, error)
 	ListMarketTradesAfter(ctx context.Context, arg ListMarketTradesAfterParams) ([]ListMarketTradesAfterRow, error)
 	// Comments with open reports, newest open report first. Policy: none; limit is the caller's.

@@ -60,9 +60,51 @@ func (r TokenReader) Get(ctx context.Context, chainID int64, address common.Addr
 		}
 		out.Snapshot = s.Identity
 		out.Finality = finality(s.State, s.Identity.BlockNumber)
+		if out.EngineVersion == 2 {
+			facts, err := readV2Facts(ctx, a, chainID, address)
+			if err != nil {
+				return err
+			}
+			out.V2 = &facts
+		}
 		return nil
 	})
 	return out, err
+}
+
+// readV2Facts reads an engine-2 token's launch profile, pool and fee state inside the detail's
+// read snapshot.
+func readV2Facts(ctx context.Context, a *Adapter, chainID int64, address common.Address) (token.V2Facts, error) {
+	row, err := a.queries.GetTokenV2Facts(ctx, sqlc.GetTokenV2FactsParams{ChainID: chainID, TokenAddress: sqlc.Address(address)})
+	if err != nil {
+		return token.V2Facts{}, fmt.Errorf("read v2 token facts: %w", err)
+	}
+	facts := token.V2Facts{
+		AntiSnipeStartBPS:        uint16(row.AntiSnipeStartBps),
+		AntiSnipeDurationSeconds: uint32(row.AntiSnipeDurationSeconds),
+		LPCreatorShareBPS:        uint16(row.LpCreatorShareBps),
+		FeeRecipient:             common.BytesToAddress(row.FeeRecipient),
+		LockerOwed:               []token.LockerOwed{},
+	}
+	if row.PoolID != nil {
+		positionTokenID, err := numericBigExact(row.PositionTokenID)
+		if err != nil {
+			return token.V2Facts{}, fmt.Errorf("read v2 pool position: %w", err)
+		}
+		facts.Pool = &token.V2Pool{PoolID: common.BytesToHash(row.PoolID), PositionTokenID: positionTokenID, Hook: common.BytesToAddress(row.PoolHook)}
+	}
+	if row.PendingFeeRecipient != nil {
+		pending := common.BytesToAddress(row.PendingFeeRecipient)
+		facts.PendingFeeRecipient = &pending
+	}
+	owed, err := a.queries.ListLockerOwed(ctx, sqlc.ListLockerOwedParams{ChainID: chainID, TokenAddress: sqlc.Address(address)})
+	if err != nil {
+		return token.V2Facts{}, fmt.Errorf("list locker owed: %w", err)
+	}
+	for _, entry := range owed {
+		facts.LockerOwed = append(facts.LockerOwed, token.LockerOwed{Account: common.Address(entry.Account), ETH: entry.LockerEthOwed.BigInt(), Token: entry.LockerTokenOwed.BigInt()})
+	}
+	return facts, nil
 }
 
 func (r TokenReader) ReadQuoteState(ctx context.Context, chainID int64, address common.Address) (token.QuoteState, error) {

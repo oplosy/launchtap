@@ -1,6 +1,31 @@
 {
   "components": {
     "schemas": {
+      "AntiSnipeDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "duration_seconds": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ends_at": {
+            "description": "RFC 3339 time at which the anti-snipe tax reaches zero.",
+            "type": "string"
+          },
+          "start_bps": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start_bps",
+          "duration_seconds",
+          "ends_at"
+        ],
+        "type": "object"
+      },
       "BurstItem": {
         "additionalProperties": false,
         "properties": {
@@ -1139,6 +1164,26 @@
         ],
         "type": "object"
       },
+      "LockerOwedDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "eth": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "account",
+          "eth",
+          "token"
+        ],
+        "type": "object"
+      },
       "MetadataBody": {
         "additionalProperties": false,
         "properties": {
@@ -1981,6 +2026,10 @@
             "minimum": 0,
             "type": "integer"
           },
+          "v2": {
+            "$ref": "#/components/schemas/TokenV2DTO",
+            "description": "Engine-2 launch, pool and fee facts; null for engine 1."
+          },
           "volume_24h_eth": {
             "type": "string"
           },
@@ -2030,7 +2079,8 @@
           "volume_24h_eth",
           "ath_at",
           "price_change_24h_bps",
-          "holder_count"
+          "holder_count",
+          "v2"
         ],
         "type": "object"
       },
@@ -2094,6 +2144,54 @@
           "snapshot"
         ],
         "type": "object"
+      },
+      "TokenV2DTO": {
+        "additionalProperties": false,
+        "properties": {
+          "anti_snipe": {
+            "$ref": "#/components/schemas/AntiSnipeDTO"
+          },
+          "fee_recipient": {
+            "type": "string"
+          },
+          "locker_owed": {
+            "description": "What the LP fee locker owes each account, by account.",
+            "items": {
+              "$ref": "#/components/schemas/LockerOwedDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "lp_creator_share_bps": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pending_fee_recipient": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pool": {
+            "$ref": "#/components/schemas/V2PoolDTO",
+            "description": "The graduated Uniswap V4 pool; null before graduation."
+          }
+        },
+        "required": [
+          "anti_snipe",
+          "lp_creator_share_bps",
+          "pool",
+          "fee_recipient",
+          "pending_fee_recipient",
+          "locker_owed"
+        ],
+        "type": [
+          "object",
+          "null"
+        ]
       },
       "TradeBurstFeedEvent": {
         "additionalProperties": false,
@@ -2372,6 +2470,29 @@
           "holder_count"
         ],
         "type": "object"
+      },
+      "V2PoolDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "hook": {
+            "type": "string"
+          },
+          "pool_id": {
+            "type": "string"
+          },
+          "position_token_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pool_id",
+          "position_token_id",
+          "hook"
+        ],
+        "type": [
+          "object",
+          "null"
+        ]
       },
       "WalletCreatedBody": {
         "additionalProperties": false,

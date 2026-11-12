@@ -77,6 +77,34 @@ type tokenDetailDTO struct {
 	ATHAt                 string      `json:"ath_at"`
 	PriceChange24hBPS     int64       `json:"price_change_24h_bps" minimum:"-9007199254740991" maximum:"9007199254740991"`
 	HolderCount           int64       `json:"holder_count"`
+	V2                    *tokenV2DTO `json:"v2" doc:"Engine-2 launch, pool and fee facts; null for engine 1."`
+}
+
+// Huma marks an object schema nullable through the struct's `_` field, not the referencing field.
+type tokenV2DTO struct {
+	_                   struct{}        `nullable:"true"`
+	AntiSnipe           antiSnipeDTO    `json:"anti_snipe"`
+	LPCreatorShareBPS   uint16          `json:"lp_creator_share_bps"`
+	Pool                *v2PoolDTO      `json:"pool" doc:"The graduated Uniswap V4 pool; null before graduation."`
+	FeeRecipient        string          `json:"fee_recipient"`
+	PendingFeeRecipient *string         `json:"pending_fee_recipient" nullable:"true"`
+	LockerOwed          []lockerOwedDTO `json:"locker_owed" doc:"What the LP fee locker owes each account, by account."`
+}
+type antiSnipeDTO struct {
+	StartBPS        uint16 `json:"start_bps"`
+	DurationSeconds uint32 `json:"duration_seconds"`
+	EndsAt          string `json:"ends_at" doc:"RFC 3339 time at which the anti-snipe tax reaches zero."`
+}
+type v2PoolDTO struct {
+	_               struct{} `nullable:"true"`
+	PoolID          string   `json:"pool_id"`
+	PositionTokenID string   `json:"position_token_id"`
+	Hook            string   `json:"hook"`
+}
+type lockerOwedDTO struct {
+	Account string `json:"account"`
+	ETH     string `json:"eth"`
+	Token   string `json:"token"`
 }
 type detailOutput struct{ Body tokenDetailDTO }
 type pageInput struct {
@@ -200,7 +228,7 @@ func (r PublicRoutes) detail(ctx context.Context, in *addressInput) (*detailOutp
 	if e != nil {
 		return nil, mapReadError(ctx, e)
 	}
-	d := tokenDetailDTO{Snapshot: snapDTO(v.Snapshot, v.Finality), Address: v.Address.Hex(), Curve: v.Curve.Hex(), Pair: v.Pair.Hex(), WETH: v.WETH.Hex(), Creator: v.Creator.Hex(), ProtocolTreasury: v.ProtocolTreasury.Hex(), Name: v.Name, Symbol: v.Symbol, Phase: v.Phase, EngineVersion: v.EngineVersion, TotalSupply: decimal(v.TotalSupply), InitialVirtualETH: decimal(v.InitialVirtualETH), InitialVirtualToken: decimal(v.InitialVirtualToken), CurveTokens: decimal(v.CurveTokens), LPTokens: decimal(v.LPTokens), GraduationETH: decimal(v.GraduationETH), TradeFeeBPS: v.TradeFeeBPS, ProtocolShareBPS: v.ProtocolShareBPS, ReserveSource: v.ReserveSource, ETHReserve: decimal(v.ETHReserve), TokenReserve: decimal(v.TokenReserve), RealCurveETH: decimal(v.RealCurveETH), GraduationProgressBPS: v.GraduationProgressBPS, ReserveBlock: v.ReserveBlock, ReserveHash: v.ReserveHash.Hex(), Description: v.Description, ImageURL: v.ImageURL, XURL: v.XURL, TelegramURL: v.TelegramURL, SpotPriceETH: decimal(v.SpotPriceETH), MarketCapETH: decimal(v.MarketCapETH), FDVETH: decimal(v.FDVETH), LiquidityETH: decimal(v.LiquidityETH), ATHPriceETH: decimal(v.ATHPriceETH), Volume24hETH: decimal(v.Volume24hETH), ATHAt: v.ATHAt.UTC().Format(time.RFC3339Nano), PriceChange24hBPS: v.PriceChange24hBPS, HolderCount: v.HolderCount}
+	d := tokenDetailDTO{Snapshot: snapDTO(v.Snapshot, v.Finality), Address: v.Address.Hex(), Curve: v.Curve.Hex(), Pair: v.Pair.Hex(), WETH: v.WETH.Hex(), Creator: v.Creator.Hex(), ProtocolTreasury: v.ProtocolTreasury.Hex(), Name: v.Name, Symbol: v.Symbol, Phase: v.Phase, EngineVersion: v.EngineVersion, TotalSupply: decimal(v.TotalSupply), InitialVirtualETH: decimal(v.InitialVirtualETH), InitialVirtualToken: decimal(v.InitialVirtualToken), CurveTokens: decimal(v.CurveTokens), LPTokens: decimal(v.LPTokens), GraduationETH: decimal(v.GraduationETH), TradeFeeBPS: v.TradeFeeBPS, ProtocolShareBPS: v.ProtocolShareBPS, ReserveSource: v.ReserveSource, ETHReserve: decimal(v.ETHReserve), TokenReserve: decimal(v.TokenReserve), RealCurveETH: decimal(v.RealCurveETH), GraduationProgressBPS: v.GraduationProgressBPS, ReserveBlock: v.ReserveBlock, ReserveHash: v.ReserveHash.Hex(), Description: v.Description, ImageURL: v.ImageURL, XURL: v.XURL, TelegramURL: v.TelegramURL, SpotPriceETH: decimal(v.SpotPriceETH), MarketCapETH: decimal(v.MarketCapETH), FDVETH: decimal(v.FDVETH), LiquidityETH: decimal(v.LiquidityETH), ATHPriceETH: decimal(v.ATHPriceETH), Volume24hETH: decimal(v.Volume24hETH), ATHAt: v.ATHAt.UTC().Format(time.RFC3339Nano), PriceChange24hBPS: v.PriceChange24hBPS, HolderCount: v.HolderCount, V2: v2DTO(v)}
 	return &detailOutput{Body: d}, nil
 }
 func cursor(value string) (*pagination.Cursor, error) {
@@ -327,4 +355,32 @@ func tradeParty(trader *common.Address, buy bool) (*string, string) {
 		return hex, "buy"
 	}
 	return hex, "sell"
+}
+
+func v2DTO(v token.Detail) *tokenV2DTO {
+	if v.V2 == nil {
+		return nil
+	}
+	facts := v.V2
+	out := &tokenV2DTO{
+		AntiSnipe: antiSnipeDTO{
+			StartBPS:        facts.AntiSnipeStartBPS,
+			DurationSeconds: facts.AntiSnipeDurationSeconds,
+			EndsAt:          v.LaunchTime.Add(time.Duration(facts.AntiSnipeDurationSeconds) * time.Second).UTC().Format(time.RFC3339),
+		},
+		LPCreatorShareBPS: facts.LPCreatorShareBPS,
+		FeeRecipient:      facts.FeeRecipient.Hex(),
+		LockerOwed:        make([]lockerOwedDTO, 0, len(facts.LockerOwed)),
+	}
+	if facts.Pool != nil {
+		out.Pool = &v2PoolDTO{PoolID: facts.Pool.PoolID.Hex(), PositionTokenID: decimal(facts.Pool.PositionTokenID), Hook: facts.Pool.Hook.Hex()}
+	}
+	if facts.PendingFeeRecipient != nil {
+		pending := facts.PendingFeeRecipient.Hex()
+		out.PendingFeeRecipient = &pending
+	}
+	for _, owed := range facts.LockerOwed {
+		out.LockerOwed = append(out.LockerOwed, lockerOwedDTO{Account: owed.Account.Hex(), ETH: decimal(owed.ETH), Token: decimal(owed.Token)})
+	}
+	return out
 }

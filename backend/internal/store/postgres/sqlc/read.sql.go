@@ -468,6 +468,74 @@ func (q *Queries) GetTokenQuoteState(ctx context.Context, arg GetTokenQuoteState
 	return i, err
 }
 
+const getTokenV2Facts = `-- name: GetTokenV2Facts :one
+SELECT COALESCE(t.anti_snipe_start_bps, 0)::INTEGER AS anti_snipe_start_bps,
+       COALESCE(t.anti_snipe_duration_seconds, 0)::BIGINT AS anti_snipe_duration_seconds,
+       COALESCE(t.lp_creator_share_bps, 0)::INTEGER AS lp_creator_share_bps,
+       pool.pool_id::BYTEA AS pool_id, pool.position_token_id::NUMERIC AS position_token_id, pool.hook::BYTEA AS pool_hook,
+       COALESCE(accepted.next_recipient, t.creator)::BYTEA AS fee_recipient,
+       CASE WHEN proposal.next_recipient <> decode(repeat('00', 20), 'hex')
+             AND (accepted.block_number IS NULL
+                  OR (accepted.block_number, accepted.transaction_index, accepted.log_index)
+                     < (proposal.block_number, proposal.transaction_index, proposal.log_index))
+            THEN proposal.next_recipient
+       END::BYTEA AS pending_fee_recipient
+FROM tokens AS t
+LEFT JOIN v4_pools AS pool ON pool.chain_id = t.chain_id AND pool.token_address = t.token_address
+LEFT JOIN LATERAL (
+    SELECT acceptance.next_recipient, acceptance.block_number, acceptance.transaction_index, acceptance.log_index
+    FROM fee_recipient_acceptances AS acceptance
+    WHERE acceptance.chain_id = t.chain_id AND acceptance.token_address = t.token_address
+    ORDER BY acceptance.block_number DESC, acceptance.transaction_index DESC, acceptance.log_index DESC
+    LIMIT 1
+) AS accepted ON TRUE
+LEFT JOIN LATERAL (
+    SELECT candidate.next_recipient, candidate.block_number, candidate.transaction_index, candidate.log_index
+    FROM fee_recipient_proposals AS candidate
+    WHERE candidate.chain_id = t.chain_id AND candidate.token_address = t.token_address
+    ORDER BY candidate.block_number DESC, candidate.transaction_index DESC, candidate.log_index DESC
+    LIMIT 1
+) AS proposal ON TRUE
+WHERE t.chain_id = $1
+  AND t.token_address = $2
+  AND t.engine_version = 2
+`
+
+type GetTokenV2FactsParams struct {
+	ChainID      int64
+	TokenAddress Address
+}
+
+type GetTokenV2FactsRow struct {
+	AntiSnipeStartBps        int32
+	AntiSnipeDurationSeconds int64
+	LpCreatorShareBps        int32
+	PoolID                   []byte
+	PositionTokenID          pgtype.Numeric
+	PoolHook                 []byte
+	FeeRecipient             []byte
+	PendingFeeRecipient      []byte
+}
+
+// The engine-2 facts of a token. The fee recipient is the creator until the latest
+// FeeRecipientAccepted; the pending recipient is the latest proposal unless a later acceptance
+// consumed it or it was a cancellation (address zero).
+func (q *Queries) GetTokenV2Facts(ctx context.Context, arg GetTokenV2FactsParams) (GetTokenV2FactsRow, error) {
+	row := q.db.QueryRow(ctx, getTokenV2Facts, arg.ChainID, arg.TokenAddress)
+	var i GetTokenV2FactsRow
+	err := row.Scan(
+		&i.AntiSnipeStartBps,
+		&i.AntiSnipeDurationSeconds,
+		&i.LpCreatorShareBps,
+		&i.PoolID,
+		&i.PositionTokenID,
+		&i.PoolHook,
+		&i.FeeRecipient,
+		&i.PendingFeeRecipient,
+	)
+	return i, err
+}
+
 const getWalletTotals = `-- name: GetWalletTotals :one
 SELECT realized_pnl, tokens_traded, held_count, first_block_number, last_block_number
 FROM wallet_totals
@@ -890,6 +958,46 @@ func (q *Queries) ListLeaderboardWindow(ctx context.Context, arg ListLeaderboard
 			&i.TokensTraded,
 			&i.Username,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLockerOwed = `-- name: ListLockerOwed :many
+SELECT account, locker_eth_owed, locker_token_owed
+FROM creator_fee_balances
+WHERE chain_id = $1
+  AND token_address = $2
+  AND (locker_eth_owed > 0 OR locker_token_owed > 0)
+ORDER BY account
+`
+
+type ListLockerOwedParams struct {
+	ChainID      int64
+	TokenAddress Address
+}
+
+type ListLockerOwedRow struct {
+	Account         Address
+	LockerEthOwed   Uint256
+	LockerTokenOwed Uint256
+}
+
+func (q *Queries) ListLockerOwed(ctx context.Context, arg ListLockerOwedParams) ([]ListLockerOwedRow, error) {
+	rows, err := q.db.Query(ctx, listLockerOwed, arg.ChainID, arg.TokenAddress)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLockerOwedRow{}
+	for rows.Next() {
+		var i ListLockerOwedRow
+		if err := rows.Scan(&i.Account, &i.LockerEthOwed, &i.LockerTokenOwed); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

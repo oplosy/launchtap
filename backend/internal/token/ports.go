@@ -70,6 +70,34 @@ type Detail struct {
 	PriceChange24hBPS                                                            int64
 	Snapshot                                                                     pagination.Snapshot
 	Finality                                                                     string
+	// V2 holds the engine-2 launch, pool and fee facts; nil for engine 1.
+	V2 *V2Facts
+}
+
+// V2Facts are an engine-2 token's immutable launch profile and its current pool and fee state.
+type V2Facts struct {
+	AntiSnipeStartBPS        uint16
+	AntiSnipeDurationSeconds uint32
+	LPCreatorShareBPS        uint16
+	// Pool is nil before graduation.
+	Pool *V2Pool
+	// FeeRecipient is the creator until a FeeRecipientAccepted; PendingFeeRecipient is the
+	// open proposal, nil when none is pending.
+	FeeRecipient        common.Address
+	PendingFeeRecipient *common.Address
+	// LockerOwed lists every account the LP fee locker owes, ordered by account.
+	LockerOwed []LockerOwed
+}
+
+type V2Pool struct {
+	PoolID          common.Hash
+	PositionTokenID *big.Int
+	Hook            common.Address
+}
+
+type LockerOwed struct {
+	Account    common.Address
+	ETH, Token *big.Int
 }
 
 type QuoteState struct {

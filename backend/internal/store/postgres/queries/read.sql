@@ -143,6 +143,49 @@ LEFT JOIN token_stats AS s ON s.chain_id = t.chain_id AND s.token_address = t.to
 WHERE t.chain_id = sqlc.arg(chain_id)
   AND t.token_address = sqlc.arg(token_address);
 
+-- The engine-2 facts of a token. The fee recipient is the creator until the latest
+-- FeeRecipientAccepted; the pending recipient is the latest proposal unless a later acceptance
+-- consumed it or it was a cancellation (address zero).
+-- name: GetTokenV2Facts :one
+SELECT COALESCE(t.anti_snipe_start_bps, 0)::INTEGER AS anti_snipe_start_bps,
+       COALESCE(t.anti_snipe_duration_seconds, 0)::BIGINT AS anti_snipe_duration_seconds,
+       COALESCE(t.lp_creator_share_bps, 0)::INTEGER AS lp_creator_share_bps,
+       pool.pool_id::BYTEA AS pool_id, pool.position_token_id::NUMERIC AS position_token_id, pool.hook::BYTEA AS pool_hook,
+       COALESCE(accepted.next_recipient, t.creator)::BYTEA AS fee_recipient,
+       CASE WHEN proposal.next_recipient <> decode(repeat('00', 20), 'hex')
+             AND (accepted.block_number IS NULL
+                  OR (accepted.block_number, accepted.transaction_index, accepted.log_index)
+                     < (proposal.block_number, proposal.transaction_index, proposal.log_index))
+            THEN proposal.next_recipient
+       END::BYTEA AS pending_fee_recipient
+FROM tokens AS t
+LEFT JOIN v4_pools AS pool ON pool.chain_id = t.chain_id AND pool.token_address = t.token_address
+LEFT JOIN LATERAL (
+    SELECT acceptance.next_recipient, acceptance.block_number, acceptance.transaction_index, acceptance.log_index
+    FROM fee_recipient_acceptances AS acceptance
+    WHERE acceptance.chain_id = t.chain_id AND acceptance.token_address = t.token_address
+    ORDER BY acceptance.block_number DESC, acceptance.transaction_index DESC, acceptance.log_index DESC
+    LIMIT 1
+) AS accepted ON TRUE
+LEFT JOIN LATERAL (
+    SELECT candidate.next_recipient, candidate.block_number, candidate.transaction_index, candidate.log_index
+    FROM fee_recipient_proposals AS candidate
+    WHERE candidate.chain_id = t.chain_id AND candidate.token_address = t.token_address
+    ORDER BY candidate.block_number DESC, candidate.transaction_index DESC, candidate.log_index DESC
+    LIMIT 1
+) AS proposal ON TRUE
+WHERE t.chain_id = sqlc.arg(chain_id)
+  AND t.token_address = sqlc.arg(token_address)
+  AND t.engine_version = 2;
+
+-- name: ListLockerOwed :many
+SELECT account, locker_eth_owed, locker_token_owed
+FROM creator_fee_balances
+WHERE chain_id = sqlc.arg(chain_id)
+  AND token_address = sqlc.arg(token_address)
+  AND (locker_eth_owed > 0 OR locker_token_owed > 0)
+ORDER BY account;
+
 -- name: GetTokenQuoteState :one
 SELECT t.phase, t.total_supply, t.curve_tokens, t.lp_tokens, t.graduation_eth,
        t.initial_virtual_eth, t.initial_virtual_token, t.trade_fee_bps,

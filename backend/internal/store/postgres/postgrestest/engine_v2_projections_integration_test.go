@@ -17,6 +17,7 @@ import (
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/Contictus/launchtap/backend/internal/store/postgres/migrations"
 	"github.com/Contictus/launchtap/backend/internal/store/postgres/sqlc"
+	"github.com/Contictus/launchtap/backend/internal/token"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -323,4 +324,80 @@ func TestReadQuoteStateCarriesEngineV2Clock(t *testing.T) {
 	if !state.Detail.LaunchTime.Equal(launchedAt) || !state.HeadTime.Equal(head) {
 		t.Fatalf("launch %v head %v, want %v and %v", state.Detail.LaunchTime, state.HeadTime, launchedAt, head)
 	}
+}
+
+// TestTokenDetailReadsEngineV2Facts reads a graduated engine-2 token's pool, fee recipient and
+// locker balances through the detail read path, after the fixture's LpFeesCollected and before
+// any claim.
+func TestTokenDetailReadsEngineV2Facts(t *testing.T) {
+	database := NewMigrated(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	pool := openPool(t, ctx, database.URL)
+
+	const chainID int64 = 49032
+	const deployment = "engine-v2-detail"
+	block := ledger.IndexedBlock{ChainID: chainID, BlockNumber: 9, BlockHash: common.Hash{0xc9}, ParentHash: common.Hash{0xc8}, BlockTime: time.Date(2026, 11, 12, 9, 30, 0, 0, time.UTC), FinalityStatus: "observed"}
+	decoded := decodeV2Fixture(t, block, common.HexToAddress("0x0b0b"))
+	var launch chain.TokenLaunchedV2
+	var graduation chain.GraduatedV2
+	for _, log := range decoded[:29] {
+		switch value := log.Value.(type) {
+		case chain.TokenLaunchedV2:
+			launch = value
+		case chain.GraduatedV2:
+			graduation = value
+		}
+	}
+	if err := storepostgres.WithinTx(ctx, pool, func(ctx context.Context, adapter *storepostgres.Adapter) error {
+		if _, err := adapter.UpsertIndexedBlock(ctx, block); err != nil {
+			return err
+		}
+		return indexer.LedgerRouter{ChainID: chainID}.Apply(ctx, adapter, decoded[:29], map[int64]ledger.IndexedBlock{block.BlockNumber: block}, nil)
+	}); err != nil {
+		t.Fatalf("ingest fixture logs: %v", err)
+	}
+	if _, err := database.DB.ExecContext(ctx, `INSERT INTO sync_state(chain_id,deployment_id,observed_number,observed_hash,observed_at) VALUES($1,$2,9,$3,$4)`, chainID, deployment, block.BlockHash[:], block.BlockTime); err != nil {
+		t.Fatal(err)
+	}
+	detail, err := (storepostgres.TokenReader{Pool: pool, DeploymentID: deployment}).Get(ctx, chainID, launch.Token)
+	if err != nil {
+		t.Fatalf("read detail: %v", err)
+	}
+	facts := detail.V2
+	if facts == nil {
+		t.Fatal("engine-2 detail has no v2 facts")
+	}
+	if facts.AntiSnipeStartBPS != launch.AntiSnipeStartBPS || facts.AntiSnipeDurationSeconds != launch.AntiSnipeDurationSeconds || facts.LPCreatorShareBPS != launch.LPCreatorShareBPS {
+		t.Fatalf("profile %+v, want the launch's", facts)
+	}
+	if facts.Pool == nil || facts.Pool.PoolID != graduation.PoolID || facts.Pool.PositionTokenID.Cmp(graduation.PositionTokenID) != 0 || facts.Pool.Hook != launch.Hook {
+		t.Fatalf("pool %+v, want graduation pool %s #%s", facts.Pool, graduation.PoolID.Hex(), graduation.PositionTokenID)
+	}
+	// The fixture accepts the proposed recipient, so nothing is pending.
+	if facts.FeeRecipient != v2FixtureRecipient || facts.PendingFeeRecipient != nil {
+		t.Fatalf("fee recipient %s pending %v, want %s and none", facts.FeeRecipient.Hex(), facts.PendingFeeRecipient, v2FixtureRecipient.Hex())
+	}
+	// Ordered by account bytes: the treasury (0x…7000) sorts before the recipient (0x…fEE2).
+	want := []token.LockerOwed{
+		{Account: v2FixtureTreasury, ETH: big.NewInt(1000000000000000), Token: mustBig(t, "5000000000000000000000")},
+		{Account: v2FixtureRecipient, ETH: big.NewInt(999999999999999), Token: mustBig(t, "4999999999999999999999")},
+	}
+	if len(facts.LockerOwed) != len(want) {
+		t.Fatalf("locker owed %+v, want %+v", facts.LockerOwed, want)
+	}
+	for index, owed := range facts.LockerOwed {
+		if owed.Account != want[index].Account || owed.ETH.Cmp(want[index].ETH) != 0 || owed.Token.Cmp(want[index].Token) != 0 {
+			t.Fatalf("locker owed[%d] = %+v, want %+v", index, owed, want[index])
+		}
+	}
+}
+
+func mustBig(t *testing.T, value string) *big.Int {
+	t.Helper()
+	n, ok := new(big.Int).SetString(value, 10)
+	if !ok {
+		t.Fatalf("invalid integer %q", value)
+	}
+	return n
 }
