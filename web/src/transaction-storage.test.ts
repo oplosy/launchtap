@@ -49,6 +49,29 @@ describe("public transaction recovery storage", () => {
     expect(readPersistedTransaction({ ...context, action: "claim" }, storage, 1_001)).toBeNull();
   });
 
+  it("keeps the engine-2 creator panel's write apart from the curve claims of the same token", () => {
+    // Plan v2-C Task 6: propose, cancel, accept and the LP fee claim share one status line.
+    const storage = memoryStorage();
+    const creator = { ...context, action: "v2-creator" } as const;
+    writePersistedTransaction(
+      creator,
+      { hash: `0x${"b".repeat(64)}`, status: "mined" },
+      storage,
+      1_000,
+    );
+    writePersistedTransaction(
+      { ...context, action: "claim" },
+      { hash: `0x${"c".repeat(64)}`, status: "indexing" },
+      storage,
+      1_000,
+    );
+    expect(readPersistedTransaction(creator, storage, 1_001)).toMatchObject({
+      action: "v2-creator",
+      hash: `0x${"b".repeat(64)}`,
+      status: "mined",
+    });
+  });
+
   it("ignores malformed hashes, unknown statuses, stale records, and unsafe payload fields", () => {
     const storage = memoryStorage();
     writePersistedTransaction(context, { hash: "0x123", status: "indexing" }, storage, 10_000);
