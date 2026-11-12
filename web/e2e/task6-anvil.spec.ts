@@ -251,6 +251,10 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await expect(tradeReview.getByText("Function and arguments", { exact: true })).toBeVisible();
     await expect(tradeReview.getByText("Native value", { exact: true })).toBeVisible();
     await expect(tradeReview.getByText("Deadline", { exact: true })).toBeVisible();
+    // The curve fee is listed as its protocol and creator shares (CurveMath.splitFees).
+    await expect(reviewedField("Protocol fee")).toHaveText(/^\d+(\.\d+)? ETH$/);
+    await expect(reviewedField("Creator fee")).toHaveText(/^\d+(\.\d+)? ETH$/);
+    await expect(reviewedField("Network fee")).toHaveText("Shown and paid in your wallet");
 
     // Change the on-chain quote while the original confirmation remains open.
     const reviewedDeadline = BigInt(

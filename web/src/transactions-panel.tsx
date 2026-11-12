@@ -526,9 +526,11 @@ function TradingPanelReady({
   const [input, setInput] = useState("");
   const [slippage, setSlippage] = useState("5");
   const [executionBusy, setExecutionBusy] = useState(false);
+  // fee is protocol + creator; the confirmation lists the two shares separately.
   const [quote, setQuote] = useState<{
     output: bigint;
     fee: bigint;
+    protocolFee: bigint;
     source: "backend" | "contract";
   } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
@@ -543,6 +545,7 @@ function TradingPanelReady({
     inputUnits: bigint;
     output: bigint;
     fee: bigint;
+    protocolFee: bigint;
   } | null>(null);
   const [reviewNotice, setReviewNotice] = useState<string | null>(null);
   const executionLockRef = useRef(false);
@@ -646,11 +649,11 @@ function TradingPanelReady({
           parseQuoteQuantity(result.next_virtual_eth, "next virtual ETH");
           parseQuoteQuantity(result.next_virtual_token, "next virtual token");
           parseQuoteQuantity(result.reserve_source_block.toString(), "quote source block");
+          const protocolFee = parseQuoteQuantity(result.protocol_fee, "protocol fee");
           setQuote({
             output,
-            fee:
-              parseQuoteQuantity(result.protocol_fee, "protocol fee") +
-              parseQuoteQuantity(result.creator_fee, "creator fee"),
+            fee: protocolFee + parseQuoteQuantity(result.creator_fee, "creator fee"),
+            protocolFee,
             source: "backend",
           });
           setTaxQuote({
@@ -753,9 +756,12 @@ function TradingPanelReady({
       quoteSide === "buy"
         ? parseRuntimeQuantity((contractQuote as readonly unknown[])[1], "contract output")
         : parseRuntimeQuantity((contractQuote as readonly unknown[])[0], "contract output");
+    const protocolFee = parseRuntimeQuantity(
+      (contractQuote as readonly unknown[])[2],
+      "protocol fee",
+    );
     const fee =
-      parseRuntimeQuantity((contractQuote as readonly unknown[])[2], "protocol fee") +
-      parseRuntimeQuantity((contractQuote as readonly unknown[])[3], "creator fee");
+      protocolFee + parseRuntimeQuantity((contractQuote as readonly unknown[])[3], "creator fee");
     // BondingCurveV2.quoteBuy returns the anti-snipe tax as its fifth value; sells are untaxed.
     if (engineVersion === 2 && quoteSide === "buy") {
       const taxBps = await publicClient!.readContract({
@@ -786,6 +792,7 @@ function TradingPanelReady({
       } satisfies ReviewedWriteIntent,
       output,
       fee,
+      protocolFee,
     };
   };
   const prepareTradeReview = async () => {
@@ -826,9 +833,20 @@ function TradingPanelReady({
         slippageBps,
         deadline,
       );
-      setQuote({ output: fresh.output, fee: fresh.fee, source: "contract" });
+      setQuote({
+        output: fresh.output,
+        fee: fresh.fee,
+        protocolFee: fresh.protocolFee,
+        source: "contract",
+      });
       setReviewIntent(fresh.intent);
-      setReviewDetails({ side, inputUnits, output: fresh.output, fee: fresh.fee });
+      setReviewDetails({
+        side,
+        inputUnits,
+        output: fresh.output,
+        fee: fresh.fee,
+        protocolFee: fresh.protocolFee,
+      });
       setReviewNotice(null);
       setQuoteError(null);
       setConfirming(true);
@@ -840,11 +858,22 @@ function TradingPanelReady({
   };
   const replaceTradeReview = (
     intent: ReviewedWriteIntent,
-    details: { side: "buy" | "sell"; inputUnits: bigint; output: bigint; fee: bigint },
+    details: {
+      side: "buy" | "sell";
+      inputUnits: bigint;
+      output: bigint;
+      fee: bigint;
+      protocolFee: bigint;
+    },
   ) => {
     setReviewIntent(intent);
     setReviewDetails(details);
-    setQuote({ output: details.output, fee: details.fee, source: "contract" });
+    setQuote({
+      output: details.output,
+      fee: details.fee,
+      protocolFee: details.protocolFee,
+      source: "contract",
+    });
     setReviewNotice(
       "The wallet write details changed. Review the updated values, then confirm again.",
     );
@@ -925,6 +954,7 @@ function TradingPanelReady({
           inputUnits: reviewedInput,
           output: fresh.output,
           fee: fresh.fee,
+          protocolFee: fresh.protocolFee,
         });
         return;
       }
@@ -1021,6 +1051,7 @@ function TradingPanelReady({
           inputUnits: reviewedInput,
           output: finalQuote.output,
           fee: finalQuote.fee,
+          protocolFee: finalQuote.protocolFee,
         });
         setState(stateBeforeReview);
         return;
@@ -1448,8 +1479,14 @@ function TradingPanelReady({
                   ? "—"
                   : formatBaseUnits(reviewIntent.minimumOutput, 18, 6)}
               </dd>
-              <dt>Fee</dt>
-              <dd className="mono">{reviewDetails ? eth(reviewDetails.fee) : "—"}</dd>
+              <dt>Protocol fee</dt>
+              <dd className="mono">{reviewDetails ? eth(reviewDetails.protocolFee) : "—"}</dd>
+              <dt>Creator fee</dt>
+              <dd className="mono">
+                {reviewDetails ? eth(reviewDetails.fee - reviewDetails.protocolFee) : "—"}
+              </dd>
+              <dt>Network fee</dt>
+              <dd>Shown and paid in your wallet</dd>
               <dt>Target</dt>
               <dd className="mono">{reviewIntent?.target ?? "Unavailable"}</dd>
               <dt>Function and arguments</dt>
