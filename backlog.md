@@ -153,6 +153,19 @@
   `deploy/check.ps1`.
 - **Pitfalls / notes:** run exactly one worker per deployment (an advisory lock refuses a second
   one); the bot was never exercised against the real Bot API, only a fake server.
+### Early-buyer clusters Level 2: funding-source data provider
+
+- **Date:** 2026-11-12
+- **Reason:** scope decision (owner input: a paid data source and a secret)
+- **Where it stopped:** pre-flight only, `docs/specs/2026-11-12-funding-source-clusters-preflight.md`.
+  The official mainnet RPC has no historical state and no tracing, and the Blockscout API blocks
+  automated clients, so native-ETH funding links cannot be computed. Nothing is built.
+- **Related files:** `backend/internal/earlybuyer/group.go`,
+  `docs/specs/2026-11-12-early-buyer-clusters-design.md`.
+- **Resume (next step):** owner picks option A (archive + trace RPC, recommended) or B (explorer
+  API key); then write the full design and build per the pre-flight's outline.
+- **Pitfalls / notes:** the exchange/bridge exclusion list is reviewed configuration, not code
+  guesses; never show an empty Level 2 as "no linked funding".
 
 ### <short title>
 - **Date:** YYYY-MM-DD
