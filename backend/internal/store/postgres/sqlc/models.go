@@ -42,6 +42,15 @@ type CommentReport struct {
 	Resolution   pgtype.Text
 }
 
+type CommentVote struct {
+	CommentID    int64
+	ChainID      int64
+	DeploymentID string
+	VoterDid     string
+	Value        Uint256
+	UpdatedAt    pgtype.Timestamptz
+}
+
 type CreatorFeeBalance struct {
 	ChainID         int64
 	TokenAddress    Address

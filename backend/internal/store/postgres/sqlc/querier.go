@@ -47,6 +47,8 @@ type Querier interface {
 	// fewer than hourly_limit remain, so it is the exact end of an hourly block even when the
 	// window holds more rows than the limit.
 	CommentRateState(ctx context.Context, arg CommentRateStateParams) (CommentRateStateRow, error)
+	// Sum of votes from voters who are not banned.
+	CommentScore(ctx context.Context, commentID int64) (int64, error)
 	CompleteAggregationDirty(ctx context.Context, arg CompleteAggregationDirtyParams) (int64, error)
 	CompleteIndexerReorg(ctx context.Context, reorgID int64) (CompleteIndexerReorgRow, error)
 	CompletePositionDirty(ctx context.Context, arg CompletePositionDirtyParams) (int64, error)
@@ -63,6 +65,7 @@ type Querier interface {
 	CreatorFeeClaimMatchesEvent(ctx context.Context, arg CreatorFeeClaimMatchesEventParams) (pgtype.Bool, error)
 	// The database clock is the one the stats recompute uses for its 24h window.
 	DatabaseNow(ctx context.Context) (pgtype.Timestamptz, error)
+	DeleteCommentVote(ctx context.Context, arg DeleteCommentVoteParams) error
 	DeleteCreatorFeeClaimsAbove(ctx context.Context, arg DeleteCreatorFeeClaimsAboveParams) (int64, error)
 	DeleteEngineConfigurationsAbove(ctx context.Context, arg DeleteEngineConfigurationsAboveParams) (int64, error)
 	DeleteFeeRecipientAcceptancesAbove(ctx context.Context, arg DeleteFeeRecipientAcceptancesAboveParams) (int64, error)
@@ -200,6 +203,10 @@ type Querier interface {
 	// launch block's time, infrastructure recipients excluded.
 	ListEarlyCurveDeliveries(ctx context.Context, arg ListEarlyCurveDeliveriesParams) ([]ListEarlyCurveDeliveriesRow, error)
 	ListForeignSyncDeployments(ctx context.Context, arg ListForeignSyncDeploymentsParams) ([]string, error)
+	// Forum "Best" (docs/specs/2026-11-12-comment-votes-design.md): the feed's visible posts from the
+	// last window_days by the database clock, highest score first, then newest. One page, no cursor.
+	// Same existence rule as the token comment list (TokenExists): a reorged token drops out.
+	ListForumBestPosts(ctx context.Context, arg ListForumBestPostsParams) ([]ListForumBestPostsRow, error)
 	// Communities ranked by visible comments in the last window_hours by the database clock (NULL =
 	// all time), ties by newest comment.
 	// Same existence rule as the token comment list (TokenExists): a reorged token drops out.
@@ -381,6 +388,9 @@ type Querier interface {
 	TransferMatchesEvent(ctx context.Context, arg TransferMatchesEventParams) (pgtype.Bool, error)
 	UnbanSocialUser(ctx context.Context, arg UnbanSocialUserParams) (int64, error)
 	UnhideComment(ctx context.Context, arg UnhideCommentParams) error
+	// Comment votes (docs/specs/2026-11-12-comment-votes-design.md). A repeat of the same value
+	// touches no row, so it costs nothing against the hourly limit.
+	UpsertCommentVote(ctx context.Context, arg UpsertCommentVoteParams) (int64, error)
 	UpsertIndexedBlock(ctx context.Context, arg UpsertIndexedBlockParams) (int64, error)
 	UpsertSyncState(ctx context.Context, arg UpsertSyncStateParams) (SyncState, error)
 	UpsertWalletPosition(ctx context.Context, arg UpsertWalletPositionParams) error
@@ -391,6 +401,8 @@ type Querier interface {
 	V4PoolInitializationMatchesEvent(ctx context.Context, arg V4PoolInitializationMatchesEventParams) (pgtype.Bool, error)
 	// tx_from is enrichment, not event identity: the match below ignores it.
 	V4SwapMatchesEvent(ctx context.Context, arg V4SwapMatchesEventParams) (pgtype.Bool, error)
+	// release_at: the hourly_limit-th newest vote set in the window (see CommentRateState).
+	VoteRateState(ctx context.Context, arg VoteRateStateParams) (VoteRateStateRow, error)
 	// R5: attribution is chain-wide. Backed by the partial index pool_swaps_tx_from_null_idx.
 	WalletAttributionComplete(ctx context.Context, chainID int64) (bool, error)
 }

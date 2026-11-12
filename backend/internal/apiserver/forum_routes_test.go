@@ -22,6 +22,14 @@ type forumStoreStub struct {
 	cursor      string
 	limit       int
 	sort        forum.Sort
+	best        []forum.Post
+	bestCalls   int
+}
+
+func (s *forumStoreStub) BestPosts(_ context.Context, sc social.Scope, limit int) ([]forum.Post, error) {
+	s.scope, s.limit = sc, limit
+	s.bestCalls++
+	return s.best, s.err
 }
 
 func (s *forumStoreStub) Posts(_ context.Context, sc social.Scope, cursor string, limit int) (forum.PostPage, error) {
@@ -125,6 +133,7 @@ func TestForumValidationAndFailures(t *testing.T) {
 		{"/v1/forum/posts?limit=0", http.StatusUnprocessableEntity, "invalid_limit"},
 		{"/v1/forum/posts?limit=51", http.StatusUnprocessableEntity, "invalid_limit"},
 		{"/v1/forum/communities?sort=new", http.StatusBadRequest, "invalid_sort"},
+		{"/v1/forum/posts?sort=hot", http.StatusBadRequest, "invalid_sort"},
 		{"/v1/forum/communities?limit=51", http.StatusUnprocessableEntity, "invalid_limit"},
 	} {
 		rec := forumGet(s, tc.target)
@@ -143,5 +152,20 @@ func TestForumValidationAndFailures(t *testing.T) {
 			rec.Header().Get("Cache-Control") == forumCommunitiesCacheControl {
 			t.Fatalf("%s: status=%d cache=%q", target, rec.Code, rec.Header().Get("Cache-Control"))
 		}
+	}
+}
+
+func TestForumBestPostsRankByScore(t *testing.T) {
+	at := time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)
+	stub := &forumStoreStub{best: []forum.Post{
+		{Comment: social.Comment{ID: 3, Token: common.HexToAddress("0x10"), Body: "top", CreatedAt: at, Author: social.Author{Role: social.RoleHolder}, Score: 7}, Name: "Pons", Symbol: "PONS"},
+	}}
+	rec := forumGet(forumServer(stub), "/v1/forum/posts?sort=best&limit=10")
+	if rec.Code != http.StatusOK || stub.bestCalls != 1 || stub.limit != 10 || rec.Header().Get("Cache-Control") != forumPostsCacheControl {
+		t.Fatalf("status=%d calls=%d limit=%d body=%s", rec.Code, stub.bestCalls, stub.limit, rec.Body.String())
+	}
+	var body forumPostsBody
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || len(body.Items) != 1 || body.Items[0].Score != 7 || body.NextCursor != "" {
+		t.Fatalf("body=%s err=%v", rec.Body.String(), err)
 	}
 }

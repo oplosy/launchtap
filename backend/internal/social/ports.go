@@ -20,6 +20,10 @@ type CommentStore interface {
 	// Report is idempotent per (comment, reporter). It returns ErrBanned, ErrCommentNotFound,
 	// ErrOwnComment or *RateLimitedError.
 	Report(ctx context.Context, a Actor, commentID int64, reason ReportReason) error
+	// Vote sets (1, -1) or clears (0) the caller's vote; value must come from ParseVote. The
+	// caller needs a linked wallet that is the creator or a holder of the comment's token. It
+	// returns ErrBanned, ErrCommentNotFound, ErrOwnVote, ErrNotHolder or *RateLimitedError.
+	Vote(ctx context.Context, a Actor, commentID int64, value int) (VoteResult, error)
 }
 
 // Moderator is the operator-side port. Every method is one transaction that also appends a

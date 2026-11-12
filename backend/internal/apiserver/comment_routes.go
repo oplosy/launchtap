@@ -42,6 +42,7 @@ type commentDTO struct {
 	Body      string           `json:"body"`
 	CreatedAt string           `json:"created_at"`
 	Author    commentAuthorDTO `json:"author"`
+	Score     int64            `json:"score" doc:"Sum of up (+1) and down (-1) votes from voters who are not banned."`
 }
 
 type commentListInput struct {
@@ -93,11 +94,25 @@ type reportCommentInput struct {
 }
 type reportCommentOutput struct{}
 
+type voteCommentInput struct {
+	WatchlistAuthInput
+	ID   int64 `path:"id"`
+	Body struct {
+		Value int `json:"value" doc:"1 (up), -1 (down) or 0 (clear)."`
+	}
+}
+type voteBody struct {
+	Score int64 `json:"score" doc:"The comment's score after the vote."`
+	Vote  int   `json:"vote" doc:"The caller's vote after the request: 1, -1 or 0."`
+}
+type voteCommentOutput struct{ Body voteBody }
+
 func (r CommentRoutes) Register(api huma.API) {
 	private := huma.Middlewares{noStore}
 	huma.Register(api, huma.Operation{OperationID: "listTokenComments", Method: http.MethodGet, Path: "/tokens/{address}/comments", Tags: []string{"comments"}}, r.list)
 	huma.Register(api, huma.Operation{OperationID: "getCommentEligibility", Method: http.MethodGet, Path: "/tokens/{address}/comments/eligibility", Tags: []string{"comments"}, Middlewares: private}, r.eligibility)
 	huma.Register(api, huma.Operation{OperationID: "postTokenComment", Method: http.MethodPost, Path: "/tokens/{address}/comments", Tags: []string{"comments"}, DefaultStatus: http.StatusCreated, Middlewares: private}, r.post)
+	huma.Register(api, huma.Operation{OperationID: "voteComment", Method: http.MethodPut, Path: "/comments/{id}/vote", Tags: []string{"comments"}, Description: "Sets or clears the caller's vote. Needs a linked wallet that is the creator or a holder of the comment's token (docs/specs/2026-11-12-comment-votes-design.md).", Middlewares: private}, r.vote)
 	huma.Register(api, huma.Operation{OperationID: "reportComment", Method: http.MethodPut, Path: "/comments/{id}/report", Tags: []string{"comments"}, DefaultStatus: http.StatusNoContent, Middlewares: private}, r.report)
 }
 
@@ -154,6 +169,10 @@ func (r CommentRoutes) fail(ctx context.Context, err error) error {
 		return apiProblem(http.StatusForbidden, "banned", "Account is banned")
 	case errors.Is(err, social.ErrOwnComment):
 		return apiProblem(http.StatusUnprocessableEntity, "own_comment", "You cannot report your own comment")
+	case errors.Is(err, social.ErrOwnVote):
+		return apiProblem(http.StatusUnprocessableEntity, "own_comment", "You cannot vote on your own comment")
+	case errors.Is(err, social.ErrInvalidVote):
+		return apiProblem(http.StatusUnprocessableEntity, "invalid_vote", "vote must be 1, -1 or 0")
 	case errors.Is(err, social.ErrInvalidReport):
 		return apiProblem(http.StatusUnprocessableEntity, "invalid_report", "Unknown report reason")
 	case errors.Is(err, social.ErrInvalidCursor):
@@ -173,6 +192,7 @@ func toCommentDTO(c social.Comment) commentDTO {
 		ID: strconv.FormatInt(c.ID, 10), Token: c.Token.Hex(), Body: c.Body,
 		CreatedAt: c.CreatedAt.UTC().Format(commentTimeLayout),
 		Author:    commentAuthorDTO{Username: c.Author.Username, Role: string(c.Author.Role)},
+		Score:     c.Score,
 	}
 	if c.Author.Wallet != nil {
 		w := c.Author.Wallet.Hex()
@@ -264,4 +284,23 @@ func (r CommentRoutes) report(ctx context.Context, in *reportCommentInput) (*rep
 		return nil, r.fail(ctx, err)
 	}
 	return &reportCommentOutput{}, nil
+}
+
+func (r CommentRoutes) vote(ctx context.Context, in *voteCommentInput) (*voteCommentOutput, error) {
+	actor, err := r.actor(ctx, in.WatchlistAuthInput)
+	if err != nil {
+		return nil, err
+	}
+	value, err := social.ParseVote(in.Body.Value)
+	if err != nil {
+		return nil, r.fail(ctx, err)
+	}
+	if in.ID <= 0 {
+		return nil, r.fail(ctx, social.ErrCommentNotFound)
+	}
+	res, err := r.Store.Vote(ctx, actor, in.ID, value)
+	if err != nil {
+		return nil, r.fail(ctx, err)
+	}
+	return &voteCommentOutput{Body: voteBody{Score: res.Score, Vote: res.Vote}}, nil
 }

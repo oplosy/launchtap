@@ -774,6 +774,45 @@
   position: relative;
   margin-left: auto;
 }
+.comment-vote {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-self: start;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.comment-score {
+  min-width: 2ch;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.comment-vote-button {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-3);
+  font-size: 11px;
+  cursor: pointer;
+}
+.comment-vote-button:hover:not(:disabled) {
+  border-color: var(--hairline-strong);
+  color: var(--text);
+}
+.comment-vote-button[aria-pressed="true"] {
+  border-color: var(--hairline-strong);
+  color: var(--up);
+  background: var(--fill);
+}
+.comment-vote-button:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
 .comment-report summary {
   cursor: pointer;
   list-style: none;
