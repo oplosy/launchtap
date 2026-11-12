@@ -22,7 +22,9 @@ tasks:
   integration:
     desc: Run integration-tagged tests with the race detector.
     cmds:
-      - go test -tags=integration ./... -race
+      # postgrestest runs close to go test's default 10m package timeout under -race on slower
+      # machines (and while verify runs its other tasks in parallel); the CI job keeps its own cap.
+      - go test -tags=integration ./... -race -timeout=20m
 
   lint:
     desc: Run the pinned golangci-lint tool.
