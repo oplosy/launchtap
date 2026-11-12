@@ -30,5 +30,11 @@ SELECT
 FROM sync_state
 WHERE chain_id = $1 AND deployment_id = $2;
 
+-- name: ListForeignSyncDeployments :many
+SELECT deployment_id
+FROM sync_state
+WHERE chain_id = $1 AND deployment_id <> $2
+ORDER BY deployment_id;
+
 -- name: NotifyAPIRefresh :exec
 SELECT pg_notify('api_refresh', sqlc.arg(payload)::text);

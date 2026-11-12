@@ -19,6 +19,7 @@ import (
 
 const (
 	deploymentSchemaPath   = "deployment.schema.json"
+	deploymentV2SchemaPath = "deployment-v2.schema.json"
 	dependenciesSchemaPath = "chain-dependencies.schema.json"
 	disabledSchemaPath     = "chain-disabled.schema.json"
 	v4SchemaPath           = "v4-dependencies.schema.json"
@@ -30,8 +31,10 @@ var (
 	//go:embed all:testdata
 	embeddedArtifacts embed.FS
 
-	lpBurnAddress    = common.HexToAddress("0x000000000000000000000000000000000000dEaD")
-	supportedEngines = map[uint16]struct{}{1: {}}
+	lpBurnAddress = common.HexToAddress("0x000000000000000000000000000000000000dEaD")
+	// canonicalPermit2 is Permit2's deterministic address on every chain.
+	canonicalPermit2 = common.HexToAddress("0x000000000022D473030F116dDEE9F6B43aC78BA3")
+	supportedEngines = map[uint16]struct{}{1: {}, 2: {}}
 )
 
 type deploymentKey struct {
@@ -130,7 +133,7 @@ func Load(fsys fs.FS) (*Registry, error) {
 		case strings.HasPrefix(filePath, "config/"):
 			return validateDependencies(filePath, body, validators.dependencies)
 		default:
-			deployment, parseErr := parseDeployment(filePath, body, validators.deployment)
+			deployment, parseErr := parseManifest(filePath, body, validators)
 			if parseErr != nil {
 				return parseErr
 			}
@@ -178,6 +181,7 @@ func (r *Registry) Lookup(chainID uint64, deploymentID string) (Deployment, erro
 
 type compiledSchemas struct {
 	deployment   *jsonschema.Schema
+	deploymentV2 *jsonschema.Schema
 	dependencies *jsonschema.Schema
 	disabled     *jsonschema.Schema
 	v4           *jsonschema.Schema
@@ -208,6 +212,10 @@ func compileSchemas(fsys fs.FS) (compiledSchemas, error) {
 	if err != nil {
 		return compiledSchemas{}, err
 	}
+	deploymentV2, err := compile(deploymentV2SchemaPath)
+	if err != nil {
+		return compiledSchemas{}, err
+	}
 	dependencies, err := compile(dependenciesSchemaPath)
 	if err != nil {
 		return compiledSchemas{}, err
@@ -220,7 +228,7 @@ func compileSchemas(fsys fs.FS) (compiledSchemas, error) {
 	if err != nil {
 		return compiledSchemas{}, err
 	}
-	return compiledSchemas{deployment: deployment, dependencies: dependencies, disabled: disabled, v4: v4}, nil
+	return compiledSchemas{deployment: deployment, deploymentV2: deploymentV2, dependencies: dependencies, disabled: disabled, v4: v4}, nil
 }
 
 func validateOnly(filePath string, body []byte, schema *jsonschema.Schema) error {
@@ -303,6 +311,21 @@ type rawBytecodeHashes struct {
 	BondingCurveV1   string `json:"bondingCurveV1"`
 	UniswapV2Factory string `json:"uniswapV2Factory"`
 	WETH             string `json:"weth"`
+}
+
+// parseManifest routes a manifest to its engine's schema. Only the engineVersion field is read
+// before validation; a missing or unknown version falls to the v1 schema, which rejects it.
+func parseManifest(filePath string, body []byte, validators compiledSchemas) (Deployment, error) {
+	var probe struct {
+		EngineVersion uint16 `json:"engineVersion"`
+	}
+	if err := json.Unmarshal(body, &probe); err != nil {
+		return Deployment{}, &ValidationError{Path: filePath, Err: err}
+	}
+	if probe.EngineVersion == 2 {
+		return parseDeploymentV2(filePath, body, validators.deploymentV2)
+	}
+	return parseDeployment(filePath, body, validators.deployment)
 }
 
 func parseDeployment(filePath string, body []byte, schema *jsonschema.Schema) (Deployment, error) {

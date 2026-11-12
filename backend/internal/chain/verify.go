@@ -47,16 +47,19 @@ func VerifyRPCChainID(ctx context.Context, reader ChainIDReader, configuredChain
 	return nil
 }
 
+type bytecodeCheck struct {
+	name     string
+	address  common.Address
+	expected common.Hash
+}
+
+// VerifyDeploymentBytecode compares the runtime code of every reviewed contract the deployment
+// depends on with its manifest hash. Engine 1 checks the Uniswap V2 dependencies; engine 2
+// checks the v2 curve implementation and the Uniswap V4 dependencies instead.
 func VerifyDeploymentBytecode(ctx context.Context, reader CodeReader, deployment deployments.Deployment) error {
-	checks := []struct {
-		name     string
-		address  common.Address
-		expected common.Hash
-	}{
-		{"Factory", deployment.Factory, deployment.BytecodeHashes.LaunchFactory},
-		{"CurveImplementation", deployment.CurveImplementation, deployment.BytecodeHashes.BondingCurveV1},
-		{"WETH", deployment.WETH, deployment.BytecodeHashes.WETH},
-		{"UniV2Factory", deployment.UniV2Factory, deployment.BytecodeHashes.UniswapV2Factory},
+	checks, err := bytecodeChecks(deployment)
+	if err != nil {
+		return err
 	}
 	for _, check := range checks {
 		code, err := reader.CodeAt(ctx, check.address)
@@ -69,6 +72,35 @@ func VerifyDeploymentBytecode(ctx context.Context, reader CodeReader, deployment
 		}
 	}
 	return nil
+}
+
+func bytecodeChecks(deployment deployments.Deployment) ([]bytecodeCheck, error) {
+	factory := bytecodeCheck{"Factory", deployment.Factory, deployment.BytecodeHashes.LaunchFactory}
+	switch deployment.EngineVersion {
+	case 1:
+		return []bytecodeCheck{
+			factory,
+			{"CurveImplementation", deployment.CurveImplementation, deployment.BytecodeHashes.BondingCurveV1},
+			{"WETH", deployment.WETH, deployment.BytecodeHashes.WETH},
+			{"UniV2Factory", deployment.UniV2Factory, deployment.BytecodeHashes.UniswapV2Factory},
+		}, nil
+	case 2:
+		v4 := deployment.V4
+		if v4 == nil {
+			return nil, fmt.Errorf("%w: engine-2 deployment %q has no V4 section", ErrBytecodeMismatch, deployment.DeploymentID)
+		}
+		return []bytecodeCheck{
+			factory,
+			{"CurveImplementation", deployment.CurveImplementation, v4.BytecodeHashes.BondingCurveV2},
+			{"PoolManager", v4.PoolManager, v4.BytecodeHashes.PoolManager},
+			{"PositionManager", v4.PositionManager, v4.BytecodeHashes.PositionManager},
+			{"Permit2", v4.Permit2, v4.BytecodeHashes.Permit2},
+			{"Hook", v4.Hook, v4.BytecodeHashes.Hook},
+			{"Locker", v4.Locker, v4.BytecodeHashes.Locker},
+		}, nil
+	default:
+		return nil, &EngineVersionError{Version: deployment.EngineVersion}
+	}
 }
 
 func PairAddress(factory, token, weth common.Address, initCodeHash common.Hash) common.Address {

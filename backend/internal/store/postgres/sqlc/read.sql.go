@@ -311,8 +311,8 @@ type GetTokenDetailParams struct {
 type GetTokenDetailRow struct {
 	TokenAddress          Address
 	CurveAddress          Address
-	LpPair                Address
-	Weth                  Address
+	LpPair                *Address
+	Weth                  *Address
 	Creator               Address
 	ProtocolTreasury      Address
 	EngineVersion         int32
@@ -330,8 +330,8 @@ type GetTokenDetailRow struct {
 	TradeFeeBps           int32
 	ProtocolShareBps      int32
 	ReserveSource         string
-	EthReserve            Uint256
-	TokenReserve          Uint256
+	EthReserve            *Uint256
+	TokenReserve          *Uint256
 	RealCurveEth          pgtype.Numeric
 	GraduationProgressBps int32
 	ReserveBlockNumber    int64
@@ -344,7 +344,7 @@ type GetTokenDetailRow struct {
 	SpotPriceEthWad       Uint256
 	MarketCapEthWad       Uint256
 	FdvEthWad             Uint256
-	LiquidityEthWad       Uint256
+	LiquidityEthWad       *Uint256
 	AthPriceEthWad        Uint256
 	AthAt                 pgtype.Timestamptz
 	Volume24hEthWad       Uint256
@@ -408,7 +408,10 @@ SELECT t.phase, t.total_supply, t.curve_tokens, t.lp_tokens, t.graduation_eth,
        COALESCE(r.eth_reserve, t.initial_virtual_eth) AS eth_reserve,
        COALESCE(r.token_reserve, t.initial_virtual_token) AS token_reserve,
        COALESCE(r.source_block_number, t.launch_block_number) AS reserve_block_number,
-       COALESCE(r.source_block_hash, t.launch_block_hash) AS reserve_block_hash
+       COALESCE(r.source_block_hash, t.launch_block_hash) AS reserve_block_hash,
+       t.engine_version, t.launch_block_time,
+       COALESCE(t.anti_snipe_start_bps, 0)::INTEGER AS anti_snipe_start_bps,
+       COALESCE(t.anti_snipe_duration_seconds, 0)::BIGINT AS anti_snipe_duration_seconds
 FROM tokens AS t
 LEFT JOIN token_reserves AS r USING (chain_id, token_address)
 WHERE t.chain_id = $1
@@ -421,19 +424,23 @@ type GetTokenQuoteStateParams struct {
 }
 
 type GetTokenQuoteStateRow struct {
-	Phase               string
-	TotalSupply         Uint256
-	CurveTokens         Uint256
-	LpTokens            Uint256
-	GraduationEth       Uint256
-	InitialVirtualEth   Uint256
-	InitialVirtualToken Uint256
-	TradeFeeBps         int32
-	ProtocolShareBps    int32
-	EthReserve          Uint256
-	TokenReserve        Uint256
-	ReserveBlockNumber  int64
-	ReserveBlockHash    Hash
+	Phase                    string
+	TotalSupply              Uint256
+	CurveTokens              Uint256
+	LpTokens                 Uint256
+	GraduationEth            Uint256
+	InitialVirtualEth        Uint256
+	InitialVirtualToken      Uint256
+	TradeFeeBps              int32
+	ProtocolShareBps         int32
+	EthReserve               *Uint256
+	TokenReserve             *Uint256
+	ReserveBlockNumber       int64
+	ReserveBlockHash         Hash
+	EngineVersion            int32
+	LaunchBlockTime          pgtype.Timestamptz
+	AntiSnipeStartBps        int32
+	AntiSnipeDurationSeconds int64
 }
 
 func (q *Queries) GetTokenQuoteState(ctx context.Context, arg GetTokenQuoteStateParams) (GetTokenQuoteStateRow, error) {
@@ -453,6 +460,78 @@ func (q *Queries) GetTokenQuoteState(ctx context.Context, arg GetTokenQuoteState
 		&i.TokenReserve,
 		&i.ReserveBlockNumber,
 		&i.ReserveBlockHash,
+		&i.EngineVersion,
+		&i.LaunchBlockTime,
+		&i.AntiSnipeStartBps,
+		&i.AntiSnipeDurationSeconds,
+	)
+	return i, err
+}
+
+const getTokenV2Facts = `-- name: GetTokenV2Facts :one
+SELECT COALESCE(t.anti_snipe_start_bps, 0)::INTEGER AS anti_snipe_start_bps,
+       COALESCE(t.anti_snipe_duration_seconds, 0)::BIGINT AS anti_snipe_duration_seconds,
+       COALESCE(t.lp_creator_share_bps, 0)::INTEGER AS lp_creator_share_bps,
+       pool.pool_id::BYTEA AS pool_id, pool.position_token_id::NUMERIC AS position_token_id, pool.hook::BYTEA AS pool_hook,
+       COALESCE(accepted.next_recipient, t.creator)::BYTEA AS fee_recipient,
+       CASE WHEN proposal.next_recipient <> decode(repeat('00', 20), 'hex')
+             AND (accepted.block_number IS NULL
+                  OR (accepted.block_number, accepted.transaction_index, accepted.log_index)
+                     < (proposal.block_number, proposal.transaction_index, proposal.log_index))
+            THEN proposal.next_recipient
+       END::BYTEA AS pending_fee_recipient
+FROM tokens AS t
+LEFT JOIN v4_pools AS pool ON pool.chain_id = t.chain_id AND pool.token_address = t.token_address
+LEFT JOIN LATERAL (
+    SELECT acceptance.next_recipient, acceptance.block_number, acceptance.transaction_index, acceptance.log_index
+    FROM fee_recipient_acceptances AS acceptance
+    WHERE acceptance.chain_id = t.chain_id AND acceptance.token_address = t.token_address
+    ORDER BY acceptance.block_number DESC, acceptance.transaction_index DESC, acceptance.log_index DESC
+    LIMIT 1
+) AS accepted ON TRUE
+LEFT JOIN LATERAL (
+    SELECT candidate.next_recipient, candidate.block_number, candidate.transaction_index, candidate.log_index
+    FROM fee_recipient_proposals AS candidate
+    WHERE candidate.chain_id = t.chain_id AND candidate.token_address = t.token_address
+    ORDER BY candidate.block_number DESC, candidate.transaction_index DESC, candidate.log_index DESC
+    LIMIT 1
+) AS proposal ON TRUE
+WHERE t.chain_id = $1
+  AND t.token_address = $2
+  AND t.engine_version = 2
+`
+
+type GetTokenV2FactsParams struct {
+	ChainID      int64
+	TokenAddress Address
+}
+
+type GetTokenV2FactsRow struct {
+	AntiSnipeStartBps        int32
+	AntiSnipeDurationSeconds int64
+	LpCreatorShareBps        int32
+	PoolID                   []byte
+	PositionTokenID          pgtype.Numeric
+	PoolHook                 []byte
+	FeeRecipient             []byte
+	PendingFeeRecipient      []byte
+}
+
+// The engine-2 facts of a token. The fee recipient is the creator until the latest
+// FeeRecipientAccepted; the pending recipient is the latest proposal unless a later acceptance
+// consumed it or it was a cancellation (address zero).
+func (q *Queries) GetTokenV2Facts(ctx context.Context, arg GetTokenV2FactsParams) (GetTokenV2FactsRow, error) {
+	row := q.db.QueryRow(ctx, getTokenV2Facts, arg.ChainID, arg.TokenAddress)
+	var i GetTokenV2FactsRow
+	err := row.Scan(
+		&i.AntiSnipeStartBps,
+		&i.AntiSnipeDurationSeconds,
+		&i.LpCreatorShareBps,
+		&i.PoolID,
+		&i.PositionTokenID,
+		&i.PoolHook,
+		&i.FeeRecipient,
+		&i.PendingFeeRecipient,
 	)
 	return i, err
 }
@@ -657,7 +736,7 @@ type ListGraduationsAfterParams struct {
 
 type ListGraduationsAfterRow struct {
 	TokenAddress     Address
-	LpPair           Address
+	LpPair           *Address
 	Name             string
 	Symbol           string
 	TxHash           Hash
@@ -879,6 +958,46 @@ func (q *Queries) ListLeaderboardWindow(ctx context.Context, arg ListLeaderboard
 			&i.TokensTraded,
 			&i.Username,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLockerOwed = `-- name: ListLockerOwed :many
+SELECT account, locker_eth_owed, locker_token_owed
+FROM creator_fee_balances
+WHERE chain_id = $1
+  AND token_address = $2
+  AND (locker_eth_owed > 0 OR locker_token_owed > 0)
+ORDER BY account
+`
+
+type ListLockerOwedParams struct {
+	ChainID      int64
+	TokenAddress Address
+}
+
+type ListLockerOwedRow struct {
+	Account         Address
+	LockerEthOwed   Uint256
+	LockerTokenOwed Uint256
+}
+
+func (q *Queries) ListLockerOwed(ctx context.Context, arg ListLockerOwedParams) ([]ListLockerOwedRow, error) {
+	rows, err := q.db.Query(ctx, listLockerOwed, arg.ChainID, arg.TokenAddress)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLockerOwedRow{}
+	for rows.Next() {
+		var i ListLockerOwedRow
+		if err := rows.Scan(&i.Account, &i.LockerEthOwed, &i.LockerTokenOwed); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1704,13 +1823,12 @@ const listTokenHolders = `-- name: ListTokenHolders :many
 SELECT h.holder_address, h.balance, h.first_acquired_block_number
 FROM holder_balances AS h
 JOIN tokens AS t USING (chain_id, token_address)
+LEFT JOIN v4_pool_managers AS manager ON manager.chain_id = t.chain_id
 WHERE h.chain_id = $1
   AND h.token_address = $2
   AND h.balance > 0
-  AND h.holder_address <> decode(repeat('00', 20), 'hex')
-  AND h.holder_address <> decode(repeat('00', 18) || 'dead', 'hex')
-  AND h.holder_address <> t.curve_address
-  AND h.holder_address <> t.lp_pair
+  AND NOT token_holder_excluded(t.engine_version, h.holder_address, t.curve_address, t.lp_pair,
+                                t.locker, manager.pool_manager)
   AND ($3::numeric IS NULL OR
        (h.balance, h.holder_address) < ($3::numeric, $4::bytea))
 ORDER BY h.balance DESC, h.holder_address DESC

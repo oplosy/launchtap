@@ -297,7 +297,7 @@ func manifestFS(t *testing.T, manifests map[string]string) fstest.MapFS {
 	if err != nil {
 		t.Fatalf("fs.Sub() error = %v", err)
 	}
-	for _, name := range []string{deploymentSchemaPath, dependenciesSchemaPath, disabledSchemaPath, v4SchemaPath} {
+	for _, name := range []string{deploymentSchemaPath, deploymentV2SchemaPath, dependenciesSchemaPath, disabledSchemaPath, v4SchemaPath} {
 		body, err := fs.ReadFile(root, name)
 		if err != nil {
 			t.Fatalf("read schema %q: %v", name, err)

@@ -45,8 +45,8 @@ func (r TokenReader) Get(ctx context.Context, chainID int64, address common.Addr
 				LaunchBlock: row.LaunchBlockNumber, LaunchTime: row.LaunchBlockTime.Time, TotalSupply: row.TotalSupply.BigInt(),
 				MarketCapETH: row.MarketCapEthWad.BigInt(), Volume24hETH: row.Volume24hEthWad.BigInt(), HolderCount: row.HolderCount,
 			},
-			Curve: common.Address(row.CurveAddress), Pair: common.Address(row.LpPair),
-			WETH: common.Address(row.Weth), Creator: common.Address(row.Creator), ProtocolTreasury: common.Address(row.ProtocolTreasury),
+			Curve: common.Address(row.CurveAddress), Pair: addressOrZero(row.LpPair),
+			WETH: addressOrZero(row.Weth), Creator: common.Address(row.Creator), ProtocolTreasury: common.Address(row.ProtocolTreasury),
 			EngineVersion:     uint16(row.EngineVersion),
 			InitialVirtualETH: row.InitialVirtualEth.BigInt(), InitialVirtualToken: row.InitialVirtualToken.BigInt(),
 			CurveTokens: row.CurveTokens.BigInt(), LPTokens: row.LpTokens.BigInt(), GraduationETH: row.GraduationEth.BigInt(),
@@ -60,9 +60,51 @@ func (r TokenReader) Get(ctx context.Context, chainID int64, address common.Addr
 		}
 		out.Snapshot = s.Identity
 		out.Finality = finality(s.State, s.Identity.BlockNumber)
+		if out.EngineVersion == 2 {
+			facts, err := readV2Facts(ctx, a, chainID, address)
+			if err != nil {
+				return err
+			}
+			out.V2 = &facts
+		}
 		return nil
 	})
 	return out, err
+}
+
+// readV2Facts reads an engine-2 token's launch profile, pool and fee state inside the detail's
+// read snapshot.
+func readV2Facts(ctx context.Context, a *Adapter, chainID int64, address common.Address) (token.V2Facts, error) {
+	row, err := a.queries.GetTokenV2Facts(ctx, sqlc.GetTokenV2FactsParams{ChainID: chainID, TokenAddress: sqlc.Address(address)})
+	if err != nil {
+		return token.V2Facts{}, fmt.Errorf("read v2 token facts: %w", err)
+	}
+	facts := token.V2Facts{
+		AntiSnipeStartBPS:        uint16(row.AntiSnipeStartBps),
+		AntiSnipeDurationSeconds: uint32(row.AntiSnipeDurationSeconds),
+		LPCreatorShareBPS:        uint16(row.LpCreatorShareBps),
+		FeeRecipient:             common.BytesToAddress(row.FeeRecipient),
+		LockerOwed:               []token.LockerOwed{},
+	}
+	if row.PoolID != nil {
+		positionTokenID, err := numericBigExact(row.PositionTokenID)
+		if err != nil {
+			return token.V2Facts{}, fmt.Errorf("read v2 pool position: %w", err)
+		}
+		facts.Pool = &token.V2Pool{PoolID: common.BytesToHash(row.PoolID), PositionTokenID: positionTokenID, Hook: common.BytesToAddress(row.PoolHook)}
+	}
+	if row.PendingFeeRecipient != nil {
+		pending := common.BytesToAddress(row.PendingFeeRecipient)
+		facts.PendingFeeRecipient = &pending
+	}
+	owed, err := a.queries.ListLockerOwed(ctx, sqlc.ListLockerOwedParams{ChainID: chainID, TokenAddress: sqlc.Address(address)})
+	if err != nil {
+		return token.V2Facts{}, fmt.Errorf("list locker owed: %w", err)
+	}
+	for _, entry := range owed {
+		facts.LockerOwed = append(facts.LockerOwed, token.LockerOwed{Account: common.Address(entry.Account), ETH: entry.LockerEthOwed.BigInt(), Token: entry.LockerTokenOwed.BigInt()})
+	}
+	return facts, nil
 }
 
 func (r TokenReader) ReadQuoteState(ctx context.Context, chainID int64, address common.Address) (token.QuoteState, error) {
@@ -90,6 +132,12 @@ func (r TokenReader) ReadQuoteState(ctx context.Context, chainID int64, address 
 		out.Detail.ReserveHash = common.Hash(row.ReserveBlockHash)
 		out.Detail.Snapshot = s.Identity
 		out.Detail.Finality = finality(s.State, s.Identity.BlockNumber)
+		out.Detail.EngineVersion = uint16(row.EngineVersion)
+		out.Detail.LaunchTime = row.LaunchBlockTime.Time
+		out.AntiSnipeStartBPS = uint16(row.AntiSnipeStartBps)
+		out.AntiSnipeDurationSeconds = uint32(row.AntiSnipeDurationSeconds)
+		// observedIdentity has already required the observed head's block time.
+		out.HeadTime = s.State.ObservedAt.Time
 		// Accumulated fees only feed the curve's uint256 overflow guard, which no real ETH
 		// balance can reach. Summing every trade per quote made quotes O(trades), so the
 		// informational quote starts from zero accrued fees.

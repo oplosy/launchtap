@@ -25,3 +25,11 @@ FROM tokens AS token
 WHERE token.chain_id = $1
 GROUP BY token.phase
 ORDER BY token.phase;
+
+-- name: ListGraduatedV4Pools :many
+-- Engine-2 pools graduated on the chain, read from the ledger so the discovery pool set
+-- survives a restart without depending on projections (Plan v2-B Task 6).
+SELECT pool_id, token_address
+FROM graduations
+WHERE chain_id=$1 AND pool_id IS NOT NULL
+ORDER BY pool_id;

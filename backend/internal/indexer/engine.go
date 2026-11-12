@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/Contictus/launchtap/backend/internal/chain"
@@ -18,6 +19,20 @@ import (
 var ErrCanonicalMismatch = errors.New("canonical chain mismatch")
 var ErrSafeViolation = errors.New("canonical mismatch at or below safe head")
 var ErrRPCUnhealthy = errors.New("indexer RPC unavailable")
+
+// ForeignDeploymentError stops an indexer whose chain already holds state for another
+// deployment. The ledger and its reorg deletes are chain-scoped, so two deployments on one
+// chain in one database would delete each other's rows (one deployment per chain, pre-flight
+// B2). It is not an RPC failure, so Run returns it instead of retrying.
+type ForeignDeploymentError struct {
+	ChainID      int64
+	DeploymentID string
+	Others       []string
+}
+
+func (e *ForeignDeploymentError) Error() string {
+	return fmt.Sprintf("chain %d already holds indexer state for deployment(s) %s; deployment %q needs its own database", e.ChainID, strings.Join(e.Others, ", "), e.DeploymentID)
+}
 
 // Keep these bounds aligned with the stdlib-only configuration package.
 const (
@@ -58,15 +73,34 @@ func New(settings Settings, store Store, source Source, discovery Discovery, dec
 	return &Engine{settings: settings, store: store, source: source, discovery: discovery, decoder: decoder, router: router}, nil
 }
 
+// attachPools sets PoolID on the engine-2 identity of each persisted pool's token. A pool whose
+// token has no engine-2 identity means the ledger and the tokens projection disagree.
+func attachPools(identities []TokenIdentity, pools map[common.Hash]common.Address) error {
+	index := make(map[common.Address]int, len(identities))
+	for position, identity := range identities {
+		index[identity.Token] = position
+	}
+	for poolID, token := range pools {
+		position, ok := index[token]
+		if !ok || identities[position].EngineVersion != 2 {
+			return fmt.Errorf("persisted V4 pool %s names token %s, which has no engine-2 token identity", poolID.Hex(), token.Hex())
+		}
+		id := poolID
+		identities[position].PoolID = &id
+	}
+	return nil
+}
+
 // senderMisses describes the transactions of one chunk left without a sender.
 type senderMisses struct {
 	misses, total int
 	err           error
 }
 
-// attachSenders sets PoolSwap.TxFrom from one batched sender lookup. A failed lookup is
-// ignored: ingestion never stops for enrichment, the swaps are written with a nil sender and
-// backfilled later. It returns the transactions left without a sender (a failed call, an
+// attachSenders sets PoolSwap.TxFrom and V4Swap.TxFrom from one batched sender lookup. The V4
+// Swap sender is the router, so the transaction sender is the only trader attribution
+// (pre-flight R4). A failed lookup is ignored: ingestion never stops for enrichment, the swaps
+// are written with a nil sender. Pool swaps are backfilled later; V4 swaps are not yet (backlog). It returns the transactions left without a sender (a failed call, an
 // errored element or a null result); Step reports them only once the chunk commits, so a
 // retried step never counts the same miss twice.
 func (e *Engine) attachSenders(ctx context.Context, decoded []chain.DecodedLog) senderMisses {
@@ -76,7 +110,7 @@ func (e *Engine) attachSenders(ctx context.Context, decoded []chain.DecodedLog) 
 	seen := make(map[common.Hash]struct{})
 	var hashes []common.Hash
 	for _, log := range decoded {
-		if _, ok := log.Value.(chain.PoolSwap); !ok {
+		if !isSwap(log.Value) {
 			continue
 		}
 		if _, dup := seen[log.Coordinates.TransactionHash]; !dup {
@@ -98,16 +132,28 @@ func (e *Engine) attachSenders(ctx context.Context, decoded []chain.DecodedLog) 
 		}
 	}
 	for index, log := range decoded {
-		swap, ok := log.Value.(chain.PoolSwap)
-		if !ok {
+		sender, found := senders[log.Coordinates.TransactionHash]
+		if !found {
 			continue
 		}
-		if sender, found := senders[log.Coordinates.TransactionHash]; found {
+		switch swap := log.Value.(type) {
+		case chain.PoolSwap:
+			swap.TxFrom = &sender
+			decoded[index].Value = swap
+		case chain.V4Swap:
 			swap.TxFrom = &sender
 			decoded[index].Value = swap
 		}
 	}
 	return senderMisses{misses: misses, total: len(hashes)}
+}
+
+func isSwap(value any) bool {
+	switch value.(type) {
+	case chain.PoolSwap, chain.V4Swap:
+		return true
+	}
+	return false
 }
 
 // reportSenderMisses logs one warning and feeds the miss counter for a committed chunk with
@@ -140,12 +186,26 @@ func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
 	var identities []TokenIdentity
 	if err = e.store.Transaction(ctx, func(ctx context.Context, u UnitOfWork) error {
 		var err error
+		others, err := u.ForeignDeployments(ctx, e.settings.ChainID, e.settings.DeploymentID)
+		if err != nil {
+			return err
+		}
+		if len(others) != 0 {
+			return &ForeignDeploymentError{ChainID: e.settings.ChainID, DeploymentID: e.settings.DeploymentID, Others: others}
+		}
 		state, err = u.ReadState(ctx, e.settings.ChainID, e.settings.DeploymentID)
 		if err != nil {
 			return err
 		}
 		identities, err = u.TokenIdentities(ctx, e.settings.ChainID)
-		return err
+		if err != nil {
+			return err
+		}
+		pools, err := u.GraduatedV4Pools(ctx, e.settings.ChainID)
+		if err != nil {
+			return err
+		}
+		return attachPools(identities, pools)
 	}); err != nil {
 		return false, err
 	}
@@ -236,14 +296,22 @@ func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
 	decoded := make([]chain.DecodedLog, 0)
 	var misses senderMisses
 	if len(blocks) > 0 {
-		emitters := chain.Emitters{Factory: e.settings.Factory, Curves: chain.NewAddressSet(), Tokens: chain.NewAddressSet(), Pairs: chain.NewAddressSet()}
+		emitters := chain.Emitters{Factory: e.settings.Factory, Curves: chain.NewAddressSet(), Tokens: chain.NewAddressSet(), Pairs: chain.NewAddressSet(), Pools: make(map[common.Hash]common.Address)}
+		engineVersion := e.decoder.EngineVersion()
 		for _, identity := range identities {
-			if identity.EngineVersion != 1 {
-				return false, fmt.Errorf("unsupported persisted engine version %d", identity.EngineVersion)
+			// One deployment per chain (pre-flight B2), so every persisted token was launched by
+			// the decoder's engine.
+			if identity.EngineVersion != engineVersion {
+				return false, fmt.Errorf("persisted token %s has engine version %d, deployment decodes engine %d", identity.Token.Hex(), identity.EngineVersion, engineVersion)
 			}
 			emitters.Curves[identity.Curve] = struct{}{}
 			emitters.Tokens[identity.Token] = struct{}{}
-			emitters.Pairs[identity.Pair] = struct{}{}
+			if engineVersion == 1 {
+				emitters.Pairs[identity.Pair] = struct{}{}
+			}
+			if identity.PoolID != nil {
+				emitters.Pools[*identity.PoolID] = identity.Token
+			}
 		}
 		result, err := e.discovery.Discover(ctx, uint64(from), uint64(to), emitters)
 		if err != nil {

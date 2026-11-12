@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Contictus/launchtap/backend/internal/curve"
 	"github.com/Contictus/launchtap/backend/internal/quote"
@@ -36,6 +37,9 @@ type quoteBody struct {
 	Finality           string `json:"finality"`
 	ReserveSourceBlock int64  `json:"reserve_source_block"`
 	ReserveSourceHash  string `json:"reserve_source_hash"`
+	SnipeTax           string `json:"snipe_tax" doc:"Engine-2 anti-snipe tax taken from a buy at the indexed head's block time; 0 for engine 1, sells and after the window."`
+	TaxBPS             uint16 `json:"tax_bps" doc:"Engine-2 anti-snipe rate in force at the indexed head's block time; 0 for engine 1 and after the window."`
+	TaxEndsAt          string `json:"tax_ends_at" doc:"RFC 3339 time at which the anti-snipe tax reaches zero; empty when no tax is in force."`
 	Informational      bool   `json:"informational"`
 }
 
@@ -76,7 +80,7 @@ func (r QuoteRoutes) handle(ctx context.Context, in *quoteInput) (*quoteOutput, 
 			return nil, apiRequestProblem(ctx, http.StatusInternalServerError, "quote_failed", "Quote could not be computed")
 		}
 	}
-	return &quoteOutput{Body: quoteBody{Input: decimal(q.Input), Output: decimal(q.Output), ProtocolFee: decimal(q.ProtocolFee), CreatorFee: decimal(q.CreatorFee), Refund: decimal(q.Refund), Graduates: q.Graduates, NextVirtualETH: decimal(q.NextVirtualETH), NextVirtualToken: decimal(q.NextVirtualToken), AsOfBlock: q.AsOfBlock, Finality: q.Finality, ReserveSourceBlock: q.ReserveSourceBlock, ReserveSourceHash: q.ReserveSourceHash.Hex(), Informational: true}}, nil
+	return &quoteOutput{Body: quoteBody{Input: decimal(q.Input), Output: decimal(q.Output), ProtocolFee: decimal(q.ProtocolFee), CreatorFee: decimal(q.CreatorFee), Refund: decimal(q.Refund), Graduates: q.Graduates, NextVirtualETH: decimal(q.NextVirtualETH), NextVirtualToken: decimal(q.NextVirtualToken), AsOfBlock: q.AsOfBlock, Finality: q.Finality, ReserveSourceBlock: q.ReserveSourceBlock, ReserveSourceHash: q.ReserveSourceHash.Hex(), SnipeTax: decimal(q.SnipeTax), TaxBPS: q.TaxBPS, TaxEndsAt: rfc3339OrEmpty(q.TaxEndsAt), Informational: true}}, nil
 }
 func parseCanonicalUint256(s string) (*big.Int, error) {
 	if s == "" || len(s) > 78 || (len(s) > 1 && s[0] == '0') || s[0] == '-' || strings.ContainsAny(s, ".+eE") {
@@ -87,4 +91,11 @@ func parseCanonicalUint256(s string) (*big.Int, error) {
 		return nil, curve.ErrInvalidAmount{Field: "amount"}
 	}
 	return n, nil
+}
+
+func rfc3339OrEmpty(at time.Time) string {
+	if at.IsZero() {
+		return ""
+	}
+	return at.UTC().Format(time.RFC3339)
 }

@@ -15,6 +15,22 @@ func timestamptz(value time.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: value.UTC(), Valid: true}
 }
 
+// addressPointer binds a nullable address column (engine 2 has no pair or WETH).
+func addressPointer(address common.Address) *sqlc.Address {
+	value := sqlc.Address(address)
+	return &value
+}
+
+// addressOrZero reads a nullable address column. Every engine-1 row carries the address; an
+// engine-2 row has none and reads as the zero address until the engine-aware read paths
+// (Plan v2-B Tasks 8 and 10) expose the V4 pool instead.
+func addressOrZero(value *sqlc.Address) common.Address {
+	if value == nil {
+		return common.Address{}
+	}
+	return common.Address(*value)
+}
+
 func eventParams(coordinates ledger.EventCoordinates) eventParameters {
 	return eventParameters{
 		ChainID: coordinates.ChainID, BlockNumber: coordinates.BlockNumber,
@@ -88,7 +104,7 @@ func tokenLaunchParams(event ledger.TokenLaunch) (sqlc.InsertTokenLaunchParams, 
 			return sqlc.InsertTokenLaunchParams{}, err
 		}
 	}
-	return sqlc.InsertTokenLaunchParams{ChainID: b.ChainID, BlockNumber: b.BlockNumber, BlockHash: b.BlockHash, BlockTime: b.BlockTime, TransactionIndex: b.TransactionIndex, TxHash: b.TxHash, LogIndex: b.LogIndex, TokenAddress: sqlc.Address(event.Token), CurveAddress: sqlc.Address(event.Curve), Creator: sqlc.Address(event.Creator), LpPair: sqlc.Address(event.LPPair), Weth: sqlc.Address(event.WETH), ProtocolTreasury: sqlc.Address(event.ProtocolTreasury), EngineVersion: int32(event.EngineVersion), Name: event.Name, Symbol: event.Symbol, TotalSupply: converted[0], VirtualEth: converted[1], VirtualToken: converted[2], CurveTokens: converted[3], LpTokens: converted[4], GraduationEth: converted[5], LaunchFeePaid: converted[6], TradeFeeBps: int32(event.TradeFeeBPS), ProtocolShareBps: int32(event.ProtocolShareBPS)}, nil
+	return sqlc.InsertTokenLaunchParams{ChainID: b.ChainID, BlockNumber: b.BlockNumber, BlockHash: b.BlockHash, BlockTime: b.BlockTime, TransactionIndex: b.TransactionIndex, TxHash: b.TxHash, LogIndex: b.LogIndex, TokenAddress: sqlc.Address(event.Token), CurveAddress: sqlc.Address(event.Curve), Creator: sqlc.Address(event.Creator), LpPair: addressPointer(event.LPPair), Weth: addressPointer(event.WETH), ProtocolTreasury: sqlc.Address(event.ProtocolTreasury), EngineVersion: int32(event.EngineVersion), Name: event.Name, Symbol: event.Symbol, TotalSupply: converted[0], VirtualEth: converted[1], VirtualToken: converted[2], CurveTokens: converted[3], LpTokens: converted[4], GraduationEth: converted[5], LaunchFeePaid: converted[6], TradeFeeBps: int32(event.TradeFeeBPS), ProtocolShareBps: int32(event.ProtocolShareBPS)}, nil
 }
 
 func graduationParams(event ledger.Graduation) (sqlc.InsertGraduationParams, error) {
@@ -105,7 +121,7 @@ func graduationParams(event ledger.Graduation) (sqlc.InsertGraduationParams, err
 	if err != nil {
 		return sqlc.InsertGraduationParams{}, err
 	}
-	return sqlc.InsertGraduationParams{ChainID: b.ChainID, BlockNumber: b.BlockNumber, BlockHash: b.BlockHash, BlockTime: b.BlockTime, TransactionIndex: b.TransactionIndex, TxHash: b.TxHash, LogIndex: b.LogIndex, TokenAddress: sqlc.Address(event.Token), LpPair: sqlc.Address(event.LPPair), EthToPool: eth, TokensToPool: tokens, LpLiquidityBurned: lp}, nil
+	return sqlc.InsertGraduationParams{ChainID: b.ChainID, BlockNumber: b.BlockNumber, BlockHash: b.BlockHash, BlockTime: b.BlockTime, TransactionIndex: b.TransactionIndex, TxHash: b.TxHash, LogIndex: b.LogIndex, TokenAddress: sqlc.Address(event.Token), LpPair: addressPointer(event.LPPair), EthToPool: eth, TokensToPool: tokens, LpLiquidityBurned: &lp}, nil
 }
 
 func creatorFeeClaimParams(event ledger.CreatorFeeClaim) (sqlc.InsertCreatorFeeClaimParams, error) {

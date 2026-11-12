@@ -141,8 +141,8 @@ func TestDecoderRejectsMalformedAndMisroutedLogs(t *testing.T) {
 
 func TestDecoderRejectsUnknownEngineVersion(t *testing.T) {
 	t.Parallel()
-	if _, err := NewDecoder(2); !errors.Is(err, ErrUnsupportedEngine) {
-		t.Fatalf("NewDecoder(2) error = %v", err)
+	if _, err := NewDecoder(3); !errors.Is(err, ErrUnsupportedEngine) {
+		t.Fatalf("NewDecoder(3) error = %v", err)
 	}
 	_, logs, emitters := loadFixtureLogs(t)
 	decoder, _ := NewDecoder(1)

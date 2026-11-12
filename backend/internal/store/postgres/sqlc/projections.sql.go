@@ -11,6 +11,33 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const applyCreatorFeeDeltas = `-- name: ApplyCreatorFeeDeltas :exec
+UPDATE creator_fee_balances AS balance SET
+    curve_eth_owed=balance.curve_eth_owed+delta.curve_eth_delta,
+    locker_eth_owed=balance.locker_eth_owed+delta.locker_eth_delta,
+    locker_token_owed=balance.locker_token_owed+delta.locker_token_delta
+FROM (
+    SELECT event.chain_id, event.token_address, event.account, sum(event.curve_eth_delta) AS curve_eth_delta,
+           sum(event.locker_eth_delta) AS locker_eth_delta, sum(event.locker_token_delta) AS locker_token_delta
+    FROM creator_fee_deltas AS event WHERE event.chain_id=$1 AND event.tx_hash=$2 AND event.log_index=$3
+    GROUP BY event.chain_id, event.token_address, event.account
+) AS delta
+WHERE balance.chain_id=delta.chain_id AND balance.token_address=delta.token_address AND balance.account=delta.account
+`
+
+type ApplyCreatorFeeDeltasParams struct {
+	ChainID  int64
+	TxHash   Hash
+	LogIndex int32
+}
+
+// Applies one event's owed-balance deltas (creator_fee_deltas). Callers apply it only when the
+// ledger row was newly inserted, so a replay never double-counts.
+func (q *Queries) ApplyCreatorFeeDeltas(ctx context.Context, arg ApplyCreatorFeeDeltasParams) error {
+	_, err := q.db.Exec(ctx, applyCreatorFeeDeltas, arg.ChainID, arg.TxHash, arg.LogIndex)
+	return err
+}
+
 const applyGraduationPoolSyncReserveProjection = `-- name: ApplyGraduationPoolSyncReserveProjection :exec
 INSERT INTO token_reserves (chain_id, token_address, reserve_source, eth_reserve, token_reserve, source_block_number, source_block_hash, source_block_time, source_tx_hash, source_log_index)
 SELECT sync.chain_id, token.token_address, 'pair', CASE WHEN token.token_is_token0 THEN sync.reserve1 ELSE sync.reserve0 END, CASE WHEN token.token_is_token0 THEN sync.reserve0 ELSE sync.reserve1 END, sync.block_number, sync.block_hash, sync.block_time, sync.tx_hash, sync.log_index
@@ -117,11 +144,13 @@ INSERT INTO tokens (
     chain_id, token_address, curve_address, lp_pair, weth, creator, protocol_treasury,
     engine_version, name, symbol, total_supply, initial_virtual_eth, initial_virtual_token,
     curve_tokens, lp_tokens, graduation_eth, trade_fee_bps, protocol_share_bps,
-    launch_block_number, launch_block_hash, launch_block_time, launch_tx_hash, launch_log_index
+    launch_block_number, launch_block_hash, launch_block_time, launch_tx_hash, launch_log_index,
+    hook, locker, anti_snipe_start_bps, anti_snipe_duration_seconds, lp_creator_share_bps
 ) SELECT launch.chain_id, launch.token_address, launch.curve_address, launch.lp_pair, launch.weth, launch.creator, launch.protocol_treasury,
     launch.engine_version, launch.name, launch.symbol, launch.total_supply, launch.virtual_eth, launch.virtual_token, launch.curve_tokens,
     launch.lp_tokens, launch.graduation_eth, launch.trade_fee_bps, launch.protocol_share_bps, launch.block_number, launch.block_hash,
-    launch.block_time, launch.tx_hash, launch.log_index
+    launch.block_time, launch.tx_hash, launch.log_index,
+    launch.hook, launch.locker, launch.anti_snipe_start_bps, launch.anti_snipe_duration_seconds, launch.lp_creator_share_bps
 FROM token_launches AS launch WHERE launch.chain_id = $1 AND launch.tx_hash = $2 AND launch.log_index = $3
 ON CONFLICT (chain_id, token_address) DO NOTHING
 `
@@ -208,6 +237,49 @@ func (q *Queries) ApplyTransferProjection(ctx context.Context, arg ApplyTransfer
 	var applied pgtype.Bool
 	err := row.Scan(&applied)
 	return applied, err
+}
+
+const applyV4PoolProjection = `-- name: ApplyV4PoolProjection :exec
+INSERT INTO v4_pools (chain_id, pool_id, token_address, position_token_id, hook)
+SELECT graduation.chain_id, graduation.pool_id, graduation.token_address, graduation.position_token_id, launch.hook
+FROM graduations AS graduation
+JOIN token_launches AS launch ON launch.chain_id=graduation.chain_id AND launch.token_address=graduation.token_address
+WHERE graduation.chain_id=$1 AND graduation.tx_hash=$2 AND graduation.log_index=$3 AND graduation.pool_id IS NOT NULL
+ON CONFLICT (chain_id, pool_id) DO NOTHING
+`
+
+type ApplyV4PoolProjectionParams struct {
+	ChainID  int64
+	TxHash   Hash
+	LogIndex int32
+}
+
+// The V4 pool registry entry of an engine-2 graduation; rebuild_token_projections writes the same row.
+func (q *Queries) ApplyV4PoolProjection(ctx context.Context, arg ApplyV4PoolProjectionParams) error {
+	_, err := q.db.Exec(ctx, applyV4PoolProjection, arg.ChainID, arg.TxHash, arg.LogIndex)
+	return err
+}
+
+const applyV4ReserveProjection = `-- name: ApplyV4ReserveProjection :exec
+INSERT INTO token_reserves (chain_id, token_address, reserve_source, eth_reserve, token_reserve, sqrt_price_x96, source_block_number, source_block_hash, source_block_time, source_tx_hash, source_log_index)
+SELECT price.chain_id, price.token_address, 'v4', NULL, NULL, price.sqrt_price_x96, price.block_number, price.block_hash, price.block_time, price.tx_hash, price.log_index
+FROM v4_price_events AS price WHERE price.chain_id=$1 AND price.tx_hash=$2 AND price.log_index=$3
+ON CONFLICT (chain_id, token_address) DO UPDATE SET reserve_source=EXCLUDED.reserve_source, eth_reserve=NULL, token_reserve=NULL, sqrt_price_x96=EXCLUDED.sqrt_price_x96, source_block_number=EXCLUDED.source_block_number, source_block_hash=EXCLUDED.source_block_hash, source_block_time=EXCLUDED.source_block_time, source_tx_hash=EXCLUDED.source_tx_hash, source_log_index=EXCLUDED.source_log_index
+WHERE token_reserves.reserve_source <> 'v4'
+   OR (EXCLUDED.source_block_number, (SELECT price.transaction_index FROM v4_price_events AS price WHERE price.chain_id=$1 AND price.tx_hash=$2 AND price.log_index=$3), EXCLUDED.source_log_index) > (token_reserves.source_block_number, COALESCE((SELECT price.transaction_index FROM v4_price_events AS price WHERE price.chain_id=token_reserves.chain_id AND price.tx_hash=token_reserves.source_tx_hash AND price.log_index=token_reserves.source_log_index), -1), token_reserves.source_log_index)
+`
+
+type ApplyV4ReserveProjectionParams struct {
+	ChainID  int64
+	TxHash   Hash
+	LogIndex int32
+}
+
+// The pool price after an engine-2 graduation or V4 swap. It replaces the curve row and any earlier
+// pool price, so an out-of-order replay never moves the price backwards.
+func (q *Queries) ApplyV4ReserveProjection(ctx context.Context, arg ApplyV4ReserveProjectionParams) error {
+	_, err := q.db.Exec(ctx, applyV4ReserveProjection, arg.ChainID, arg.TxHash, arg.LogIndex)
+	return err
 }
 
 const claimAggregationDirty = `-- name: ClaimAggregationDirty :many
@@ -355,7 +427,9 @@ WITH reserves AS (DELETE FROM token_reserves WHERE token_reserves.chain_id=$1 AN
 holders AS (DELETE FROM holder_balances WHERE holder_balances.chain_id=$1 AND holder_balances.token_address=$2),
 buckets AS (DELETE FROM candles WHERE candles.chain_id=$1 AND candles.token_address=$2),
 stats AS (DELETE FROM token_stats WHERE token_stats.chain_id=$1 AND token_stats.token_address=$2),
-dirty AS (DELETE FROM aggregation_dirty WHERE aggregation_dirty.chain_id=$1 AND aggregation_dirty.token_address=$2)
+dirty AS (DELETE FROM aggregation_dirty WHERE aggregation_dirty.chain_id=$1 AND aggregation_dirty.token_address=$2),
+pools AS (DELETE FROM v4_pools WHERE v4_pools.chain_id=$1 AND v4_pools.token_address=$2),
+fees AS (DELETE FROM creator_fee_balances WHERE creator_fee_balances.chain_id=$1 AND creator_fee_balances.token_address=$2)
 DELETE FROM tokens WHERE tokens.chain_id=$1 AND tokens.token_address=$2
 `
 
@@ -517,6 +591,27 @@ type DeleteWalletRealizedLegsParams struct {
 
 func (q *Queries) DeleteWalletRealizedLegs(ctx context.Context, arg DeleteWalletRealizedLegsParams) error {
 	_, err := q.db.Exec(ctx, deleteWalletRealizedLegs, arg.ChainID, arg.Wallet, arg.TokenAddress)
+	return err
+}
+
+const ensureCreatorFeeAccounts = `-- name: EnsureCreatorFeeAccounts :exec
+INSERT INTO creator_fee_balances (chain_id, token_address, account, curve_eth_owed, locker_eth_owed, locker_token_owed)
+SELECT DISTINCT delta.chain_id, delta.token_address, delta.account, 0, 0, 0
+FROM creator_fee_deltas AS delta WHERE delta.chain_id=$1 AND delta.tx_hash=$2 AND delta.log_index=$3
+ON CONFLICT (chain_id, token_address, account) DO NOTHING
+`
+
+type EnsureCreatorFeeAccountsParams struct {
+	ChainID  int64
+	TxHash   Hash
+	LogIndex int32
+}
+
+// Opens a zero balance row for every account one event moves. ApplyCreatorFeeDeltas then adds
+// the deltas with an UPDATE: an upsert would check a claim's negative proposed row against the
+// non-negative CHECKs before resolving the conflict.
+func (q *Queries) EnsureCreatorFeeAccounts(ctx context.Context, arg EnsureCreatorFeeAccountsParams) error {
+	_, err := q.db.Exec(ctx, ensureCreatorFeeAccounts, arg.ChainID, arg.TxHash, arg.LogIndex)
 	return err
 }
 
@@ -787,7 +882,7 @@ ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregat
 
 type MarkPairTokenDirtyParams struct {
 	ChainID int64
-	LpPair  Address
+	LpPair  *Address
 }
 
 func (q *Queries) MarkPairTokenDirty(ctx context.Context, arg MarkPairTokenDirtyParams) error {
@@ -1003,6 +1098,22 @@ func (q *Queries) MarkTransferPositionsDirty(ctx context.Context, arg MarkTransf
 	return err
 }
 
+const markV4PoolTokenDirty = `-- name: MarkV4PoolTokenDirty :exec
+INSERT INTO aggregation_dirty (chain_id, token_address, generation)
+SELECT graduation.chain_id, graduation.token_address, nextval('aggregation_dirty_generation_seq') FROM graduations AS graduation WHERE graduation.chain_id=$1 AND graduation.pool_id=$2
+ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregation_dirty_generation_seq')
+`
+
+type MarkV4PoolTokenDirtyParams struct {
+	ChainID int64
+	PoolID  *Hash
+}
+
+func (q *Queries) MarkV4PoolTokenDirty(ctx context.Context, arg MarkV4PoolTokenDirtyParams) error {
+	_, err := q.db.Exec(ctx, markV4PoolTokenDirty, arg.ChainID, arg.PoolID)
+	return err
+}
+
 const rebuildTokenProjections = `-- name: RebuildTokenProjections :exec
 SELECT rebuild_token_projections($1, $2)
 `
@@ -1075,16 +1186,26 @@ WITH clock AS (
         t.initial_virtual_eth * 1000000000000000000 / NULLIF(t.initial_virtual_token, 0) AS launch_price,
         t.launch_block_time,
         -- Before the first trade there is no reserve row; the curve still quotes from its
-        -- initial virtual reserves, matching GetTokenDetail and GetTokenQuoteState.
-        COALESCE(COALESCE(reserve.eth_reserve, t.initial_virtual_eth) * 1000000000000000000
-            / NULLIF(COALESCE(reserve.token_reserve, t.initial_virtual_token), 0), 0) AS spot_price,
-        COALESCE(reserve.eth_reserve, t.initial_virtual_eth, 0) AS liquidity,
+        -- initial virtual reserves, matching GetTokenDetail and GetTokenQuoteState. A graduated
+        -- engine-2 token prices from its V4 pool and reports no liquidity figure.
+        CASE WHEN reserve.reserve_source = 'v4'
+            THEN COALESCE(v4_spot_price_wad(reserve.sqrt_price_x96), 0)
+            ELSE COALESCE(COALESCE(reserve.eth_reserve, t.initial_virtual_eth) * 1000000000000000000
+                / NULLIF(COALESCE(reserve.token_reserve, t.initial_virtual_token), 0), 0)
+        END AS spot_price,
+        CASE WHEN reserve.reserve_source = 'v4' THEN NULL
+            ELSE COALESCE(reserve.eth_reserve, t.initial_virtual_eth, 0)
+        END AS liquidity,
         t.total_supply,
         t.curve_address,
-        t.lp_pair
+        t.lp_pair,
+        t.engine_version,
+        t.locker,
+        manager.pool_manager
     FROM tokens AS t
     LEFT JOIN token_reserves AS reserve
       ON reserve.chain_id = t.chain_id AND reserve.token_address = t.token_address
+    LEFT JOIN v4_pool_managers AS manager ON manager.chain_id = t.chain_id
     WHERE t.chain_id = $1 AND t.token_address = $2
 ), candles_ath AS (
     SELECT c.chain_id, c.token_address, c.high_price_wad, c.bucket_start_time
@@ -1123,12 +1244,8 @@ WITH clock AS (
         ), 0) AS non_circulating,
         count(*) FILTER (
             WHERE h.balance > 0
-              AND h.holder_address NOT IN (
-                  p.curve_address,
-                  p.lp_pair,
-                  decode('0000000000000000000000000000000000000000', 'hex'),
-                  decode('000000000000000000000000000000000000dead', 'hex')
-              )
+              AND NOT token_holder_excluded(p.engine_version, h.holder_address, p.curve_address,
+                                            p.lp_pair, p.locker, p.pool_manager)
         )::INTEGER AS holder_count
     FROM prices AS p
     LEFT JOIN holder_balances AS h
@@ -1136,7 +1253,7 @@ WITH clock AS (
     GROUP BY p.chain_id, p.token_address
 ), computed AS (
     SELECT
-        p.chain_id, p.token_address, p.launch_price, p.launch_block_time, p.spot_price, p.liquidity, p.total_supply, p.curve_address, p.lp_pair,
+        p.chain_id, p.token_address, p.launch_price, p.launch_block_time, p.spot_price, p.liquidity, p.total_supply, p.curve_address, p.lp_pair, p.engine_version, p.locker, p.pool_manager,
         h.non_circulating,
         h.holder_count,
         rolling.volume_24h,
@@ -1231,6 +1348,29 @@ type RecomputeWalletTotalsParams struct {
 func (q *Queries) RecomputeWalletTotals(ctx context.Context, arg RecomputeWalletTotalsParams) error {
 	_, err := q.db.Exec(ctx, recomputeWalletTotals, arg.ChainID, arg.Wallet)
 	return err
+}
+
+const registerV4PoolManager = `-- name: RegisterV4PoolManager :one
+WITH inserted AS (
+    INSERT INTO v4_pool_managers (chain_id, pool_manager) VALUES ($1, $2)
+    ON CONFLICT (chain_id) DO NOTHING
+    RETURNING pool_manager
+)
+SELECT pool_manager FROM inserted
+UNION ALL
+SELECT existing.pool_manager FROM v4_pool_managers AS existing WHERE existing.chain_id=$1 AND NOT EXISTS (SELECT 1 FROM inserted)
+`
+
+type RegisterV4PoolManagerParams struct {
+	ChainID     int64
+	PoolManager Address
+}
+
+func (q *Queries) RegisterV4PoolManager(ctx context.Context, arg RegisterV4PoolManagerParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, registerV4PoolManager, arg.ChainID, arg.PoolManager)
+	var pool_manager []byte
+	err := row.Scan(&pool_manager)
+	return pool_manager, err
 }
 
 const seedTokenPositionDirty = `-- name: SeedTokenPositionDirty :one

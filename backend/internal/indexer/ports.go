@@ -23,15 +23,21 @@ type TokenIdentity struct {
 	EngineVersion      uint16
 	Launch             ledger.EventCoordinates
 	GraduationBlock    *int64
+	// PoolID is the persisted V4 pool of a graduated engine-2 token, nil otherwise.
+	PoolID *common.Hash
 }
 
 type UnitOfWork interface {
 	ReadState(context.Context, int64, string) (State, error)
+	// ForeignDeployments lists the other deployments with indexer state on the chain.
+	ForeignDeployments(context.Context, int64, string) ([]string, error)
 	WriteState(context.Context, State) error
 	ReadBlock(context.Context, int64, int64) (ledger.IndexedBlock, bool, error)
 	UpsertIndexedBlock(context.Context, ledger.IndexedBlock) (ledger.UpsertResult, error)
 	PromoteBlocks(context.Context, int64, *ledger.IndexedBlock, *ledger.IndexedBlock, int64, int64) error
 	TokenIdentities(context.Context, int64) ([]TokenIdentity, error)
+	// GraduatedV4Pools maps each persisted engine-2 pool id on the chain to its token.
+	GraduatedV4Pools(context.Context, int64) (map[common.Hash]common.Address, error)
 }
 
 type Store interface {

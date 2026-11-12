@@ -114,7 +114,7 @@ func (r FeedReader) GraduationsAfter(ctx context.Context, chainID int64, after f
 	out := make([]feed.Graduation, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, feed.Graduation{
-			Token: common.Address(row.TokenAddress), Pair: common.Address(row.LpPair), Name: row.Name, Symbol: row.Symbol,
+			Token: common.Address(row.TokenAddress), Pair: addressOrZero(row.LpPair), Name: row.Name, Symbol: row.Symbol,
 			TxHash: common.Hash(row.TxHash), Block: row.BlockNumber, TxIndex: row.TransactionIndex, LogIndex: row.LogIndex,
 		})
 	}

@@ -78,6 +78,13 @@ func (a *Adapter) ReadState(ctx context.Context, chainID int64, deployment strin
 	}
 	return indexer.State{ChainID: chainID, DeploymentID: deployment, Observed: syncBlock(chainID, state.ObservedNumber, state.ObservedHash, state.ObservedAt), Safe: syncBlock(chainID, state.SafeNumber, state.SafeHash, state.SafeAt), Finalized: syncBlock(chainID, state.FinalizedNumber, state.FinalizedHash, state.FinalizedAt)}, nil
 }
+func (a *Adapter) ForeignDeployments(ctx context.Context, chainID int64, deployment string) ([]string, error) {
+	others, err := a.queries.ListForeignSyncDeployments(ctx, sqlc.ListForeignSyncDeploymentsParams{ChainID: chainID, DeploymentID: deployment})
+	if err != nil {
+		return nil, fmt.Errorf("list other deployments on chain %d: %w", chainID, err)
+	}
+	return others, nil
+}
 func syncBlock(chainID int64, n pgtype.Int8, h *Hash, at pgtype.Timestamptz) *ledger.IndexedBlock {
 	if !n.Valid || h == nil || !at.Valid {
 		return nil
@@ -124,6 +131,21 @@ func (a *Adapter) PromoteBlocks(ctx context.Context, chainID int64, safe, final 
 	}
 	return nil
 }
+func (a *Adapter) GraduatedV4Pools(ctx context.Context, chainID int64) (map[common.Hash]common.Address, error) {
+	rows, err := a.queries.ListGraduatedV4Pools(ctx, chainID)
+	if err != nil {
+		return nil, err
+	}
+	pools := make(map[common.Hash]common.Address, len(rows))
+	for _, row := range rows {
+		if row.PoolID == nil {
+			return nil, fmt.Errorf("graduated V4 pool of token %s has no pool id", common.Address(row.TokenAddress).Hex())
+		}
+		pools[common.Hash(*row.PoolID)] = common.Address(row.TokenAddress)
+	}
+	return pools, nil
+}
+
 func (a *Adapter) TokenIdentities(ctx context.Context, chainID int64) ([]indexer.TokenIdentity, error) {
 	rows, err := a.queries.ListTokenIdentities(ctx, chainID)
 	if err != nil {
@@ -131,7 +153,7 @@ func (a *Adapter) TokenIdentities(ctx context.Context, chainID int64) ([]indexer
 	}
 	result := make([]indexer.TokenIdentity, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, indexer.TokenIdentity{Token: common.Address(row.TokenAddress), Curve: common.Address(row.CurveAddress), Pair: common.Address(row.LpPair), EngineVersion: uint16(row.EngineVersion), Launch: ledger.EventCoordinates{ChainID: chainID, BlockNumber: row.LaunchBlockNumber, BlockHash: common.Hash(row.LaunchBlockHash), BlockTime: row.LaunchBlockTime.Time}})
+		result = append(result, indexer.TokenIdentity{Token: common.Address(row.TokenAddress), Curve: common.Address(row.CurveAddress), Pair: addressOrZero(row.LpPair), EngineVersion: uint16(row.EngineVersion), Launch: ledger.EventCoordinates{ChainID: chainID, BlockNumber: row.LaunchBlockNumber, BlockHash: common.Hash(row.LaunchBlockHash), BlockTime: row.LaunchBlockTime.Time}})
 	}
 	return result, nil
 }

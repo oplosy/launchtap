@@ -21,6 +21,18 @@ SELECT DISTINCT affected.token_address FROM (
     UNION ALL SELECT credit.token_address FROM refund_credits AS credit WHERE credit.chain_id=$1 AND credit.block_number>$2
     UNION ALL SELECT claim.token_address FROM refund_claims AS claim WHERE claim.chain_id=$1 AND claim.block_number>$2
     UNION ALL SELECT transfer.token_address FROM transfers AS transfer WHERE transfer.chain_id=$1 AND transfer.block_number>$2
+    UNION ALL SELECT claim.token_address FROM snipe_tax_claims AS claim WHERE claim.chain_id=$1 AND claim.block_number>$2
+    UNION ALL SELECT proposal.token_address FROM fee_recipient_proposals AS proposal WHERE proposal.chain_id=$1 AND proposal.block_number>$2
+    UNION ALL SELECT acceptance.token_address FROM fee_recipient_acceptances AS acceptance WHERE acceptance.chain_id=$1 AND acceptance.block_number>$2
+    UNION ALL SELECT collection.token_address FROM lp_fee_collections AS collection WHERE collection.chain_id=$1 AND collection.block_number>$2
+    UNION ALL SELECT claim.token_address FROM lp_fee_claims AS claim WHERE claim.chain_id=$1 AND claim.block_number>$2
+    -- V4 pool events resolve to their token through the graduation ledger, not a projection.
+    UNION ALL
+    SELECT graduation.token_address FROM graduations AS graduation JOIN (
+        SELECT initialization.pool_id FROM v4_pool_initializations AS initialization WHERE initialization.chain_id=$1 AND initialization.block_number>$2
+        UNION SELECT change.pool_id FROM v4_liquidity_changes AS change WHERE change.chain_id=$1 AND change.block_number>$2
+        UNION SELECT swap.pool_id FROM v4_swaps AS swap WHERE swap.chain_id=$1 AND swap.block_number>$2
+    ) AS pools ON pools.pool_id=graduation.pool_id WHERE graduation.chain_id=$1
     UNION ALL
     SELECT token.token_address FROM tokens AS token JOIN (
         SELECT mint.pair_address FROM pool_mints AS mint WHERE mint.chain_id=$1 AND mint.block_number>$2
@@ -109,6 +121,40 @@ type DeleteEngineConfigurationsAboveParams struct {
 
 func (q *Queries) DeleteEngineConfigurationsAbove(ctx context.Context, arg DeleteEngineConfigurationsAboveParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteEngineConfigurationsAbove, arg.ChainID, arg.BlockNumber)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteFeeRecipientAcceptancesAbove = `-- name: DeleteFeeRecipientAcceptancesAbove :execrows
+DELETE FROM fee_recipient_acceptances WHERE chain_id=$1 AND block_number>$2
+`
+
+type DeleteFeeRecipientAcceptancesAboveParams struct {
+	ChainID     int64
+	BlockNumber int64
+}
+
+func (q *Queries) DeleteFeeRecipientAcceptancesAbove(ctx context.Context, arg DeleteFeeRecipientAcceptancesAboveParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteFeeRecipientAcceptancesAbove, arg.ChainID, arg.BlockNumber)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteFeeRecipientProposalsAbove = `-- name: DeleteFeeRecipientProposalsAbove :execrows
+DELETE FROM fee_recipient_proposals WHERE chain_id=$1 AND block_number>$2
+`
+
+type DeleteFeeRecipientProposalsAboveParams struct {
+	ChainID     int64
+	BlockNumber int64
+}
+
+func (q *Queries) DeleteFeeRecipientProposalsAbove(ctx context.Context, arg DeleteFeeRecipientProposalsAboveParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteFeeRecipientProposalsAbove, arg.ChainID, arg.BlockNumber)
 	if err != nil {
 		return 0, err
 	}
@@ -211,6 +257,40 @@ type DeleteLaunchPauseEventsAboveParams struct {
 
 func (q *Queries) DeleteLaunchPauseEventsAbove(ctx context.Context, arg DeleteLaunchPauseEventsAboveParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteLaunchPauseEventsAbove, arg.ChainID, arg.BlockNumber)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteLpFeeClaimsAbove = `-- name: DeleteLpFeeClaimsAbove :execrows
+DELETE FROM lp_fee_claims WHERE chain_id=$1 AND block_number>$2
+`
+
+type DeleteLpFeeClaimsAboveParams struct {
+	ChainID     int64
+	BlockNumber int64
+}
+
+func (q *Queries) DeleteLpFeeClaimsAbove(ctx context.Context, arg DeleteLpFeeClaimsAboveParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteLpFeeClaimsAbove, arg.ChainID, arg.BlockNumber)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteLpFeeCollectionsAbove = `-- name: DeleteLpFeeCollectionsAbove :execrows
+DELETE FROM lp_fee_collections WHERE chain_id=$1 AND block_number>$2
+`
+
+type DeleteLpFeeCollectionsAboveParams struct {
+	ChainID     int64
+	BlockNumber int64
+}
+
+func (q *Queries) DeleteLpFeeCollectionsAbove(ctx context.Context, arg DeleteLpFeeCollectionsAboveParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteLpFeeCollectionsAbove, arg.ChainID, arg.BlockNumber)
 	if err != nil {
 		return 0, err
 	}
@@ -336,6 +416,24 @@ func (q *Queries) DeleteRefundCreditsAbove(ctx context.Context, arg DeleteRefund
 	return result.RowsAffected(), nil
 }
 
+const deleteSnipeTaxClaimsAbove = `-- name: DeleteSnipeTaxClaimsAbove :execrows
+DELETE FROM snipe_tax_claims WHERE chain_id=$1 AND block_number>$2
+`
+
+type DeleteSnipeTaxClaimsAboveParams struct {
+	ChainID     int64
+	BlockNumber int64
+}
+
+// Engine-2 ledger. V4 pool rows reference graduations, so they are deleted before them.
+func (q *Queries) DeleteSnipeTaxClaimsAbove(ctx context.Context, arg DeleteSnipeTaxClaimsAboveParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteSnipeTaxClaimsAbove, arg.ChainID, arg.BlockNumber)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteTokenLaunchesAbove = `-- name: DeleteTokenLaunchesAbove :execrows
 DELETE FROM token_launches WHERE chain_id=$1 AND block_number>$2
 `
@@ -398,6 +496,57 @@ type DeleteTransfersAboveParams struct {
 
 func (q *Queries) DeleteTransfersAbove(ctx context.Context, arg DeleteTransfersAboveParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteTransfersAbove, arg.ChainID, arg.BlockNumber)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteV4LiquidityChangesAbove = `-- name: DeleteV4LiquidityChangesAbove :execrows
+DELETE FROM v4_liquidity_changes WHERE chain_id=$1 AND block_number>$2
+`
+
+type DeleteV4LiquidityChangesAboveParams struct {
+	ChainID     int64
+	BlockNumber int64
+}
+
+func (q *Queries) DeleteV4LiquidityChangesAbove(ctx context.Context, arg DeleteV4LiquidityChangesAboveParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteV4LiquidityChangesAbove, arg.ChainID, arg.BlockNumber)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteV4PoolInitializationsAbove = `-- name: DeleteV4PoolInitializationsAbove :execrows
+DELETE FROM v4_pool_initializations WHERE chain_id=$1 AND block_number>$2
+`
+
+type DeleteV4PoolInitializationsAboveParams struct {
+	ChainID     int64
+	BlockNumber int64
+}
+
+func (q *Queries) DeleteV4PoolInitializationsAbove(ctx context.Context, arg DeleteV4PoolInitializationsAboveParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteV4PoolInitializationsAbove, arg.ChainID, arg.BlockNumber)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteV4SwapsAbove = `-- name: DeleteV4SwapsAbove :execrows
+DELETE FROM v4_swaps WHERE chain_id=$1 AND block_number>$2
+`
+
+type DeleteV4SwapsAboveParams struct {
+	ChainID     int64
+	BlockNumber int64
+}
+
+func (q *Queries) DeleteV4SwapsAbove(ctx context.Context, arg DeleteV4SwapsAboveParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteV4SwapsAbove, arg.ChainID, arg.BlockNumber)
 	if err != nil {
 		return 0, err
 	}
