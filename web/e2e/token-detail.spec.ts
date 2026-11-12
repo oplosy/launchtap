@@ -89,6 +89,29 @@ async function installFixture(page: Page, tokenOverrides: Record<string, unknown
       });
       return;
     }
+    if (url.pathname.endsWith("/created")) {
+      // The fixture creator launched this token and one other that graduated.
+      const created = (token: string, phase: string) => ({
+        token,
+        phase,
+        name: "Created",
+        symbol: "CRT",
+        launch_block: 100,
+        market_cap_wei: "0",
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          snapshot,
+          items: [
+            created(tokenAddress, "curve"),
+            created("0x0000000000000000000000000000000000000002", "graduated"),
+          ],
+        }),
+      });
+      return;
+    }
     if (url.pathname.endsWith("/holders")) {
       await route.fulfill({
         status: 200,
@@ -209,6 +232,9 @@ test("populated token detail renders controls, pages, and responsive captures", 
   await launchFactsPanel.screenshot({
     path: path.resolve(process.cwd(), "../.impeccable/review/v1-launch-facts.png"),
   });
+  await expect(page.locator(".token-creator")).toHaveText(
+    "Created by 0x000000…000001. Launched 1 other token on Launchpad; 1 graduated.",
+  );
   await page.getByRole("tab", { name: "Holders" }).click();
   await expect(page.getByRole("table", { name: "Token holders" })).toContainText("100");
   // One holder of 100 out of the 1,000 supply.
