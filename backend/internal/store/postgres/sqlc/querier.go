@@ -53,7 +53,7 @@ type Querier interface {
 	CountTokenWatchers(ctx context.Context, arg CountTokenWatchersParams) (int64, error)
 	// v1 pool swaps and V4 swaps still without a sender at or below through_block (the indexer's
 	// safe head). The v1 side is served by the partial index pool_swaps_tx_from_null_idx; the V4
-	// side has no such index yet (backlog.md).
+	// side by v4_swaps_tx_from_null_idx.
 	CountUnattributedPoolSwaps(ctx context.Context, arg CountUnattributedPoolSwapsParams) (int64, error)
 	// Unread events after the owner's read position, counted up to 100.
 	CountUnreadInboxEvents(ctx context.Context, arg CountUnreadInboxEventsParams) (int64, error)
@@ -138,7 +138,8 @@ type Querier interface {
 	// unbanned user with a username).
 	GetWalletUsername(ctx context.Context, arg GetWalletUsernameParams) (string, error)
 	// Single source of the read-time position value (also used by ListWalletOpenPositions):
-	//   current_value = div(balance * eth_reserve, NULLIF(token_reserve, 0)), coalesced to 0
+	//   current_value = div(balance * eth_reserve, NULLIF(token_reserve, 0)), coalesced to 0; a
+	//   graduated engine-2 token ('v4' reserve) uses div(balance * v4_spot_price_wad, 1e18) instead.
 	// div() is exact truncating division; a missing token_reserves row or a zero token_reserve gives 0.
 	// unrealized PnL = current_value - remaining_cost, computed by the reader.
 	GetWalletValuation(ctx context.Context, arg GetWalletValuationParams) (GetWalletValuationRow, error)
@@ -209,8 +210,9 @@ type Querier interface {
 	// contributes at most page_size rows through its own ordered index scan.
 	ListInboxEvents(ctx context.Context, arg ListInboxEventsParams) ([]ListInboxEventsRow, error)
 	ListLaunchesAfter(ctx context.Context, arg ListLaunchesAfterParams) ([]ListLaunchesAfterRow, error)
-	// R4 at read time: the zero address and every curve or pair address are never ranked. The factory
-	// is never marked dirty, so it never has totals.
+	// R4 at read time: the zero address, every curve or pair address, every engine-2 locker and the
+	// chain's V4 PoolManager are never ranked. The factory is never marked dirty, so it never has
+	// totals.
 	// Only wallets with a positive realized PnL rank; fewer than page_size rows is normal. Ties are
 	// broken by wallet address, so the order is deterministic.
 	ListLeaderboard(ctx context.Context, arg ListLeaderboardParams) ([]ListLeaderboardRow, error)
@@ -227,7 +229,8 @@ type Querier interface {
 	// One leg per transaction that touched (wallet, token), ordered by (block, tx index) (R1):
 	// token_delta is the wallet's net transfers in the tx (a self-transfer nets to 0); ETH comes only
 	// from trades attributed to the wallet: curve trades by trader, pool swaps by tx_from on the
-	// token's own pair, valued on the pair's WETH side.
+	// token's own pair, valued on the pair's WETH side, and V4 swaps by tx_from on the token's
+	// graduated pool, valued on the swapper's native-ETH delta (amount0 < 0 paid, > 0 received).
 	// Every leg's block is an indexed canonical block (ledger rows reference indexed_blocks), so the
 	// inner join drops nothing; it supplies the block time the windowed leaderboard filters on.
 	ListPositionLegs(ctx context.Context, arg ListPositionLegsParams) ([]ListPositionLegsRow, error)
@@ -297,6 +300,10 @@ type Querier interface {
 	MarkTokensWithVolumeDirty(ctx context.Context, chainID int64) (int64, error)
 	MarkTransferPositionsDirty(ctx context.Context, arg MarkTransferPositionsDirtyParams) error
 	MarkV4PoolTokenDirty(ctx context.Context, arg MarkV4PoolTokenDirtyParams) error
+	// The V4 side of MarkPoolSwapPositionDirty: marks (tx_from, graduated token of the pool) dirty.
+	// A NULL tx_from (sender not yet known) is a no-op; the zero address, the factory, the curve, the
+	// locker and the PoolManager never get a position (token_holder_excluded).
+	MarkV4SwapPositionDirty(ctx context.Context, arg MarkV4SwapPositionDirtyParams) error
 	NotifyAPIRefresh(ctx context.Context, payload string) error
 	PoolBurnMatchesEvent(ctx context.Context, arg PoolBurnMatchesEventParams) (pgtype.Bool, error)
 	PoolMintMatchesEvent(ctx context.Context, arg PoolMintMatchesEventParams) (pgtype.Bool, error)

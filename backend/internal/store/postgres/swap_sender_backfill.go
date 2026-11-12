@@ -43,10 +43,9 @@ func (adapter *Adapter) CountUnattributedSwaps(ctx context.Context, chainID, thr
 }
 
 // AttributeSwapSender fills tx_from on every still-unattributed v1 pool swap and V4 swap of
-// txHash. A v1 swap marks its (sender, token) position dirty; a V4 swap re-marks its graduated
-// token's aggregate, as IngestV4Swap does (V4 positions are not projected yet). It returns the
-// number of swaps updated; a swap that already has a sender is left alone, so a rerun updates
-// nothing.
+// txHash and marks the affected (sender, token) positions dirty; a V4 swap also re-marks its
+// graduated token's aggregate, as IngestV4Swap does. It returns the number of swaps updated; a
+// swap that already has a sender is left alone, so a rerun updates nothing.
 func (adapter *Adapter) AttributeSwapSender(ctx context.Context, chainID int64, txHash common.Hash, sender common.Address) (int, error) {
 	pairs, err := adapter.queries.SetPoolSwapTxFrom(ctx, sqlc.SetPoolSwapTxFromParams{ChainID: chainID, TxHash: txHash[:], TxFrom: sender[:]})
 	if err != nil {
@@ -74,6 +73,9 @@ func (adapter *Adapter) AttributeSwapSender(ctx context.Context, chainID int64, 
 		markedPools[poolID] = struct{}{}
 		if err := adapter.queries.MarkV4PoolTokenDirty(ctx, sqlc.MarkV4PoolTokenDirtyParams{ChainID: chainID, PoolID: &poolID}); err != nil {
 			return 0, fmt.Errorf("mark V4 pool token dirty: %w", err)
+		}
+		if err := adapter.queries.MarkV4SwapPositionDirty(ctx, sqlc.MarkV4SwapPositionDirtyParams{ChainID: chainID, PoolID: poolID[:], TxFrom: sender[:], Factory: adapter.factory[:]}); err != nil {
+			return 0, fmt.Errorf("mark V4 swap position dirty: %w", err)
 		}
 	}
 	return len(pairs) + len(pools), nil

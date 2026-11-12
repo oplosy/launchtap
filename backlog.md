@@ -15,22 +15,6 @@
 
 ## Active
 
-### V4 swap sender backfill: index and positions
-
-- **Date:** 2026-11-12
-- **Reason:** scope decision (the backfill itself is done; these need a migration or V4 positions)
-- **Where it stopped:** `internal/swapbackfill` now fills NULL `tx_from` on `v4_swaps` too and
-  re-marks the graduated token's aggregate. Open: `v4_swaps` has no partial
-  `tx_from IS NULL` index (the v1 side has `pool_swaps_tx_from_null_idx`), so the scheduler's
-  per-pass count scans `v4_swaps`; and no position-dirty mark exists for V4 swaps because V4
-  positions are not projected.
-- **Related files:** `backend/internal/store/postgres/queries/projections.sql`
-  (`CountUnattributedPoolSwaps`), `backend/internal/store/postgres/swap_sender_backfill.go`
-- **Resume (next step):** add the index in the next schema migration (the down-migration tests
-  that expect the 00024/00025 guards on the first `down` need one extra step), and add the V4
-  position mark together with the V4 position projection (Engine v2 backend known limitations).
-- **Pitfalls / notes:** The V4 `Swap.sender` is the router; never use it as the trader (pre-flight R4).
-
 ### P0-A external inputs: CoinGecko key and market-link identifiers
 
 - **Date:** 2026-11-05
@@ -70,8 +54,9 @@
   `x402`, which pulls wagmi 2 → WalletConnect 2.21.1 → `decode-uri-component` 0.2.2, and zod 3
   still arrives through `x402`, Reown and `abitype`; wagmi 3 changes nothing. Details:
   `docs/audits/runtime-advisory-review-2026-11-06.md`. The upgrade was not done.
-  **Re-checked 2026-11-09:** the newest release, `@privy-io/react-auth` 3.51.3, still depends
-  on `x402` ^0.7.1, which requires wagmi ^2.15.6 and zod ^3.24.2, so both highs remain.
+  **Re-checked 2026-11-09 and 2026-11-12:** the newest release, `@privy-io/react-auth` 3.51.3,
+  still depends on `x402` ^0.7.1 (latest 1.2.0 of `x402` itself still requires wagmi ^2.15.6
+  and zod ^3.24.2), so both highs remain.
 - **Resume (next step):** Before 2027-02-01, re-run the trial install from that document with
   the then-current Privy release. Upgrade only once `npm audit --omit=dev` on the trial tree no
   longer reports the two highs; otherwise renew the allowlist entries with a fresh impact review.
@@ -166,39 +151,46 @@
 
 ---
 
-### Plan v2-C Task 9 follow-ups
+### Engine v2 protocol revenue projection
 
 - **Date:** 2026-11-12
-- **Reason:** scope decision (outside the Task 9 lifecycle the plan specifies)
-- **Where it stopped:** the Anvil v2 gate (`npm run test:anvil-v2`) proves launch, taxed and
-  untaxed buys, graduation, the pool id check, a V4 buy and Permit2 sell, both claims and an
-  accepted recipient change, including proposal cancel and replace and a reload that restores the
-  creator panel's last write. Not fixed: the token page shows the pool id as text, not a link (a
-  pool id is not an explorer address).
-- **Related files:** `web/src/transactions-panel.tsx`
-- **Resume (next step):** decide whether the pool id links anywhere (the chain explorer has no
-  V4 pool page); if not, close this item as won't-fix.
-- **Pitfalls / notes:** the gate runs one project (`small-laptop`) because it shares Anvil state
-  (chain time, graduation). The anti-snipe window in `DeployLocalV2` is 60 s of chain time, so
-  the taxed buy must stay quick after launch.
-
-### Engine v2 backend known limitations
-
-- **Date:** 2026-11-12
-- **Reason:** scope decision (left out of Plan v2-B, merged in oplosy/launchtap#27)
-- **Where it stopped:** For graduated v2 tokens, `liquidity_eth`, `eth_reserve` and
-  `token_reserve` fall back via COALESCE (V4 liquidity is not projected); v4 wallet
-  valuation is 0; the leaderboard does not exclude the locker or the PoolManager; there is no
-  protocol-revenue projection.
-- **Related files:** `backend/internal/store/postgres/migrations/00025_engine_v2_projections.sql`,
-  `backend/internal/store/postgres/queries/read.sql`, `backend/internal/apiserver/public_routes.go`
-- **Resume (next step):** Project V4 liquidity from `v4_liquidity_changes`, value v4 holdings
-  from the pool spot price, exclude the locker and PoolManager from the leaderboard, then make
-  the API fields nullable for v4 in one coordinated web/API change.
-- **Pitfalls / notes:** Plan v2-C Task 8 shows "not indexed yet" instead of these placeholders;
-  remove that once the backend projects real values.
+- **Reason:** scope decision (no consumer exists: no API field, no screen, no spec)
+- **Where it stopped:** the other engine v2 backend limitations are closed (see Done). Plan v2-B
+  lists a protocol revenue projection (`snipe_tax` and the graduation `eth_remainder`, with
+  `SnipeTaxClaimed` as its own claim stream), but nothing reads protocol revenue for engine 1
+  either, so a projection now would be unread.
+- **Related files:** `docs/plans/2026-11-11-v2-engine-backend.md` ("Protocol revenue"),
+  `backend/internal/store/postgres/migrations/00025_engine_v2_projections.sql`
+- **Resume (next step):** owner decides where protocol revenue is shown (an analytics card, an
+  operator-only endpoint, or nowhere); then spec the read model for both engines and build the
+  projection with its first consumer.
+- **Pitfalls / notes:** treasury fee claims already exist as ledger rows; derive revenue from the
+  ledger, never from on-chain balance reads.
 
 ## Done
+
+### Engine v2 backend limitations: V4 positions, valuation, leaderboard
+
+- **Date:** 2026-11-12
+- **What closed:**
+  - V4 swaps are priced position legs of their `tx_from` (`ListPositionLegs`), marked dirty on
+    ingest, in the sender backfill, in the position seed and on reorg, with the zero address,
+    factory, curve, locker and PoolManager excluded (`token_holder_excluded`).
+  - Graduated engine-2 holdings are valued at the V4 spot price (`GetWalletValuation`,
+    `ListWalletOpenPositions`) instead of 0.
+  - Both leaderboards exclude every engine-2 locker and the chain's PoolManager.
+  - Migration 00026 adds `v4_swaps_tx_from_null_idx` for the backfill's per-pass count.
+  - V4 pool liquidity stays NULL by design (Plan v2-B pre-flight R5: no full-range math; the
+    locker position is shown separately). Won't fix; the token page keeps its "not indexed yet"
+    liquidity cell.
+- **Left open:** the protocol revenue projection (Active).
+
+### Plan v2-C Task 9 follow-up: pool id link
+
+- **Date:** 2026-11-12
+- **What closed:** won't fix. A V4 pool id is a `bytes32` key inside the PoolManager, not an
+  address, and the chain explorer has no V4 pool page, so a link would point nowhere. The token
+  page keeps showing the pool id as copyable text.
 
 ### V4 swap sender backfill
 

@@ -175,7 +175,8 @@ func (adapter *Adapter) IngestV4LiquidityChange(ctx context.Context, event ledge
 	})
 }
 
-// IngestV4Swap stores the swap, moves the token's pool price, and adds the swap to the candles.
+// IngestV4Swap stores the swap, moves the token's pool price, adds the swap to the candles, and
+// marks the token aggregate and the (tx_from, token) position dirty.
 // The identity check ignores tx_from: the sender is enrichment that a replay may know when the
 // first ingest did not.
 func (adapter *Adapter) IngestV4Swap(ctx context.Context, event ledger.V4Swap) (ledger.InsertResult, error) {
@@ -193,6 +194,11 @@ func (adapter *Adapter) IngestV4Swap(ctx context.Context, event ledger.V4Swap) (
 	poolID := sqlc.Hash(event.PoolID)
 	if err := adapter.queries.MarkV4PoolTokenDirty(ctx, sqlc.MarkV4PoolTokenDirtyParams{ChainID: event.ChainID, PoolID: &poolID}); err != nil {
 		return ledger.InsertResult{}, fmt.Errorf("mark V4 pool token dirty: %w", err)
+	}
+	if event.TxFrom != nil {
+		if err := adapter.queries.MarkV4SwapPositionDirty(ctx, sqlc.MarkV4SwapPositionDirtyParams{ChainID: event.ChainID, PoolID: poolID[:], TxFrom: event.TxFrom[:], Factory: adapter.factory[:]}); err != nil {
+			return ledger.InsertResult{}, fmt.Errorf("mark V4 swap position dirty: %w", err)
+		}
 	}
 	return result, nil
 }

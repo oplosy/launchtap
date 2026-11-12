@@ -114,6 +114,11 @@ func TestBackfillFillsV4SwapSenders(t *testing.T) {
 	if err := database.DB.QueryRowContext(ctx, `SELECT generation FROM aggregation_dirty WHERE chain_id = $1 AND token_address = $2`, chainID, token[:]).Scan(&generation); err != nil {
 		t.Fatalf("token aggregate not re-marked after the V4 backfill: %v", err)
 	}
+	// The trader has no transfer of its own here, so only the V4 position mark queues it.
+	var positionGeneration int64
+	if err := database.DB.QueryRowContext(ctx, `SELECT generation FROM position_dirty WHERE chain_id = $1 AND wallet = $2 AND token_address = $3`, chainID, trader[:], token[:]).Scan(&positionGeneration); err != nil {
+		t.Fatalf("(trader, token) position not marked after the V4 backfill: %v", err)
+	}
 
 	if again := run(); again.Listed != 0 || again.Updated != 0 {
 		t.Fatalf("second run summary = %+v, want nothing", again)

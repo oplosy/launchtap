@@ -243,6 +243,22 @@ WHERE token.chain_id = sqlc.arg(chain_id)::bigint AND token.lp_pair = sqlc.arg(p
   )
 ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq');
 
+-- name: MarkV4SwapPositionDirty :exec
+-- The V4 side of MarkPoolSwapPositionDirty: marks (tx_from, graduated token of the pool) dirty.
+-- A NULL tx_from (sender not yet known) is a no-op; the zero address, the factory, the curve, the
+-- locker and the PoolManager never get a position (token_holder_excluded).
+INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
+SELECT graduation.chain_id, sqlc.arg(tx_from)::bytea, graduation.token_address, nextval('position_dirty_generation_seq')
+FROM graduations AS graduation
+JOIN tokens AS token ON token.chain_id = graduation.chain_id AND token.token_address = graduation.token_address
+LEFT JOIN v4_pool_managers AS manager ON manager.chain_id = graduation.chain_id
+WHERE graduation.chain_id = sqlc.arg(chain_id)::bigint AND graduation.pool_id = sqlc.arg(pool_id)::bytea
+  AND sqlc.arg(tx_from)::bytea IS NOT NULL
+  AND sqlc.arg(tx_from)::bytea <> sqlc.arg(factory)::bytea
+  AND NOT token_holder_excluded(token.engine_version, sqlc.arg(tx_from)::bytea, token.curve_address,
+                                token.lp_pair, token.locker, manager.pool_manager)
+ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq');
+
 -- name: ClearLaunchPositionDirty :exec
 -- The launch mint Transfer(0 -> curve) is ingested before the tokens row exists (the token
 -- constructor logs it before TokenLaunched), so the exclusion lookup could not see the curve.
@@ -326,7 +342,8 @@ WHERE chain_id = sqlc.arg(chain_id)
 -- One leg per transaction that touched (wallet, token), ordered by (block, tx index) (R1):
 -- token_delta is the wallet's net transfers in the tx (a self-transfer nets to 0); ETH comes only
 -- from trades attributed to the wallet: curve trades by trader, pool swaps by tx_from on the
--- token's own pair, valued on the pair's WETH side.
+-- token's own pair, valued on the pair's WETH side, and V4 swaps by tx_from on the token's
+-- graduated pool, valued on the swapper's native-ETH delta (amount0 < 0 paid, > 0 received).
 -- name: ListPositionLegs :many
 WITH token AS (
     SELECT t.lp_pair, t.token_is_token0
@@ -362,16 +379,28 @@ WITH token AS (
     JOIN token ON swap.pair_address = token.lp_pair
     WHERE swap.chain_id = sqlc.arg(chain_id)::bigint AND swap.tx_from = sqlc.arg(wallet)::bytea
     GROUP BY swap.tx_hash, swap.block_number, swap.transaction_index
+), v4_swap_legs AS (
+    SELECT swap.tx_hash, swap.block_number, swap.transaction_index,
+        sum(CASE WHEN swap.amount0_delta < 0 THEN -swap.amount0_delta ELSE 0 END) AS eth_paid,
+        sum(CASE WHEN swap.amount0_delta > 0 THEN swap.amount0_delta ELSE 0 END) AS eth_received
+    FROM v4_swaps AS swap
+    JOIN graduations AS graduation
+      ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
+    WHERE swap.chain_id = sqlc.arg(chain_id)::bigint AND swap.tx_from = sqlc.arg(wallet)::bytea
+      AND graduation.token_address = sqlc.arg(token_address)::bytea
+    GROUP BY swap.tx_hash, swap.block_number, swap.transaction_index
 ), legs AS (
     SELECT
-        COALESCE(transfer_legs.block_number, trade_legs.block_number, swap_legs.block_number) AS block_number,
-        COALESCE(transfer_legs.transaction_index, trade_legs.transaction_index, swap_legs.transaction_index) AS transaction_index,
+        COALESCE(transfer_legs.block_number, trade_legs.block_number, swap_legs.block_number, v4_swap_legs.block_number) AS block_number,
+        COALESCE(transfer_legs.transaction_index, trade_legs.transaction_index, swap_legs.transaction_index, v4_swap_legs.transaction_index) AS transaction_index,
         COALESCE(transfer_legs.token_delta, 0) AS token_delta,
-        COALESCE(trade_legs.eth_paid, 0) + COALESCE(swap_legs.eth_paid, 0) AS eth_paid,
-        COALESCE(trade_legs.eth_received, 0) + COALESCE(swap_legs.eth_received, 0) AS eth_received
+        COALESCE(trade_legs.eth_paid, 0) + COALESCE(swap_legs.eth_paid, 0) + COALESCE(v4_swap_legs.eth_paid, 0) AS eth_paid,
+        COALESCE(trade_legs.eth_received, 0) + COALESCE(swap_legs.eth_received, 0) + COALESCE(v4_swap_legs.eth_received, 0) AS eth_received
     FROM transfer_legs
     FULL OUTER JOIN trade_legs ON trade_legs.tx_hash = transfer_legs.tx_hash
     FULL OUTER JOIN swap_legs ON swap_legs.tx_hash = COALESCE(transfer_legs.tx_hash, trade_legs.tx_hash)
+    FULL OUTER JOIN v4_swap_legs
+      ON v4_swap_legs.tx_hash = COALESCE(transfer_legs.tx_hash, trade_legs.tx_hash, swap_legs.tx_hash)
 )
 -- Every leg's block is an indexed canonical block (ledger rows reference indexed_blocks), so the
 -- inner join drops nothing; it supplies the block time the windowed leaderboard filters on.
@@ -674,7 +703,7 @@ LIMIT sqlc.arg(row_limit)::int;
 -- name: CountUnattributedPoolSwaps :one
 -- v1 pool swaps and V4 swaps still without a sender at or below through_block (the indexer's
 -- safe head). The v1 side is served by the partial index pool_swaps_tx_from_null_idx; the V4
--- side has no such index yet (backlog.md).
+-- side by v4_swaps_tx_from_null_idx.
 SELECT (
     (SELECT count(*) FROM pool_swaps AS swap
      WHERE swap.chain_id = sqlc.arg(chain_id)::bigint AND swap.tx_from IS NULL
@@ -728,6 +757,11 @@ WITH pairs AS (
         JOIN tokens AS token ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
         WHERE swap.chain_id = sqlc.arg(chain_id)::bigint AND swap.tx_from IS NOT NULL
           AND token.token_address = sqlc.arg(token_address)::bytea
+        UNION
+        SELECT swap.tx_from, graduation.token_address FROM v4_swaps AS swap
+        JOIN graduations AS graduation ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
+        WHERE swap.chain_id = sqlc.arg(chain_id)::bigint AND swap.tx_from IS NOT NULL
+          AND graduation.token_address = sqlc.arg(token_address)::bytea
         UNION
         SELECT transfer.from_address, transfer.token_address FROM transfers AS transfer
         WHERE transfer.chain_id = sqlc.arg(chain_id)::bigint AND transfer.token_address = sqlc.arg(token_address)::bytea

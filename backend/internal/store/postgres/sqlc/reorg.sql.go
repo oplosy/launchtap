@@ -587,6 +587,10 @@ SELECT DISTINCT pairs.wallet, pairs.token_address FROM (
     JOIN tokens AS token ON token.chain_id=swap.chain_id AND token.lp_pair=swap.pair_address
     WHERE swap.chain_id=$1 AND swap.block_number>$2 AND swap.tx_from IS NOT NULL
     UNION ALL
+    SELECT swap.tx_from, graduation.token_address FROM v4_swaps AS swap
+    JOIN graduations AS graduation ON graduation.chain_id=swap.chain_id AND graduation.pool_id=swap.pool_id
+    WHERE swap.chain_id=$1 AND swap.block_number>$2 AND swap.tx_from IS NOT NULL
+    UNION ALL
     SELECT transfer.from_address, transfer.token_address FROM transfers AS transfer
     WHERE transfer.chain_id=$1 AND transfer.block_number>$2
     UNION ALL
