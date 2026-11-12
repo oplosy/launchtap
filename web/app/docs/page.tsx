@@ -12,6 +12,7 @@ const SECTIONS = [
   { id: "curve", label: "The bonding curve" },
   { id: "graduation", label: "Graduation" },
   { id: "economics", label: "Fees and economics" },
+  { id: "engine-v2", label: "Engine v2 rules" },
   { id: "token", label: "Token rules" },
   { id: "governance", label: "Pauses and governance" },
   { id: "contracts", label: "Data and finality" },
@@ -248,6 +249,55 @@ export default function DocsPage() {
             <p>
               Quotes are informational until the contract simulation and signed transaction execute.
               Review the minimum output, deadline, and gas in the wallet before confirming.
+            </p>
+          </section>
+
+          <section id="engine-v2">
+            <h2>Engine v2 rules</h2>
+            <p>
+              A deployment launches through one engine, shown as a badge on the create page. Engine
+              v2 keeps the same curve and graduation threshold and changes what happens around them.
+            </p>
+            <dl className="docs-facts">
+              <div>
+                <dt>Anti-snipe tax</dt>
+                <dd>
+                  A buy tax that starts high at launch and decays to zero over a short window. The
+                  create page reads the exact profile the next launch snapshots; the token page
+                  shows the snapshot and the time left.
+                </dd>
+              </div>
+              <div>
+                <dt>Developer buy</dt>
+                <dd>The buy made in the launch transaction is exempt from the anti-snipe tax</dd>
+              </div>
+              <div>
+                <dt>Pool</dt>
+                <dd>Graduation opens a Uniswap V4 ETH pool with a 1% fee</dd>
+              </div>
+              <div>
+                <dt>Pool fee split</dt>
+                <dd>
+                  50% to the creator&apos;s fee recipient · 50% to the protocol by default; the
+                  create page shows the exact split
+                </dd>
+              </div>
+              <div>
+                <dt>Liquidity</dt>
+                <dd>The graduation position is locked forever in the fee locker</dd>
+              </div>
+            </dl>
+            <p>
+              The tax only decreases, so a buy mined later than quoted never receives less than its
+              minimum output. Anyone can add liquidity to the V4 pool; that liquidity earns its
+              share of the pool fee, which dilutes the locked position&apos;s share.
+            </p>
+            <p>
+              Fee collection is permissionless: claiming from the locker collects the pool fees
+              first, so no separate step is needed. The creator is the launch identity; the fee
+              recipient is the payout address. Changing the recipient takes two steps: the current
+              recipient proposes an address, and the change happens only when that address accepts.
+              Fees already credited stay with the account they were credited to.
             </p>
           </section>
 

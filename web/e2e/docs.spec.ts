@@ -59,3 +59,13 @@ test("a missing route shows a centred heading and one link back", async ({ page 
   await expect(main.getByRole("link")).toHaveAttribute("href", "/explore");
   expect(await heading.evaluate((node) => getComputedStyle(node).textAlign)).toBe("center");
 });
+
+test("the docs describe the engine v2 rules", async ({ page }) => {
+  await page.goto("/docs");
+  const section = page.locator("#engine-v2");
+  await expect(section.getByRole("heading", { name: "Engine v2 rules" })).toBeVisible();
+  await expect(section).toContainText("Anti-snipe tax");
+  await expect(section).toContainText("exempt from the anti-snipe tax");
+  await expect(section).toContainText("locked forever");
+  await expect(section).toContainText("two steps");
+});

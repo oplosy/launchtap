@@ -9,6 +9,7 @@ import { ApiProblem } from "@/api/problems";
 import type { Abi } from "viem";
 import { chainClockOffset, remainingTaxSeconds, snipeTaxLine } from "@/anti-snipe";
 import { reviewedV4Addresses, type V4Addresses } from "@/engine";
+import { launchRulesV2 } from "@/launch-v2";
 import { recipientActions, validateProposedRecipient } from "@/fee-recipient";
 import { encodeV4ExactInSingle, planPermit2Sell, poolId, poolKey, poolMatchesApi } from "@/v4-swap";
 import { browserAbis, type ReviewedDeployment } from "@/contracts/generated";
@@ -3094,13 +3095,17 @@ function LaunchPreview({
   symbol,
   launchFee,
   value,
+  v2Rules,
 }: {
   imageUrl: string;
   name: string;
   symbol: string;
   launchFee: bigint | null;
   value: bigint | null;
+  /** Engine 2 only; `null` while `futureDefaults()` is unread. */
+  v2Rules?: ReturnType<typeof launchRulesV2> | null;
 }) {
+  const v2 = v2Rules !== undefined;
   return (
     <aside className="launch-preview-card" aria-label="Token preview">
       <div className="launch-preview-image">
@@ -3135,10 +3140,35 @@ function LaunchPreview({
           <dt>Graduation</dt>
           <dd>4.2 ETH</dd>
         </div>
-        <div>
-          <dt>Liquidity</dt>
-          <dd>Initial LP burned</dd>
-        </div>
+        {v2 ? (
+          <>
+            <div>
+              <dt>Anti-snipe tax</dt>
+              <dd>
+                {v2Rules
+                  ? `${v2Rules.taxStart}, decaying to 0 over ${v2Rules.taxWindow}`
+                  : "Unavailable"}
+              </dd>
+            </div>
+            <div>
+              <dt>Pool fee</dt>
+              <dd>
+                {v2Rules
+                  ? `1% · ${v2Rules.lpCreatorShare} creator / ${v2Rules.lpProtocolShare} protocol`
+                  : "Unavailable"}
+              </dd>
+            </div>
+            <div>
+              <dt>Liquidity</dt>
+              <dd>Uniswap V4 position, locked forever</dd>
+            </div>
+          </>
+        ) : (
+          <div>
+            <dt>Liquidity</dt>
+            <dd>Initial LP burned</dd>
+          </div>
+        )}
       </dl>
     </aside>
   );
@@ -3174,6 +3204,11 @@ function LaunchPanelReady() {
   const [engineEnabled, setEngineEnabled] = useState<boolean | null>(null);
   const executionLockRef = useRef(false);
   const deployment = configuration.deployment as ReviewedDeployment;
+  // One deployment serves one engine (Plan v2-B B2). LaunchFactoryV2 has no per-engine switch;
+  // its launch reverts on its own pause, so the engine-enabled read is v1 only.
+  const engineVersion = deployment.engineVersion;
+  const factoryAbi = (engineVersion === 2 ? browserAbis.factoryV2 : browserAbis.factory) as Abi;
+  const [v2Rules, setV2Rules] = useState<ReturnType<typeof launchRulesV2> | null>(null);
   const factoryExplorer = deployment.factory
     ? addressExplorerUrl(configuration, deployment.factory as Address)
     : null;
@@ -3183,40 +3218,45 @@ function LaunchPanelReady() {
     void Promise.all([
       publicClient.readContract({
         address: deployment.factory as Address,
-        abi: browserAbis.factory,
+        abi: factoryAbi,
         functionName: "launchFee",
       }),
       publicClient.readContract({
         address: deployment.factory as Address,
-        abi: browserAbis.factory,
+        abi: factoryAbi,
         functionName: "futureDefaults",
       }),
       publicClient.readContract({
         address: deployment.factory as Address,
-        abi: browserAbis.factory,
+        abi: factoryAbi,
         functionName: "launchesPaused",
       }),
       publicClient.readContract({
         address: deployment.factory as Address,
-        abi: browserAbis.factory,
+        abi: factoryAbi,
         functionName: "tradingPaused",
       }),
-      publicClient.readContract({
-        address: deployment.factory as Address,
-        abi: browserAbis.factory,
-        functionName: "engineEnabled",
-        args: [1],
-      }),
+      engineVersion === 2
+        ? Promise.resolve(true)
+        : publicClient.readContract({
+            address: deployment.factory as Address,
+            abi: factoryAbi,
+            functionName: "engineEnabled",
+            args: [1],
+          }),
     ])
-      .then(([fee, , paused, trading, enabled]) => {
+      .then(([fee, defaults, paused, trading, enabled]) => {
         setLaunchFee(fee as bigint);
+        // Plan v2-C D8: the exact profile the next launch snapshots; a failed read blocks launch.
+        if (engineVersion === 2)
+          setV2Rules(launchRulesV2(defaults as Parameters<typeof launchRulesV2>[0]));
         setDefaultsRead(true);
         setLaunchesPaused(Boolean(paused));
         setTradingPaused(Boolean(trading));
         setEngineEnabled(Boolean(enabled));
       })
       .catch(() => setError("Factory configuration unavailable; launching is disabled."));
-  }, [deployment.factory, publicClient]);
+  }, [deployment.factory, engineVersion, factoryAbi, publicClient]);
   const buyUnits = useMemo(() => {
     try {
       return parseDecimal(buy || "0");
@@ -3266,7 +3306,7 @@ function LaunchPanelReady() {
         {
           name: name.trim(),
           symbol: symbol.trim(),
-          engineVersion: 1,
+          engineVersion,
           developerBuyGross: buyUnits!,
           minDeveloperTokensOut: 0n,
           deadline,
@@ -3276,25 +3316,27 @@ function LaunchPanelReady() {
         await Promise.all([
           publicClient.readContract({
             address: deployment.factory as Address,
-            abi: browserAbis.factory,
+            abi: factoryAbi,
             functionName: "launchFee",
           }) as Promise<bigint>,
           publicClient.readContract({
             address: deployment.factory as Address,
-            abi: browserAbis.factory,
+            abi: factoryAbi,
             functionName: "launchesPaused",
           }) as Promise<boolean>,
           publicClient.readContract({
             address: deployment.factory as Address,
-            abi: browserAbis.factory,
+            abi: factoryAbi,
             functionName: "tradingPaused",
           }) as Promise<boolean>,
-          publicClient.readContract({
-            address: deployment.factory as Address,
-            abi: browserAbis.factory,
-            functionName: "engineEnabled",
-            args: [1],
-          }) as Promise<boolean>,
+          (engineVersion === 2
+            ? Promise.resolve(true)
+            : publicClient.readContract({
+                address: deployment.factory as Address,
+                abi: factoryAbi,
+                functionName: "engineEnabled",
+                args: [1],
+              })) as Promise<boolean>,
         ]);
       if (!latestEngineEnabled) throw new Error("EngineDisabled");
       if (latestLaunchesPaused) throw new Error("LaunchesPaused");
@@ -3323,7 +3365,7 @@ function LaunchPanelReady() {
       failurePhase = "simulation";
       await publicClient.simulateContract({
         address: deployment.factory as Address,
-        abi: browserAbis.factory,
+        abi: factoryAbi,
         functionName: "launch",
         account: account.address,
         args,
@@ -3332,15 +3374,17 @@ function LaunchPanelReady() {
       const [beforeSignLaunchesPaused, beforeSignEngineEnabled] = await Promise.all([
         publicClient.readContract({
           address: deployment.factory as Address,
-          abi: browserAbis.factory,
+          abi: factoryAbi,
           functionName: "launchesPaused",
         }) as Promise<boolean>,
-        publicClient.readContract({
-          address: deployment.factory as Address,
-          abi: browserAbis.factory,
-          functionName: "engineEnabled",
-          args: [1],
-        }) as Promise<boolean>,
+        (engineVersion === 2
+          ? Promise.resolve(true)
+          : publicClient.readContract({
+              address: deployment.factory as Address,
+              abi: factoryAbi,
+              functionName: "engineEnabled",
+              args: [1],
+            })) as Promise<boolean>,
       ]);
       if (beforeSignLaunchesPaused) throw new Error("LaunchesPaused");
       if (!beforeSignEngineEnabled) throw new Error("EngineDisabled");
@@ -3366,7 +3410,7 @@ function LaunchPanelReady() {
       failurePhase = "write";
       const hash = await walletClient.writeContract({
         address: deployment.factory as Address,
-        abi: browserAbis.factory,
+        abi: factoryAbi,
         functionName: "launch",
         account: account.address,
         args,
@@ -3498,7 +3542,11 @@ function LaunchPanelReady() {
                       onChange={(event) => setBuy(event.target.value)}
                       inputMode="decimal"
                       placeholder="0 ETH, optional"
-                      info="Optional. Launch value is the launch fee plus this buy."
+                      info={
+                        engineVersion === 2
+                          ? "Optional. Launch value is the launch fee plus this buy. The developer buy is exempt from the anti-snipe tax."
+                          : "Optional. Launch value is the launch fee plus this buy."
+                      }
                     />
                   </div>
                 </section>
@@ -3511,6 +3559,7 @@ function LaunchPanelReady() {
                   symbol={symbol}
                   launchFee={launchFee}
                   value={value}
+                  v2Rules={engineVersion === 2 ? v2Rules : undefined}
                 />
                 {/*
                   The preview card already shows the fee and the exact launch value; factory state
@@ -3590,6 +3639,7 @@ function LaunchPanelReady() {
                       Object.keys(validMetadata).length > 0 ||
                       value === null ||
                       !defaultsRead ||
+                      (engineVersion === 2 && v2Rules === null) ||
                       launchesPaused !== false ||
                       engineEnabled !== true ||
                       !readiness.selectedAccountVerified ||
