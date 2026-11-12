@@ -1675,13 +1675,18 @@ function V2CreatorPanel({
     : [];
   const validation =
     roles && proposal.trim() ? validateProposedRecipient(proposal, roles.feeRecipient) : null;
+  // These writes finish at "mined" (no indexing step follows), so a mined action is resolved;
+  // only a hash whose outcome is still unknown blocks the next action.
+  const outcomeUnknown = Boolean(
+    state.hash && (state.status === "submitted" || state.status === "rpc-failure"),
+  );
   const canSign = Boolean(
     publicClient &&
     walletClient &&
     account.address &&
     readiness.selectedAccountVerified &&
     readiness.chainId === configuration.chainId &&
-    !hasUnresolvedSubmission(state),
+    !outcomeUnknown,
   );
   const run = async (
     write: { address: Address; abi: Abi; functionName: string; args?: readonly unknown[] },
