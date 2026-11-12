@@ -12,7 +12,11 @@ import {
   type ComponentType,
   type PropsWithChildren,
 } from "react";
-import { publicConfiguration, type PublicConfiguration } from "@/config/public";
+import {
+  isAnvilWalletFixture,
+  publicConfiguration,
+  type PublicConfiguration,
+} from "@/config/public";
 import { E2E_SESSION_KEY, parseE2ESession, type E2ESession } from "@/e2e/session-context";
 import { LiveEventsProvider } from "@/live/live-events";
 import { NotificationIdentityBridge } from "@/live/notification-bridge";
@@ -37,7 +41,7 @@ function walletStackAvailable(configuration: PublicConfiguration) {
   return (
     configuration.status === "ready" &&
     Boolean(configuration.chainId && configuration.rpcUrl && configuration.deployment) &&
-    (Boolean(configuration.privyAppId) || configuration.deploymentId === "task6-anvil")
+    (Boolean(configuration.privyAppId) || isAnvilWalletFixture(configuration))
   );
 }
 

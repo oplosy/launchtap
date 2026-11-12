@@ -2,7 +2,7 @@ import { createConfig as createPrivyConfig } from "@privy-io/wagmi";
 import { createConfig as createWagmiConfig, type Config } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { defineChain, http, type Chain } from "viem";
-import type { PublicConfiguration } from "@/config/public";
+import { isAnvilWalletFixture, type PublicConfiguration } from "@/config/public";
 
 export function supportedChain(configuration: PublicConfiguration): Chain | null {
   if (
@@ -29,16 +29,15 @@ export function createWeb3Config(configuration: PublicConfiguration): {
 } | null {
   const chain = supportedChain(configuration);
   if (!chain || !configuration.rpcUrl) return null;
-  const config =
-    configuration.deploymentId === "task6-anvil"
-      ? createWagmiConfig({
-          chains: [chain] as const,
-          transports: { [chain.id]: http(configuration.rpcUrl) },
-          connectors: [injected()],
-        })
-      : createPrivyConfig({
-          chains: [chain] as const,
-          transports: { [chain.id]: http(configuration.rpcUrl) },
-        });
+  const config = isAnvilWalletFixture(configuration)
+    ? createWagmiConfig({
+        chains: [chain] as const,
+        transports: { [chain.id]: http(configuration.rpcUrl) },
+        connectors: [injected()],
+      })
+    : createPrivyConfig({
+        chains: [chain] as const,
+        transports: { [chain.id]: http(configuration.rpcUrl) },
+      });
   return { chain, config };
 }

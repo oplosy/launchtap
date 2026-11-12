@@ -83,6 +83,14 @@ function v2AnvilFixture(env: Record<string, string | undefined>): PublicConfigur
   };
 }
 
+/**
+ * The local Anvil fixtures (Task 6 engine 1, Plan v2-C Task 2 engine 2) sign through an
+ * injected wallet with no identity provider; every reviewed deployment goes through Privy.
+ */
+export function isAnvilWalletFixture(configuration: Pick<PublicConfiguration, "deploymentId">) {
+  return configuration.deploymentId === "task6-anvil" || configuration.deploymentId === "v2-anvil";
+}
+
 export function publicConfiguration(
   env: Record<string, string | undefined> = {
     NEXT_PUBLIC_E2E_FIXTURE: process.env.NEXT_PUBLIC_E2E_FIXTURE,
