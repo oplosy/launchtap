@@ -170,17 +170,13 @@
 - **Reason:** scope decision (outside the Task 9 lifecycle the plan specifies)
 - **Where it stopped:** the Anvil v2 gate (`npm run test:anvil-v2`) proves launch, taxed and
   untaxed buys, graduation, the pool id check, a V4 buy and Permit2 sell, both claims and an
-  accepted recipient change. Not covered or not fixed:
-  - Proposal **cancel** and **replace** are not driven by the gate.
-  - `V4SwapPanel` sets "Allowances are set for this exact sell" and closes the confirmation in
-    the same step, and the notice only renders inside the confirmation, so it is never shown;
-    the user sees only "Resume sell".
+  accepted recipient change, including proposal cancel and replace. Not fixed:
   - `V2CreatorPanel` keeps its transaction state in memory, not in the persisted transaction
     storage (a reload mid-transaction loses the hash display, not the transaction).
   - The token page shows the pool id as text, not a link (a pool id is not an explorer address).
 - **Related files:** `web/e2e/v2-lifecycle.spec.ts`, `web/src/transactions-panel.tsx`
-- **Resume (next step):** add cancel/replace steps to the gate spec; render `reviewNotice`
-  outside the confirmation in `V4SwapPanel`.
+- **Resume (next step):** move `V2CreatorPanel` onto `usePersistedTransactionState` (one
+  action key per write) and add a reload-mid-transaction step to the gate.
 - **Pitfalls / notes:** the gate runs one project (`small-laptop`) because it shares Anvil state
   (chain time, graduation). The anti-snipe window in `DeployLocalV2` is 60 s of chain time, so
   the taxed buy must stay quick after launch.
@@ -202,6 +198,15 @@
   remove that once the backend projects real values.
 
 ## Done
+
+### Plan v2-C Task 9 follow-ups: notice, cancel/replace, creator panel lock
+
+- **Date:** 2026-11-12
+- **What closed:** the gate now drives proposal cancel and replace. `V4SwapPanel` shows its
+  review notice outside the confirmation (the Permit2 "Allowances are set" message and failed
+  review errors were set while the confirmation closed, so they were never visible).
+  `V2CreatorPanel` treated its own `mined` state as unresolved, so after one successful write
+  every creator action stayed disabled until a reload; a mined write is now final there.
 
 ### Plan v2-C D1 and Task 9: Anvil v2 web gate
 
