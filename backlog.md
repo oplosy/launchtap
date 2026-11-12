@@ -153,6 +153,7 @@
   `deploy/check.ps1`.
 - **Pitfalls / notes:** run exactly one worker per deployment (an advisory lock refuses a second
   one); the bot was never exercised against the real Bot API, only a fake server.
+
 ### Early-buyer clusters Level 2: funding-source data provider
 
 - **Date:** 2026-11-12
