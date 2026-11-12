@@ -69,9 +69,10 @@ const UINT128_MAX = (1n << 128n) - 1n;
  * `amountIn`) and `TAKE_ALL` (output currency, at least `amountOutMinimum`).
  *
  * Mirrors the `IV4Router.ExactInputSingleParams` layout of the reviewed Universal Router
- * v2.1.2 deployment — `(PoolKey poolKey, bool zeroForOne, uint128 amountIn,
- * uint128 amountOutMinimum, bytes hookData)` — not the newer `lib/v4-periphery` pin, which adds
- * `minHopPriceX36` (Plan v2-C D2). The Anvil v2 web gate is the end-to-end proof.
+ * v2.1.2 (`Uniswap/universal-router` release/2.1.x, v4-periphery 545a5d2a, Plan v2-C D2):
+ * `(PoolKey poolKey, bool zeroForOne, uint128 amountIn, uint128 amountOutMinimum,
+ * uint256 minHopPriceX36, bytes hookData)`. `minHopPriceX36` is 0 (off): `amountOutMinimum`
+ * already bounds the single hop. The Anvil v2 web gate signs this through that router.
  */
 export function encodeV4ExactInSingle(args: {
   key: PoolKey;
@@ -98,6 +99,7 @@ export function encodeV4ExactInSingle(args: {
           { name: "zeroForOne", type: "bool" },
           { name: "amountIn", type: "uint128" },
           { name: "amountOutMinimum", type: "uint128" },
+          { name: "minHopPriceX36", type: "uint256" },
           { name: "hookData", type: "bytes" },
         ],
       },
@@ -108,6 +110,7 @@ export function encodeV4ExactInSingle(args: {
         zeroForOne: args.zeroForOne,
         amountIn: args.amountIn,
         amountOutMinimum: args.amountOutMinimum,
+        minHopPriceX36: 0n,
         hookData: "0x",
       },
     ],

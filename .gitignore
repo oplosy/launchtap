@@ -28,6 +28,8 @@ pnpm-debug.log*
 /contracts/cache/
 /contracts/out-v4/
 /contracts/cache-v4/
+/contracts/out-router/
+/contracts/cache-router/
 /contracts/broadcast/
 /contracts/vectors/.generated/
 /contracts/deployments/.generated/

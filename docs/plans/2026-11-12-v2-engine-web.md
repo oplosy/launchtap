@@ -58,13 +58,21 @@ Vitest, Playwright. **No new web dependency:** Universal Router inputs are encod
     today.
   - **Approval:** adding a dependency needs the product owner's approval
     (`CLAUDE.md`). Tasks 1–8 do not depend on D1 and can start before it is decided.
+  - **Approved 2026-11-12** (recommended option). `contracts/lib/universal-router` is pinned to
+    `release/2.1.x` `8580368`, with the `v2-core` v1.0.1 and `v3-core` v1.0.0 sources it
+    imports, and builds in the test-only `router` profile with the upstream settings. Its runtime
+    is 24,380 bytes, equal to the mainnet router; only deployment-context immutables differ.
+    `deploy-v2-local.ps1 -WithRouter` deploys it and `V4Quoter` and writes a
+    `.v4-periphery.json` sidecar, so the strict v2 manifest schema is unchanged.
 - **D2 — Encode router inputs against the deployed router's revision.**
-  - The pinned `lib/v4-periphery` has `ExactInputSingleParams.minHopPriceX36`. The mainnet
-    record says `PositionManager` is a different periphery revision than the pinned build,
-    and `UniversalRouter` v2.1.2 is also older than the pin.
-  - The browser must encode `SWAP_EXACT_IN_SINGLE` for the revision of the reviewed router.
-    The encoding module names that revision in its doc comment, and Task 9 proves it end to
-    end.
+  - The browser must encode `SWAP_EXACT_IN_SINGLE` for the revision of the reviewed router,
+    and the encoding module names that revision in its doc comment.
+  - **Resolved 2026-11-12 (Task 9):** Universal Router 2.1.2 is `Uniswap/universal-router`
+    `release/2.1.x`, built against v4-periphery `545a5d2a` (#564). That revision **has**
+    `ExactInputSingleParams.minHopPriceX36`, and its calldata decoder needs nine static words
+    before `hookData`. The first Task 4 encoding omitted the field and could not have
+    executed. The fix encodes `minHopPriceX36 = 0` (off), because `amountOutMinimum` already
+    bounds a single hop. The Task 9 gate signs this through a router built from that source.
 - **D3 — Sells use an on-chain Permit2 allowance, not a signature.**
   - Flow:
     1. An exact ERC-20 `approve(token → Permit2)`, reset to zero first when non-zero, as the
@@ -382,6 +390,9 @@ Vitest, Playwright. **No new web dependency:** Universal Router inputs are encod
 - Modify: `contracts/script/v2/DeployLocalV2.s.sol` and `contracts/scripts/deploy-v2-local.ps1`
   to deploy the reviewed `UniversalRouter` and `V4Quoter` and record them in the local
   manifest. This is a contracts change, so it gets its own pre-flight review.
+  - As built: a separate `script/v2/DeployLocalV4Periphery.s.sol`, run only with
+    `-WithRouter`, records them in a sidecar next to the manifest (see D1). The backend v2
+    indexer gate does not pass the switch, so it is unaffected.
 - Create: `web/scripts/anvil-v2-gate.ps1`, modelled on `anvil-task6-gate.ps1`, and
   `web/e2e/v2-lifecycle.spec.ts`.
 - Modify: `web/package.json` (`test:anvil-v2`) and `.github/workflows/web.yml`, where it
@@ -403,12 +414,19 @@ Vitest, Playwright. **No new web dependency:** Universal Router inputs are encod
 - No transaction reverts.
 
 **Steps:**
-- [ ] **Red:** write the spec. Expected: FAIL until Tasks 1–8 and D1 are in place.
-- [ ] **Green:** fix whatever the gate exposes, inside the task that owns it, as a follow-up
-  commit naming that task.
-- [ ] **Verify:** `npm run lint`, `npm run typecheck`, `npm test`, `npm run test:e2e`,
+- [x] **Red:** write the spec. Expected: FAIL until Tasks 1–8 and D1 are in place.
+- [x] **Green:** fix whatever the gate exposes, inside the task that owns it, as a follow-up
+  commit naming that task. The gate found, in order:
+  1. Task 4: the swap tuple lacked `minHopPriceX36` (D2), so no router swap could execute.
+  2. Task 2: the wallet stack recognised only the Task 6 fixture, so `/create` did not render on
+     the v2 fixture.
+  3. Plan v2-B: `/v1/transactions/{hash}` never read `v4_swaps`, so a V4 trade stayed at
+     "Indexing" and blocked the next review. It now returns kind `v4_swap`.
+  4. Task 6: a graduated v2 token hid the curve claim row and disabled its claim state, so curve
+     creator fees credited before graduation could not be claimed from the UI.
+- [x] **Verify:** `npm run lint`, `npm run typecheck`, `npm test`, `npm run test:e2e`,
   `npm run test:anvil`, `npm run test:anvil-v2` and `npm run verify:bundle`.
-- [ ] **Commit:** `test(web): Anvil v2 lifecycle gate`.
+- [x] **Commit:** `test(web): Anvil v2 lifecycle gate`.
 
 ## Acceptance
 

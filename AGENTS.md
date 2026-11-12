@@ -56,6 +56,10 @@ CI and any developer machine execute the identical pinned version.
 
 ## Don't / watch out
 
+- On Windows, run `git config core.longpaths true` before `git submodule update --init --recursive`:
+  `contracts/lib/universal-router` nests submodules past the 260-character path limit, and a
+  clone without it fails part-way and leaves every later `git status` erroring. Then run
+  `git submodule foreach --recursive git config core.longpaths true` once.
 - Don't add a JSON-schema engine (or any non-stdlib import) to `internal/curve` — it's
   depguard-locked to `$gostd` and mirrors on-chain math, where a third-party dependency is the
   wrong trade-off.

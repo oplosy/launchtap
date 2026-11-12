@@ -84,6 +84,8 @@ describe("Universal Router V4_SWAP encoding", () => {
     );
     expect(actions).toBe("0x060c0f");
     expect(params).toHaveLength(3);
+    // V4Router's calldata decoder needs nine static words before hookData (0x160 bytes minimum).
+    expect((params[0]!.length - 2) / 2).toBeGreaterThanOrEqual(0x160);
     const [swap] = decodeAbiParameters(
       [
         {
@@ -103,6 +105,7 @@ describe("Universal Router V4_SWAP encoding", () => {
             { name: "zeroForOne", type: "bool" },
             { name: "amountIn", type: "uint128" },
             { name: "amountOutMinimum", type: "uint128" },
+            { name: "minHopPriceX36", type: "uint256" },
             { name: "hookData", type: "bytes" },
           ],
         },
@@ -112,6 +115,8 @@ describe("Universal Router V4_SWAP encoding", () => {
     expect(swap.zeroForOne).toBe(true);
     expect(swap.amountIn).toBe(5n * 10n ** 17n);
     expect(swap.amountOutMinimum).toBe(123n);
+    // Off: the minimum output already bounds the swap (router 2.1.2, v4-periphery 545a5d2a).
+    expect(swap.minHopPriceX36).toBe(0n);
     expect(swap.hookData).toBe("0x");
     expect(getAddress(swap.poolKey.currency1)).toBe(getAddress(token));
     const settle = decodeAbiParameters([{ type: "address" }, { type: "uint256" }], params[1]!);

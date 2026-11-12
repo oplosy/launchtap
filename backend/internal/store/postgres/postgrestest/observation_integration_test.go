@@ -96,3 +96,64 @@ func TestCanonicalObservationUnionAndSnapshotAvailability(t *testing.T) {
 		t.Fatal("reorged trade remained observable")
 	}
 }
+
+// TestCanonicalObservationIncludesV4Swaps covers the engine-2 pool trade: a Universal Router
+// swap emits only the PoolManager Swap event, so without it the browser waits on a graduated
+// v2 trade forever (Plan v2-C Task 9). The token comes from the graduation ledger row, never
+// from the rebuildable pool projection.
+func TestCanonicalObservationIncludesV4Swaps(t *testing.T) {
+	database := NewMigrated(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	pool := openPool(t, ctx, database.URL)
+	adapter := storepostgres.NewAdapter(pool)
+	const chainID int64 = 49021
+	const deploymentID = "observation-v2"
+	when := time.Date(2026, 11, 12, 12, 0, 0, 0, time.UTC)
+	blockHash := common.Hash{31: 0x30}
+	mustInsertBlock(t, ctx, database.DB, chainID, 100, blockHash[:], hashBytes(0x29), when, "safe")
+	at := func(tx byte, log int) eventCoordinates {
+		return eventCoordinates{chainID, 100, blockHash[:], when, log, hashBytes(tx), log}
+	}
+	token, poolID := addressBytes(0x31), hashBytes(0x32)
+	if err := insertLedgerRow(ctx, database.DB, "token_launches", at(0x33, 0), v2Launch(token)...); err != nil {
+		t.Fatal(err)
+	}
+	if err := insertLedgerRow(ctx, database.DB, "graduations", at(0x34, 1), v2Graduation(token, poolID)...); err != nil {
+		t.Fatal(err)
+	}
+	if err := insertLedgerRow(ctx, database.DB, "v4_swaps", at(0x35, 2), v4Swap(poolID)...); err != nil {
+		t.Fatal(err)
+	}
+	safeHash := storepostgres.Hash(blockHash)
+	if _, err := adapter.UpsertSyncState(ctx, storepostgres.SyncState{
+		ChainID: chainID, DeploymentID: deploymentID,
+		ObservedNumber: pgtype.Int8{Int64: 100, Valid: true}, ObservedHash: &safeHash,
+		ObservedAt: pgtype.Timestamptz{Time: when, Valid: true},
+		SafeNumber: pgtype.Int8{Int64: 100, Valid: true}, SafeHash: &safeHash,
+		SafeAt: pgtype.Timestamptz{Time: when, Valid: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reader := storepostgres.ObservationReader{Pool: pool}
+	got, err := reader.Get(ctx, chainID, deploymentID, common.BytesToHash(hashBytes(0x35)))
+	if err != nil {
+		t.Fatalf("lookup v4 swap: %v", err)
+	}
+	if len(got.Events) != 1 {
+		t.Fatalf("v4 swap events = %+v, want one", got.Events)
+	}
+	event := got.Events[0]
+	if event.Kind != "v4_swap" || event.Finality != "safe" || event.Token == nil ||
+		*event.Token != common.BytesToAddress(token) || event.Pair != nil {
+		t.Fatalf("v4 swap event = %+v", event)
+	}
+	if err := storepostgres.WithinTx(ctx, pool, func(ctx context.Context, tx *storepostgres.Adapter) error {
+		return tx.DeleteCanonicalAbove(ctx, chainID, 99)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.Get(ctx, chainID, deploymentID, common.BytesToHash(hashBytes(0x35))); !errors.Is(err, observation.ErrNotFound) {
+		t.Fatalf("reorged v4 swap lookup error = %v, want not found", err)
+	}
+}

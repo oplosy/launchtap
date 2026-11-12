@@ -17,3 +17,14 @@ UNISWAP_V4_PERIPHERY_COMMIT=c6e4754dab11bd38c6f08ac51c3c868569e93d64
 UNISWAP_V4_CORE_VERSION=v1.0.2
 UNISWAP_V4_CORE_COMMIT=59d3ecf53afa9264a16bba0e38f4c5d2231f80bc
 PERMIT2_COMMIT=cc56ad0f3439c502c246fc5cfcc3db92bb8b7219
+
+# Uniswap Universal Router 2.1.2 (test-only `router` profile for the Anvil v2 web gate,
+# Plan v2-C D1). release/2.1.x has no tags; this commit's sources and compiler settings
+# reproduce the reviewed mainnet router outside its deployment-context immutables. v2-core and
+# v3-core are the npm versions its yarn.lock resolves, pinned to their release tags.
+UNISWAP_UNIVERSAL_ROUTER_COMMIT=8580368c32e649a939af4c306d5f6d7010822680
+UNISWAP_UNIVERSAL_ROUTER_V4_PERIPHERY_COMMIT=545a5d2a87228167edde48f3b9eda122d1e3c4d6
+UNISWAP_V2_CORE_VERSION=v1.0.1
+UNISWAP_V2_CORE_COMMIT=4dd59067c76dea4a0e8e4bfdda41877a6b16dedc
+UNISWAP_V3_CORE_VERSION=v1.0.0
+UNISWAP_V3_CORE_COMMIT=e3589b192d0be27e100cd0daaf6c97204fdb1899

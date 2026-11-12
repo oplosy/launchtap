@@ -22,7 +22,12 @@ param(
     [ValidatePattern("^0x[0-9a-fA-F]{40}$")]
     [string] $ProtocolTreasury,
 
-    [string] $OutputPath
+    [string] $OutputPath,
+
+    # Also deploys Universal Router 2.1.2 and V4Quoter for the Anvil v2 web gate (Plan v2-C
+    # Task 9) and records them in a `.v4-periphery.json` file next to the manifest. The caller
+    # builds `out-router` (FOUNDRY_PROFILE=router) and `out-v4` first.
+    [switch] $WithRouter
 )
 
 # Deploys a local Uniswap V4 stack and the engine v2 system on Anvil (unlocked sender) and
@@ -244,6 +249,53 @@ try {
     [System.IO.Directory]::CreateDirectory((Split-Path -Parent $resolvedOutput)) | Out-Null
     [System.IO.File]::WriteAllText($resolvedOutput, $json, $utf8WithoutBom)
     Write-Output "Generated candidate manifest $resolvedOutput"
+
+    if ($WithRouter) {
+        $peripheryEnvironment = [ordered]@{
+            POOL_MANAGER = $poolManager
+            POSITION_MANAGER = $positionManager
+        }
+        foreach ($entry in $peripheryEnvironment.GetEnumerator()) {
+            $deploymentEnvironment[$entry.Key] = $entry.Value
+            $previousEnvironment[$entry.Key] = [Environment]::GetEnvironmentVariable($entry.Key, "Process")
+            [Environment]::SetEnvironmentVariable($entry.Key, [string] $entry.Value, "Process")
+        }
+        # Stdout only: console2.log writes there, and Windows PowerShell 5.1 turns a redirected
+        # native stderr line (a forge warning) into a terminating error under Stop.
+        $peripheryOutput = (& forge script "script/v2/DeployLocalV4Periphery.s.sol:DeployLocalV4Periphery" `
+            --rpc-url $RpcUrl --sender $Sender --broadcast --unlocked | Out-String)
+        if ($LASTEXITCODE -ne 0) {
+            Write-Output $peripheryOutput
+            Fail "forge script DeployLocalV4Periphery exited with $LASTEXITCODE"
+        }
+        $routerMatch = [regex]::Match($peripheryOutput, "UNIVERSAL_ROUTER (0x[0-9a-fA-F]{40})")
+        $quoterMatch = [regex]::Match($peripheryOutput, "V4_QUOTER (0x[0-9a-fA-F]{40})")
+        if (-not $routerMatch.Success -or -not $quoterMatch.Success) {
+            Fail "DeployLocalV4Periphery did not report both addresses"
+        }
+        $universalRouter = $routerMatch.Groups[1].Value
+        $v4Quoter = $quoterMatch.Groups[1].Value
+        # Both must trade against this deployment's PoolManager, read back from chain.
+        foreach ($peripheryContract in @($universalRouter, $v4Quoter)) {
+            if ((Get-Address $peripheryContract "poolManager()(address)") -ine $poolManager) {
+                Fail "$peripheryContract is not wired to PoolManager $poolManager"
+            }
+        }
+        $periphery = [ordered]@{
+            universalRouter = $universalRouter
+            v4Quoter = $v4Quoter
+            universalRouterSource = "Uniswap/universal-router release/2.1.x 8580368c32e649a939af4c306d5f6d7010822680 (2.1.2)"
+            bytecodeHashes = [ordered]@{
+                universalRouter = Get-CodeHash $universalRouter
+                v4Quoter = Get-CodeHash $v4Quoter
+            }
+        }
+        $peripheryPath = [System.IO.Path]::ChangeExtension($resolvedOutput, ".v4-periphery.json")
+        [System.IO.File]::WriteAllText(
+            $peripheryPath, (($periphery | ConvertTo-Json -Depth 5) + "`n"), $utf8WithoutBom
+        )
+        Write-Output "Generated V4 periphery record $peripheryPath"
+    }
 }
 finally {
     foreach ($entry in $deploymentEnvironment.GetEnumerator()) {

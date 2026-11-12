@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { publicConfiguration } from "./public";
+import { isAnvilWalletFixture, publicConfiguration } from "./public";
 
 describe("publicConfiguration", () => {
   it("fails closed for missing values", () => {
@@ -95,6 +95,26 @@ describe("publicConfiguration", () => {
     for (const key of Object.keys(v2Fixture).filter((name) => name.startsWith("NEXT_PUBLIC_V2_"))) {
       expect(publicConfiguration({ ...v2Fixture, [key]: "" }).status).toBe("fail-closed");
     }
+  });
+
+  it("signs through the injected wallet for both Anvil fixtures and never for a reviewed deployment", () => {
+    // Plan v2-C Task 9: the engine-2 fixture uses the same injected-wallet stack as Task 6.
+    expect(isAnvilWalletFixture(publicConfiguration(v2Fixture))).toBe(true);
+    expect(
+      isAnvilWalletFixture(
+        publicConfiguration({
+          NEXT_PUBLIC_E2E_FIXTURE: "1",
+          NEXT_PUBLIC_TASK6_ANVIL_FACTORY: "0x0000000000000000000000000000000000000021",
+          NEXT_PUBLIC_TASK6_ANVIL_WETH: "0x0000000000000000000000000000000000000022",
+          NEXT_PUBLIC_TASK6_ANVIL_ROUTER: "0x0000000000000000000000000000000000000023",
+          NEXT_PUBLIC_TASK6_ANVIL_UNISWAP_FACTORY: "0x0000000000000000000000000000000000000024",
+          NEXT_PUBLIC_TASK6_ANVIL_RPC_URL: "http://127.0.0.1:8545",
+          NEXT_PUBLIC_TASK6_ANVIL_API_URL: "http://127.0.0.1:18080",
+        }),
+      ),
+    ).toBe(true);
+    expect(isAnvilWalletFixture(publicConfiguration({}))).toBe(false);
+    expect(isAnvilWalletFixture({ deploymentId: "robinhood-testnet" })).toBe(false);
   });
 
   it("rejects credentials or query material in public endpoints", () => {
