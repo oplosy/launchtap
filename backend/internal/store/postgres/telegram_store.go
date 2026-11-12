@@ -28,7 +28,7 @@ var (
 
 func (s TelegramStore) CreateLinkCode(ctx context.Context, o watchlist.Owner, digest [32]byte) (time.Time, error) {
 	expires, err := sqlc.New(s.Pool).UpsertTelegramLinkCode(ctx, sqlc.UpsertTelegramLinkCodeParams{
-		ChainID: o.ChainID, DeploymentID: o.DeploymentID, PrivyDid: o.PrivyDID, CodeSha256: digest[:],
+		ChainID: o.ChainID, DeploymentID: o.DeploymentID, PrivyDid: o.PrivyDID, CodeSha256: sqlc.Hash(digest),
 		TtlSeconds: int32(telegram.CodeTTL / time.Second),
 	})
 	if err != nil {
@@ -92,7 +92,7 @@ func (s TelegramStore) ClaimCode(ctx context.Context, chainID int64, deploymentI
 	claimed := false
 	err := pgx.BeginTxFunc(ctx, s.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := sqlc.New(tx)
-		code, err := q.ConsumeTelegramLinkCode(ctx, sqlc.ConsumeTelegramLinkCodeParams{ChainID: chainID, DeploymentID: deploymentID, CodeSha256: digest[:]})
+		code, err := q.ConsumeTelegramLinkCode(ctx, sqlc.ConsumeTelegramLinkCodeParams{ChainID: chainID, DeploymentID: deploymentID, CodeSha256: sqlc.Hash(digest)})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}

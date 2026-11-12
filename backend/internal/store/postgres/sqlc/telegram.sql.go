@@ -54,7 +54,7 @@ RETURNING privy_did, (expires_at > now())::boolean AS live
 type ConsumeTelegramLinkCodeParams struct {
 	ChainID      int64
 	DeploymentID string
-	CodeSha256   []byte
+	CodeSha256   Hash
 }
 
 type ConsumeTelegramLinkCodeRow struct {
@@ -414,7 +414,7 @@ type UpsertTelegramLinkCodeParams struct {
 	ChainID      int64
 	DeploymentID string
 	PrivyDid     string
-	CodeSha256   []byte
+	CodeSha256   Hash
 	TtlSeconds   int32
 }
 

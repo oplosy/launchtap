@@ -509,7 +509,7 @@ type TelegramLinkCode struct {
 	ChainID      int64
 	DeploymentID string
 	PrivyDid     string
-	CodeSha256   []byte
+	CodeSha256   Hash
 	ExpiresAt    pgtype.Timestamptz
 }
 
