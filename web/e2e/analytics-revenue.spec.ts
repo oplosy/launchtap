@@ -61,7 +61,7 @@ test("analytics shows protocol revenue by source and engine", async ({ page }) =
   await expect(card).not.toContainText("Snipe tax");
   await card.scrollIntoViewIfNeeded();
   await card.screenshot({
-    path: path.join(process.cwd(), "..", ".impeccable", "review", "protocol-revenue.png"),
+    path: path.join(process.cwd(), "test-results", "screenshots", "protocol-revenue.png"),
   });
 });
 

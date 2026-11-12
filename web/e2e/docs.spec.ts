@@ -19,7 +19,7 @@ test("docs read in a centred column of at most 820 px with contents beside it", 
   expect(Math.abs(text.x + text.width / 2 - 640)).toBeLessThanOrEqual(2);
   const nav = (await contents.boundingBox())!;
   expect(nav.x + nav.width).toBeLessThanOrEqual(text.x);
-  await page.screenshot({ path: "../.impeccable/review/rebuild-docs-wide.png" });
+  await page.screenshot({ path: "test-results/screenshots/rebuild-docs-wide.png" });
 });
 
 test("at 360 px the contents collapse into a Contents button above the text", async ({

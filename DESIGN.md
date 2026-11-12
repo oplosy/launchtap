@@ -16,11 +16,12 @@ motion. This direction is self-authored under the user's explicit creative deleg
 `pons.family` reference was inaccessible on 2026-09-10, so no external visual pixels or copy are
 used.
 
-The generated Impeccable comps in `.impeccable/mocks/` are reference-only direction studies, not
-pixel-fidelity acceptance targets. The shipped shell is intentionally code-led: its dark operating
-surface, semantic empty states, and restrained route motion take precedence over literal light
-ticket artwork. No comp-diff score is treated as a pass claim; the committed evidence is the
-multi-viewport capture set in `.impeccable/review/` plus the automated gates.
+The early generated comps were reference-only direction studies, not pixel-fidelity acceptance
+targets, and were removed from the repository on 2026-11-12 (they remain in git history). The
+shipped shell is intentionally code-led: its dark operating surface, semantic empty states, and
+restrained route motion take precedence over literal light ticket artwork. No comp-diff score is
+treated as a pass claim; the evidence is the automated gates. Playwright specs write their review
+captures to `web/test-results/screenshots/` (gitignored, cleared on every run).
 
 Dial values: `DESIGN_VARIANCE 5`, `MOTION_INTENSITY 4`, `VISUAL_DENSITY 7`. The lower variance keeps
 an application shell dependable; density supports scan-heavy crypto operations; motion remains

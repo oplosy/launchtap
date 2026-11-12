@@ -41,7 +41,7 @@ test("the launch form sits left of the token preview on a laptop", async ({ page
   expect(form.x + form.width).toBeLessThanOrEqual(preview.x);
   expect(form.width).toBeGreaterThan(preview.width);
   await page.screenshot({
-    path: "../.impeccable/review/rebuild-create-wide.png",
+    path: "test-results/screenshots/rebuild-create-wide.png",
     fullPage: true,
     animations: "disabled",
   });
