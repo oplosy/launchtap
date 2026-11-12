@@ -164,28 +164,26 @@
 
 ---
 
-### Plan v2-C D1: approve the local Universal Router dependency
+### Plan v2-C Task 9 follow-ups
 
 - **Date:** 2026-11-12
-- **Reason:** scope decision (adding a dependency needs the product owner's approval)
-- **Where it stopped:** `docs/plans/2026-11-12-v2-engine-web.md` D1. The local V4 stack has no
-  `UniversalRouter`, so the Anvil v2 web gate (Task 9) cannot sign a real V4 swap. Tasks 1-8 are
-  implemented on branch `task/v2-engine-web` (2026-11-12) with unit and mocked-browser coverage
-  only: no v2 deployment exists on a live chain, so no v2 write has run in a real wallet yet.
-- **Related files:** `contracts/script/v2/DeployLocalV2.s.sol`, `contracts/foundry.toml`,
-  `contracts/deployments/config/robinhood-mainnet-v4.json`
-- **Resume (next step):** Approve (or reject) adding `Uniswap/universal-router` as a submodule
-  pinned to the mainnet v2.1.2 source revision, built in a test-only profile. The alternative is
-  a mainnet-fork gate, which needs the fork RPC secret (operator item above).
-- **Pitfalls / notes:** The router revision decides the `SWAP_EXACT_IN_SINGLE` struct layout
-  (plan D2); the pinned `lib/v4-periphery` is newer than the deployed router.
-- **Task 9 must prove, end to end:** the V4 buy and the Permit2 sell (`web/src/v4-swap.ts`,
-  `V4SwapPanel`), the locker claim and the recipient propose/cancel/accept flow
-  (`V2CreatorPanel`), and the v2 launch with `futureDefaults()` facts. Two v1-parity gaps were
-  left on purpose: `V2CreatorPanel` keeps its transaction state in memory, not in the persisted
-  transaction storage (a reload mid-transaction loses the hash display, not the transaction), and
-  the token page links the pool hook but shows the pool id as text, because a pool id is not an
-  explorer address.
+- **Reason:** scope decision (outside the Task 9 lifecycle the plan specifies)
+- **Where it stopped:** the Anvil v2 gate (`npm run test:anvil-v2`) proves launch, taxed and
+  untaxed buys, graduation, the pool id check, a V4 buy and Permit2 sell, both claims and an
+  accepted recipient change. Not covered or not fixed:
+  - Proposal **cancel** and **replace** are not driven by the gate.
+  - `V4SwapPanel` sets "Allowances are set for this exact sell" and closes the confirmation in
+    the same step, and the notice only renders inside the confirmation, so it is never shown;
+    the user sees only "Resume sell".
+  - `V2CreatorPanel` keeps its transaction state in memory, not in the persisted transaction
+    storage (a reload mid-transaction loses the hash display, not the transaction).
+  - The token page shows the pool id as text, not a link (a pool id is not an explorer address).
+- **Related files:** `web/e2e/v2-lifecycle.spec.ts`, `web/src/transactions-panel.tsx`
+- **Resume (next step):** add cancel/replace steps to the gate spec; render `reviewNotice`
+  outside the confirmation in `V4SwapPanel`.
+- **Pitfalls / notes:** the gate runs one project (`small-laptop`) because it shares Anvil state
+  (chain time, graduation). The anti-snipe window in `DeployLocalV2` is 60 s of chain time, so
+  the taxed buy must stay quick after launch.
 
 ### Engine v2 backend known limitations
 
@@ -204,6 +202,18 @@
   remove that once the backend projects real values.
 
 ## Done
+
+### Plan v2-C D1 and Task 9: Anvil v2 web gate
+
+- **Date:** 2026-11-12
+- **What closed:** D1 approved by the owner. Universal Router 2.1.2 is pinned and built in the
+  test-only `router` profile (runtime equal to mainnet), deployed with `V4Quoter` by
+  `deploy-v2-local.ps1 -WithRouter`. `npm run test:anvil-v2` runs the full Task 9 lifecycle in
+  the browser and in CI next to the Task 6 gate. It found four defects, each fixed in its owning
+  task: the missing `minHopPriceX36` (Task 4), the v2 fixture wallet stack (Task 2), V4 swaps
+  absent from `/v1/transactions` (Plan v2-B), and curve claims hidden after graduation (Task 6).
+- **Windows note:** the router's nested submodules exceed MAX_PATH; set `core.longpaths` (see
+  `AGENTS.md` setup).
 
 ### P0-C2 signed-in e2e coverage
 
