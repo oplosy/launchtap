@@ -75,6 +75,12 @@ type Detail struct {
 type QuoteState struct {
 	Detail                    Detail
 	ProtocolFees, CreatorFees *big.Int
+	// The engine-2 anti-snipe profile; zero for engine 1.
+	AntiSnipeStartBPS        uint16
+	AntiSnipeDurationSeconds uint32
+	// HeadTime is the block time of the indexed head the quote reads at: the anti-snipe clock
+	// (pre-flight B5).
+	HeadTime time.Time
 }
 
 type QuoteReader interface {

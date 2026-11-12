@@ -1089,6 +1089,15 @@ export interface components {
             /** Format: int64 */
             reserve_source_block: number;
             reserve_source_hash: string;
+            /** @description Engine-2 anti-snipe tax taken from a buy at the indexed head's block time; 0 for engine 1, sells and after the window. */
+            snipe_tax: string;
+            /**
+             * Format: int32
+             * @description Engine-2 anti-snipe rate in force at the indexed head's block time; 0 for engine 1 and after the window.
+             */
+            tax_bps: number;
+            /** @description RFC 3339 time at which the anti-snipe tax reaches zero; empty when no tax is in force. */
+            tax_ends_at: string;
         };
         QuoteInputBody: {
             /**

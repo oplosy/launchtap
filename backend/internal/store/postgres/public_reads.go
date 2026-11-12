@@ -90,6 +90,12 @@ func (r TokenReader) ReadQuoteState(ctx context.Context, chainID int64, address 
 		out.Detail.ReserveHash = common.Hash(row.ReserveBlockHash)
 		out.Detail.Snapshot = s.Identity
 		out.Detail.Finality = finality(s.State, s.Identity.BlockNumber)
+		out.Detail.EngineVersion = uint16(row.EngineVersion)
+		out.Detail.LaunchTime = row.LaunchBlockTime.Time
+		out.AntiSnipeStartBPS = uint16(row.AntiSnipeStartBps)
+		out.AntiSnipeDurationSeconds = uint32(row.AntiSnipeDurationSeconds)
+		// observedIdentity has already required the observed head's block time.
+		out.HeadTime = s.State.ObservedAt.Time
 		// Accumulated fees only feed the curve's uint256 overflow guard, which no real ETH
 		// balance can reach. Summing every trade per quote made quotes O(trades), so the
 		// informational quote starts from zero accrued fees.

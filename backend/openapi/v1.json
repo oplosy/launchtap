@@ -1600,6 +1600,20 @@
           },
           "reserve_source_hash": {
             "type": "string"
+          },
+          "snipe_tax": {
+            "description": "Engine-2 anti-snipe tax taken from a buy at the indexed head's block time; 0 for engine 1, sells and after the window.",
+            "type": "string"
+          },
+          "tax_bps": {
+            "description": "Engine-2 anti-snipe rate in force at the indexed head's block time; 0 for engine 1 and after the window.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tax_ends_at": {
+            "description": "RFC 3339 time at which the anti-snipe tax reaches zero; empty when no tax is in force.",
+            "type": "string"
           }
         },
         "required": [
@@ -1615,6 +1629,9 @@
           "finality",
           "reserve_source_block",
           "reserve_source_hash",
+          "snipe_tax",
+          "tax_bps",
+          "tax_ends_at",
           "informational"
         ],
         "type": "object"

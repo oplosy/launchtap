@@ -408,7 +408,10 @@ SELECT t.phase, t.total_supply, t.curve_tokens, t.lp_tokens, t.graduation_eth,
        COALESCE(r.eth_reserve, t.initial_virtual_eth) AS eth_reserve,
        COALESCE(r.token_reserve, t.initial_virtual_token) AS token_reserve,
        COALESCE(r.source_block_number, t.launch_block_number) AS reserve_block_number,
-       COALESCE(r.source_block_hash, t.launch_block_hash) AS reserve_block_hash
+       COALESCE(r.source_block_hash, t.launch_block_hash) AS reserve_block_hash,
+       t.engine_version, t.launch_block_time,
+       COALESCE(t.anti_snipe_start_bps, 0)::INTEGER AS anti_snipe_start_bps,
+       COALESCE(t.anti_snipe_duration_seconds, 0)::BIGINT AS anti_snipe_duration_seconds
 FROM tokens AS t
 LEFT JOIN token_reserves AS r USING (chain_id, token_address)
 WHERE t.chain_id = $1
@@ -421,19 +424,23 @@ type GetTokenQuoteStateParams struct {
 }
 
 type GetTokenQuoteStateRow struct {
-	Phase               string
-	TotalSupply         Uint256
-	CurveTokens         Uint256
-	LpTokens            Uint256
-	GraduationEth       Uint256
-	InitialVirtualEth   Uint256
-	InitialVirtualToken Uint256
-	TradeFeeBps         int32
-	ProtocolShareBps    int32
-	EthReserve          *Uint256
-	TokenReserve        *Uint256
-	ReserveBlockNumber  int64
-	ReserveBlockHash    Hash
+	Phase                    string
+	TotalSupply              Uint256
+	CurveTokens              Uint256
+	LpTokens                 Uint256
+	GraduationEth            Uint256
+	InitialVirtualEth        Uint256
+	InitialVirtualToken      Uint256
+	TradeFeeBps              int32
+	ProtocolShareBps         int32
+	EthReserve               *Uint256
+	TokenReserve             *Uint256
+	ReserveBlockNumber       int64
+	ReserveBlockHash         Hash
+	EngineVersion            int32
+	LaunchBlockTime          pgtype.Timestamptz
+	AntiSnipeStartBps        int32
+	AntiSnipeDurationSeconds int64
 }
 
 func (q *Queries) GetTokenQuoteState(ctx context.Context, arg GetTokenQuoteStateParams) (GetTokenQuoteStateRow, error) {
@@ -453,6 +460,10 @@ func (q *Queries) GetTokenQuoteState(ctx context.Context, arg GetTokenQuoteState
 		&i.TokenReserve,
 		&i.ReserveBlockNumber,
 		&i.ReserveBlockHash,
+		&i.EngineVersion,
+		&i.LaunchBlockTime,
+		&i.AntiSnipeStartBps,
+		&i.AntiSnipeDurationSeconds,
 	)
 	return i, err
 }

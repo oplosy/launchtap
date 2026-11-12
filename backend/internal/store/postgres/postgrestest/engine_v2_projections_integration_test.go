@@ -276,3 +276,51 @@ func listTokenHolders(t *testing.T, ctx context.Context, pool *pgxpool.Pool, cha
 	}
 	return addresses
 }
+
+// TestReadQuoteStateCarriesEngineV2Clock reads an engine-2 token's anti-snipe profile and the
+// indexed head's block time, the quote's anti-snipe clock (pre-flight B5).
+func TestReadQuoteStateCarriesEngineV2Clock(t *testing.T) {
+	database := NewMigrated(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	pool := openPool(t, ctx, database.URL)
+
+	const chainID int64 = 49031
+	const deployment = "engine-v2-quote-clock"
+	launchedAt := time.Date(2026, 11, 12, 9, 30, 0, 0, time.UTC)
+	block := ledger.IndexedBlock{ChainID: chainID, BlockNumber: 9, BlockHash: common.Hash{0xc9}, ParentHash: common.Hash{0xc8}, BlockTime: launchedAt, FinalityStatus: "observed"}
+	decoded := decodeV2Fixture(t, block, common.HexToAddress("0x0b0b"))
+	end := -1
+	var launch chain.TokenLaunchedV2
+	for index, log := range decoded {
+		if value, ok := log.Value.(chain.TokenLaunchedV2); ok {
+			launch, end = value, index+1
+			break
+		}
+	}
+	if end < 0 {
+		t.Fatal("fixture has no TokenLaunchedV2")
+	}
+	if err := storepostgres.WithinTx(ctx, pool, func(ctx context.Context, adapter *storepostgres.Adapter) error {
+		if _, err := adapter.UpsertIndexedBlock(ctx, block); err != nil {
+			return err
+		}
+		return indexer.LedgerRouter{ChainID: chainID}.Apply(ctx, adapter, decoded[:end], map[int64]ledger.IndexedBlock{block.BlockNumber: block}, nil)
+	}); err != nil {
+		t.Fatalf("ingest launch: %v", err)
+	}
+	head := launchedAt.Add(30 * time.Second)
+	if _, err := database.DB.ExecContext(ctx, `INSERT INTO sync_state(chain_id,deployment_id,observed_number,observed_hash,observed_at) VALUES($1,$2,9,$3,$4)`, chainID, deployment, block.BlockHash[:], head); err != nil {
+		t.Fatal(err)
+	}
+	state, err := (storepostgres.TokenReader{Pool: pool, DeploymentID: deployment}).ReadQuoteState(ctx, chainID, launch.Token)
+	if err != nil {
+		t.Fatalf("read quote state: %v", err)
+	}
+	if state.Detail.EngineVersion != 2 || state.AntiSnipeStartBPS != launch.AntiSnipeStartBPS || state.AntiSnipeDurationSeconds != launch.AntiSnipeDurationSeconds {
+		t.Fatalf("engine %d profile %d/%d, want 2 and %d/%d", state.Detail.EngineVersion, state.AntiSnipeStartBPS, state.AntiSnipeDurationSeconds, launch.AntiSnipeStartBPS, launch.AntiSnipeDurationSeconds)
+	}
+	if !state.Detail.LaunchTime.Equal(launchedAt) || !state.HeadTime.Equal(head) {
+		t.Fatalf("launch %v head %v, want %v and %v", state.Detail.LaunchTime, state.HeadTime, launchedAt, head)
+	}
+}

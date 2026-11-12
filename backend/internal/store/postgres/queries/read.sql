@@ -150,7 +150,10 @@ SELECT t.phase, t.total_supply, t.curve_tokens, t.lp_tokens, t.graduation_eth,
        COALESCE(r.eth_reserve, t.initial_virtual_eth) AS eth_reserve,
        COALESCE(r.token_reserve, t.initial_virtual_token) AS token_reserve,
        COALESCE(r.source_block_number, t.launch_block_number) AS reserve_block_number,
-       COALESCE(r.source_block_hash, t.launch_block_hash) AS reserve_block_hash
+       COALESCE(r.source_block_hash, t.launch_block_hash) AS reserve_block_hash,
+       t.engine_version, t.launch_block_time,
+       COALESCE(t.anti_snipe_start_bps, 0)::INTEGER AS anti_snipe_start_bps,
+       COALESCE(t.anti_snipe_duration_seconds, 0)::BIGINT AS anti_snipe_duration_seconds
 FROM tokens AS t
 LEFT JOIN token_reserves AS r USING (chain_id, token_address)
 WHERE t.chain_id = sqlc.arg(chain_id)
