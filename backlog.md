@@ -227,7 +227,7 @@
   task: the missing `minHopPriceX36` (Task 4), the v2 fixture wallet stack (Task 2), V4 swaps
   absent from `/v1/transactions` (Plan v2-B), and curve claims hidden after graduation (Task 6).
 - **Windows note:** the router's nested submodules exceed MAX_PATH; set `core.longpaths` (see
-  `AGENTS.md` setup).
+  `CLAUDE.md` "Don't / watch out").
 
 ### P0-C2 signed-in e2e coverage
 

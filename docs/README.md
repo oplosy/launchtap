@@ -12,7 +12,7 @@ Start with the [repository README](../README.md) for product boundaries, current
 
 ## Delivery and verification
 
-- [Agent rules and common commands](../AGENTS.md)
+- [Agent rules and common commands](../CLAUDE.md)
 - [Implementation plans](plans/)
 - [Operational runbooks](runbooks/)
 - [Audit records](audits/)

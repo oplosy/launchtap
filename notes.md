@@ -1,7 +1,7 @@
 # Notes — launchpad
 
 > Free-form project notes: ideas, decisions, open questions, research output.
-> Unfinished work goes to `backlog.md`; durable agent instructions to `AGENTS.md`.
+> Unfinished work goes to `backlog.md`; durable agent instructions to `CLAUDE.md`.
 
 ---
 
@@ -557,7 +557,7 @@ i18n, telemetry, referrals, Limit/Orders, Stocks pairing, forum, mobile.
 
 ### Parallel / text work (🟢)
 Terms/Privacy/risk copy, geo-restriction policy (US/OFAC block?), domain/DNS,
-`AGENTS.md` command + code-style sections.
+`CLAUDE.md` command + code-style sections.
 
 ## Resources / links
 

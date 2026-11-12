@@ -37,9 +37,9 @@ acceptance.
 ## Project status and release boundary
 
 The checkout's active development branch is `dev`. `main` contains milestone PR #7 at
-`37fb6ee`. Task-level implementation work is normally linear on `dev`, while a
-short-lived `task/<slug>` branch is reserved for unusually large or uncertain high-risk work.
-See [AGENTS.md](AGENTS.md) for the working and Git handoff rules.
+`37fb6ee`. Docs and small, low-risk changes land linearly on `dev`, while high-risk or large
+work goes through a short-lived `task/<slug>` branch and a PR back into `dev`.
+See [CLAUDE.md](CLAUDE.md) for the working and Git rules.
 
 | Area                                                 | Repository status                                                               | What that status does not establish                                                       |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
@@ -724,7 +724,7 @@ do not infer USD prices from a selected source when no runtime adapter has been 
 
 | Document                                                                           | Use it for                                                                           |
 | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| [AGENTS.md](AGENTS.md)                                                             | Source-of-truth project instructions, language, workflow, Git, and review boundaries |
+| [CLAUDE.md](CLAUDE.md)                                                             | Source-of-truth project instructions, language, workflow, Git, and review boundaries |
 | [notes.md](notes.md)                                                               | Product framing, token lifecycle, economic rationale, and design decisions           |
 | [Roadmap](docs/ROADMAP.md)                                                         | Plans, milestone progress, and dependency order                                      |
 | [Contract core spec](docs/specs/2026-09-01-contract-core-design.md)                | V1 contract behavior, exact economic/math decisions, event interface, and invariants |
