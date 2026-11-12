@@ -11,6 +11,8 @@ import (
 )
 
 type Querier interface {
+	// Moves the cursor forward only, and only while the account is still bound to the same chat.
+	AdvanceTelegramCursor(ctx context.Context, arg AdvanceTelegramCursorParams) error
 	AffectedTokensAbove(ctx context.Context, arg AffectedTokensAboveParams) ([]Address, error)
 	// Applies one event's owed-balance deltas (creator_fee_deltas). Callers apply it only when the
 	// ledger row was newly inserted, so a replay never double-counts.
@@ -52,6 +54,8 @@ type Querier interface {
 	CompleteAggregationDirty(ctx context.Context, arg CompleteAggregationDirtyParams) (int64, error)
 	CompleteIndexerReorg(ctx context.Context, reorgID int64) (CompleteIndexerReorgRow, error)
 	CompletePositionDirty(ctx context.Context, arg CompletePositionDirtyParams) (int64, error)
+	// Consumes a code (used or expired codes are deleted either way); live tells whether it was valid.
+	ConsumeTelegramLinkCode(ctx context.Context, arg ConsumeTelegramLinkCodeParams) (ConsumeTelegramLinkCodeRow, error)
 	CountTokenWatchers(ctx context.Context, arg CountTokenWatchersParams) (int64, error)
 	// v1 pool swaps and V4 swaps still without a sender at or below through_block (the indexer's
 	// safe head). The v1 side is served by the partial index pool_swaps_tx_from_null_idx; the V4
@@ -87,6 +91,11 @@ type Querier interface {
 	DeleteRefundCreditsAbove(ctx context.Context, arg DeleteRefundCreditsAboveParams) (int64, error)
 	// Engine-2 ledger. V4 pool rows reference graduations, so they are deleted before them.
 	DeleteSnipeTaxClaimsAbove(ctx context.Context, arg DeleteSnipeTaxClaimsAboveParams) (int64, error)
+	// Frees a chat bound to another account before it moves to a new one.
+	DeleteTelegramChatOfOtherAccount(ctx context.Context, arg DeleteTelegramChatOfOtherAccountParams) error
+	DeleteTelegramLink(ctx context.Context, arg DeleteTelegramLinkParams) error
+	DeleteTelegramLinkByChat(ctx context.Context, arg DeleteTelegramLinkByChatParams) (int64, error)
+	DeleteTelegramLinkCode(ctx context.Context, arg DeleteTelegramLinkCodeParams) error
 	DeleteTokenLaunchesAbove(ctx context.Context, arg DeleteTokenLaunchesAboveParams) (int64, error)
 	DeleteTokenStats(ctx context.Context, arg DeleteTokenStatsParams) (int64, error)
 	DeleteTradesAbove(ctx context.Context, arg DeleteTradesAboveParams) (int64, error)
@@ -130,6 +139,7 @@ type Querier interface {
 	GetSocialUser(ctx context.Context, arg GetSocialUserParams) (GetSocialUserRow, error)
 	GetSyncState(ctx context.Context, arg GetSyncStateParams) (SyncState, error)
 	GetSyncWatermarks(ctx context.Context, arg GetSyncWatermarksParams) (GetSyncWatermarksRow, error)
+	GetTelegramLink(ctx context.Context, arg GetTelegramLinkParams) (GetTelegramLinkRow, error)
 	GetTokenCreatorForUpdate(ctx context.Context, arg GetTokenCreatorForUpdateParams) (Address, error)
 	GetTokenDetail(ctx context.Context, arg GetTokenDetailParams) (GetTokenDetailRow, error)
 	GetTokenImage(ctx context.Context, arg GetTokenImageParams) (GetTokenImageRow, error)
@@ -264,6 +274,11 @@ type Querier interface {
 	// (trades, transfers) references token_launches, so these pages cover the whole ledger.
 	ListSeedTokens(ctx context.Context, arg ListSeedTokensParams) ([]Address, error)
 	ListStoredCandles(ctx context.Context, arg ListStoredCandlesParams) ([]ListStoredCandlesRow, error)
+	ListTelegramLinks(ctx context.Context, arg ListTelegramLinksParams) ([]ListTelegramLinksRow, error)
+	// Inbox events on the account's watched tokens after the cursor, in blocks at or below the safe
+	// head, passing the link's settings, oldest first. Each watched token contributes at most
+	// page_size rows through its own ordered index scan.
+	ListTelegramPendingEvents(ctx context.Context, arg ListTelegramPendingEventsParams) ([]ListTelegramPendingEventsRow, error)
 	// Metric sorts walk tokens_phase_*_cursor_idx; the sort columns mirror token_stats (0 when
 	// no stats row exists) through triggers, see migration 00014.
 	ListTokenCardsMarketCap(ctx context.Context, arg ListTokenCardsMarketCapParams) ([]ListTokenCardsMarketCapRow, error)
@@ -388,11 +403,18 @@ type Querier interface {
 	TransferMatchesEvent(ctx context.Context, arg TransferMatchesEventParams) (pgtype.Bool, error)
 	UnbanSocialUser(ctx context.Context, arg UnbanSocialUserParams) (int64, error)
 	UnhideComment(ctx context.Context, arg UnhideCommentParams) error
+	UpdateTelegramSettings(ctx context.Context, arg UpdateTelegramSettingsParams) (int64, error)
 	// Comment votes (docs/specs/2026-11-12-comment-votes-design.md). A repeat of the same value
 	// touches no row, so it costs nothing against the hourly limit.
 	UpsertCommentVote(ctx context.Context, arg UpsertCommentVoteParams) (int64, error)
 	UpsertIndexedBlock(ctx context.Context, arg UpsertIndexedBlockParams) (int64, error)
 	UpsertSyncState(ctx context.Context, arg UpsertSyncStateParams) (SyncState, error)
+	// Binds the chat to the account. A new or moved link starts its cursor at the safe head, so no
+	// backlog is sent; settings survive a re-link.
+	UpsertTelegramLink(ctx context.Context, arg UpsertTelegramLinkParams) error
+	// Telegram alerts (docs/specs/2026-11-12-telegram-alerts-design.md).
+	// Replaces the account's pending link code; expiry runs on the database clock.
+	UpsertTelegramLinkCode(ctx context.Context, arg UpsertTelegramLinkCodeParams) (pgtype.Timestamptz, error)
 	UpsertWalletPosition(ctx context.Context, arg UpsertWalletPositionParams) error
 	// A name is unavailable to the caller when another user holds it, or another user released it
 	// within hold_seconds (database clock). The caller's own releases never block it.

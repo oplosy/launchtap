@@ -41,6 +41,12 @@ export type CommentEligibilityResponse = components["schemas"]["EligibilityBody"
 export type ReportReason = "spam" | "scam" | "abuse" | "other";
 export type PublicProfileResponse = components["schemas"]["PublicProfileDTO"];
 export type InboxResponse = components["schemas"]["InboxBody"];
+export type TelegramStatus = components["schemas"]["TelegramStatusBody"];
+export type TelegramLink = components["schemas"]["TelegramLinkBody"];
+export type TelegramSettings = Pick<
+  TelegramStatus,
+  "graduations" | "large_trades" | "min_trade_wei"
+>;
 export type InboxItem = components["schemas"]["InboxItemDTO"];
 export type ForumPostsResponse = components["schemas"]["ForumPostsBody"];
 export type ForumPost = components["schemas"]["ForumPostDTO"];
@@ -418,6 +424,38 @@ export class ApiClient {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ through }),
       },
+      auth,
+    );
+  }
+
+  /** Telegram alert link and settings (docs/specs/2026-11-12-telegram-alerts-design.md). */
+  getTelegram(auth: AuthHeaders, signal?: AbortSignal) {
+    return this.request<TelegramStatus>("/v1/me/telegram", { signal, cache: "no-store" }, auth);
+  }
+
+  updateTelegram(settings: TelegramSettings, auth: AuthHeaders, signal?: AbortSignal) {
+    return this.request<TelegramStatus>(
+      "/v1/me/telegram",
+      {
+        method: "PUT",
+        signal,
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      },
+      auth,
+    );
+  }
+
+  unlinkTelegram(auth: AuthHeaders, signal?: AbortSignal) {
+    return this.requestNoContent("/v1/me/telegram", { method: "DELETE", signal }, auth);
+  }
+
+  /** A one-time deep link; the chat connects when the reader presses Start in Telegram. */
+  createTelegramLink(auth: AuthHeaders, signal?: AbortSignal) {
+    return this.request<TelegramLink>(
+      "/v1/me/telegram/link",
+      { method: "POST", signal, cache: "no-store" },
       auth,
     );
   }

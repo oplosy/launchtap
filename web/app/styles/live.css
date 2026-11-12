@@ -337,6 +337,58 @@ a.inbox-item-text:hover {
   color: var(--down);
   font-size: 13px;
 }
+.inbox-page {
+  display: grid;
+  gap: 24px;
+}
+.telegram-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md, 12px);
+  padding: 16px;
+}
+.telegram-card h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.telegram-card p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 14px;
+}
+.telegram-card a {
+  text-decoration: underline;
+}
+.telegram-card-body {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+.telegram-card-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.telegram-card-threshold {
+  width: 9ch;
+  min-height: 32px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm, 8px);
+  background: transparent;
+  color: var(--text);
+  padding: 4px 8px;
+}
+.telegram-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.telegram-card-message[role="alert"] {
+  color: var(--down);
+}
 @media (max-width: 560px) {
   .inbox-item {
     flex-wrap: wrap;

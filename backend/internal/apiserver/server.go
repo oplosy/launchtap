@@ -159,6 +159,13 @@ func (s *Server) RegisterInboxRoutes(r InboxRoutes) {
 	r.Register(s.API)
 }
 
+func (s *Server) RegisterTelegramRoutes(r TelegramRoutes) {
+	if r.Logger == nil {
+		r.Logger = s.logger
+	}
+	r.Register(s.API)
+}
+
 func (s *Server) RegisterForumRoutes(r ForumRoutes) {
 	if r.Logger == nil {
 		r.Logger = s.logger
