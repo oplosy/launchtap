@@ -56,7 +56,11 @@
   `docs/audits/runtime-advisory-review-2026-11-06.md`. The upgrade was not done.
   **Re-checked 2026-11-09 and 2026-11-12:** the newest release, `@privy-io/react-auth` 3.51.3,
   still depends on `x402` ^0.7.1 (latest 1.2.0 of `x402` itself still requires wagmi ^2.15.6
-  and zod ^3.24.2), so both highs remain.
+  and zod ^3.24.2), so both highs remain. **Trial lockfile 2026-11-12** (`@privy-io/react-auth`
+  3.51.3 + `@privy-io/wagmi` 4.0.20, viem 2.57.16, wagmi 2.16.9): `npm audit --omit=dev` still
+  reports GHSA-mrhx-c7xc-m3w5 (zod via `x402` 0.7.3) and GHSA-qr28-fpjm-wq7f
+  (decode-uri-component); the owner asked for the upgrade that day and it was declined on this
+  evidence. The current tree passes `scripts/audit-runtime.mjs`.
 - **Resume (next step):** Before 2027-02-01, re-run the trial install from that document with
   the then-current Privy release. Upgrade only once `npm audit --omit=dev` on the trial tree no
   longer reports the two highs; otherwise renew the allowlist entries with a fresh impact review.
