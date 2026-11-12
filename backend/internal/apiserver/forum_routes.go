@@ -27,7 +27,8 @@ type ForumRoutes struct {
 }
 
 type forumPostsInput struct {
-	Cursor string `query:"cursor" maxLength:"256"`
+	Sort   string `query:"sort" default:"new" doc:"new (default): newest first, paginated; best: posts from the last 7 days by score, one page. Any other value is a 400 invalid_sort."`
+	Cursor string `query:"cursor" maxLength:"256" doc:"Only for sort=new."`
 	Limit  int    `query:"limit" default:"20" doc:"Number of posts, 1-50; defaults to 20."`
 }
 
@@ -39,6 +40,7 @@ type forumPostDTO struct {
 	Body      string           `json:"body"`
 	CreatedAt string           `json:"created_at"`
 	Author    commentAuthorDTO `json:"author"`
+	Score     int64            `json:"score" doc:"Sum of votes from voters who are not banned."`
 	Name      string           `json:"name" doc:"Token launch name; user-controlled text."`
 	Symbol    string           `json:"symbol" doc:"Token launch symbol; user-controlled text."`
 }
@@ -104,12 +106,25 @@ func (r ForumRoutes) posts(ctx context.Context, in *forumPostsInput) (*forumPost
 	if r.Store == nil {
 		return nil, huma.Error503ServiceUnavailable("forum unavailable")
 	}
+	sort, ok := forum.ParsePostSort(in.Sort)
+	if !ok {
+		return nil, apiProblem(http.StatusBadRequest, "invalid_sort", "sort must be new or best")
+	}
 	if err := forumLimit(in.Limit); err != nil {
 		return nil, err
 	}
-	page, err := r.Store.Posts(ctx, r.scope(), in.Cursor, in.Limit)
-	if err != nil {
-		return nil, r.fail(ctx, err)
+	var page forum.PostPage
+	if sort == forum.PostSortBest {
+		items, err := r.Store.BestPosts(ctx, r.scope(), in.Limit)
+		if err != nil {
+			return nil, r.fail(ctx, err)
+		}
+		page.Items = items
+	} else {
+		var err error
+		if page, err = r.Store.Posts(ctx, r.scope(), in.Cursor, in.Limit); err != nil {
+			return nil, r.fail(ctx, err)
+		}
 	}
 	out := forumPostsOutput{CacheControl: forumPostsCacheControl, Body: forumPostsBody{
 		Items: make([]forumPostDTO, 0, len(page.Items)), NextCursor: page.NextCursor,
@@ -117,7 +132,7 @@ func (r ForumRoutes) posts(ctx context.Context, in *forumPostsInput) (*forumPost
 	for _, p := range page.Items {
 		c := toCommentDTO(p.Comment)
 		out.Body.Items = append(out.Body.Items, forumPostDTO{
-			ID: c.ID, Token: c.Token, Body: c.Body, CreatedAt: c.CreatedAt, Author: c.Author, Name: p.Name, Symbol: p.Symbol,
+			ID: c.ID, Token: c.Token, Body: c.Body, CreatedAt: c.CreatedAt, Author: c.Author, Score: c.Score, Name: p.Name, Symbol: p.Symbol,
 		})
 	}
 	return &out, nil

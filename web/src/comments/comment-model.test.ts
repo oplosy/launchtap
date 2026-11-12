@@ -3,7 +3,10 @@ import {
   appendPage,
   authorLabel,
   mergeFirstPage,
+  nextVote,
   problemMessage,
+  scoreLabel,
+  voteProblemMessage,
   type CommentItem,
 } from "./comment-model";
 
@@ -16,6 +19,7 @@ function comment(id: number): CommentItem {
     body: `c${id}`,
     created_at: "2026-11-09T00:00:00.000000Z",
     author: { username: null, wallet: WALLET, role: "holder" },
+    score: 0,
   };
 }
 const ids = (items: CommentItem[]) => items.map((c) => c.id);
@@ -83,5 +87,27 @@ describe("problemMessage", () => {
       expect(problemMessage(code)).not.toBe(problemMessage(undefined));
     }
     expect(problemMessage("nope")).toBe(problemMessage(undefined));
+  });
+});
+
+describe("votes", () => {
+  it("clicking the active arrow clears the vote; the other arrow switches it", () => {
+    expect(nextVote(0, 1)).toBe(1);
+    expect(nextVote(1, 1)).toBe(0);
+    expect(nextVote(1, -1)).toBe(-1);
+    expect(nextVote(-1, -1)).toBe(0);
+  });
+
+  it("labels the score in points", () => {
+    expect(scoreLabel(1)).toBe("1 point");
+    expect(scoreLabel(0)).toBe("0 points");
+    expect(scoreLabel(-2)).toBe("-2 points");
+  });
+
+  it("explains vote refusals in vote terms", () => {
+    expect(voteProblemMessage("not_holder")).toBe("Hold this token to vote on its comments.");
+    expect(voteProblemMessage("own_comment")).toBe("You cannot vote on your own comment.");
+    expect(voteProblemMessage("rate_limited")).toBe("You are voting too fast. Try again shortly.");
+    expect(voteProblemMessage("banned")).toBe(problemMessage("banned"));
   });
 });

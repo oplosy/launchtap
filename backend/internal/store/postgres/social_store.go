@@ -126,12 +126,12 @@ func (s SocialStore) List(ctx context.Context, sc social.Scope, token common.Add
 }
 
 func commentFromRow(row sqlc.ListTokenCommentsRow, token common.Address) (social.Comment, error) {
-	return commentFromParts(row.ID, token, row.Body, row.CreatedAt, row.Role, row.DisplayUsername, row.DisplayWallet)
+	return commentFromParts(row.ID, token, row.Body, row.CreatedAt, row.Role, row.DisplayUsername, row.DisplayWallet, row.Score)
 }
 
 // commentFromParts maps the read-time author display columns shared by the token comment list
 // and the forum feed.
-func commentFromParts(id int64, token common.Address, body string, createdAt pgtype.Timestamptz, role string, username pgtype.Text, wallet []byte) (social.Comment, error) {
+func commentFromParts(id int64, token common.Address, body string, createdAt pgtype.Timestamptz, role string, username pgtype.Text, wallet []byte, score int64) (social.Comment, error) {
 	if !createdAt.Valid {
 		return social.Comment{}, errors.New("comment has invalid created_at")
 	}
@@ -147,7 +147,7 @@ func commentFromParts(id int64, token common.Address, body string, createdAt pgt
 		w := common.BytesToAddress(wallet)
 		author.Wallet = &w
 	}
-	return social.Comment{ID: id, Token: token, Body: body, CreatedAt: createdAt.Time, Author: author}, nil
+	return social.Comment{ID: id, Token: token, Body: body, CreatedAt: createdAt.Time, Author: author, Score: score}, nil
 }
 
 func (s SocialStore) Eligibility(ctx context.Context, a social.Actor, token common.Address) (social.Eligibility, error) {
@@ -348,4 +348,76 @@ func (s SocialStore) Report(ctx context.Context, a social.Actor, commentID int64
 		}
 		return nil
 	})
+}
+
+// Vote sets or clears the caller's vote on a visible comment
+// (docs/specs/2026-11-12-comment-votes-design.md). Setting a vote needs a linked wallet that is
+// the creator or a holder of the comment's token; clearing does not. A new or changed vote is
+// counted after it is written, so one over the hourly cap rolls the whole transaction back.
+func (s SocialStore) Vote(ctx context.Context, a social.Actor, commentID int64, value int) (social.VoteResult, error) {
+	var out social.VoteResult
+	err := WithinTx(ctx, s.Pool, func(ctx context.Context, adapter *Adapter) error {
+		q := adapter.queries
+		user, err := lockUser(ctx, q, a)
+		if err != nil {
+			return err
+		}
+		if user.BannedAt.Valid {
+			return social.ErrBanned
+		}
+		target, err := q.GetReportableComment(ctx, sqlc.GetReportableCommentParams{CommentID: commentID, ChainID: a.ChainID, DeploymentID: a.DeploymentID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return social.ErrCommentNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("get votable comment: %w", err)
+		}
+		token := common.Address(target.TokenAddress)
+		if err := tokenExists(ctx, q, a.ChainID, token); err != nil {
+			if errors.Is(err, social.ErrUnknownToken) {
+				return social.ErrCommentNotFound
+			}
+			return err
+		}
+		if target.AuthorDid == a.PrivyDID {
+			return social.ErrOwnVote
+		}
+		if value == 0 {
+			if err := q.DeleteCommentVote(ctx, sqlc.DeleteCommentVoteParams{CommentID: commentID, VoterDid: a.PrivyDID}); err != nil {
+				return fmt.Errorf("delete vote: %w", err)
+			}
+		} else {
+			_, raw := dedupeWallets(a.Wallets)
+			qualified, err := q.QualifyWallets(ctx, sqlc.QualifyWalletsParams{Wallets: raw, ChainID: a.ChainID, TokenAddress: sqlc.Address(token), DeploymentID: a.DeploymentID})
+			if err != nil {
+				return fmt.Errorf("qualify wallets: %w", err)
+			}
+			if len(qualified) == 0 {
+				return social.ErrNotHolder
+			}
+			changed, err := q.UpsertCommentVote(ctx, sqlc.UpsertCommentVoteParams{CommentID: commentID, ChainID: a.ChainID, DeploymentID: a.DeploymentID, VoterDid: a.PrivyDID, VoteValue: int16(value)})
+			if err != nil {
+				return fmt.Errorf("upsert vote: %w", err)
+			}
+			if changed > 0 {
+				state, err := q.VoteRateState(ctx, sqlc.VoteRateStateParams{ChainID: a.ChainID, DeploymentID: a.DeploymentID, VoterDid: a.PrivyDID, WindowSeconds: rateWindowSeconds, HourlyLimit: social.VotesPerHour + 1})
+				if err != nil {
+					return fmt.Errorf("vote rate state: %w", err)
+				}
+				if state.CountInWindow > social.VotesPerHour && state.ReleaseAt.Valid && state.DbNow.Valid {
+					return &social.RateLimitedError{RetryAfter: retryAfter(state.ReleaseAt.Time.Add(social.RateWindow), state.DbNow.Time)}
+				}
+			}
+		}
+		score, err := q.CommentScore(ctx, commentID)
+		if err != nil {
+			return fmt.Errorf("comment score: %w", err)
+		}
+		out = social.VoteResult{Score: score, Vote: value}
+		return nil
+	})
+	if err != nil {
+		return social.VoteResult{}, err
+	}
+	return out, nil
 }

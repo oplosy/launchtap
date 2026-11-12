@@ -15,6 +15,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/comments/{id}/vote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Sets or clears the caller's vote. Needs a linked wallet that is the creator or a holder of the comment's token (docs/specs/2026-11-12-comment-votes-design.md). */
+        put: operations["voteComment"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events": {
         parameters: {
             query?: never;
@@ -675,6 +692,11 @@ export interface components {
             created_at: string;
             /** @description Decimal string. */
             id: string;
+            /**
+             * Format: int64
+             * @description Sum of up (+1) and down (-1) votes from voters who are not banned.
+             */
+            score: number;
             token: string;
         };
         CommentEvent: {
@@ -847,6 +869,11 @@ export interface components {
             id: string;
             /** @description Token launch name; user-controlled text. */
             name: string;
+            /**
+             * Format: int64
+             * @description Sum of votes from voters who are not banned.
+             */
+            score: number;
             /** @description Token launch symbol; user-controlled text. */
             symbol: string;
             token: string;
@@ -1458,6 +1485,37 @@ export interface components {
             pool_id: string;
             position_token_id: string;
         } | null;
+        VoteBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/VoteBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description The comment's score after the vote.
+             */
+            score: number;
+            /**
+             * Format: int64
+             * @description The caller's vote after the request: 1, -1 or 0.
+             */
+            vote: number;
+        };
+        VoteCommentInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/VoteCommentInputBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description 1 (up), -1 (down) or 0 (clear).
+             */
+            value: number;
+        };
         WalletCreatedBody: {
             /**
              * Format: uri
@@ -1626,6 +1684,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    voteComment: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoteCommentInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoteBody"];
+                };
             };
             /** @description Error */
             default: {
@@ -1809,6 +1905,9 @@ export interface operations {
     listForumPosts: {
         parameters: {
             query?: {
+                /** @description new (default): newest first, paginated; best: posts from the last 7 days by score, one page. Any other value is a 400 invalid_sort. */
+                sort?: string;
+                /** @description Only for sort=new. */
                 cursor?: string;
                 /** @description Number of posts, 1-50; defaults to 20. */
                 limit?: number;

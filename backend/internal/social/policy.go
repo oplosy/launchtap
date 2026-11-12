@@ -15,6 +15,8 @@ const (
 	// CommentsPerHour and ReportsPerHour cap one user within RateWindow.
 	CommentsPerHour = 30
 	ReportsPerHour  = 20
+	// VotesPerHour caps the votes one user sets within RateWindow; clearing a vote is free.
+	VotesPerHour = 120
 	// RateWindow is the rolling window of the hourly caps, measured on the database clock.
 	RateWindow = time.Hour
 	// UsernameChangeInterval is the wait between two username changes.

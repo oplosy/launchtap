@@ -199,6 +199,73 @@ test("a holder-less account is told to hold the token instead of seeing a compos
   await expect(panel.getByRole("textbox", { name: "Comment" })).toHaveCount(0);
 });
 
+test("a holder votes on a comment, switches and clears the vote, and sees refusals", async ({
+  page,
+}) => {
+  const votes: Array<{ id: string; value: number }> = [];
+  await signIn(page);
+  const unauthenticated = await installApi(page, async (path, request, json) => {
+    const vote = path.match(/^\/comments\/(\d+)\/vote$/);
+    if (vote && request.method() === "PUT") {
+      const { value } = request.postDataJSON() as { value: number };
+      if (vote[1] === "6") return json({ type: "urn:launchpad:problem:not_holder" }, 403);
+      votes.push({ id: vote[1]!, value });
+      return json({ score: 3 + value, vote: value });
+    }
+    if (path === `/tokens/${TOKEN}/comments/eligibility`)
+      return json({ banned: false, username: null, eligible_wallets: [] });
+    if (path.startsWith(`/tokens/${TOKEN}/comments`))
+      return json({
+        comment_count: 2,
+        next_cursor: undefined,
+        items: ["5", "6"].map((id) => ({
+          id,
+          token: TOKEN,
+          body: `comment ${id}`,
+          created_at: "2026-11-10T12:00:00.000000Z",
+          author: { username: null, wallet: WALLET_B, role: "holder" },
+          score: 3,
+        })),
+      });
+    if (path.startsWith(`/tokens/${TOKEN}/watchers`)) return json({ watch_count: 0 });
+    if (path.startsWith(`/tokens/${TOKEN}?`) || path === `/tokens/${TOKEN}`)
+      return json(tokenDetail);
+    return false;
+  });
+  await page.goto(`/token/${TOKEN}`);
+  const rows = page.getByRole("list", { name: "Comments" }).getByRole("listitem");
+  const first = rows.filter({ hasText: "comment 5" });
+  const up = first.getByRole("button", { name: "Upvote" });
+  const down = first.getByRole("button", { name: "Downvote" });
+  await expect(first.getByRole("group", { name: "Vote, 3 points" })).toBeVisible();
+
+  await up.click();
+  await expect(up).toHaveAttribute("aria-pressed", "true");
+  await expect(first.getByRole("group", { name: "Vote, 4 points" })).toBeVisible();
+  await first.screenshot({
+    path: "../.impeccable/review/comment-votes.png",
+    animations: "disabled",
+  });
+  await down.click();
+  await expect(down).toHaveAttribute("aria-pressed", "true");
+  await expect(up).toHaveAttribute("aria-pressed", "false");
+  await expect(first.getByRole("group", { name: "Vote, 2 points" })).toBeVisible();
+  await down.click();
+  await expect(down).toHaveAttribute("aria-pressed", "false");
+  await expect(first.getByRole("group", { name: "Vote, 3 points" })).toBeVisible();
+  expect(votes).toEqual([
+    { id: "5", value: 1 },
+    { id: "5", value: -1 },
+    { id: "5", value: 0 },
+  ]);
+
+  const second = rows.filter({ hasText: "comment 6" });
+  await second.getByRole("button", { name: "Upvote" }).click();
+  await expect(second.getByRole("alert")).toHaveText("Hold this token to vote on its comments.");
+  await expect(second.getByRole("group", { name: "Vote, 3 points" })).toBeVisible();
+  expect(unauthenticated).toEqual([]);
+});
+
 test("the username form saves a name and published wallets, and shows server rejections", async ({
   page,
 }) => {

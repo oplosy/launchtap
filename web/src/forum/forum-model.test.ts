@@ -12,6 +12,7 @@ const post = (id: string): ForumPost => ({
   id,
   token: "0x0000000000000000000000000000000000000010",
   body: "gm",
+  score: 0,
   created_at: "2026-11-10T09:00:00.000000Z",
   author: { username: null, wallet: null, role: "holder" },
   name: "Pons",
@@ -23,6 +24,8 @@ describe("forum model", () => {
     expect(parseForumTab(undefined)).toBe("new");
     expect(parseForumTab("hot")).toBe("hot");
     expect(parseForumTab("top")).toBe("top");
+    expect(parseForumTab("best")).toBe("best");
+    expect(forumTabHref("best")).toBe("/forum?tab=best");
     expect(parseForumTab("HOT")).toBe("new");
     expect(parseForumTab(["hot", "top"])).toBe("new");
     expect(forumTabHref("new")).toBe("/forum");

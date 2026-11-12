@@ -9,7 +9,7 @@ import {
   type ForumPost,
   type TokenListResponse,
 } from "@/api/client";
-import { authorLabel } from "@/comments/comment-model";
+import { authorLabel, scoreLabel } from "@/comments/comment-model";
 import {
   Badge,
   Button,
@@ -121,6 +121,8 @@ function PostCard({ post, now }: { post: ForumPost; now: number }) {
           <time dateTime={post.created_at} title={formatTime(post.created_at)}>
             {relativeTime(post.created_at, now)}
           </time>
+          <span aria-hidden="true">·</span>
+          <span className="forum-post-score mono">{scoreLabel(post.score)}</span>
         </div>
         <p className="forum-post-body">{post.body}</p>
       </div>
@@ -143,7 +145,7 @@ type FeedState =
       more: "idle" | "loading" | "error";
     };
 
-function ForumFeed() {
+function ForumFeed({ sort }: { sort: "new" | "best" }) {
   const [state, setState] = useState<FeedState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   // Read once per mount; relative ages do not need to tick.
@@ -157,7 +159,7 @@ function ForumFeed() {
       return;
     }
     client
-      .getForumPosts({ limit: FORUM_PAGE_SIZE }, controller.signal)
+      .getForumPosts({ sort, limit: FORUM_PAGE_SIZE }, controller.signal)
       .then((page) =>
         setState({
           status: "ready",
@@ -170,7 +172,7 @@ function ForumFeed() {
         if (!controller.signal.aborted) setState({ status: "error" });
       });
     return () => controller.abort();
-  }, [attempt]);
+  }, [attempt, sort]);
 
   const retry = useCallback(() => {
     setState({ status: "loading" });
@@ -212,6 +214,13 @@ function ForumFeed() {
       />
     );
   if (state.status !== "ready") return <Loading label="Loading posts" />;
+  if (state.items.length === 0 && sort === "best")
+    return (
+      <EmptyState
+        title="No posts this week"
+        description="Best ranks the last 7 days of posts by their votes. Holders vote on each token's page."
+      />
+    );
   if (state.items.length === 0)
     return (
       <EmptyState
@@ -394,5 +403,9 @@ export function BiggestLaunches() {
 }
 
 export function ForumView({ tab }: { tab: ForumTab }) {
-  return tab === "new" ? <ForumFeed /> : <ForumCommunities key={tab} sort={tab} />;
+  return tab === "new" || tab === "best" ? (
+    <ForumFeed key={tab} sort={tab} />
+  ) : (
+    <ForumCommunities key={tab} sort={tab} />
+  );
 }

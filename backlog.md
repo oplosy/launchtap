@@ -122,21 +122,18 @@
   deployment addresses. The monitoring owner and the real alert destination
   (`ALERTMANAGER_WEBHOOK_URL_FILE`, see the runbook "Monitoring" section) are also still unassigned.
 
-### P0-C5 forum deferrals: ticker tape and votes
+### P0-C5 forum deferral: ticker tape
 
 - **Date:** 2026-11-10
 - **Reason:** scope decision (made while the owner was away; spec
   `docs/specs/2026-11-10-p0c5-forum-memestock-design.md` non-goals)
-- **Where it stopped:** the forum shipped as read views over token comments. Two reference-screen
-  pieces were left out:
-  - The scrolling stock ticker tape. It needs a third-party equities quote feed (provider choice,
-    licence for redistribution, an API secret, a new external dependency). Owner input.
-  - Up/down votes and vote-ranked Hot. Needs a sybil rule (one Privy account per vote is cheap to
-    farm) and moderation of vote abuse before it is worth building.
-- **Related files:** `web/app/forum/page.tsx`, `web/src/forum/forum-view.tsx`,
-  `backend/internal/forum/`.
-- **Resume (next step):** owner picks an equities data provider (or drops the tape); for votes,
-  decide whether only holders may vote (reusing the C2 holder gate) before a spec.
+- **Where it stopped:** the forum shipped as read views over token comments; votes and the
+  vote-ranked "Best" tab shipped on 2026-11-12 (`docs/specs/2026-11-12-comment-votes-design.md`).
+  One reference-screen piece is left out: the scrolling stock ticker tape. It needs a
+  third-party equities quote feed (provider choice, licence for redistribution, an API secret, a
+  new external dependency). Owner input.
+- **Related files:** `web/app/forum/page.tsx`, `web/src/forum/forum-view.tsx`.
+- **Resume (next step):** owner picks an equities data provider (or drops the tape).
 - **Pitfalls / notes:** the tape must stay a client-side widget with its own failure state so a
   provider outage never blocks the forum.
 

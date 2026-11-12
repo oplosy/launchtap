@@ -291,6 +291,19 @@ export class ApiClient {
     );
   }
 
+  voteComment(id: string, value: -1 | 0 | 1, auth: AuthHeaders, signal?: AbortSignal) {
+    return this.request<components["schemas"]["VoteBody"]>(
+      `/v1/comments/${encodeURIComponent(id)}/vote`,
+      {
+        method: "PUT",
+        signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value }),
+      },
+      auth,
+    );
+  }
+
   reportComment(id: string, reason: ReportReason, auth: AuthHeaders, signal?: AbortSignal) {
     return this.requestNoContent(
       `/v1/comments/${encodeURIComponent(id)}/report`,
@@ -354,8 +367,13 @@ export class ApiClient {
   }
 
   /** Visible comments across tokens, newest first (spec P0-C5). */
-  getForumPosts(query: { cursor?: string; limit?: number } = {}, signal?: AbortSignal) {
+  /** `best` is one page of the last 7 days' posts by score; `new` (default) pages by cursor. */
+  getForumPosts(
+    query: { sort?: "new" | "best"; cursor?: string; limit?: number } = {},
+    signal?: AbortSignal,
+  ) {
     const params = new URLSearchParams();
+    if (query.sort === "best") params.set("sort", "best");
     if (query.cursor) params.set("cursor", query.cursor);
     if (query.limit) params.set("limit", String(query.limit));
     const encoded = params.toString();

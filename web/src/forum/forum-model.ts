@@ -2,9 +2,14 @@ import type { ForumPost } from "@/api/client";
 import { parseTokenAddress } from "@/token/address";
 
 /** Forum tabs in the URL (`?tab=`), spec P0-C5. */
-export const FORUM_TABS = ["new", "hot", "top"] as const;
+export const FORUM_TABS = ["new", "best", "hot", "top"] as const;
 export type ForumTab = (typeof FORUM_TABS)[number];
-export const FORUM_TAB_LABELS: Record<ForumTab, string> = { new: "New", hot: "Hot", top: "Top" };
+export const FORUM_TAB_LABELS: Record<ForumTab, string> = {
+  new: "New",
+  best: "Best",
+  hot: "Hot",
+  top: "Top",
+};
 export const FORUM_PAGE_SIZE = 20;
 export const BIGGEST_LAUNCHES = 10;
 
