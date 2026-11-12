@@ -94,14 +94,11 @@ Vitest, Playwright. **No new web dependency:** Universal Router inputs are encod
 - **D7 — Engine choice on the create page.** One deployment serves one engine (Plan v2-B B2).
   The visual-only `EngineToggle` becomes a read-only engine badge for the configured
   deployment. A fake choice would mislead.
-- **D8 — Launch facts before launch.** `LaunchFactoryV2` exposes only `futureDefaultsHash`,
-  not the profile.
-  - Before launch, the create page states the rule generically: a buy tax that decays
-    linearly to zero over the first window and goes to the protocol; the developer buy is
-    exempt.
-  - After launch, the token page shows the exact snapshotted profile from `v2.anti_snipe`.
-  - A reviewed manifest field holding the defaults is a later option. It is not in this
-    plan.
+- **D8 — Launch facts before launch.** The create page reads
+  `LaunchFactoryV2.futureDefaults()` through the reviewed RPC. It shows the exact anti-snipe
+  profile, the LP creator share and the launch fee that the next launch will snapshot. If
+  that read fails, the launch is blocked, as it is today when `launchFee` cannot be read.
+  After launch, the token page shows the snapshotted profile from `v2.anti_snipe`.
 
 ## Global Constraints
 
