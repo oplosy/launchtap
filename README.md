@@ -229,6 +229,7 @@ below explains this expected state.
 | `backend/cmd/indexer/`                                                                                  | Chain ingestion, canonical ledger, and projection worker process                      |
 | `backend/cmd/migrate/`                                                                                  | Explicit PostgreSQL migration runner                                                  |
 | `backend/cmd/telegram/`                                                                                 | Opt-in Telegram alert bot (one per deployment)                                                  |
+| `backend/cmd/funding/`                                                                                  | Opt-in early-wallet funding-source resolver (one per deployment; needs an archive + trace RPC) |
 | `backend/internal/chain/`                                                                               | RPC, deployment verification, discovery, ABI decoding                                 |
 | `backend/internal/curve/`                                                                               | Stdlib-only deterministic Go mirror and vector tests                                  |
 | `backend/internal/indexer/`, `ledger/`, `launch/`, `trading/`, `holder/`, `token/`, `candle/`, `stats/` | Ingestion loop, canonical domain events, and feature projections/aggregation          |
@@ -490,6 +491,7 @@ requires `DATABASE_URL`.
 | `TELEGRAM_BOT_USERNAME`          | Blank                              | Telegram alert bot username (no `@`); blank turns the API's `/me/telegram` routes off (503)         |
 | `TELEGRAM_BOT_TOKEN`             | Blank                              | `cmd/telegram` only; BotFather token, a secret kept in the backend env file                         |
 | `TELEGRAM_WEB_ORIGIN`            | Blank                              | `cmd/telegram` only; public web origin for alert links (https, or http on localhost)                |
+| `FUNDING_RPC_URL`                | Blank                              | `cmd/funding` only; archive RPC with `debug_traceBlockByNumber` (callTracer); a secret              |
 
 Both API and indexer also accept `DEPLOYMENT_MANIFEST_PATH` as an optional overlay to select an
 explicit generated manifest; it is not part of `.env.example`. The E2E harness supplies its

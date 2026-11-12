@@ -25,6 +25,9 @@ const (
 
 	LinkSameTransaction = "same_transaction"
 	LinkTokenTransfer   = "token_transfer"
+	// LinkFundingSource: the wallets got their first ETH from the same wallet, or one funded the
+	// other (docs/specs/2026-11-12-funding-source-clusters-design.md).
+	LinkFundingSource = "funding_source"
 )
 
 // Delivery is one early curve delivery: a Transfer from the curve to Recipient in TxHash.
@@ -44,6 +47,11 @@ type Input struct {
 	// Balances holds current balances; a missing wallet holds zero.
 	Balances map[common.Address]*big.Int
 	Creator  common.Address
+	// Funders maps an early wallet to the sender of its first ETH; only usable funders are
+	// listed (not excluded, not a curve).
+	Funders map[common.Address]common.Address
+	// FundingChecked counts early wallets with a funding row of any status.
+	FundingChecked int
 }
 
 type Wallet struct {
@@ -65,8 +73,9 @@ type Result struct {
 	// EarlyBalance is what every early wallet holds now.
 	EarlyBalance *big.Int
 	// Clusters lists at most MaxClusters clusters, largest combined balance first.
-	Clusters     []Cluster
-	ClusterCount int
+	Clusters       []Cluster
+	ClusterCount   int
+	FundingChecked int
 }
 
 type Query struct {
@@ -132,7 +141,7 @@ func Group(in Input) Result {
 		early[d.Recipient] = true
 		byTx[d.TxHash] = append(byTx[d.TxHash], d.Recipient)
 	}
-	result := Result{EarlyWalletCount: len(early), EarlyBalance: new(big.Int), Clusters: []Cluster{}}
+	result := Result{EarlyWalletCount: len(early), EarlyBalance: new(big.Int), Clusters: []Cluster{}, FundingChecked: in.FundingChecked}
 	for a := range early {
 		result.EarlyBalance.Add(result.EarlyBalance, balance(a))
 	}
@@ -175,6 +184,7 @@ func Group(in Input) Result {
 			edges = append(edges, e)
 		}
 	}
+	edges = append(edges, fundingEdges(in.Funders, early)...)
 
 	uf := unionFind{}
 	for _, e := range edges {
@@ -222,7 +232,7 @@ func Group(in Input) Result {
 		if len(c.Wallets) > MaxWalletsPerCluster {
 			c.Wallets = c.Wallets[:MaxWalletsPerCluster]
 		}
-		for _, link := range []string{LinkSameTransaction, LinkTokenTransfer} {
+		for _, link := range []string{LinkSameTransaction, LinkTokenTransfer, LinkFundingSource} {
 			if links[root][link] {
 				c.Links = append(c.Links, link)
 			}
@@ -244,4 +254,33 @@ func Group(in Input) Result {
 		result.Clusters = result.Clusters[:MaxClusters]
 	}
 	return result
+}
+
+// fundingEdges links early wallets that share a funder, and an early funder to the wallets it
+// funded. A funder of more than HubLimit early wallets is dropped like an outside hub; the funder
+// itself joins a group only when it is early.
+func fundingEdges(funders map[common.Address]common.Address, early map[common.Address]bool) []edge {
+	funded := map[common.Address][]common.Address{}
+	for wallet, funder := range funders {
+		if early[wallet] && funder != wallet {
+			funded[funder] = append(funded[funder], wallet)
+		}
+	}
+	var edges []edge
+	for funder, wallets := range funded {
+		if len(wallets) > HubLimit {
+			continue
+		}
+		sort.Slice(wallets, func(i, j int) bool { return bytes.Compare(wallets[i][:], wallets[j][:]) < 0 })
+		anchor := wallets[0]
+		if early[funder] {
+			anchor = funder
+		}
+		for _, w := range wallets {
+			if w != anchor {
+				edges = append(edges, edge{anchor, w, LinkFundingSource})
+			}
+		}
+	}
+	return edges
 }

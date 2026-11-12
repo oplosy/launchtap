@@ -400,6 +400,11 @@
             "format": "int64",
             "type": "integer"
           },
+          "funding_checked": {
+            "description": "Early wallets whose funding source has been checked; funding_source links cover only these.",
+            "format": "int64",
+            "type": "integer"
+          },
           "snapshot": {
             "$ref": "#/components/schemas/SnapshotDTO"
           },
@@ -419,7 +424,8 @@
           "early_wallet_count",
           "early_balance",
           "cluster_count",
-          "clusters"
+          "clusters",
+          "funding_checked"
         ],
         "type": "object"
       },
@@ -434,7 +440,7 @@
             "type": "boolean"
           },
           "links": {
-            "description": "Link kinds present: same_transaction, token_transfer.",
+            "description": "Link kinds present: same_transaction, token_transfer, funding_source.",
             "items": {
               "type": "string"
             },

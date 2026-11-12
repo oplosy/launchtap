@@ -20,6 +20,11 @@ to disable USD reference pricing. The backend rejects either one set without the
 Telegram alerts are off until a bot exists: set `TELEGRAM_BOT_USERNAME` for the API and run one
 `cmd/telegram` process per deployment with `TELEGRAM_BOT_TOKEN` (secret, `BACKEND_ENV_FILE`
 only) and `TELEGRAM_WEB_ORIGIN`; the Compose file does not start that process yet.
+
+Early-buyer funding-source links are off until an archive + trace RPC exists: run one
+`cmd/funding` process per deployment with `FUNDING_RPC_URL` (secret, `BACKEND_ENV_FILE` only).
+Exchanges and bridges that must never link wallets go into the `funding_excluded_funders` table
+(chain id, address, label). The Compose file does not start that process yet.
 The backend DSN uses that same password, percent-encoded. Local container database traffic
 uses the private Compose network; PostgreSQL has no published port.
 

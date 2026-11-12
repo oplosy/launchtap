@@ -1340,8 +1340,8 @@ function CreatorLine({
   );
 }
 /**
- * Early wallets linked by same-transaction deliveries or token transfers (early-buyer clusters
- * spec). Keyed by token, so a new token starts empty; an unavailable read shows nothing.
+ * Early wallets linked by same-transaction deliveries, token transfers or a shared funding
+ * source (early-buyer clusters specs, Levels 1 and 2). Keyed by token, so a new token starts empty; an unavailable read shows nothing.
  */
 function EarlyBuyers({
   tokenAddress,
@@ -1401,9 +1401,12 @@ function EarlyBuyers({
       ) : null}
       {view.emptyGroups ? <p>{view.emptyGroups}</p> : null}
       {view.moreGroups ? <p>and {view.moreGroups} more linked groups</p> : null}
+      {view.funding ? <p>{view.funding}</p> : null}
       <p className="early-buyers-note">
         Links are on-chain facts: tokens delivered by the curve to several wallets in one
-        transaction, or tokens moved between those wallets. A link does not prove one owner.
+        transaction, tokens moved between those wallets
+        {view.funding ? ", or first ETH sent to them by the same wallet" : ""}. A link does not
+        prove one owner.
       </p>
     </section>
   );

@@ -39,6 +39,12 @@ sql:
             go_type: {type: "Hash"}
           - column: "telegram_link_codes.code_sha256"
             go_type: {type: "Hash"}
+          - column: "wallet_funding.funding_tx"
+            go_type: {type: "Hash", pointer: true}
+          - column: "wallet_funding.funder"
+            go_type: {type: "Address", pointer: true}
+          - column: "funding_excluded_funders.address"
+            go_type: {type: "Address"}
           - column: "token_metadata.launch_tx_hash"
             go_type: {type: "Hash", pointer: true}
           - column: "token_images.launch_tx_hash"
