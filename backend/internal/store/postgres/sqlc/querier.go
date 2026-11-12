@@ -316,7 +316,8 @@ type Querier interface {
 	ListWalletOpenPositions(ctx context.Context, arg ListWalletOpenPositionsParams) ([]ListWalletOpenPositionsRow, error)
 	ListWalletTrades(ctx context.Context, arg ListWalletTradesParams) ([]ListWalletTradesRow, error)
 	// Early wallets of any token (same rule as ListEarlyCurveDeliveries) with no funding row yet,
-	// whose first early delivery is at or below the finalized head, oldest first.
+	// whose first early delivery is at or below the finalized head, oldest first. skip holds wallets
+	// the worker is backing off.
 	ListWalletsAwaitingFunding(ctx context.Context, arg ListWalletsAwaitingFundingParams) ([]Address, error)
 	// Token columns are NULL when the token row is gone (no FK); the casts keep sqlc from
 	// applying the non-nullable Address/Uint256/Hash overrides to them.
