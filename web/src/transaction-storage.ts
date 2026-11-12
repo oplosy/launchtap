@@ -2,12 +2,7 @@ import type { TransactionStatus } from "./transactions";
 
 // "v2-creator": the engine-2 creator panel (fee recipient changes and the LP fee locker claim).
 export type PersistedTransactionAction =
-  | "launch"
-  | "trade"
-  | "claim"
-  | "refund"
-  | "approval"
-  | "v2-creator";
+  "launch" | "trade" | "claim" | "refund" | "approval" | "v2-creator";
 export type PersistedTransactionStatus = Extract<
   TransactionStatus,
   | "submitted"
