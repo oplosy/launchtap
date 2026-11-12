@@ -6,8 +6,11 @@ import (
 	"io"
 	"log/slog"
 	"math/big"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -17,6 +20,7 @@ type fakeStore struct {
 	known     bool
 	waiting   []common.Address
 	limit     int
+	skipped   []common.Address
 	saved     map[common.Address]Result
 }
 
@@ -24,12 +28,18 @@ func (s *fakeStore) FinalizedHead(context.Context) (uint64, bool, error) {
 	return s.finalized, s.known, nil
 }
 
-func (s *fakeStore) AwaitingWallets(_ context.Context, finalized uint64, limit int) ([]common.Address, error) {
-	s.limit = limit
+func (s *fakeStore) AwaitingWallets(_ context.Context, finalized uint64, limit int, skip []common.Address) ([]common.Address, error) {
+	s.limit, s.skipped = limit, skip
 	if finalized != s.finalized {
 		return nil, errors.New("wrong head")
 	}
-	return s.waiting, nil
+	var out []common.Address
+	for _, w := range s.waiting {
+		if !slices.Contains(skip, w) && len(out) < limit {
+			out = append(out, w)
+		}
+	}
+	return out, nil
 }
 
 func (s *fakeStore) Save(_ context.Context, wallet common.Address, r Result) error {
@@ -98,5 +108,73 @@ func TestWorkerLogsNeverCarryTheRPCURL(t *testing.T) {
 	}
 	if strings.Contains(logs.String(), "secret-key") || !strings.Contains(logs.String(), "funding resolution failed") {
 		t.Fatalf("logs = %s", logs.String())
+	}
+}
+
+// flakyChain fails for bad until healed.
+type flakyChain struct {
+	failingChain
+	healed *bool
+}
+
+func (c flakyChain) NonceAt(ctx context.Context, a common.Address, b uint64) (uint64, error) {
+	if *c.healed {
+		return 0, nil
+	}
+	return c.failingChain.NonceAt(ctx, a, b)
+}
+
+func TestWorkerBacksOffAFailingWalletSoItFreesItsSlot(t *testing.T) {
+	good, bad := common.HexToAddress("0x01"), common.HexToAddress("0x02")
+	now := time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC)
+	healed := false
+	store := &fakeStore{finalized: 500, known: true, waiting: []common.Address{bad}}
+	w := &Worker{
+		Store: store, Chain: flakyChain{failingChain{bad: bad}, &healed}, BatchSize: 1,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Now: func() time.Time { return now },
+	}
+	pass := func() int {
+		t.Helper()
+		n, err := w.Pass(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if pass() != 0 {
+		t.Fatal("bad wallet resolved")
+	}
+	// The failing wallet is held back, so the next waiting wallet gets the one slot.
+	store.waiting = []common.Address{bad, good}
+	if pass() != 1 || !reflect.DeepEqual(store.skipped, []common.Address{bad}) {
+		t.Fatalf("skip %v saved %v", store.skipped, store.saved)
+	}
+	// It stays held back until its backoff (1 minute after the first failure) ends.
+	now = now.Add(59 * time.Second)
+	pass()
+	if len(store.skipped) != 1 {
+		t.Fatalf("released early: skip %v", store.skipped)
+	}
+	// Second failure doubles the wait.
+	now = now.Add(2 * time.Second)
+	pass()
+	now = now.Add(119 * time.Second)
+	pass()
+	if len(store.skipped) != 1 {
+		t.Fatalf("second backoff too short: skip %v", store.skipped)
+	}
+	now = now.Add(2 * time.Second)
+	healed = true
+	if pass() != 1 || len(store.skipped) != 0 {
+		t.Fatalf("after healing: skip %v saved %v", store.skipped, store.saved)
+	}
+}
+
+func TestBackoffIsCapped(t *testing.T) {
+	if got := backoff(40); got != MaxBackoff {
+		t.Fatalf("backoff(40) = %s", got)
+	}
+	if got := backoff(1); got != time.Minute {
+		t.Fatalf("backoff(1) = %s", got)
 	}
 }

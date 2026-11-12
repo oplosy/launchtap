@@ -7,7 +7,8 @@ FROM sync_state
 WHERE chain_id = sqlc.arg(chain_id) AND deployment_id = sqlc.arg(deployment_id);
 
 -- Early wallets of any token (same rule as ListEarlyCurveDeliveries) with no funding row yet,
--- whose first early delivery is at or below the finalized head, oldest first.
+-- whose first early delivery is at or below the finalized head, oldest first. skip holds wallets
+-- the worker is backing off.
 -- name: ListWalletsAwaitingFunding :many
 SELECT tr.to_address AS wallet
 FROM tokens AS t
@@ -22,6 +23,7 @@ WHERE t.chain_id = sqlc.arg(chain_id)
                                 t.locker, manager.pool_manager)
   AND NOT EXISTS (SELECT 1 FROM wallet_funding AS wf
                   WHERE wf.chain_id = t.chain_id AND wf.wallet = tr.to_address)
+  AND tr.to_address <> ALL(sqlc.arg(skip)::bytea[])
 GROUP BY tr.to_address
 ORDER BY min(tr.block_number), tr.to_address
 LIMIT sqlc.arg(page_size)::integer;

@@ -70,7 +70,7 @@ func run(ctx context.Context, getenv func(string) string) error {
 	}
 	defer client.Close()
 
-	worker := funding.Worker{
+	worker := &funding.Worker{
 		Store:     storepostgres.FundingStore{Pool: pool, ChainID: chainID, DeploymentID: c.DeploymentID},
 		Chain:     funding.RPC{Client: client},
 		BatchSize: passSize, Interval: passInterval, WalletTimeout: walletTimeout, Logger: logger,

@@ -73,15 +73,19 @@ func TestFundingWorkerQueueAndReader(t *testing.T) {
 		t.Fatalf("finalized head %d known %v err %v", head, known, err)
 	}
 	addr := func(b []byte) common.Address { return common.BytesToAddress(b) }
-	waiting, err := store.AwaitingWallets(ctx, head, 20)
+	waiting, err := store.AwaitingWallets(ctx, head, 20, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if want := []common.Address{addr(w1), addr(w2), addr(w3), addr(w4)}; !reflect.DeepEqual(waiting, want) {
 		t.Fatalf("waiting %v, want %v (oldest first, w5 not final)", waiting, want)
 	}
-	if first, _ := store.AwaitingWallets(ctx, head, 1); len(first) != 1 || first[0] != addr(w1) {
+	if first, _ := store.AwaitingWallets(ctx, head, 1, nil); len(first) != 1 || first[0] != addr(w1) {
 		t.Fatalf("limit 1: %v", first)
+	}
+	// A wallet in backoff is left out, so the next one takes its slot.
+	if next, _ := store.AwaitingWallets(ctx, head, 1, []common.Address{addr(w1)}); len(next) != 1 || next[0] != addr(w2) {
+		t.Fatalf("skip w1: %v", next)
 	}
 
 	shared, excluded := common.HexToAddress("0x00000000000000000000000000000000000000f1"), common.HexToAddress("0x00000000000000000000000000000000000000f2")
@@ -98,7 +102,7 @@ func TestFundingWorkerQueueAndReader(t *testing.T) {
 	save(w4, funding.Result{Status: funding.StatusFunded, Funder: common.BytesToAddress(curve), Block: 53, TxHash: common.HexToHash("0x04")})
 	// Rows are immutable: a second save keeps the first answer.
 	save(w1, funding.Result{Status: funding.StatusUnfunded})
-	if waiting, err := store.AwaitingWallets(ctx, head, 20); err != nil || len(waiting) != 0 {
+	if waiting, err := store.AwaitingWallets(ctx, head, 20, nil); err != nil || len(waiting) != 0 {
 		t.Fatalf("waiting after saving %v, %v", waiting, err)
 	}
 	if _, err := database.DB.ExecContext(ctx, `INSERT INTO funding_excluded_funders(chain_id,address,label) VALUES($1,$2,'exchange')`, chainID, excluded.Bytes()); err != nil {

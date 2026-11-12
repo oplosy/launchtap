@@ -128,25 +128,29 @@ WHERE t.chain_id = $1
                                 t.locker, manager.pool_manager)
   AND NOT EXISTS (SELECT 1 FROM wallet_funding AS wf
                   WHERE wf.chain_id = t.chain_id AND wf.wallet = tr.to_address)
+  AND tr.to_address <> ALL($4::bytea[])
 GROUP BY tr.to_address
 ORDER BY min(tr.block_number), tr.to_address
-LIMIT $4::integer
+LIMIT $5::integer
 `
 
 type ListWalletsAwaitingFundingParams struct {
 	ChainID        int64
 	FinalizedBlock int64
 	WindowSeconds  int32
+	Skip           [][]byte
 	PageSize       int32
 }
 
 // Early wallets of any token (same rule as ListEarlyCurveDeliveries) with no funding row yet,
-// whose first early delivery is at or below the finalized head, oldest first.
+// whose first early delivery is at or below the finalized head, oldest first. skip holds wallets
+// the worker is backing off.
 func (q *Queries) ListWalletsAwaitingFunding(ctx context.Context, arg ListWalletsAwaitingFundingParams) ([]Address, error) {
 	rows, err := q.db.Query(ctx, listWalletsAwaitingFunding,
 		arg.ChainID,
 		arg.FinalizedBlock,
 		arg.WindowSeconds,
+		arg.Skip,
 		arg.PageSize,
 	)
 	if err != nil {

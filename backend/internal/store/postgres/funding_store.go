@@ -37,9 +37,14 @@ func (s FundingStore) FinalizedHead(ctx context.Context) (uint64, bool, error) {
 	return uint64(head.Int64), true, nil
 }
 
-func (s FundingStore) AwaitingWallets(ctx context.Context, finalized uint64, limit int) ([]common.Address, error) {
+func (s FundingStore) AwaitingWallets(ctx context.Context, finalized uint64, limit int, skip []common.Address) ([]common.Address, error) {
+	skipped := make([][]byte, len(skip))
+	for i, w := range skip {
+		skipped[i] = w.Bytes()
+	}
 	rows, err := sqlc.New(s.Pool).ListWalletsAwaitingFunding(ctx, sqlc.ListWalletsAwaitingFundingParams{
 		ChainID: s.ChainID, FinalizedBlock: int64(finalized), WindowSeconds: earlybuyer.WindowSeconds, PageSize: int32(limit),
+		Skip: skipped,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list wallets awaiting funding: %w", err)
