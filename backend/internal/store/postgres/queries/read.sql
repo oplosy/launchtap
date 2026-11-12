@@ -749,3 +749,42 @@ SELECT holder_address, balance
 FROM holder_balances
 WHERE chain_id = sqlc.arg(chain_id) AND token_address = sqlc.arg(token_address)
   AND holder_address = ANY(sqlc.arg(wallets)::bytea[]) AND balance > 0;
+
+-- name: ListProtocolRevenueByEngine :many
+-- ETH the contracts credit to the protocol, per engine, earned basis
+-- (docs/specs/2026-11-12-protocol-revenue-design.md). The LP share mirrors
+-- LpFeeLocker._credit: the creator gets floor(eth * bps / 10000), the protocol the rest.
+WITH engines AS (
+    SELECT DISTINCT engine_version FROM token_launches WHERE chain_id = sqlc.arg(chain_id)::bigint
+), launch_fees AS (
+    SELECT engine_version, SUM(launch_fee_paid) AS amount
+    FROM token_launches WHERE chain_id = sqlc.arg(chain_id)::bigint GROUP BY engine_version
+), trade_fees AS (
+    SELECT l.engine_version, SUM(t.protocol_fee) AS fee, SUM(t.snipe_tax) AS tax
+    FROM trades t
+    JOIN token_launches l ON l.chain_id = t.chain_id AND l.token_address = t.token_address
+    WHERE t.chain_id = sqlc.arg(chain_id)::bigint GROUP BY l.engine_version
+), remainders AS (
+    SELECT l.engine_version, SUM(g.eth_remainder) AS amount
+    FROM graduations g
+    JOIN token_launches l ON l.chain_id = g.chain_id AND l.token_address = g.token_address
+    WHERE g.chain_id = sqlc.arg(chain_id)::bigint GROUP BY l.engine_version
+), lp_fees AS (
+    SELECT l.engine_version,
+           SUM(c.eth_amount - div(c.eth_amount * COALESCE(l.lp_creator_share_bps, 0), 10000)) AS amount
+    FROM lp_fee_collections c
+    JOIN token_launches l ON l.chain_id = c.chain_id AND l.token_address = c.token_address
+    WHERE c.chain_id = sqlc.arg(chain_id)::bigint GROUP BY l.engine_version
+)
+SELECT e.engine_version::integer AS engine_version,
+       COALESCE(lf.amount, 0)::text AS launch_fees,
+       COALESCE(tf.fee, 0)::text AS trade_fees,
+       COALESCE(tf.tax, 0)::text AS snipe_tax,
+       COALESCE(r.amount, 0)::text AS graduation_remainder,
+       COALESCE(lp.amount, 0)::text AS lp_fees
+FROM engines e
+LEFT JOIN launch_fees lf ON lf.engine_version = e.engine_version
+LEFT JOIN trade_fees tf ON tf.engine_version = e.engine_version
+LEFT JOIN remainders r ON r.engine_version = e.engine_version
+LEFT JOIN lp_fees lp ON lp.engine_version = e.engine_version
+ORDER BY e.engine_version;

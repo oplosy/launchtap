@@ -248,6 +248,10 @@ type Querier interface {
 	ListPositionPairsAbove(ctx context.Context, arg ListPositionPairsAboveParams) ([]ListPositionPairsAboveRow, error)
 	ListProfileActions(ctx context.Context, arg ListProfileActionsParams) ([]ListProfileActionsRow, error)
 	ListProtocolDaily(ctx context.Context, arg ListProtocolDailyParams) ([]ListProtocolDailyRow, error)
+	// ETH the contracts credit to the protocol, per engine, earned basis
+	// (docs/specs/2026-11-12-protocol-revenue-design.md). The LP share mirrors
+	// LpFeeLocker._credit: the creator gets floor(eth * bps / 10000), the protocol the rest.
+	ListProtocolRevenueByEngine(ctx context.Context, chainID int64) ([]ListProtocolRevenueByEngineRow, error)
 	ListRecentMarketTrades(ctx context.Context, arg ListRecentMarketTradesParams) ([]ListRecentMarketTradesRow, error)
 	// Keyset page of the chain's launched tokens for the chunked position seed. Every ledger row
 	// (trades, transfers) references token_launches, so these pages cover the whole ledger.

@@ -46,3 +46,20 @@ type Reader interface {
 type DailyReader interface {
 	ReadProtocolDaily(context.Context, int64, DailyQuery) (DailyPage, error)
 }
+
+// RevenueSource is the ETH (wei) one revenue source credited to the protocol, per engine.
+type RevenueSource struct {
+	Engine1, Engine2, Total *big.Int
+}
+
+// Revenue is the protocol's earned ETH by source (docs/specs/2026-11-12-protocol-revenue-design.md).
+type Revenue struct {
+	LaunchFees, TradeFees, SnipeTax, GraduationRemainder, LPFees RevenueSource
+	Total                                                        *big.Int
+	Snapshot                                                     pagination.Snapshot
+	Finality                                                     string
+}
+
+type RevenueReader interface {
+	ReadProtocolRevenue(context.Context, int64) (Revenue, error)
+}

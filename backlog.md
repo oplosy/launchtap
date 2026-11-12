@@ -151,23 +151,17 @@
 
 ---
 
+## Done
+
 ### Engine v2 protocol revenue projection
 
 - **Date:** 2026-11-12
-- **Reason:** scope decision (no consumer exists: no API field, no screen, no spec)
-- **Where it stopped:** the other engine v2 backend limitations are closed (see Done). Plan v2-B
-  lists a protocol revenue projection (`snipe_tax` and the graduation `eth_remainder`, with
-  `SnipeTaxClaimed` as its own claim stream), but nothing reads protocol revenue for engine 1
-  either, so a projection now would be unread.
-- **Related files:** `docs/plans/2026-11-11-v2-engine-backend.md` ("Protocol revenue"),
-  `backend/internal/store/postgres/migrations/00025_engine_v2_projections.sql`
-- **Resume (next step):** owner decides where protocol revenue is shown (an analytics card, an
-  operator-only endpoint, or nowhere); then spec the read model for both engines and build the
-  projection with its first consumer.
-- **Pitfalls / notes:** treasury fee claims already exist as ledger rows; derive revenue from the
-  ledger, never from on-chain balance reads.
-
-## Done
+- **What closed:** built as a read-at-query-time aggregate with its first consumer, per
+  `docs/specs/2026-11-12-protocol-revenue-design.md`: `GET /v1/stats/protocol/revenue` sums the
+  ETH credited to the protocol (launch fees, trade-fee protocol share, snipe tax, graduation ETH
+  remainder, LP-fee protocol share mirroring `LpFeeLocker._credit`) per engine, and Analytics
+  shows a "Protocol revenue" card. No projection table; move it into `protocol_stats` if the
+  sums get slow.
 
 ### Engine v2 backend limitations: V4 positions, valuation, leaderboard
 

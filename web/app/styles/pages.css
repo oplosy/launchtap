@@ -321,6 +321,9 @@
   font-size: 13px;
   font-weight: 500;
 }
+.analytics-revenue-row {
+  grid-template-columns: 1.4fr repeat(3, minmax(0, 1fr));
+}
 .analytics-history > .ui-state {
   margin: 0 0 24px;
 }

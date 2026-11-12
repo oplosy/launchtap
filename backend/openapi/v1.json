@@ -1910,6 +1910,83 @@
         ],
         "type": "object"
       },
+      "RevenueBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/RevenueBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          },
+          "sources": {
+            "$ref": "#/components/schemas/RevenueSourcesDTO"
+          },
+          "total": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot",
+          "total",
+          "sources"
+        ],
+        "type": "object"
+      },
+      "RevenueSourceDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "engine_1": {
+            "type": "string"
+          },
+          "engine_2": {
+            "type": "string"
+          },
+          "total": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "engine_1",
+          "engine_2",
+          "total"
+        ],
+        "type": "object"
+      },
+      "RevenueSourcesDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "graduation_remainder": {
+            "$ref": "#/components/schemas/RevenueSourceDTO"
+          },
+          "launch_fees": {
+            "$ref": "#/components/schemas/RevenueSourceDTO"
+          },
+          "lp_fees": {
+            "$ref": "#/components/schemas/RevenueSourceDTO"
+          },
+          "snipe_tax": {
+            "$ref": "#/components/schemas/RevenueSourceDTO"
+          },
+          "trade_fees": {
+            "$ref": "#/components/schemas/RevenueSourceDTO"
+          }
+        },
+        "required": [
+          "launch_fees",
+          "trade_fees",
+          "snipe_tax",
+          "graduation_remainder",
+          "lp_fees"
+        ],
+        "type": "object"
+      },
       "RevisionBody": {
         "additionalProperties": false,
         "properties": {
@@ -4201,6 +4278,37 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProtocolDailyBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/stats/protocol/revenue": {
+      "get": {
+        "description": "ETH credited to the protocol, all-time, by source and engine (earned basis, wei).",
+        "operationId": "getProtocolRevenue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevenueBody"
                 }
               }
             },
