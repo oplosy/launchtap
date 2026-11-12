@@ -8,6 +8,7 @@ export default defineConfig({
     include: [
       "src/**/*.test.ts",
       "scripts/check-budgets.test.mjs",
+      "scripts/contracts-model.test.mjs",
       "scripts/validate-release.test.mjs",
       "scripts/container-preflight.test.mjs",
       "scripts/verify-release-command.test.mjs",
