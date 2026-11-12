@@ -855,6 +855,8 @@ export function TokenDetail({
                 phase: token.phase,
                 name: token.name,
                 symbol: token.symbol,
+                engineVersion: token.engine_version,
+                antiSnipeEndsAt: token.v2?.anti_snipe.ends_at ?? null,
               }}
             />
             <p className="token-aside-note">

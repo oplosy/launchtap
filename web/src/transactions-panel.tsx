@@ -6,6 +6,8 @@ import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { formatBaseUnits, parseDecimal } from "@/amounts";
 import { ApiClient } from "@/api/client";
 import { ApiProblem } from "@/api/problems";
+import type { Abi } from "viem";
+import { chainClockOffset, remainingTaxSeconds, snipeTaxLine } from "@/anti-snipe";
 import { browserAbis, type ReviewedDeployment } from "@/contracts/generated";
 import { publicConfiguration } from "@/config/public";
 import { addressExplorerUrl } from "@/wallet/explorer";
@@ -430,6 +432,41 @@ function ReadinessGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Seconds left in the anti-snipe window by chain time (Plan v2-C D6): the latest block's
+ * timestamp fixes the offset to the client clock every 15 s, and a 1 s tick counts down.
+ */
+function useTaxSecondsLeft(
+  endsAt: string | null,
+  client:
+    { getBlock: (args: { blockTag: "latest" }) => Promise<{ timestamp: bigint }> } | undefined,
+): number {
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  useEffect(() => {
+    if (!endsAt || !client) return;
+    let cancelled = false;
+    let offset: number | null = null;
+    const sync = () =>
+      void client
+        .getBlock({ blockTag: "latest" })
+        .then((block) => {
+          if (!cancelled) offset = chainClockOffset(block.timestamp, Date.now());
+        })
+        .catch(() => undefined);
+    sync();
+    const syncTimer = setInterval(sync, 15_000);
+    const tick = setInterval(() => {
+      if (offset !== null) setSecondsLeft(remainingTaxSeconds(endsAt, Date.now() / 1000 + offset));
+    }, 1_000);
+    return () => {
+      cancelled = true;
+      clearInterval(syncTimer);
+      clearInterval(tick);
+    };
+  }, [endsAt, client]);
+  return endsAt && client ? secondsLeft : 0;
+}
+
 export function TradingPanel({
   token,
 }: {
@@ -440,6 +477,8 @@ export function TradingPanel({
     phase: string;
     name: string;
     symbol: string;
+    engineVersion?: number;
+    antiSnipeEndsAt?: string | null;
   };
 }) {
   return (
@@ -459,6 +498,8 @@ function TradingPanelReady({
     phase: string;
     name: string;
     symbol: string;
+    engineVersion?: number;
+    antiSnipeEndsAt?: string | null;
   };
 }) {
   const tokenAddress = safeAddress(token.address);
@@ -468,6 +509,10 @@ function TradingPanelReady({
   const safeCurveAddress =
     curveAddress ?? ("0x0000000000000000000000000000000000000000" as Address);
   const graduated = token.phase.toLowerCase() === "graduated";
+  // Engine 2 trades the curve through BondingCurveV2 (Plan v2-C Task 3); any other engine
+  // value leaves the panel unavailable instead of guessing an ABI.
+  const engineVersion = token.engineVersion ?? 1;
+  const curveAbi = (engineVersion === 2 ? browserAbis.curveV2 : browserAbis.curve) as Abi;
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [input, setInput] = useState("");
   const [slippage, setSlippage] = useState("5");
@@ -478,6 +523,7 @@ function TradingPanelReady({
     source: "backend" | "contract";
   } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [taxQuote, setTaxQuote] = useState<{ snipeTax: bigint; taxBps: number } | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [creatorClaimable, setCreatorClaimable] = useState<bigint | null>(null);
   const [refundClaimable, setRefundClaimable] = useState<bigint | null>(null);
@@ -582,12 +628,17 @@ function TradingPanelReady({
               parseQuoteQuantity(result.creator_fee, "creator fee"),
             source: "backend",
           });
+          setTaxQuote({
+            snipeTax: parseQuoteQuantity(result.snipe_tax, "snipe tax"),
+            taxBps: result.tax_bps,
+          });
           setQuoteError(null);
         }
       })
       .catch(() => {
         if (!cancelled) {
           setQuote(null);
+          setTaxQuote(null);
           setQuoteError("Informational quote unavailable. Refresh before trading.");
         }
       });
@@ -602,17 +653,26 @@ function TradingPanelReady({
     void Promise.all([
       publicClient.readContract({
         address: safeCurveAddress,
-        abi: browserAbis.curve,
+        abi: curveAbi,
         functionName: "creator",
       }),
+      // Engine 2 credits curve creator fees per account to the fee recipient in force at
+      // credit time, so the connected account reads its own balance (spec §5.3).
+      engineVersion === 2
+        ? publicClient.readContract({
+            address: safeCurveAddress,
+            abi: curveAbi,
+            functionName: "creatorFeesOwed",
+            args: [account.address],
+          })
+        : publicClient.readContract({
+            address: safeCurveAddress,
+            abi: curveAbi,
+            functionName: "unclaimedCreatorFees",
+          }),
       publicClient.readContract({
         address: safeCurveAddress,
-        abi: browserAbis.curve,
-        functionName: "unclaimedCreatorFees",
-      }),
-      publicClient.readContract({
-        address: safeCurveAddress,
-        abi: browserAbis.curve,
+        abi: curveAbi,
         functionName: "pendingRefund",
         args: [account.address],
       }),
@@ -620,7 +680,7 @@ function TradingPanelReady({
       .then(([creator, creatorFees, refund]) => {
         if (cancelled) return;
         setCreatorClaimable(
-          String(creator).toLowerCase() === account.address!.toLowerCase()
+          engineVersion === 2 || String(creator).toLowerCase() === account.address!.toLowerCase()
             ? (creatorFees as bigint)
             : 0n,
         );
@@ -635,9 +695,17 @@ function TradingPanelReady({
     return () => {
       cancelled = true;
     };
-  }, [account.address, curveAddress, publicClient, safeCurveAddress]);
+  }, [account.address, curveAbi, curveAddress, engineVersion, publicClient, safeCurveAddress]);
 
   const activeQuote = inputUnits && inputUnits > 0n ? quote : null;
+  const taxSecondsLeft = useTaxSecondsLeft(
+    engineVersion === 2 && !graduated ? (token.antiSnipeEndsAt ?? null) : null,
+    publicClient,
+  );
+  const taxLine =
+    activeQuote && side === "buy" && taxQuote
+      ? snipeTaxLine({ ...taxQuote, remainingSeconds: taxSecondsLeft })
+      : null;
   const minimum =
     activeQuote && slippageBps !== null ? minimumOutput(activeQuote.output, slippageBps) : null;
   const switchNetwork = () => void readiness.switchNetwork();
@@ -652,7 +720,7 @@ function TradingPanelReady({
     if (intentChainId === null) throw new Error("ChainUnavailable");
     const contractQuote = await publicClient!.readContract({
       address: safeCurveAddress,
-      abi: browserAbis.curve,
+      abi: curveAbi,
       functionName: quoteSide === "buy" ? "quoteBuy" : "quoteSell",
       args: [quantity],
     });
@@ -663,6 +731,18 @@ function TradingPanelReady({
     const fee =
       parseRuntimeQuantity((contractQuote as readonly unknown[])[2], "protocol fee") +
       parseRuntimeQuantity((contractQuote as readonly unknown[])[3], "creator fee");
+    // BondingCurveV2.quoteBuy returns the anti-snipe tax as its fifth value; sells are untaxed.
+    if (engineVersion === 2 && quoteSide === "buy") {
+      const taxBps = await publicClient!.readContract({
+        address: safeCurveAddress,
+        abi: curveAbi,
+        functionName: "currentTaxBps",
+      });
+      setTaxQuote({
+        snipeTax: parseRuntimeQuantity((contractQuote as readonly unknown[])[4], "snipe tax"),
+        taxBps: Number(taxBps),
+      });
+    } else setTaxQuote({ snipeTax: 0n, taxBps: 0 });
     const exactMinimum = minimumOutput(output, toleranceBps);
     const args =
       quoteSide === "buy"
@@ -709,7 +789,7 @@ function TradingPanelReady({
         throw new Error("Wallet or network changed. Review again after reconnecting.");
       const phase = await publicClient.readContract({
         address: safeCurveAddress,
-        abi: browserAbis.curve,
+        abi: curveAbi,
         functionName: "phase",
       });
       if (Number(phase) !== 0) throw new Error("WrongPhase");
@@ -777,7 +857,7 @@ function TradingPanelReady({
     try {
       const phase = await publicClient.readContract({
         address: safeCurveAddress,
-        abi: browserAbis.curve,
+        abi: curveAbi,
         functionName: "phase",
       });
       if (Number(phase) !== 0) throw new Error("WrongPhase");
@@ -877,14 +957,14 @@ function TradingPanelReady({
       setState({ status: "simulating" });
       const phaseBeforeSign = await publicClient.readContract({
         address: safeCurveAddress,
-        abi: browserAbis.curve,
+        abi: curveAbi,
         functionName: "phase",
       });
       if (Number(phaseBeforeSign) !== 0) throw new Error("WrongPhase");
       failurePhase = "simulation";
       await publicClient.simulateContract({
         address: reviewed.target as Address,
-        abi: browserAbis.curve,
+        abi: curveAbi,
         functionName: reviewed.functionName as "buy" | "sell",
         account: reviewed.account as Address,
         args: reviewed.args as never,
@@ -937,7 +1017,7 @@ function TradingPanelReady({
       failurePhase = "write";
       const hash = await walletClient.writeContract({
         address: reviewed.target as Address,
-        abi: browserAbis.curve,
+        abi: curveAbi,
         functionName: reviewed.functionName as "buy" | "sell",
         account: reviewed.account as Address,
         args: reviewed.args as never,
@@ -1000,16 +1080,24 @@ function TradingPanelReady({
         walletAccounts[0]?.toLowerCase() !== account.address.toLowerCase()
       )
         throw new Error("Wallet or network changed; review the claim again.");
-      if (kind === "creator") {
+      if (kind === "creator" && engineVersion === 2) {
+        const amount = await publicClient.readContract({
+          address: safeCurveAddress,
+          abi: curveAbi,
+          functionName: "creatorFeesOwed",
+          args: [account.address],
+        });
+        if ((amount as bigint) === 0n) throw new Error("NothingToClaim");
+      } else if (kind === "creator") {
         const [creator, amount] = await Promise.all([
           publicClient.readContract({
             address: safeCurveAddress,
-            abi: browserAbis.curve,
+            abi: curveAbi,
             functionName: "creator",
           }),
           publicClient.readContract({
             address: safeCurveAddress,
-            abi: browserAbis.curve,
+            abi: curveAbi,
             functionName: "unclaimedCreatorFees",
           }),
         ]);
@@ -1021,7 +1109,7 @@ function TradingPanelReady({
       } else {
         const amount = await publicClient.readContract({
           address: safeCurveAddress,
-          abi: browserAbis.curve,
+          abi: curveAbi,
           functionName: "pendingRefund",
           args: [account.address],
         });
@@ -1032,7 +1120,7 @@ function TradingPanelReady({
       failurePhase = "simulation";
       await publicClient.simulateContract({
         address: safeCurveAddress,
-        abi: browserAbis.curve,
+        abi: curveAbi,
         functionName,
         account: account.address,
       } as never);
@@ -1040,7 +1128,7 @@ function TradingPanelReady({
       failurePhase = "write";
       const hash = await walletClient.writeContract({
         address: safeCurveAddress,
-        abi: browserAbis.curve,
+        abi: curveAbi,
         functionName,
         account: account.address,
       } as never);
@@ -1069,7 +1157,7 @@ function TradingPanelReady({
     chainId === configuration.chainId,
   );
   const canSubmit = canTrade && confirming && (side !== "sell" || approvalTransaction.ready);
-  if (!tokenAddress || !curveAddress)
+  if (!tokenAddress || !curveAddress || (engineVersion !== 1 && engineVersion !== 2))
     return (
       <UnavailableState
         title="Trading unavailable"
@@ -1180,6 +1268,13 @@ function TradingPanelReady({
                 Fees <strong className="mono">{eth(quote.fee)}</strong>
                 <UsdLine wei={quote.fee} />
               </span>
+              {taxLine ? (
+                <span>
+                  Anti-snipe tax ({taxLine.rate}){" "}
+                  <strong className="mono">{eth(taxLine.amount)}</strong>
+                  {taxLine.timeLeft ? <small> ends in {taxLine.timeLeft}</small> : null}
+                </span>
+              ) : null}
               <span>
                 Minimum output{" "}
                 <strong className="mono">
@@ -1191,6 +1286,9 @@ function TradingPanelReady({
                 {quote.source === "backend"
                   ? "Informational API quote; contract quote is authoritative before signing."
                   : "Authoritative contract quote, read immediately before simulation."}
+                {taxLine
+                  ? " The tax only decreases, so a later block never gives less than the minimum output."
+                  : null}
               </small>
             </div>
           ) : null}
