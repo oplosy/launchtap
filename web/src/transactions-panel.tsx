@@ -1675,13 +1675,18 @@ function V2CreatorPanel({
     : [];
   const validation =
     roles && proposal.trim() ? validateProposedRecipient(proposal, roles.feeRecipient) : null;
+  // These writes finish at "mined" (no indexing step follows), so a mined action is resolved;
+  // only a hash whose outcome is still unknown blocks the next action.
+  const outcomeUnknown = Boolean(
+    state.hash && (state.status === "submitted" || state.status === "rpc-failure"),
+  );
   const canSign = Boolean(
     publicClient &&
     walletClient &&
     account.address &&
     readiness.selectedAccountVerified &&
     readiness.chainId === configuration.chainId &&
-    !hasUnresolvedSubmission(state),
+    !outcomeUnknown,
   );
   const run = async (
     write: { address: Address; abi: Abi; functionName: string; args?: readonly unknown[] },
@@ -2310,6 +2315,7 @@ function V4SwapPanel({
               setInput(event.target.value);
               setConfirming(false);
               setReviewIntent(null);
+              setReviewNotice(null);
             }}
             inputMode="decimal"
           />
@@ -2429,14 +2435,23 @@ function V4SwapPanel({
             </div>
           </div>
         ) : (
-          <Button
-            variant="primary"
-            size="lg"
-            disabled={executionBusy || !ready}
-            onClick={() => void prepareSwapReview()}
-          >
-            {side === "sell" && approvalHash ? "Resume sell" : `Review ${side}`}
-          </Button>
+          <>
+            {/* A notice set while the confirmation closes (allowances mined, a failed review)
+                must stay visible next to the action it explains. */}
+            {reviewNotice ? (
+              <p className="transaction-warning" role="status">
+                {reviewNotice}
+              </p>
+            ) : null}
+            <Button
+              variant="primary"
+              size="lg"
+              disabled={executionBusy || !ready}
+              onClick={() => void prepareSwapReview()}
+            >
+              {side === "sell" && approvalHash ? "Resume sell" : `Review ${side}`}
+            </Button>
+          </>
         )}
       </TradeSideTabs>
       {state.status !== "disconnected" ? (
