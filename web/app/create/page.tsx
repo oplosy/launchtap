@@ -1,6 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { EngineBadge } from "@/components/engine-toggle";
 import { LaunchPanel } from "@/transactions-panel";
+
+export const metadata: Metadata = {
+  title: "Create a token",
+  description: "Launch a fixed-supply token on a bonding curve that graduates to Uniswap.",
+};
 
 export default function CreatePage() {
   return (

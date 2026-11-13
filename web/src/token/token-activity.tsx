@@ -47,13 +47,13 @@ export function Trades({
   return (
     <div className="history-table" role="table" aria-label="Recent trades">
       <div className="history-row history-heading" role="row">
-        <span>Time</span>
-        <span>Trader</span>
-        <span>Side</span>
-        <span>Token volume</span>
-        <span>ETH volume</span>
-        <span>Execution / spot</span>
-        <span>Finality</span>
+        <span role="columnheader">Time</span>
+        <span role="columnheader">Trader</span>
+        <span role="columnheader">Side</span>
+        <span role="columnheader">Token volume</span>
+        <span role="columnheader">ETH volume</span>
+        <span role="columnheader">Execution / spot</span>
+        <span role="columnheader">Finality</span>
       </div>
       {items.map((item) => (
         <div
@@ -62,19 +62,23 @@ export function Trades({
           key={`${item.tx_hash}-${item.log_index}`}
           data-pending={item.finality === "observed" ? "" : undefined}
         >
-          <span className="mono">{safeDate(item.time)}</span>
-          <span className="mono">
+          <span role="cell" className="mono">
+            {safeDate(item.time)}
+          </span>
+          <span role="cell" className="mono">
             <WalletLink address={item.trader} />
           </span>
-          <span className={item.side === "buy" ? "trade-buy" : "trade-sell"}>
+          <span role="cell" className={item.side === "buy" ? "trade-buy" : "trade-sell"}>
             {item.side || "—"}
           </span>
-          <span className="mono">{safeTokenAmount(item.token_volume)}</span>
-          <span className="mono">
+          <span role="cell" className="mono">
+            {safeTokenAmount(item.token_volume)}
+          </span>
+          <span role="cell" className="mono">
             {amount(item.eth_volume)}
             <UsdLine wei={item.eth_volume} />
           </span>
-          <span className="mono trade-prices">
+          <span role="cell" className="mono trade-prices">
             {item.execution_price === "" ? (
               "—"
             ) : (
@@ -86,7 +90,7 @@ export function Trades({
               </>
             )}
           </span>
-          <span>
+          <span role="cell">
             <Badge tone={finalityTone(item.finality)}>{finalityLabel(item.finality)}</Badge>
           </span>
         </div>
@@ -143,17 +147,19 @@ export function Holders({
       {launchLine ? <p className="holder-concentration">{launchLine}</p> : null}
       <div className="history-table" role="table" aria-label="Token holders">
         <div className="history-row history-heading" role="row">
-          <span>Address</span>
-          <span>Balance</span>
-          <span>First acquired block</span>
+          <span role="columnheader">Address</span>
+          <span role="columnheader">Balance</span>
+          <span role="columnheader">First acquired block</span>
         </div>
         {items.map((item) => (
           <div className="history-row holder-row" role="row" key={item.address}>
-            <span className="mono">
+            <span role="cell" className="mono">
               <WalletLink address={item.address} />
             </span>
-            <span className="mono">{safeTokenAmount(item.balance)}</span>
-            <span className="mono">
+            <span role="cell" className="mono">
+              {safeTokenAmount(item.balance)}
+            </span>
+            <span role="cell" className="mono">
               {Number.isSafeInteger(item.first_acquired_block)
                 ? item.first_acquired_block.toLocaleString("en-US")
                 : "Unavailable"}

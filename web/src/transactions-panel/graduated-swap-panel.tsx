@@ -25,6 +25,7 @@ import {
   TransactionProgress,
 } from "./shared";
 import {
+  ConnectOr,
   ReviewActions,
   ReviewNotice,
   TradeAmountFields,
@@ -355,14 +356,16 @@ export function GraduatedSwapPanel({
         ) : (
           <>
             <ReviewNotice notice={reviewNotice} />
-            <Button
-              variant="primary"
-              size="lg"
-              disabled={executionBusy || !ready}
-              onClick={() => void prepareRouterReview()}
-            >
-              {side === "sell" && approvalHash ? "Resume sell" : `Review ${side}`}
-            </Button>
+            <ConnectOr write={trade}>
+              <Button
+                variant="primary"
+                size="lg"
+                disabled={executionBusy || !ready}
+                onClick={() => void prepareRouterReview()}
+              >
+                {side === "sell" && approvalHash ? "Resume sell" : `Review ${side}`}
+              </Button>
+            </ConnectOr>
           </>
         )}
       </TradeSideTabs>

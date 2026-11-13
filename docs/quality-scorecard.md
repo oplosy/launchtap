@@ -20,10 +20,10 @@ Overall is the unweighted mean of the categories, rounded to one decimal.
 | 6 | Application security | 7.5 | 7.5 | Re-read-and-compare before every signature, exact approvals, chain/account re-check, no secrets in URLs. Privy auth not finished. |
 | 7 | CI/CD and infrastructure | 7.5 | 7.5 | Pinned tools, 5 workflows, branch protection, Compose + Caddy. Single host, no CDN, no scaling plan. |
 | 8 | Performance | 7.0 | 7.5 | Batched stats (#56), parallel `eth_getLogs` (#58), parallel token-page reads and hidden-tab polling (#59). No measured targets, no cache layer. |
-| 9 | Maintainability (spaghetti code) | 7.0 | 7.5 | One reviewed-write pipeline for the curve, V2 and V4 panels (#59). Rises to 8.0 when #60 merges (launch on the pipeline; `token-detail` 950 → 185, `wallet-view` 669 → 201 lines). |
-| 10 | UX and interface | 7.0 | 7.0 | Mobile e2e, full calldata in confirmations, live stream. Weak evidence: no visual review or usability pass recorded. |
+| 9 | Maintainability (spaghetti code) | 7.0 | 8.0 | One reviewed-write pipeline for the curve, V2, V4 and launch panels (#59, #60); `token-detail` 950 → 185, `wallet-view` 669 → 201 lines (#60). |
+| 10 | UX and interface | 7.0 | 8.0 | Recorded review (`docs/audits/2026-11-13-ux-review.md`): 13 issues fixed. Lighthouse accessibility is 100 on home, token, create, wallet and forum (from 90–100). Open items: image upload, tiny-price notation, default slippage, creator-only sections. |
 | 11 | Product completeness (vs pons.family) | 6.5 | 6.5 | Launch, curve, graduation, swaps, forum, analytics and docs ship. Ticker tape, Telegram bot, CoinGecko links, clusters L2 and operator actions open. |
-|   | **Overall** | **7.7** | **7.8** | |
+|   | **Overall** | **7.7** | **7.9** | |
 
 ## Path to 9
 
@@ -54,9 +54,11 @@ named in it.
 9. **Maintainability (8.0 → 9):** no web source file over ~400 lines (current largest:
    `token-sections.tsx`, `launch-panel.tsx`, `trading-panel.tsx`); no duplicated write/approval
    logic outside the shared pipeline; lint rule or CI check for file size.
-10. **UX and interface (7.0 → 9):** a recorded visual and usability review of the main flows
-    (create, trade, wallet, forum) on desktop and mobile with issues fixed; accessibility audit
-    (`a11y-debugging`) with findings closed; Lighthouse scores recorded.
+10. **UX and interface (8.0 → 9):** close the open items of the 2026-11-13 review
+    (`docs/audits/2026-11-13-ux-review.md`). That means image upload and a description at launch,
+    subscript-zero price display, a slippage default decision, creator-only sections hidden from
+    visitors, and the trade panel fitting without inner scroll. Then add a signed-in pass (connected
+    wallet: review, sign, approval) recorded the same way.
 11. **Product completeness (6.5 → 9):** close the open product backlog items (ticker tape,
     Telegram bot, CoinGecko market links, clusters Level 2, operator actions) or record a scope
     decision that removes them.
@@ -67,3 +69,4 @@ named in it.
 |------|--------:|--------|----------|
 | 2026-11-13 | 7.7 | Baseline | Codebase review after the second cleanup sweep. |
 | 2026-11-13 | 7.8 | Performance 7.0 → 7.5, Maintainability 7.0 → 7.5 | #58, #59 |
+| 2026-11-13 | 7.9 | Maintainability 7.5 → 8.0, UX 7.0 → 8.0 | #60; UX review and fixes (`docs/audits/2026-11-13-ux-review.md`) |

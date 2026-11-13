@@ -27,6 +27,7 @@ import {
   TransactionProgress,
 } from "./shared";
 import {
+  ConnectOr,
   ReviewActions,
   ReviewNotice,
   TradeAmountFields,
@@ -365,14 +366,16 @@ export function V4SwapPanel({
             {/* A notice set while the confirmation closes (allowances mined, a failed review)
                 must stay visible next to the action it explains. */}
             <ReviewNotice notice={reviewNotice} />
-            <Button
-              variant="primary"
-              size="lg"
-              disabled={executionBusy || !ready}
-              onClick={() => void prepareSwapReview()}
-            >
-              {side === "sell" && approvalHash ? "Resume sell" : `Review ${side}`}
-            </Button>
+            <ConnectOr write={trade}>
+              <Button
+                variant="primary"
+                size="lg"
+                disabled={executionBusy || !ready}
+                onClick={() => void prepareSwapReview()}
+              >
+                {side === "sell" && approvalHash ? "Resume sell" : `Review ${side}`}
+              </Button>
+            </ConnectOr>
           </>
         )}
       </TradeSideTabs>

@@ -97,11 +97,11 @@ export function TradesTable({ list }: { list: ListState<WalletTrade> }) {
         aria-label="Wallet trades"
       >
         <div className="history-row history-heading" role="row">
-          <span>Time</span>
-          <span>Token</span>
-          <span>Side</span>
-          <span>Token volume</span>
-          <span>ETH volume</span>
+          <span role="columnheader">Time</span>
+          <span role="columnheader">Token</span>
+          <span role="columnheader">Side</span>
+          <span role="columnheader">Token volume</span>
+          <span role="columnheader">ETH volume</span>
         </div>
         {list.items.map((item) => (
           <div
@@ -110,15 +110,19 @@ export function TradesTable({ list }: { list: ListState<WalletTrade> }) {
             key={`${item.tx_hash}-${item.log_index}`}
             data-pending={item.finality === "observed" ? "" : undefined}
           >
-            <span className="mono">{safeDate(item.time)}</span>
-            <span>
+            <span role="cell" className="mono">
+              {safeDate(item.time)}
+            </span>
+            <span role="cell">
               <TokenLink token={item.token} symbol={item.symbol} name={item.name} />
             </span>
-            <span className={item.side === "buy" ? "trade-buy" : "trade-sell"}>
+            <span role="cell" className={item.side === "buy" ? "trade-buy" : "trade-sell"}>
               {item.side || "—"}
             </span>
-            <span className="mono">{tokenAmount(item.token_volume)}</span>
-            <span className="mono">
+            <span role="cell" className="mono">
+              {tokenAmount(item.token_volume)}
+            </span>
+            <span role="cell" className="mono">
               {eth(item.eth_volume)}
               <UsdLine wei={item.eth_volume} />
             </span>
@@ -138,24 +142,26 @@ export function CreatedTable({ list }: { list: ListState<Created> }) {
         aria-label="Created tokens"
       >
         <div className="history-row history-heading" role="row">
-          <span>Token</span>
-          <span>Phase</span>
-          <span>Market cap</span>
-          <span>Launch block</span>
+          <span role="columnheader">Token</span>
+          <span role="columnheader">Phase</span>
+          <span role="columnheader">Market cap</span>
+          <span role="columnheader">Launch block</span>
         </div>
         {list.items.map((item) => (
           <div className="history-row" role="row" key={item.token}>
-            <span>
+            <span role="cell">
               <TokenLink token={item.token} symbol={item.symbol} name={item.name} />
             </span>
-            <span>
+            <span role="cell">
               <Badge tone={item.phase === "graduated" ? "success" : "neutral"}>{item.phase}</Badge>
             </span>
-            <span className="mono">
+            <span role="cell" className="mono">
               {eth(item.market_cap_wei)}
               <UsdLine wei={item.market_cap_wei} />
             </span>
-            <span className="mono">{item.launch_block.toLocaleString("en-US")}</span>
+            <span role="cell" className="mono">
+              {item.launch_block.toLocaleString("en-US")}
+            </span>
           </div>
         ))}
       </div>
@@ -202,13 +208,13 @@ export function Holdings({
           aria-label="Holdings"
         >
           <div className="history-row history-heading" role="row">
-            <span>Token</span>
-            <span>Balance</span>
-            <span>Avg cost</span>
-            <span>Value</span>
-            <span>Unrealized</span>
-            <span>Realized</span>
-            <span>Trades</span>
+            <span role="columnheader">Token</span>
+            <span role="columnheader">Balance</span>
+            <span role="columnheader">Avg cost</span>
+            <span role="columnheader">Value</span>
+            <span role="columnheader">Unrealized</span>
+            <span role="columnheader">Realized</span>
+            <span role="columnheader">Trades</span>
           </div>
           {rows.map((item) => {
             const isClosed = item.balance === "0";
@@ -219,28 +225,32 @@ export function Holdings({
                 key={item.token}
                 data-closed={isClosed ? "" : undefined}
               >
-                <span className="wallet-token-cell">
+                <span role="cell" className="wallet-token-cell">
                   <TokenLink token={item.token} symbol={item.symbol} name={item.name} />
                   {isClosed ? <Badge>Closed</Badge> : null}
                   {isTransfer(item.transferred_in) ? <Badge tone="accent">Transfer</Badge> : null}
                 </span>
-                <span className="mono">{tokenAmount(item.balance)}</span>
-                <span className="mono">
+                <span role="cell" className="mono">
+                  {tokenAmount(item.balance)}
+                </span>
+                <span role="cell" className="mono">
                   {item.average_cost_wad === null
                     ? "—"
                     : (formatSignificantPrice(item.average_cost_wad) ?? "Unavailable")}
                 </span>
-                <span className="mono">
+                <span role="cell" className="mono">
                   {eth(item.current_value_wei)}
                   <UsdLine wei={item.current_value_wei} />
                 </span>
-                <span className="mono">
+                <span role="cell" className="mono">
                   <Pnl wei={item.unrealized_pnl_wei} />
                 </span>
-                <span className="mono">
+                <span role="cell" className="mono">
                   <Pnl wei={item.realized_pnl_wei} />
                 </span>
-                <span className="mono">{item.trade_count.toLocaleString("en-US")}</span>
+                <span role="cell" className="mono">
+                  {item.trade_count.toLocaleString("en-US")}
+                </span>
               </div>
             );
           })}

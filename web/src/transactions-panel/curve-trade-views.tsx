@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { formatBaseUnits } from "@/amounts";
+import { formatBaseUnits, formatDisplayAmount } from "@/amounts";
 import { ApiClient } from "@/api/client";
 import type { snipeTaxLine } from "@/anti-snipe";
 import type { V4Addresses } from "@/engine";
@@ -110,6 +110,11 @@ export function useCurveQuote(
   };
 }
 
+/** A buy returns tokens (grouped for reading), a sell returns ETH. */
+function outputAmount(value: bigint, side: "buy" | "sell") {
+  return side === "buy" ? formatDisplayAmount(value, 18, 6) : eth(value);
+}
+
 export function CurveQuoteSummary({
   quote,
   side,
@@ -126,7 +131,7 @@ export function CurveQuoteSummary({
   return (
     <div className="quote-summary">
       <span>
-        Estimated output <strong className="mono">{formatBaseUnits(quote.output, 18, 6)}</strong>
+        Estimated output <strong className="mono">{outputAmount(quote.output, side)}</strong>
         {side === "sell" ? <UsdLine wei={quote.output} /> : null}
       </span>
       <span>
@@ -141,7 +146,7 @@ export function CurveQuoteSummary({
       ) : null}
       <span>
         Minimum output{" "}
-        <strong className="mono">{minimum === null ? "—" : formatBaseUnits(minimum, 18, 6)}</strong>
+        <strong className="mono">{minimum === null ? "—" : outputAmount(minimum, side)}</strong>
         {side === "sell" && minimum !== null ? <UsdLine wei={minimum} /> : null}
       </span>
       {priceImpact ? (
@@ -157,7 +162,7 @@ export function CurveQuoteSummary({
       ) : null}
       <small>
         {quote.source === "backend"
-          ? "Informational API quote; contract quote is authoritative before signing."
+          ? "Estimate only. The contract quote is read again before you sign."
           : "Authoritative contract quote, read immediately before simulation."}
         {taxLine
           ? " The tax only decreases, so a later block never gives less than the minimum output."
