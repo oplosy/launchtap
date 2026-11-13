@@ -9,8 +9,8 @@ import { browserAbis } from "@/contracts/generated";
 import { publicConfiguration } from "@/config/public";
 import { useWalletReadiness } from "@/wallet/readiness";
 import { classifyTransactionFailure, decodeTransactionError } from "@/transactions";
-import { Badge, Button, Input } from "@/components/primitives";
-import { type Address, eth, statusLabel, ErrorCopy, usePersistedTransactionState } from "./shared";
+import { Button, Input } from "@/components/primitives";
+import { type Address, eth, usePersistedTransactionState, TransactionProgress } from "./shared";
 
 /**
  * Engine-2 creator surface (Plan v2-C Task 6, spec §5.3): the creator (identity) and the fee
@@ -325,15 +325,11 @@ export function V2CreatorPanel({
           </Button>
         </div>
       ) : null}
-      {state.status !== "disconnected" ? (
-        <div className="transaction-progress" role="status">
-          <Badge tone={state.status === "mined" ? "success" : "warning"}>
-            {statusLabel(state.status)}
-          </Badge>
-          {state.hash ? <span className="mono">{state.hash}</span> : null}
-          {state.error ? <ErrorCopy error={new Error(state.error)} /> : null}
-        </div>
-      ) : null}
+      <TransactionProgress
+        state={state}
+        tone={state.status === "mined" ? "success" : "warning"}
+        refreshNotice={false}
+      />
     </div>
   );
 }

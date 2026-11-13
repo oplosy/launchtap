@@ -22,20 +22,19 @@ import {
   type ReviewedWriteIntent,
 } from "@/transactions";
 import { TradeUsdHint, UsdLine } from "@/market/usd-line";
-import { Badge, Button, Input, UnavailableState } from "@/components/primitives";
+import { Button, Input, UnavailableState } from "@/components/primitives";
 import {
   DEFAULT_TTL,
   QUOTE_DEBOUNCE_MS,
   type Address,
   eth,
   safeAddress,
-  statusLabel,
   hasUnresolvedSubmission,
   currentUnixSeconds,
-  ErrorCopy,
   usePersistedTransactionState,
   TradeSideTabs,
   SlippageChips,
+  TransactionProgress,
 } from "./shared";
 
 /**
@@ -618,31 +617,16 @@ export function V4SwapPanel({
           </>
         )}
       </TradeSideTabs>
-      {state.status !== "disconnected" ? (
-        <div className="transaction-progress" role="status">
-          <Badge tone={state.status === "reverted" ? "danger" : "warning"}>
-            {statusLabel(state.status)}
-          </Badge>
-          {state.hash ? <span className="mono">{state.hash}</span> : null}
-          {state.error ? <ErrorCopy error={new Error(state.error)} /> : null}
-          {state.canonicalRefreshUnavailable ? (
-            <span className="transaction-error" role="alert">
-              Canonical status refresh unavailable. Showing the last known status.
-            </span>
-          ) : null}
-        </div>
-      ) : null}
-      {approvalTransaction.state.status !== "disconnected" ? (
-        <div className="transaction-progress" role="status">
-          <Badge tone="warning">Approval {statusLabel(approvalTransaction.state.status)}</Badge>
-          {approvalTransaction.state.hash ? (
-            <span className="mono">{approvalTransaction.state.hash}</span>
-          ) : null}
-          {approvalTransaction.state.error ? (
-            <ErrorCopy error={new Error(approvalTransaction.state.error)} />
-          ) : null}
-        </div>
-      ) : null}
+      <TransactionProgress
+        state={state}
+        tone={state.status === "reverted" ? "danger" : "warning"}
+      />
+      <TransactionProgress
+        state={approvalTransaction.state}
+        tone="warning"
+        prefix="Approval "
+        refreshNotice={false}
+      />
     </div>
   );
 }

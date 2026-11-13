@@ -34,15 +34,14 @@ import {
   type Address,
   eth,
   safeAddress,
-  statusLabel,
   hasUnresolvedSubmission,
   currentUnixSeconds,
-  ErrorCopy,
   usePersistedTransactionState,
   TradeSideTabs,
   SlippageChips,
   ReadinessGate,
   useTaxSecondsLeft,
+  TransactionProgress,
 } from "./shared";
 import { CurveClaimRow, useCurveClaims } from "./curve-claims";
 import { V2CreatorPanel } from "./v2-creator-panel";
@@ -966,39 +965,22 @@ function TradingPanelReady({
           </Button>
         )}
       </TradeSideTabs>
-      {state.status !== "disconnected" ? (
-        <div className="transaction-progress" role="status">
-          <Badge
-            tone={
-              state.status === "reverted" || state.status === "rejected-signature"
-                ? "danger"
-                : state.status === "indexing"
-                  ? "warning"
-                  : "success"
-            }
-          >
-            {statusLabel(state.status)}
-          </Badge>
-          {state.hash ? <span className="mono">{state.hash}</span> : null}
-          {state.error ? <ErrorCopy error={new Error(state.error)} /> : null}
-          {state.canonicalRefreshUnavailable ? (
-            <span className="transaction-error" role="alert">
-              Canonical status refresh unavailable. Showing the last known status.
-            </span>
-          ) : null}
-        </div>
-      ) : null}
-      {approvalTransaction.state.status !== "disconnected" ? (
-        <div className="transaction-progress" role="status">
-          <Badge tone="warning">Approval {statusLabel(approvalTransaction.state.status)}</Badge>
-          {approvalTransaction.state.hash ? (
-            <span className="mono">{approvalTransaction.state.hash}</span>
-          ) : null}
-          {approvalTransaction.state.error ? (
-            <ErrorCopy error={new Error(approvalTransaction.state.error)} />
-          ) : null}
-        </div>
-      ) : null}
+      <TransactionProgress
+        state={state}
+        tone={
+          state.status === "reverted" || state.status === "rejected-signature"
+            ? "danger"
+            : state.status === "indexing"
+              ? "warning"
+              : "success"
+        }
+      />
+      <TransactionProgress
+        state={approvalTransaction.state}
+        tone="warning"
+        prefix="Approval "
+        refreshNotice={false}
+      />
       {claimRow}
       {engineVersion === 2 ? (
         <V2CreatorPanel
