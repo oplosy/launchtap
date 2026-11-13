@@ -416,6 +416,7 @@ type ProtocolStat struct {
 	Graduations24h      int32
 	GraduationsAllTime  int32
 	UpdatedAt           pgtype.Timestamptz
+	DailyThroughBlock   pgtype.Int8
 }
 
 type PublicWalletUsername struct {

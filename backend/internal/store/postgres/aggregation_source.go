@@ -51,7 +51,7 @@ func (s AggregationSource) ComputeBatch(ctx context.Context, claims []stats.Clai
 		computedByChain[claim.ChainID] = append(computedByChain[claim.ChainID], i)
 	}
 	for _, chainID := range chains {
-		if err := s.Adapter.RecomputeProtocolAggregates(ctx, chainID); err != nil {
+		if err := s.Adapter.RefreshProtocolAggregates(ctx, chainID); err != nil {
 			for _, i := range computedByChain[chainID] {
 				results[i] = err
 			}

@@ -43,7 +43,8 @@ type Querier interface {
 	// Drop the curve and pair marks once the row is written (R4).
 	ClearLaunchPositionDirty(ctx context.Context, arg ClearLaunchPositionDirtyParams) error
 	ClearOrphanProjections(ctx context.Context, arg ClearOrphanProjectionsParams) error
-	ClearProtocolDaily(ctx context.Context, chainID int64) error
+	// from_day '-infinity' clears every day of the chain.
+	ClearProtocolDaily(ctx context.Context, arg ClearProtocolDailyParams) error
 	// Windows are measured on the database clock; window_seconds is a policy constant.
 	// release_at is the hourly_limit-th newest comment inside the window: once it leaves the window
 	// fewer than hourly_limit remain, so it is the exact end of an hourly block even when the
@@ -133,6 +134,10 @@ type Querier interface {
 	GetKingOfTheHill(ctx context.Context, chainID int64) (GetKingOfTheHillRow, error)
 	GetNewestFeedCursors(ctx context.Context, chainID int64) (GetNewestFeedCursorsRow, error)
 	GetProfileState(ctx context.Context, arg GetProfileStateParams) (GetProfileStateRow, error)
+	// -1 stands for "none": no watermark yet, or no indexed block.
+	GetProtocolAggregateBounds(ctx context.Context, chainID int64) (GetProtocolAggregateBoundsRow, error)
+	// The earliest UTC day of the blocks indexed after the watermark; NULL when there are none.
+	GetProtocolDailyRefreshDay(ctx context.Context, arg GetProtocolDailyRefreshDayParams) (pgtype.Date, error)
 	GetProtocolStats(ctx context.Context, chainID int64) (GetProtocolStatsRow, error)
 	// No row when the comment is missing in this scope, hidden, or its author is banned. Every author
 	// has a social_users row (post creates it before inserting a comment). FOR SHARE locks the comment
@@ -322,6 +327,9 @@ type Querier interface {
 	// Token columns are NULL when the token row is gone (no FK); the casts keep sqlc from
 	// applying the non-nullable Address/Uint256/Hash overrides to them.
 	ListWatchlist(ctx context.Context, arg ListWatchlistParams) ([]ListWatchlistRow, error)
+	// Serializes protocol aggregate refreshes of one chain, so a refresh reads the watermark only
+	// after any concurrent refresh (including a reorg's full rebuild) has committed.
+	LockProtocolAggregates(ctx context.Context, chainID int64) error
 	// Serializes per-subject social writes (rate limits, username changes). The key is built in SQL.
 	LockSocialSubject(ctx context.Context, arg LockSocialSubjectParams) error
 	// Serializes the wallet_totals recompute of one wallet across concurrent position computes, so
@@ -370,9 +378,12 @@ type Querier interface {
 	ReadOperationalHealth(ctx context.Context, arg ReadOperationalHealthParams) (ReadOperationalHealthRow, error)
 	RebuildTokenProjections(ctx context.Context, arg RebuildTokenProjectionsParams) error
 	// Trades are market_trades (curve trades plus DEX swaps), the same source as volume. Days are
-	// UTC calendar days regardless of the session TimeZone.
-	RecomputeProtocolDaily(ctx context.Context, chainID int64) error
-	RecomputeProtocolStats(ctx context.Context, chainID int64) error
+	// UTC calendar days regardless of the session TimeZone. Only days >= from_day are rebuilt;
+	// from_day '-infinity' rebuilds the whole history.
+	RecomputeProtocolDaily(ctx context.Context, arg RecomputeProtocolDailyParams) error
+	// The all-time columns are the sums of protocol_daily, which the caller has just brought up to
+	// daily_through_block; the 24h columns read the sources by block_time range.
+	RecomputeProtocolStats(ctx context.Context, arg RecomputeProtocolStatsParams) error
 	// Every trade is bucketed into all four candle intervals; ATH, baseline, latest, and volume
 	// read only the finest ('1m') series so each trade is counted once.
 	RecomputeTokenStats(ctx context.Context, arg RecomputeTokenStatsParams) error

@@ -129,6 +129,23 @@ func (*aggregationSourceRecorder) Query(context.Context, string, ...any) (pgx.Ro
 	return nil, errors.New("unexpected query")
 }
 
-func (*aggregationSourceRecorder) QueryRow(context.Context, string, ...any) pgx.Row {
+// QueryRow answers the protocol aggregate bounds read with "no watermark, no indexed block",
+// which selects the full rebuild path.
+func (*aggregationSourceRecorder) QueryRow(_ context.Context, query string, _ ...any) pgx.Row {
+	if strings.Contains(query, "GetProtocolAggregateBounds") {
+		return aggregationSourceBoundsRow{}
+	}
+	return aggregationSourceBoundsRow{err: errors.New("unexpected query row")}
+}
+
+type aggregationSourceBoundsRow struct{ err error }
+
+func (row aggregationSourceBoundsRow) Scan(dest ...any) error {
+	if row.err != nil {
+		return row.err
+	}
+	for _, target := range dest {
+		*(target.(*int64)) = -1
+	}
 	return nil
 }

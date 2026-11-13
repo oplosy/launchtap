@@ -133,7 +133,7 @@ func assertProjectionColumns(t testing.TB, ctx context.Context, database *sql.DB
 		"candles":           {"chain_id", "token_address", "interval", "bucket_start_time", "open_price_wad", "high_price_wad", "low_price_wad", "close_price_wad", "gross_eth_volume", "token_volume", "trade_count"},
 		"token_stats":       {"chain_id", "token_address", "spot_price_eth_wad", "market_cap_eth_wad", "fdv_eth_wad", "liquidity_eth_wad", "ath_price_eth_wad", "ath_at", "volume_24h_eth_wad", "price_change_24h_bps", "holder_count", "spot_price_usd", "market_cap_usd", "fdv_usd", "liquidity_usd", "ath_usd", "volume_24h_usd", "updated_at"},
 		"protocol_daily":    {"chain_id", "day", "volume_eth_wad", "volume_usd", "launches_count", "trades_count", "graduations_count"},
-		"protocol_stats":    {"chain_id", "volume_24h_eth_wad", "volume_24h_usd", "volume_all_time_eth_wad", "volume_all_time_usd", "launches_24h", "launches_all_time", "trades_24h", "trades_all_time", "graduations_24h", "graduations_all_time", "updated_at"},
+		"protocol_stats":    {"chain_id", "volume_24h_eth_wad", "volume_24h_usd", "volume_all_time_eth_wad", "volume_all_time_usd", "launches_24h", "launches_all_time", "trades_24h", "trades_all_time", "graduations_24h", "graduations_all_time", "updated_at", "daily_through_block"},
 	}
 	for table, want := range wantByTable {
 		rows, err := database.QueryContext(ctx, `
