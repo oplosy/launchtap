@@ -441,22 +441,31 @@ export function useTaxSecondsLeft(
     if (!endsAt || !client) return;
     let cancelled = false;
     let offset: number | null = null;
-    const sync = () =>
+    let ended = false;
+    // A hidden tab or a finished window needs no chain-clock RPC; showing the tab resyncs.
+    const sync = () => {
+      if (ended || document.visibilityState === "hidden") return;
       void client
         .getBlock({ blockTag: "latest" })
         .then((block) => {
           if (!cancelled) offset = chainClockOffset(block.timestamp, Date.now());
         })
         .catch(() => undefined);
+    };
     sync();
     const syncTimer = setInterval(sync, 15_000);
+    document.addEventListener("visibilitychange", sync);
     const tick = setInterval(() => {
-      if (offset !== null) setSecondsLeft(remainingTaxSeconds(endsAt, Date.now() / 1000 + offset));
+      if (offset === null) return;
+      const left = remainingTaxSeconds(endsAt, Date.now() / 1000 + offset);
+      setSecondsLeft(left);
+      if (left <= 0) ended = true;
     }, 1_000);
     return () => {
       cancelled = true;
       clearInterval(syncTimer);
       clearInterval(tick);
+      document.removeEventListener("visibilitychange", sync);
     };
   }, [endsAt, client]);
   return endsAt && client ? secondsLeft : 0;
