@@ -54,6 +54,7 @@ type BatchHeaderSource interface {
 var _ BatchHeaderSource = (*chain.Client)(nil)
 var _ SenderSource = (*chain.Client)(nil)
 
+// Engine is not safe for concurrent Step calls; Run drives it from one goroutine.
 type Engine struct {
 	settings  Settings
 	store     Store
@@ -61,6 +62,26 @@ type Engine struct {
 	discovery Discovery
 	decoder   *chain.Decoder
 	router    Router
+	// identities caches the persisted token identities, with their V4 pools attached, across
+	// steps; nil means "load inside the next step's state transaction". Only this engine writes
+	// the rows behind it, so it is dropped on every write that can change them
+	// (docs/specs/2026-11-13-indexer-identity-cache-preflight.md). The slice is read-only once
+	// cached.
+	identities []TokenIdentity
+}
+
+func (e *Engine) invalidateIdentities() { e.identities = nil }
+
+// changesIdentities reports whether a committed chunk can change the persisted token
+// identities or graduated V4 pools.
+func changesIdentities(decoded []chain.DecodedLog) bool {
+	for _, log := range decoded {
+		switch log.Value.(type) {
+		case chain.TokenLaunched, chain.TokenLaunchedV2, chain.Graduated, chain.GraduatedV2:
+			return true
+		}
+	}
+	return false
 }
 
 func New(settings Settings, store Store, source Source, discovery Discovery, decoder *chain.Decoder, router Router) (*Engine, error) {
@@ -178,12 +199,17 @@ func (e *Engine) reportSenderMisses(m senderMisses) {
 // that has not committed locally.
 func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
 	defer func() {
-		if err != nil && e.settings.OnFailure != nil {
-			e.settings.OnFailure(err)
+		if err != nil {
+			// A failed step may still have committed (a lost commit acknowledgement), so the
+			// cache is rebuilt from the database.
+			e.invalidateIdentities()
+			if e.settings.OnFailure != nil {
+				e.settings.OnFailure(err)
+			}
 		}
 	}()
 	var state State
-	var identities []TokenIdentity
+	identities := e.identities
 	if err = e.store.Transaction(ctx, func(ctx context.Context, u UnitOfWork) error {
 		var err error
 		others, err := u.ForeignDeployments(ctx, e.settings.ChainID, e.settings.DeploymentID)
@@ -197,7 +223,10 @@ func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
 		if err != nil {
 			return err
 		}
-		identities, err = u.TokenIdentities(ctx, e.settings.ChainID)
+		if identities != nil {
+			return nil
+		}
+		loaded, err := u.TokenIdentities(ctx, e.settings.ChainID)
 		if err != nil {
 			return err
 		}
@@ -205,10 +234,16 @@ func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
 		if err != nil {
 			return err
 		}
-		return attachPools(identities, pools)
+		if err := attachPools(loaded, pools); err != nil {
+			return err
+		}
+		// A non-nil empty slice marks a loaded chain without tokens.
+		identities = append(make([]TokenIdentity, 0, len(loaded)), loaded...)
+		return nil
 	}); err != nil {
 		return false, err
 	}
+	e.identities = identities
 	heads, err := e.source.Heads(ctx)
 	if err != nil {
 		return false, rpcFailure("read heads", err)
@@ -405,6 +440,9 @@ func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
 		return u.WriteState(ctx, state)
 	})
 	if err == nil {
+		if changesIdentities(decoded) {
+			e.invalidateIdentities()
+		}
 		e.reportSenderMisses(misses)
 		if e.settings.OnCommitted != nil {
 			e.settings.OnCommitted(state)
