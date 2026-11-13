@@ -384,7 +384,9 @@ export function TradeSideTabs({
   );
 }
 
-export const SLIPPAGE_PRESETS = ["1", "5", "10"] as const;
+export const SLIPPAGE_PRESETS = ["1", "2", "5", "10"] as const;
+/** The starting slippage on every trade form; one of the presets so its chip shows as chosen. */
+export const DEFAULT_SLIPPAGE = "2";
 
 /** Preset slippage values; they fill the same input, so its validation still applies. */
 export function SlippageChips({

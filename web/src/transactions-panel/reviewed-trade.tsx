@@ -20,6 +20,7 @@ import {
 } from "@/transactions";
 import {
   type Address,
+  DEFAULT_SLIPPAGE,
   hasUnresolvedSubmission,
   SlippageChips,
   usePersistedTransactionState,
@@ -305,7 +306,7 @@ export function useReviewedTrade(tokenAddress: Address | null, enabled = true) {
   const write = useReviewedWrite("trade", tokenAddress, enabled, approvalTransaction);
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [input, setInput] = useState("");
-  const [slippage, setSlippage] = useState("5");
+  const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
   const inputUnits = useMemo(() => {
     try {
       return input.trim() ? parseDecimal(input) : null;
