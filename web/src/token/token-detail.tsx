@@ -10,7 +10,7 @@ import { WatchlistToaster } from "@/watchlist/star-button";
 import { CommentPanel } from "@/comments/comment-panel";
 import { marketLinks } from "./market-links";
 import { addressHue } from "./address";
-import { MetadataEditor } from "./metadata-editor";
+import { CreatorMetadataEditor } from "./metadata-editor";
 import { launchFacts } from "./launch-facts";
 import { v2Facts } from "./v2-facts";
 import { V2FactsPanel, LaunchFactsPanel } from "./facts-panels";
@@ -161,7 +161,8 @@ export function TokenDetail({
             configuration={configuration}
           />
           {!useFixture ? (
-            <MetadataEditor
+            <CreatorMetadataEditor
+              creator={token.creator}
               token={{
                 address: token.address,
                 description: token.description,

@@ -99,6 +99,17 @@ export async function recoverMetadataConflict(
   };
 }
 
+/**
+ * The editor for the wallet that launched the token only. Visitors never see it, and its reads
+ * (a 404 for a token without metadata) are not made for them. Showing it is not authorization:
+ * the API still checks every write against the signed-in account's linked creator wallet.
+ */
+export function CreatorMetadataEditor({ creator, ...props }: Props & { creator: string }) {
+  const readiness = useWalletReadiness();
+  if (!readiness.address || readiness.address.toLowerCase() !== creator.toLowerCase()) return null;
+  return <MetadataEditor {...props} />;
+}
+
 export function MetadataEditor({ token, onConflict }: Props) {
   const configuration = publicConfiguration();
   const { authenticated, getAccessToken, login } = usePrivy();
