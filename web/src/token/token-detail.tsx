@@ -315,8 +315,8 @@ export function TokenDetail({
     void (async () => {
       const next = await loadToken();
       if (!active || !next) return;
-      await loadCandles();
-      await loadCollection(tabRef.current);
+      // Candles and history depend only on the loaded token, not on each other.
+      await Promise.all([loadCandles(), loadCollection(tabRef.current)]);
     })().catch(() => undefined);
     return () => {
       active = false;
@@ -395,9 +395,12 @@ export function TokenDetail({
       refreshAllRef.current ??= createCoalescedRefresh(async () => {
         const loaders = loadersRef.current;
         if (!loaders) return;
-        await loaders.loadToken();
-        await loaders.loadCandles();
-        await loaders.loadCollection(tabRef.current);
+        // The token is already loaded here, so all three reads are independent.
+        await Promise.all([
+          loaders.loadToken(),
+          loaders.loadCandles(),
+          loaders.loadCollection(tabRef.current),
+        ]);
       });
       refreshAllRef.current();
     },
@@ -416,8 +419,10 @@ export function TokenDetail({
       if (!loaders) return;
       const next = await loaders.loadToken(signal);
       if (!next) throw new Error("Token unavailable");
-      await loaders.loadCandles(signal);
-      await loaders.loadCollection(tabRef.current, undefined, false, signal);
+      await Promise.all([
+        loaders.loadCandles(signal),
+        loaders.loadCollection(tabRef.current, undefined, false, signal),
+      ]);
       // REST is canonical again after recovery; live rows it already covers are deduplicated.
       setLiveFeed({ address: tokenAddress, items: [] });
     },

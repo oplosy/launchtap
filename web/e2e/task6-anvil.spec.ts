@@ -631,7 +631,8 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.getByRole("button", { name: "Review sell" }).click();
     await page.getByRole("button", { name: "Sign sell" }).click();
     const routerHandoff = page.getByRole("region", { name: "Router handoff" });
-    const tradeStatus = routerHandoff.getByRole("status").first();
+    // The trade's progress row, not the review notice the approval leaves above it.
+    const tradeStatus = routerHandoff.locator(".transaction-progress").first();
     await expect(tradeStatus).toContainText(/indexing|indexed|safe|finalized/i, {
       timeout: 30_000,
     });

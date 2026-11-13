@@ -1,48 +1,45 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useAccount, usePublicClient, useWalletClient } from "wagmi";
-import { formatBaseUnits, parseDecimal } from "@/amounts";
+import { useEffect, useState } from "react";
+import { formatBaseUnits } from "@/amounts";
 import { ApiClient } from "@/api/client";
 import type { Abi } from "viem";
 import { snipeTaxLine } from "@/anti-snipe";
 import { reviewedV4Addresses } from "@/engine";
 import { poolMatchesApi } from "@/v4-swap";
 import { browserAbis } from "@/contracts/generated";
-import { publicConfiguration } from "@/config/public";
 import { addressExplorerUrl } from "@/wallet/explorer";
-import { useWalletReadiness } from "@/wallet/readiness";
 import {
-  classifyTransactionFailure,
   decodeTransactionError,
   minimumOutput,
   parseRuntimeQuantity,
-  parseSlippageBps,
   parseQuoteQuantity,
   reviewedRouterAddress,
-  sameReviewedWriteIntent,
   transactionDeadline,
-  type TransactionState,
   type ReviewedWriteIntent,
 } from "@/transactions";
 import { curvePriceImpact } from "@/price-impact";
-import { TradeUsdHint, UsdLine } from "@/market/usd-line";
-import { Badge, Button, Input, UnavailableState } from "@/components/primitives";
+import { UsdLine } from "@/market/usd-line";
+import { Badge, Button, UnavailableState } from "@/components/primitives";
 import {
   DEFAULT_TTL,
   QUOTE_DEBOUNCE_MS,
   type Address,
   eth,
   safeAddress,
-  hasUnresolvedSubmission,
   currentUnixSeconds,
-  usePersistedTransactionState,
   TradeSideTabs,
-  SlippageChips,
   ReadinessGate,
   useTaxSecondsLeft,
   TransactionProgress,
 } from "./shared";
+import {
+  ReviewActions,
+  ReviewNotice,
+  TradeAmountFields,
+  useReviewedTrade,
+  WrongNetworkBanner,
+} from "./reviewed-trade";
 import { CurveClaimRow, useCurveClaims } from "./curve-claims";
 import { V2CreatorPanel } from "./v2-creator-panel";
 import { V4SwapPanel } from "./v4-swap-panel";
@@ -100,10 +97,28 @@ function TradingPanelReady({
   // value leaves the panel unavailable instead of guessing an ABI.
   const engineVersion = token.engineVersion ?? 1;
   const curveAbi = (engineVersion === 2 ? browserAbis.curveV2 : browserAbis.curve) as Abi;
-  const [side, setSide] = useState<"buy" | "sell">("buy");
-  const [input, setInput] = useState("");
-  const [slippage, setSlippage] = useState("5");
-  const [executionBusy, setExecutionBusy] = useState(false);
+  const trade = useReviewedTrade(tokenAddress, !graduated);
+  const {
+    account,
+    readiness,
+    publicClient,
+    walletClient,
+    configuration,
+    chainId,
+    transaction,
+    approvalTransaction,
+    state,
+    approvalHash,
+    side,
+    input,
+    slippage,
+    inputUnits,
+    slippageBps,
+    executionBusy,
+    confirming,
+    reviewIntent,
+    reviewNotice,
+  } = trade;
   // fee is protocol + creator; the confirmation lists the two shares separately.
   const [quote, setQuote] = useState<{
     output: bigint;
@@ -115,8 +130,6 @@ function TradingPanelReady({
   const [taxQuote, setTaxQuote] = useState<{ snipeTax: bigint; taxBps: number } | null>(null);
   // ETH a buy actually spends (input minus a graduation-cap refund), or the tokens a sell spends.
   const [quoteInputUsed, setQuoteInputUsed] = useState<bigint | null>(null);
-  const [confirming, setConfirming] = useState(false);
-  const [reviewIntent, setReviewIntent] = useState<ReviewedWriteIntent | null>(null);
   const [reviewDetails, setReviewDetails] = useState<{
     side: "buy" | "sell";
     inputUnits: bigint;
@@ -124,36 +137,7 @@ function TradingPanelReady({
     fee: bigint;
     protocolFee: bigint;
   } | null>(null);
-  const [reviewNotice, setReviewNotice] = useState<string | null>(null);
-  const executionLockRef = useRef(false);
-  const configuration = publicConfiguration();
   const curveExplorer = addressExplorerUrl(configuration, safeCurveAddress);
-  const readiness = useWalletReadiness();
-  const account = useAccount();
-  const chainId = readiness.chainId;
-  const transaction = usePersistedTransactionState(
-    "trade",
-    configuration.chainId,
-    account.address,
-    tokenAddress,
-    configuration.apiBaseUrl,
-    !graduated,
-  );
-  const { state, setState } = transaction;
-  const approvalTransaction = usePersistedTransactionState(
-    "approval",
-    configuration.chainId,
-    account.address,
-    tokenAddress,
-    configuration.apiBaseUrl,
-    !graduated,
-  );
-  const setApprovalTransactionState = approvalTransaction.setState;
-  const approvalHash = approvalTransaction.ready
-    ? (approvalTransaction.state.hash as Address | undefined)
-    : undefined;
-  const publicClient = usePublicClient();
-  const { data: walletClient } = useWalletClient();
   const claims = useCurveClaims({
     configuration,
     account,
@@ -185,17 +169,6 @@ function TradingPanelReady({
     ),
   );
   const reviewedWeth = safeAddress(configuration.deployment?.weth);
-  const decimals = 18;
-  const inputUnits = useMemo(() => {
-    try {
-      return input.trim() ? parseDecimal(input, decimals) : null;
-    } catch {
-      return null;
-    }
-  }, [input]);
-  const slippageBps = useMemo(() => {
-    return parseSlippageBps(slippage);
-  }, [slippage]);
 
   useEffect(() => {
     let cancelled = false;
@@ -277,7 +250,6 @@ function TradingPanelReady({
               : null,
         })
       : null;
-  const switchNetwork = () => void readiness.switchNetwork();
   const readCurveIntent = async (
     accountAddress: Address,
     quoteSide: "buy" | "sell",
@@ -341,36 +313,36 @@ function TradingPanelReady({
       protocolFee,
     };
   };
+  const showContractQuote = (
+    quoteSide: "buy" | "sell",
+    quantity: bigint,
+    fresh: { output: bigint; fee: bigint; protocolFee: bigint },
+  ) => {
+    setQuote({
+      output: fresh.output,
+      fee: fresh.fee,
+      protocolFee: fresh.protocolFee,
+      source: "contract",
+    });
+    setReviewDetails({
+      side: quoteSide,
+      inputUnits: quantity,
+      output: fresh.output,
+      fee: fresh.fee,
+      protocolFee: fresh.protocolFee,
+    });
+  };
+  const readPhase = () =>
+    publicClient!.readContract({
+      address: safeCurveAddress,
+      abi: curveAbi,
+      functionName: "phase",
+    });
   const prepareTradeReview = async () => {
-    if (
-      !account.address ||
-      !publicClient ||
-      !walletClient ||
-      !inputUnits ||
-      slippageBps === null ||
-      chainId !== configuration.chainId ||
-      !readiness.selectedAccountVerified ||
-      !transaction.ready ||
-      (side === "sell" && !approvalTransaction.ready) ||
-      hasUnresolvedSubmission(state)
-    )
-      return;
+    if (!trade.walletReady || !inputUnits || slippageBps === null || trade.unresolved) return;
     try {
-      const [walletAccounts, currentChainId] = await Promise.all([
-        walletClient.getAddresses(),
-        publicClient.getChainId(),
-      ]);
-      if (
-        currentChainId !== configuration.chainId ||
-        walletAccounts[0]?.toLowerCase() !== account.address.toLowerCase()
-      )
-        throw new Error("Wallet or network changed. Review again after reconnecting.");
-      const phase = await publicClient.readContract({
-        address: safeCurveAddress,
-        abi: curveAbi,
-        functionName: "phase",
-      });
-      if (Number(phase) !== 0) throw new Error("WrongPhase");
+      await trade.assertWalletForReview();
+      if (Number(await readPhase()) !== 0) throw new Error("WrongPhase");
       const deadline = transactionDeadline(currentUnixSeconds(), DEFAULT_TTL);
       const fresh = await readCurveIntent(
         account.address as Address,
@@ -379,89 +351,58 @@ function TradingPanelReady({
         slippageBps,
         deadline,
       );
-      setQuote({
-        output: fresh.output,
-        fee: fresh.fee,
-        protocolFee: fresh.protocolFee,
-        source: "contract",
-      });
-      setReviewIntent(fresh.intent);
-      setReviewDetails({
-        side,
-        inputUnits,
-        output: fresh.output,
-        fee: fresh.fee,
-        protocolFee: fresh.protocolFee,
-      });
-      setReviewNotice(null);
+      showContractQuote(side, inputUnits, fresh);
+      trade.openReview(fresh.intent);
       setQuoteError(null);
-      setConfirming(true);
     } catch (cause) {
-      setReviewIntent(null);
-      setConfirming(false);
+      trade.closeReview(false);
       setQuoteError(decodeTransactionError(cause).message);
     }
   };
-  const replaceTradeReview = (
-    intent: ReviewedWriteIntent,
-    details: {
-      side: "buy" | "sell";
-      inputUnits: bigint;
-      output: bigint;
-      fee: bigint;
-      protocolFee: bigint;
-    },
-  ) => {
-    setReviewIntent(intent);
-    setReviewDetails(details);
-    setQuote({
-      output: details.output,
-      fee: details.fee,
-      protocolFee: details.protocolFee,
-      source: "contract",
-    });
-    setReviewNotice(
-      "The wallet write details changed. Review the updated values, then confirm again.",
-    );
-  };
   const execute = async () => {
     if (graduated) return;
-    if (executionLockRef.current) return;
     const resumingApproval = side === "sell" && approvalHash !== undefined;
     if (
-      !account.address ||
       !publicClient ||
       !walletClient ||
+      !account.address ||
       !inputUnits ||
       slippageBps === null ||
       !reviewIntent ||
       !reviewDetails ||
       !transaction.ready ||
       (reviewDetails.side === "sell" && !approvalTransaction.ready) ||
-      (!resumingApproval && hasUnresolvedSubmission(state)) ||
+      (!resumingApproval && trade.unresolved) ||
       chainId !== configuration.chainId ||
       !readiness.selectedAccountVerified
     ) {
-      setReviewNotice("Wallet, network, or review changed. Refresh the review before signing.");
+      trade.setReviewNotice(
+        "Wallet, network, or review changed. Refresh the review before signing.",
+      );
       return;
     }
-    executionLockRef.current = true;
-    setExecutionBusy(true);
     const reviewed = reviewIntent;
     const reviewedSide = reviewDetails.side;
     const reviewedInput = reviewDetails.inputUnits;
-    const stateBeforeReview = state;
-    let submittedHash: Address | undefined;
-    let approvalWrite = false;
-    let failurePhase: "preflight" | "simulation" | "write" | "receipt" = "preflight";
-    try {
+    const requote = async () => {
+      const fresh = await readCurveIntent(
+        reviewed.account as Address,
+        reviewedSide,
+        reviewedInput,
+        slippageBps,
+        reviewed.deadline!,
+      );
+      return {
+        intent: fresh.intent,
+        replace: () => showContractQuote(reviewedSide, reviewedInput, fresh),
+      };
+    };
+    await trade.runExecution(async (run) => {
+      // A failure before anything is submitted keeps reporting the last known hash.
+      run.setFallbackHash(state.hash as Address | undefined);
       // Independent reads go out together; the checks keep their original order.
       const [phase, tokenBalance, nativeBalance] = await Promise.all([
-        publicClient.readContract({
-          address: safeCurveAddress,
-          abi: curveAbi,
-          functionName: "phase",
-        }),
+        readPhase(),
         publicClient.readContract({
           address: safeTokenAddress,
           abi: browserAbis.token,
@@ -477,35 +418,8 @@ function TradingPanelReady({
         throw new Error("ERC20InsufficientBalance");
       if (nativeBalance !== null && nativeBalance < reviewedInput)
         throw new Error("InsufficientETHBalance");
-      const [walletAccounts, latestChainId] = await Promise.all([
-        walletClient.getAddresses(),
-        publicClient.getChainId(),
-      ]);
-      if (
-        latestChainId !== reviewed.chainId ||
-        walletAccounts[0]?.toLowerCase() !== reviewed.account.toLowerCase() ||
-        account.address?.toLowerCase() !== reviewed.account.toLowerCase()
-      ) {
-        setReviewNotice("The selected wallet or network changed. Return to review before signing.");
-        return;
-      }
-      const fresh = await readCurveIntent(
-        reviewed.account as Address,
-        reviewedSide,
-        reviewedInput,
-        slippageBps,
-        reviewed.deadline!,
-      );
-      if (!sameReviewedWriteIntent(reviewed, fresh.intent)) {
-        replaceTradeReview(fresh.intent, {
-          side: reviewedSide,
-          inputUnits: reviewedInput,
-          output: fresh.output,
-          fee: fresh.fee,
-          protocolFee: fresh.protocolFee,
-        });
-        return;
-      }
+      await run.ensureWallet(reviewed);
+      if (!run.unchanged(reviewed, await requote())) return;
       if (reviewedSide === "sell") {
         const allowance = await publicClient.readContract({
           address: safeTokenAddress,
@@ -514,145 +428,26 @@ function TradingPanelReady({
           args: [reviewed.account as Address, safeCurveAddress],
         });
         if (allowance < reviewedInput) {
-          approvalWrite = true;
-          const [approvalAccounts, approvalChainId] = await Promise.all([
-            walletClient.getAddresses(),
-            publicClient.getChainId(),
-          ]);
-          if (
-            approvalChainId !== reviewed.chainId ||
-            approvalAccounts[0]?.toLowerCase() !== reviewed.account.toLowerCase()
-          ) {
-            setReviewNotice(
-              "The selected wallet or network changed. Return to review before signing.",
-            );
-            return;
-          }
-          failurePhase = "simulation";
-          setApprovalTransactionState({ status: "simulating" });
-          const approvalArgs = [safeCurveAddress, reviewedInput] as const;
-          await publicClient.simulateContract({
+          await run.approve(reviewed, {
             address: safeTokenAddress,
-            abi: browserAbis.token,
+            abi: browserAbis.token as Abi,
             functionName: "approve",
-            account: reviewed.account as Address,
-            args: approvalArgs,
-          } as never);
-          setApprovalTransactionState({ status: "awaiting-signature" });
-          failurePhase = "write";
-          const hash = await walletClient.writeContract({
-            address: safeTokenAddress,
-            abi: browserAbis.token,
-            functionName: "approve",
-            account: reviewed.account as Address,
-            args: approvalArgs,
-          } as never);
-          submittedHash = hash as Address;
-          setApprovalTransactionState({ status: "submitted", hash: hash as Address });
-          failurePhase = "receipt";
-          const approvalReceipt = await publicClient.waitForTransactionReceipt({ hash });
-          if (approvalReceipt.status !== "success") throw new Error("ReceiptReverted");
-          setApprovalTransactionState({ status: "mined", hash: hash as Address });
-          setConfirming(false);
+            args: [safeCurveAddress, reviewedInput],
+          });
+          run.approvalsDone(
+            "The curve allowance is set for this exact sell. Review again to sign.",
+          );
           return;
         }
       }
-      setState({ status: "simulating" });
-      const phaseBeforeSign = await publicClient.readContract({
-        address: safeCurveAddress,
+      await run.sign(reviewed, {
         abi: curveAbi,
-        functionName: "phase",
+        requote,
+        beforeSimulate: async () => {
+          if (Number(await readPhase()) !== 0) throw new Error("WrongPhase");
+        },
       });
-      if (Number(phaseBeforeSign) !== 0) throw new Error("WrongPhase");
-      failurePhase = "simulation";
-      await publicClient.simulateContract({
-        address: reviewed.target as Address,
-        abi: curveAbi,
-        functionName: reviewed.functionName as "buy" | "sell",
-        account: reviewed.account as Address,
-        args: reviewed.args as never,
-        value: reviewed.value,
-      } as never);
-      const [finalAccounts, finalChainId] = await Promise.all([
-        walletClient.getAddresses(),
-        publicClient.getChainId(),
-      ]);
-      if (
-        finalChainId !== reviewed.chainId ||
-        finalAccounts[0]?.toLowerCase() !== reviewed.account.toLowerCase() ||
-        !readiness.selectedAccountVerified
-      ) {
-        setReviewNotice("The selected wallet or network changed during simulation. Review again.");
-        setState(stateBeforeReview);
-        return;
-      }
-      const finalQuote = await readCurveIntent(
-        reviewed.account as Address,
-        reviewedSide,
-        reviewedInput,
-        slippageBps,
-        reviewed.deadline!,
-      );
-      if (!sameReviewedWriteIntent(reviewed, finalQuote.intent)) {
-        replaceTradeReview(finalQuote.intent, {
-          side: reviewedSide,
-          inputUnits: reviewedInput,
-          output: finalQuote.output,
-          fee: finalQuote.fee,
-          protocolFee: finalQuote.protocolFee,
-        });
-        setState(stateBeforeReview);
-        return;
-      }
-      const [writeAccounts, writeChainId] = await Promise.all([
-        walletClient.getAddresses(),
-        publicClient.getChainId(),
-      ]);
-      if (
-        writeChainId !== reviewed.chainId ||
-        writeAccounts[0]?.toLowerCase() !== reviewed.account.toLowerCase() ||
-        !readiness.selectedAccountVerified
-      ) {
-        setReviewNotice("The selected wallet or network changed before signing. Review again.");
-        setState(stateBeforeReview);
-        return;
-      }
-      setState({ status: "awaiting-signature" });
-      failurePhase = "write";
-      const hash = await walletClient.writeContract({
-        address: reviewed.target as Address,
-        abi: curveAbi,
-        functionName: reviewed.functionName as "buy" | "sell",
-        account: reviewed.account as Address,
-        args: reviewed.args as never,
-        value: reviewed.value,
-      } as never);
-      submittedHash = hash as Address;
-      setConfirming(false);
-      setReviewIntent(null);
-      setState({ status: "submitted", hash: hash as Address });
-      failurePhase = "receipt";
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") throw new Error("ReceiptReverted");
-      setState({ status: "mined", hash: hash as Address });
-      setState({ status: "indexing", hash: hash as Address });
-    } catch (error) {
-      if (error instanceof Error && /wallet or network changed/i.test(error.message)) {
-        setReviewNotice("The selected wallet or network changed. Return to review before signing.");
-        return;
-      }
-      const message = classifyTransactionFailure(error, failurePhase);
-      const failure = {
-        status: message,
-        hash: submittedHash ?? state.hash,
-        error: decodeTransactionError(error).message,
-      } satisfies TransactionState;
-      if (approvalWrite) setApprovalTransactionState(failure);
-      else setState(failure);
-    } finally {
-      executionLockRef.current = false;
-      setExecutionBusy(false);
-    }
+    });
   };
   const canTrade = Boolean(
     inputUnits &&
@@ -718,62 +513,19 @@ function TradingPanelReady({
         </div>
         <Badge tone={token.phase === "graduated" ? "success" : "accent"}>{token.phase}</Badge>
       </div>
-      {readiness.address && chainId !== configuration.chainId ? (
-        <div className="transaction-warning" role="alert">
-          Wrong network. Switch to {configuration.deployment?.name ?? "the reviewed network"} before
-          signing.
-          <Button size="sm" onClick={switchNetwork}>
-            Switch network
-          </Button>
-        </div>
-      ) : null}
+      <WrongNetworkBanner trade={trade} />
       <TradeSideTabs
         side={side}
         label="Trade side"
         disabled={executionBusy}
-        onChange={(next) => {
-          setSide(next);
-          setInput("");
-          setConfirming(false);
-          setReviewIntent(null);
-          setReviewNotice(null);
-        }}
+        onChange={(next) => trade.changeSide(next)}
       >
         <div className="transaction-form">
-          <Input
-            label={side === "buy" ? "ETH input" : `${token.symbol} input`}
-            value={input}
-            disabled={executionBusy}
-            onChange={(event) => {
-              setInput(event.target.value);
-              setConfirming(false);
-              setReviewIntent(null);
-            }}
-            inputMode="decimal"
-            placeholder="0.00"
-            hint="Integer base units are used for signing; decimals are presentation only."
-          />
-          {side === "buy" ? <TradeUsdHint ethInput={input} /> : <TradeUsdHint />}
-          <Input
-            label="Slippage tolerance (%)"
-            value={slippage}
-            disabled={executionBusy}
-            onChange={(event) => {
-              setSlippage(event.target.value);
-              setConfirming(false);
-              setReviewIntent(null);
-            }}
-            inputMode="decimal"
-            hint="Minimum output is rounded down on-chain. At most 50%."
-          />
-          <SlippageChips
-            value={slippage}
-            disabled={executionBusy}
-            onPick={(value) => {
-              setSlippage(value);
-              setConfirming(false);
-              setReviewIntent(null);
-            }}
+          <TradeAmountFields
+            trade={trade}
+            symbol={token.symbol}
+            inputHint="Integer base units are used for signing; decimals are presentation only."
+            slippageHint="Minimum output is rounded down on-chain. At most 50%."
           />
           {quoteError ? (
             <p className="transaction-error" role="alert">
@@ -845,11 +597,7 @@ function TradingPanelReady({
         {confirming ? (
           <div className="transaction-confirmation" role="region" aria-label="Trade confirmation">
             <h3>Confirm {reviewDetails?.side ?? side}</h3>
-            {reviewNotice ? (
-              <p className="transaction-warning" role="status">
-                {reviewNotice}
-              </p>
-            ) : null}
+            <ReviewNotice notice={reviewNotice} />
             <dl>
               <dt>Token</dt>
               <dd>
@@ -926,43 +674,26 @@ function TradingPanelReady({
                 </>
               ) : null}
             </dl>
-            <div className="transaction-actions">
-              <Button
-                variant="quiet"
-                disabled={executionBusy}
-                onClick={() => {
-                  setConfirming(false);
-                  setReviewIntent(null);
-                  setReviewNotice(null);
-                }}
-              >
-                Back
-              </Button>
-              <Button
-                variant="primary"
-                loading={state.status === "simulating" || state.status === "awaiting-signature"}
-                disabled={executionBusy || !canSubmit || !reviewIntent || !transaction.ready}
-                onClick={() => void execute()}
-              >
-                Sign {side}
-              </Button>
-            </div>
+            <ReviewActions trade={trade} canSign={canSubmit} onSign={() => void execute()} />
           </div>
         ) : (
-          <Button
-            variant="primary"
-            size="lg"
-            disabled={
-              executionBusy ||
-              !canTrade ||
-              !transaction.ready ||
-              (side === "sell" && !approvalTransaction.ready) ||
-              hasUnresolvedSubmission(state)
-            }
-            onClick={() => void prepareTradeReview()}
-          >
-            {side === "sell" && approvalHash ? "Resume sell" : `Review ${side}`}
-          </Button>
+          <>
+            <ReviewNotice notice={reviewNotice} />
+            <Button
+              variant="primary"
+              size="lg"
+              disabled={
+                executionBusy ||
+                !canTrade ||
+                !transaction.ready ||
+                (side === "sell" && !approvalTransaction.ready) ||
+                trade.unresolved
+              }
+              onClick={() => void prepareTradeReview()}
+            >
+              {side === "sell" && approvalHash ? "Resume sell" : `Review ${side}`}
+            </Button>
+          </>
         )}
       </TradeSideTabs>
       <TransactionProgress
