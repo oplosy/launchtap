@@ -182,15 +182,16 @@
 .token-main > * {
   min-width: 0;
 }
+/* Sticks below the nav while it fits; a taller card (a shown quote at 900 px) scrolls with the
+   page until its bottom edge is in view and sticks there, so it never scrolls inside itself.
+   `--aside-height` comes from TradeSheet. */
 .token-aside {
   position: sticky;
-  top: calc(var(--nav-height) + 24px);
+  top: min(calc(var(--nav-height) + 24px), calc(100vh - var(--aside-height, 0px) - 24px));
+  align-self: start;
   display: grid;
   gap: 12px;
   min-width: 0;
-  max-height: calc(100vh - var(--nav-height) - 48px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 .token-section-head {
   display: flex;
@@ -271,6 +272,7 @@
   color: var(--text-3);
   font-size: 14px;
 }
+.chart-sparse,
 .chart-attribution {
   color: var(--text-3);
   font-size: 12px;
@@ -541,6 +543,45 @@
   display: none;
 }
 
+/* Desktop: a compact header row (artwork, name and symbol, price) so trading starts above the fold. */
+@media (min-width: 1024px) {
+  .token-page {
+    gap: 32px;
+    padding-top: 32px;
+  }
+  .token-header {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "image title price"
+      "image symbol price"
+      "actions actions actions";
+    align-items: center;
+    justify-items: start;
+    gap: 4px 20px;
+    text-align: left;
+  }
+  .token-detail-image {
+    grid-area: image;
+  }
+  .token-header h1 {
+    grid-area: title;
+  }
+  .token-detail-symbol {
+    grid-area: symbol;
+    justify-content: start;
+  }
+  .token-header .market-price {
+    grid-area: price;
+    justify-items: end;
+    margin-top: 0;
+  }
+  .token-header-actions {
+    grid-area: actions;
+    justify-content: start;
+    margin-top: 12px;
+  }
+}
+
 @media (max-width: 1023px) {
   .token-page {
     gap: 40px;
@@ -582,6 +623,7 @@
   }
   .token-aside[data-open] {
     position: fixed;
+    top: auto;
     right: 0;
     bottom: 0;
     left: 0;

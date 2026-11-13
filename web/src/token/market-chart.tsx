@@ -48,8 +48,10 @@ export function MarketChart({
         horzLine: { color: palette.crosshair, labelBackgroundColor: palette.label },
       },
       rightPriceScale: { borderVisible: false },
-      timeScale: { borderVisible: false, timeVisible: true },
+      // Fixed edges let a handful of points span the width instead of clustering mid-chart.
+      timeScale: { borderVisible: false, timeVisible: true, fixLeftEdge: true, fixRightEdge: true },
     });
+    const sparse = points.length < SPARSE_POINTS;
     chartRef.current = chart;
     const priceSeries =
       mode === "candles"
@@ -68,13 +70,20 @@ export function MarketChart({
             bottomColor: withAlpha(palette.up, 0),
             priceLineVisible: false,
             priceFormat: priceFormatFor(points),
+            // A line needs two points; markers keep one or two trades visible.
+            pointMarkersVisible: sparse,
           });
     const volumeSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
       priceScaleId: "volume",
       color: palette.volume,
+      // Its last-value label would sit on the price axis, over the price labels.
+      lastValueVisible: false,
+      priceLineVisible: false,
     });
     chart.priceScale("volume").applyOptions({ scaleMargins: { top: 0.78, bottom: 0 } });
+    // Keep the price line above the volume band.
+    chart.priceScale("right").applyOptions({ scaleMargins: { top: 0.1, bottom: 0.25 } });
     setChartSnapshot(
       priceSeries as unknown as ChartSnapshotSeries,
       volumeSeries as unknown as ChartSnapshotSeries,
@@ -120,6 +129,11 @@ export function MarketChart({
       ) : (
         <p className="chart-empty">No candles in this range.</p>
       )}
+      {points.length > 0 && points.length < SPARSE_POINTS ? (
+        <p className="chart-sparse">
+          Few trades in this range so far; the chart fills in as they land.
+        </p>
+      ) : null}
       <p className="chart-attribution">
         Updates as activity is recorded ·{" "}
         <a href="https://www.tradingview.com" target="_blank" rel="noopener noreferrer">
@@ -129,6 +143,9 @@ export function MarketChart({
     </div>
   );
 }
+
+/** Below this many points the chart marks each one and says the range is still thin. */
+export const SPARSE_POINTS = 5;
 
 /** Reads the chart colours from the active theme's CSS tokens (canvas cannot use variables). */
 function chartPalette(host: HTMLElement) {

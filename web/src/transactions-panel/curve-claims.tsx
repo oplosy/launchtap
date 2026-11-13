@@ -233,6 +233,14 @@ export function useCurveClaims({
 
 export type CurveClaims = ReturnType<typeof useCurveClaims>;
 
+/** States before any claim was attempted; past them the row keeps showing the claim's progress. */
+const IDLE_CLAIM = new Set(["disconnected", "provider-loading", "wrong-chain", "validating"]);
+
+/** A claim line shows only to an account with something to claim, or with a claim under way. */
+export function showClaim(amount: bigint | null, status: string) {
+  return (amount ?? 0n) > 0n || !IDLE_CLAIM.has(status);
+}
+
 // Curve claims stay open after graduation: engine-2 curve creator fees accrue per account
 // and remain claimable on the curve once the token trades in its V4 pool (spec §5.3).
 export function CurveClaimRow({ claims }: { claims: CurveClaims }) {
@@ -246,63 +254,80 @@ export function CurveClaimRow({ claims }: { claims: CurveClaims }) {
   } = claims;
   const creatorClaimState = creatorClaimTransaction.state;
   const refundClaimState = refundClaimTransaction.state;
+  const showCreator = showClaim(creatorClaimable, creatorClaimState.status);
+  const showRefund = showClaim(refundClaimable, refundClaimState.status);
+  if (!showCreator && !showRefund) return null;
   return (
     <>
       <div className="claim-row">
         <span>
-          Claimable creator fees:{" "}
-          {creatorClaimable === null ? "Unavailable" : eth(creatorClaimable)}
-          <br />
-          Claimable refund: {refundClaimable === null ? "Unavailable" : eth(refundClaimable)}
+          {showCreator ? (
+            <span className="claim-line">
+              Claimable creator fees:{" "}
+              {creatorClaimable === null ? "Unavailable" : eth(creatorClaimable)}
+            </span>
+          ) : null}
+          {showRefund ? (
+            <span className="claim-line">
+              Claimable refund: {refundClaimable === null ? "Unavailable" : eth(refundClaimable)}
+            </span>
+          ) : null}
         </span>
         <div className="transaction-actions">
-          <Button
-            size="sm"
-            disabled={
-              creatorClaimable === null ||
-              creatorClaimable === 0n ||
-              claimBusy ||
-              !creatorClaimTransaction.ready ||
-              hasUnresolvedSubmission(creatorClaimState)
-            }
-            loading={
-              creatorClaimState.status === "simulating" ||
-              creatorClaimState.status === "awaiting-signature"
-            }
-            onClick={() => void executeClaim("creator")}
-          >
-            Claim creator fees
-          </Button>
-          <Button
-            size="sm"
-            disabled={
-              refundClaimable === null ||
-              refundClaimable === 0n ||
-              claimBusy ||
-              !refundClaimTransaction.ready ||
-              hasUnresolvedSubmission(refundClaimState)
-            }
-            loading={
-              refundClaimState.status === "simulating" ||
-              refundClaimState.status === "awaiting-signature"
-            }
-            onClick={() => void executeClaim("refund")}
-          >
-            Claim refund
-          </Button>
+          {showCreator ? (
+            <Button
+              size="sm"
+              disabled={
+                creatorClaimable === null ||
+                creatorClaimable === 0n ||
+                claimBusy ||
+                !creatorClaimTransaction.ready ||
+                hasUnresolvedSubmission(creatorClaimState)
+              }
+              loading={
+                creatorClaimState.status === "simulating" ||
+                creatorClaimState.status === "awaiting-signature"
+              }
+              onClick={() => void executeClaim("creator")}
+            >
+              Claim creator fees
+            </Button>
+          ) : null}
+          {showRefund ? (
+            <Button
+              size="sm"
+              disabled={
+                refundClaimable === null ||
+                refundClaimable === 0n ||
+                claimBusy ||
+                !refundClaimTransaction.ready ||
+                hasUnresolvedSubmission(refundClaimState)
+              }
+              loading={
+                refundClaimState.status === "simulating" ||
+                refundClaimState.status === "awaiting-signature"
+              }
+              onClick={() => void executeClaim("refund")}
+            >
+              Claim refund
+            </Button>
+          ) : null}
         </div>
       </div>
-      {[creatorClaimState, refundClaimState].map((claim, index) => (
-        <TransactionProgress
-          key={index === 0 ? "creator" : "refund"}
-          state={claim}
-          tone={
-            claim.status === "reverted" || claim.status === "rejected-signature"
-              ? "danger"
-              : "warning"
-          }
-        />
-      ))}
+      {[showCreator ? creatorClaimState : null, showRefund ? refundClaimState : null].map(
+        (claim, index) =>
+          claim && (
+            <TransactionProgress
+              key={index === 0 ? "creator" : "refund"}
+              state={claim}
+              tone={
+                claim.status === "reverted" || claim.status === "rejected-signature"
+                  ? "danger"
+                  : "warning"
+              }
+            />
+          ),
+      )}
     </>
   );
 }

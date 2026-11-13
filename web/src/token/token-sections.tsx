@@ -2,7 +2,7 @@
 
 import { ArrowUpRight, X } from "@phosphor-icons/react";
 import { CopyAddress } from "@/components/copy-address";
-import { useState, type RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import type { components } from "@/api/generated";
 import type { TokenDetailResponse } from "@/api/client";
 import type { publicConfiguration } from "@/config/public";
@@ -411,6 +411,22 @@ export function AboutPanel({
   );
 }
 
+/**
+ * Publishes the card's height as `--aside-height`, so a card taller than the viewport sticks by
+ * its bottom edge (token.css) instead of scrolling inside itself.
+ */
+function useStickyHeight(ref: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() =>
+      element.style.setProperty("--aside-height", `${element.offsetHeight}px`),
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref]);
+}
+
 /** The trade card: a column on wide screens, a modal sheet below 1024 px. */
 export function TradeSheet({
   token,
@@ -423,6 +439,7 @@ export function TradeSheet({
   setSheetSide: (side: "buy" | "sell" | null) => void;
   asideRef: RefObject<HTMLElement | null>;
 }) {
+  useStickyHeight(asideRef);
   return (
     <aside
       ref={asideRef}

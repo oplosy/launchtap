@@ -140,16 +140,23 @@ async function openTokenPage(page: Page, state: State) {
 
 const tradeHeading = (page: Page) => page.getByRole("heading", { name: "Trade CHAT" });
 
-test("the header is centred and shows name, symbol and price", async ({ page }, testInfo) => {
+test("the desktop header is one compact row and shows name, symbol and price", async ({
+  page,
+}, testInfo) => {
   test.skip(testInfo.project.name !== "small-laptop", "One viewport is enough.");
   await openTokenPage(page, { name: "Chatty", price: wad("1") });
   const title = page.getByRole("heading", { level: 1, name: "Chatty" });
   await expect(title).toBeVisible();
   const header = page.locator(".token-header");
   await expect(header.getByText("CHAT", { exact: true })).toBeVisible();
-  await expect(header.locator(".market-price-value")).toContainText("1");
-  const box = (await title.boundingBox())!;
-  expect(Math.abs(box.x + box.width / 2 - 640)).toBeLessThanOrEqual(2);
+  const price = header.locator(".market-price-value");
+  await expect(price).toContainText("1");
+  // Name on the left, price on the right, and short enough that trading starts above the fold.
+  const titleBox = (await title.boundingBox())!;
+  const priceBox = (await price.boundingBox())!;
+  expect(titleBox.x + titleBox.width).toBeLessThan(priceBox.x);
+  expect((await header.boundingBox())!.height).toBeLessThanOrEqual(200);
+  await expect(tradeHeading(page)).toBeInViewport();
   await page.screenshot({ path: "test-results/screenshots/rebuild-token-wide.png" });
 });
 
