@@ -23,7 +23,7 @@ import {
   transactionStateForScope,
   type ScopedTransactionSnapshot,
 } from "@/transaction-scope";
-import { UnavailableState } from "@/components/primitives";
+import { Badge, UnavailableState } from "@/components/primitives";
 import { SlidingIndicator } from "@/components/sliding-indicator";
 
 export const DEFAULT_TTL = 900n;
@@ -66,6 +66,39 @@ export function ErrorCopy({ error }: { error: unknown }) {
     <p className="transaction-error" role="alert">
       {decoded.message}
     </p>
+  );
+}
+
+/**
+ * The status row under a transaction form: badge, hash, decoded error and, unless turned off,
+ * the stale canonical-status notice. Renders nothing while the transaction is disconnected.
+ */
+export function TransactionProgress({
+  state,
+  tone,
+  prefix,
+  refreshNotice = true,
+}: {
+  state: TransactionState;
+  tone: React.ComponentProps<typeof Badge>["tone"];
+  prefix?: string;
+  refreshNotice?: boolean;
+}) {
+  if (state.status === "disconnected") return null;
+  return (
+    <div className="transaction-progress" role="status">
+      <Badge tone={tone}>
+        {prefix}
+        {statusLabel(state.status)}
+      </Badge>
+      {state.hash ? <span className="mono">{state.hash}</span> : null}
+      {state.error ? <ErrorCopy error={new Error(state.error)} /> : null}
+      {refreshNotice && state.canonicalRefreshUnavailable ? (
+        <span className="transaction-error" role="alert">
+          Canonical status refresh unavailable. Showing the last known status.
+        </span>
+      ) : null}
+    </div>
   );
 }
 

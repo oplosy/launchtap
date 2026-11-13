@@ -21,17 +21,16 @@ import {
   createTransactionState,
   transitionTransaction,
 } from "@/transactions";
-import { Badge, Button, ErrorState, InfoTip, Input, SafeImage } from "@/components/primitives";
+import { Button, ErrorState, InfoTip, Input, SafeImage } from "@/components/primitives";
 import {
   DEFAULT_TTL,
   type Address,
   eth,
-  statusLabel,
   hasUnresolvedSubmission,
   currentUnixSeconds,
-  ErrorCopy,
   usePersistedTransactionState,
   ReadinessGate,
+  TransactionProgress,
 } from "./shared";
 
 /**
@@ -627,20 +626,10 @@ function LaunchPanelReady() {
           </div>
         </>
       )}
-      {state.status !== "disconnected" ? (
-        <div className="transaction-progress" role="status">
-          <Badge tone={state.status === "reverted" ? "danger" : "warning"}>
-            {statusLabel(state.status)}
-          </Badge>
-          {state.hash ? <span className="mono">{state.hash}</span> : null}
-          {state.error ? <ErrorCopy error={new Error(state.error)} /> : null}
-          {state.canonicalRefreshUnavailable ? (
-            <span className="transaction-error" role="alert">
-              Canonical status refresh unavailable. Showing the last known status.
-            </span>
-          ) : null}
-        </div>
-      ) : null}
+      <TransactionProgress
+        state={state}
+        tone={state.status === "reverted" ? "danger" : "warning"}
+      />
     </section>
   );
 }

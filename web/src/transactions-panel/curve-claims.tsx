@@ -6,14 +6,13 @@ import type { useAccount, usePublicClient } from "wagmi";
 import type { publicConfiguration } from "@/config/public";
 import type { WalletReadiness } from "@/wallet/readiness";
 import { classifyTransactionFailure, decodeTransactionError } from "@/transactions";
-import { Badge, Button } from "@/components/primitives";
+import { Button } from "@/components/primitives";
 import {
   type Address,
-  ErrorCopy,
   eth,
   hasUnresolvedSubmission,
-  statusLabel,
   usePersistedTransactionState,
+  TransactionProgress,
 } from "./shared";
 
 /**
@@ -293,28 +292,17 @@ export function CurveClaimRow({ claims }: { claims: CurveClaims }) {
           </Button>
         </div>
       </div>
-      {[creatorClaimState, refundClaimState].map((claim) =>
-        claim.status !== "disconnected" ? (
-          <div className="transaction-progress" role="status" key={claim.hash ?? claim.status}>
-            <Badge
-              tone={
-                claim.status === "reverted" || claim.status === "rejected-signature"
-                  ? "danger"
-                  : "warning"
-              }
-            >
-              {statusLabel(claim.status)}
-            </Badge>
-            {claim.hash ? <span className="mono">{claim.hash}</span> : null}
-            {claim.error ? <ErrorCopy error={new Error(claim.error)} /> : null}
-            {claim.canonicalRefreshUnavailable ? (
-              <span className="transaction-error" role="alert">
-                Canonical status refresh unavailable. Showing the last known status.
-              </span>
-            ) : null}
-          </div>
-        ) : null,
-      )}
+      {[creatorClaimState, refundClaimState].map((claim, index) => (
+        <TransactionProgress
+          key={index === 0 ? "creator" : "refund"}
+          state={claim}
+          tone={
+            claim.status === "reverted" || claim.status === "rejected-signature"
+              ? "danger"
+              : "warning"
+          }
+        />
+      ))}
     </>
   );
 }
