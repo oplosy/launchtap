@@ -37,9 +37,9 @@ acceptance.
 ## Project status and release boundary
 
 The checkout's active development branch is `dev`. `main` contains milestone PR #7 at
-`37fb6ee`. Task-level implementation work is normally linear on `dev`, while a
-short-lived `task/<slug>` branch is reserved for unusually large or uncertain high-risk work.
-See [AGENTS.md](AGENTS.md) for the working and Git handoff rules.
+`37fb6ee`. Docs and small, low-risk changes land linearly on `dev`, while high-risk or large
+work goes through a short-lived `task/<slug>` branch and a PR back into `dev`.
+See [CLAUDE.md](CLAUDE.md) for the working and Git rules.
 
 | Area                                                 | Repository status                                                               | What that status does not establish                                                       |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
@@ -228,6 +228,8 @@ below explains this expected state.
 | `backend/cmd/api/`                                                                                      | HTTP API process                                                                      |
 | `backend/cmd/indexer/`                                                                                  | Chain ingestion, canonical ledger, and projection worker process                      |
 | `backend/cmd/migrate/`                                                                                  | Explicit PostgreSQL migration runner                                                  |
+| `backend/cmd/telegram/`                                                                                 | Opt-in Telegram alert bot (one per deployment)                                                  |
+| `backend/cmd/funding/`                                                                                  | Opt-in early-wallet funding-source resolver (one per deployment; needs an archive + trace RPC) |
 | `backend/internal/chain/`                                                                               | RPC, deployment verification, discovery, ABI decoding                                 |
 | `backend/internal/curve/`                                                                               | Stdlib-only deterministic Go mirror and vector tests                                  |
 | `backend/internal/indexer/`, `ledger/`, `launch/`, `trading/`, `holder/`, `token/`, `candle/`, `stats/` | Ingestion loop, canonical domain events, and feature projections/aggregation          |
@@ -285,6 +287,7 @@ contract is [`backend/openapi/v1.json`](backend/openapi/v1.json).
 | `GET /profile`                                         | Authenticated wallet-linked profile and claim/refund summary                            |
 | `GET`, `PUT /tokens/{token}/metadata`                  | Public metadata read; creator-authorized, revision-checked replacement                  |
 | `GET`, `PUT /tokens/{token}/image`                     | Public image read; creator-authorized image replacement                                 |
+| `GET`, `PUT`, `DELETE /me/telegram`, `POST /me/telegram/link` | Authenticated Telegram alert link, settings and unlink                           |
 | `GET /healthz`, `/readyz`, `/v1/healthz`, `/v1/readyz` | Process liveness and readiness; see [Operations](#operations-health-and-reorg-recovery) |
 
 ### Not implemented or not release-enabled
@@ -485,6 +488,10 @@ requires `DATABASE_URL`.
 | `INDEXER_WORKER_ID`              | `indexer-1` in example             | Required non-empty identity for the indexer writer process                                          |
 | `INDEXER_CONFIRMATIONS`          | Blank                              | Optional local-only finality override; do not use as production finality or on a non-local manifest |
 | `ETH_USD_SOURCE`                 | Blank                              | Configuration placeholder only; provider runtime adapter is not implemented                         |
+| `TELEGRAM_BOT_USERNAME`          | Blank                              | Telegram alert bot username (no `@`); blank turns the API's `/me/telegram` routes off (503)         |
+| `TELEGRAM_BOT_TOKEN`             | Blank                              | `cmd/telegram` only; BotFather token, a secret kept in the backend env file                         |
+| `TELEGRAM_WEB_ORIGIN`            | Blank                              | `cmd/telegram` only; public web origin for alert links (https, or http on localhost)                |
+| `FUNDING_RPC_URL`                | Blank                              | `cmd/funding` only; archive RPC with `debug_traceBlockByNumber` (callTracer); a secret              |
 
 Both API and indexer also accept `DEPLOYMENT_MANIFEST_PATH` as an optional overlay to select an
 explicit generated manifest; it is not part of `.env.example`. The E2E harness supplies its
@@ -724,7 +731,7 @@ do not infer USD prices from a selected source when no runtime adapter has been 
 
 | Document                                                                           | Use it for                                                                           |
 | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| [AGENTS.md](AGENTS.md)                                                             | Source-of-truth project instructions, language, workflow, Git, and review boundaries |
+| [CLAUDE.md](CLAUDE.md)                                                             | Source-of-truth project instructions, language, workflow, Git, and review boundaries |
 | [notes.md](notes.md)                                                               | Product framing, token lifecycle, economic rationale, and design decisions           |
 | [Roadmap](docs/ROADMAP.md)                                                         | Plans, milestone progress, and dependency order                                      |
 | [Contract core spec](docs/specs/2026-09-01-contract-core-design.md)                | V1 contract behavior, exact economic/math decisions, event interface, and invariants |

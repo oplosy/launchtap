@@ -699,3 +699,92 @@ WHERE w.realized_pnl > 0
   AND NOT EXISTS (SELECT 1 FROM v4_pool_managers AS m WHERE m.chain_id = sqlc.arg(chain_id) AND m.pool_manager = w.wallet)
 ORDER BY w.realized_pnl DESC, w.wallet
 LIMIT sqlc.arg(page_size)::integer;
+
+-- Early-buyer clusters (docs/specs/2026-11-12-early-buyer-clusters-design.md). The token's
+-- creator, and whether the snapshot block is still inside the early window. A pruned or missing
+-- snapshot block falls back to the current time.
+-- name: GetEarlyBuyerToken :one
+SELECT t.creator,
+       COALESCE((SELECT b.block_time FROM indexed_blocks AS b
+                 WHERE b.chain_id = t.chain_id
+                   AND b.block_number = sqlc.arg(snapshot_block)::bigint
+                   AND b.block_hash = sqlc.arg(snapshot_hash)::bytea
+                 LIMIT 1), now())
+         < t.launch_block_time + make_interval(secs => sqlc.arg(window_seconds)::integer) AS window_open
+FROM tokens AS t
+WHERE t.chain_id = sqlc.arg(chain_id) AND t.token_address = sqlc.arg(token_address);
+
+-- Curve deliveries (a Transfer from the curve is a buy output) within the early window of the
+-- launch block's time, infrastructure recipients excluded.
+-- name: ListEarlyCurveDeliveries :many
+SELECT tr.tx_hash, tr.to_address
+FROM tokens AS t
+JOIN transfers AS tr ON tr.chain_id = t.chain_id AND tr.token_address = t.token_address
+LEFT JOIN v4_pool_managers AS manager ON manager.chain_id = t.chain_id
+WHERE t.chain_id = sqlc.arg(chain_id) AND t.token_address = sqlc.arg(token_address)
+  AND tr.from_address = t.curve_address
+  AND tr.block_number >= t.launch_block_number
+  AND tr.block_time <= t.launch_block_time + make_interval(secs => sqlc.arg(window_seconds)::integer)
+  AND NOT token_holder_excluded(t.engine_version, tr.to_address, t.curve_address, t.lp_pair,
+                                t.locker, manager.pool_manager)
+ORDER BY tr.block_number, tr.transaction_index, tr.log_index;
+
+-- Transfers of the token touching one of the given wallets, between two non-infrastructure
+-- wallets.
+-- name: ListTokenTransfersTouching :many
+SELECT tr.from_address, tr.to_address
+FROM tokens AS t
+JOIN transfers AS tr ON tr.chain_id = t.chain_id AND tr.token_address = t.token_address
+LEFT JOIN v4_pool_managers AS manager ON manager.chain_id = t.chain_id
+WHERE t.chain_id = sqlc.arg(chain_id) AND t.token_address = sqlc.arg(token_address)
+  AND (tr.from_address = ANY(sqlc.arg(wallets)::bytea[]) OR tr.to_address = ANY(sqlc.arg(wallets)::bytea[]))
+  AND tr.from_address <> tr.to_address
+  AND NOT token_holder_excluded(t.engine_version, tr.from_address, t.curve_address, t.lp_pair,
+                                t.locker, manager.pool_manager)
+  AND NOT token_holder_excluded(t.engine_version, tr.to_address, t.curve_address, t.lp_pair,
+                                t.locker, manager.pool_manager);
+
+-- name: ListHolderBalancesFor :many
+SELECT holder_address, balance
+FROM holder_balances
+WHERE chain_id = sqlc.arg(chain_id) AND token_address = sqlc.arg(token_address)
+  AND holder_address = ANY(sqlc.arg(wallets)::bytea[]) AND balance > 0;
+
+-- name: ListProtocolRevenueByEngine :many
+-- ETH the contracts credit to the protocol, per engine, earned basis
+-- (docs/specs/2026-11-12-protocol-revenue-design.md). The LP share mirrors
+-- LpFeeLocker._credit: the creator gets floor(eth * bps / 10000), the protocol the rest.
+WITH engines AS (
+    SELECT DISTINCT engine_version FROM token_launches WHERE chain_id = sqlc.arg(chain_id)::bigint
+), launch_fees AS (
+    SELECT engine_version, SUM(launch_fee_paid) AS amount
+    FROM token_launches WHERE chain_id = sqlc.arg(chain_id)::bigint GROUP BY engine_version
+), trade_fees AS (
+    SELECT l.engine_version, SUM(t.protocol_fee) AS fee, SUM(t.snipe_tax) AS tax
+    FROM trades t
+    JOIN token_launches l ON l.chain_id = t.chain_id AND l.token_address = t.token_address
+    WHERE t.chain_id = sqlc.arg(chain_id)::bigint GROUP BY l.engine_version
+), remainders AS (
+    SELECT l.engine_version, SUM(g.eth_remainder) AS amount
+    FROM graduations g
+    JOIN token_launches l ON l.chain_id = g.chain_id AND l.token_address = g.token_address
+    WHERE g.chain_id = sqlc.arg(chain_id)::bigint GROUP BY l.engine_version
+), lp_fees AS (
+    SELECT l.engine_version,
+           SUM(c.eth_amount - div(c.eth_amount * COALESCE(l.lp_creator_share_bps, 0), 10000)) AS amount
+    FROM lp_fee_collections c
+    JOIN token_launches l ON l.chain_id = c.chain_id AND l.token_address = c.token_address
+    WHERE c.chain_id = sqlc.arg(chain_id)::bigint GROUP BY l.engine_version
+)
+SELECT e.engine_version::integer AS engine_version,
+       COALESCE(lf.amount, 0)::text AS launch_fees,
+       COALESCE(tf.fee, 0)::text AS trade_fees,
+       COALESCE(tf.tax, 0)::text AS snipe_tax,
+       COALESCE(r.amount, 0)::text AS graduation_remainder,
+       COALESCE(lp.amount, 0)::text AS lp_fees
+FROM engines e
+LEFT JOIN launch_fees lf ON lf.engine_version = e.engine_version
+LEFT JOIN trade_fees tf ON tf.engine_version = e.engine_version
+LEFT JOIN remainders r ON r.engine_version = e.engine_version
+LEFT JOIN lp_fees lp ON lp.engine_version = e.engine_version
+ORDER BY e.engine_version;

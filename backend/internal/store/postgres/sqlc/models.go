@@ -42,6 +42,15 @@ type CommentReport struct {
 	Resolution   pgtype.Text
 }
 
+type CommentVote struct {
+	CommentID    int64
+	ChainID      int64
+	DeploymentID string
+	VoterDid     string
+	Value        Uint256
+	UpdatedAt    pgtype.Timestamptz
+}
+
 type CreatorFeeBalance struct {
 	ChainID         int64
 	TokenAddress    Address
@@ -112,6 +121,13 @@ type FeeRecipientProposal struct {
 	TokenAddress     Address
 	CurrentRecipient Address
 	NextRecipient    Address
+}
+
+type FundingExcludedFunder struct {
+	ChainID int64
+	Address Address
+	Label   string
+	AddedAt pgtype.Timestamptz
 }
 
 type FutureDefaultsConfiguration struct {
@@ -400,6 +416,7 @@ type ProtocolStat struct {
 	Graduations24h      int32
 	GraduationsAllTime  int32
 	UpdatedAt           pgtype.Timestamptz
+	DailyThroughBlock   pgtype.Int8
 }
 
 type PublicWalletUsername struct {
@@ -480,6 +497,28 @@ type SyncState struct {
 	FinalizedNumber pgtype.Int8
 	FinalizedHash   *Hash
 	FinalizedAt     pgtype.Timestamptz
+}
+
+type TelegramLink struct {
+	ChainID           int64
+	DeploymentID      string
+	PrivyDid          string
+	ChatID            int64
+	Graduations       bool
+	LargeTrades       bool
+	MinTradeWei       pgtype.Numeric
+	DeliveredBlock    int64
+	DeliveredTxIndex  int32
+	DeliveredLogIndex int32
+	LinkedAt          pgtype.Timestamptz
+}
+
+type TelegramLinkCode struct {
+	ChainID      int64
+	DeploymentID string
+	PrivyDid     string
+	CodeSha256   Hash
+	ExpiresAt    pgtype.Timestamptz
 }
 
 type Token struct {
@@ -762,6 +801,17 @@ type V4Swap struct {
 	Tick             int32
 	Fee              int32
 	TxFrom           *Address
+}
+
+type WalletFunding struct {
+	ChainID      int64
+	Wallet       Address
+	Status       string
+	Funder       *Address
+	FundedBlock  pgtype.Int8
+	FundingTx    *Hash
+	CheckedBlock int64
+	ResolvedAt   pgtype.Timestamptz
 }
 
 type WalletPosition struct {

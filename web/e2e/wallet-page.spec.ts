@@ -366,7 +366,7 @@ test("the leaderboard lists ranks", async ({ page }) => {
     await expect(table.getByRole("row").nth(2)).toContainText("−0.25 ETH");
     await expect(table.locator(`a[href="/wallet/${WALLET}"]`)).toBeVisible();
     await page.screenshot({
-      path: "../.impeccable/review/rebuild-leaderboard.png",
+      path: "test-results/screenshots/rebuild-leaderboard.png",
       fullPage: true,
       animations: "disabled",
     });

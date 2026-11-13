@@ -57,6 +57,8 @@ type Comment struct {
 	Body      string
 	CreatedAt time.Time
 	Author    Author
+	// Score is the sum of votes from voters who are not banned.
+	Score int64
 }
 
 type CommentPage struct {
@@ -85,7 +87,23 @@ var (
 	ErrOwnComment      = errors.New("cannot report own comment")
 	ErrInvalidCursor   = errors.New("invalid cursor")
 	ErrInvalidReport   = errors.New("invalid report reason")
+	ErrOwnVote         = errors.New("cannot vote on own comment")
+	ErrInvalidVote     = errors.New("invalid vote value")
 )
+
+// VoteResult is a comment's score and the caller's vote (-1, 0 or 1) after a vote.
+type VoteResult struct {
+	Score int64
+	Vote  int
+}
+
+// ParseVote accepts -1 (down), 0 (clear) or 1 (up).
+func ParseVote(value int) (int, error) {
+	if value < -1 || value > 1 {
+		return 0, ErrInvalidVote
+	}
+	return value, nil
+}
 
 // RateLimitedError reports a rate limit; RetryAfter is at least one second.
 type RateLimitedError struct{ RetryAfter time.Duration }

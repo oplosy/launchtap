@@ -93,6 +93,22 @@ func (q *Queries) CommentRateState(ctx context.Context, arg CommentRateStatePara
 	return i, err
 }
 
+const commentScore = `-- name: CommentScore :one
+SELECT COALESCE(sum(v.value), 0)::bigint AS score
+FROM comment_votes AS v
+JOIN social_users AS vu
+  ON vu.chain_id = v.chain_id AND vu.deployment_id = v.deployment_id AND vu.privy_did = v.voter_did
+WHERE v.comment_id = $1 AND vu.banned_at IS NULL
+`
+
+// Sum of votes from voters who are not banned.
+func (q *Queries) CommentScore(ctx context.Context, commentID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, commentScore, commentID)
+	var score int64
+	err := row.Scan(&score)
+	return score, err
+}
+
 const countVisibleComments = `-- name: CountVisibleComments :one
 SELECT count(*)::BIGINT
 FROM token_comments AS c
@@ -116,6 +132,21 @@ func (q *Queries) CountVisibleComments(ctx context.Context, arg CountVisibleComm
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const deleteCommentVote = `-- name: DeleteCommentVote :exec
+DELETE FROM comment_votes
+WHERE comment_id = $1 AND voter_did = $2
+`
+
+type DeleteCommentVoteParams struct {
+	CommentID int64
+	VoterDid  string
+}
+
+func (q *Queries) DeleteCommentVote(ctx context.Context, arg DeleteCommentVoteParams) error {
+	_, err := q.db.Exec(ctx, deleteCommentVote, arg.CommentID, arg.VoterDid)
+	return err
 }
 
 const ensureSocialUser = `-- name: EnsureSocialUser :exec
@@ -378,6 +409,11 @@ func (q *Queries) ListOwnPublicWallets(ctx context.Context, arg ListOwnPublicWal
 
 const listTokenComments = `-- name: ListTokenComments :many
 SELECT c.id, c.body, c.created_at, c.author_role AS role,
+       COALESCE((SELECT sum(v.value)
+                 FROM comment_votes AS v
+                 JOIN social_users AS vu
+                   ON vu.chain_id = v.chain_id AND vu.deployment_id = v.deployment_id AND vu.privy_did = v.voter_did
+                 WHERE v.comment_id = c.id AND vu.banned_at IS NULL), 0)::bigint AS score,
        u.username AS display_username,
        (CASE
             WHEN u.username IS NULL OR pw.wallet IS NOT NULL THEN c.wallet
@@ -412,6 +448,7 @@ type ListTokenCommentsRow struct {
 	Body            string
 	CreatedAt       pgtype.Timestamptz
 	Role            string
+	Score           int64
 	DisplayUsername pgtype.Text
 	DisplayWallet   []byte
 }
@@ -438,6 +475,7 @@ func (q *Queries) ListTokenComments(ctx context.Context, arg ListTokenCommentsPa
 			&i.Body,
 			&i.CreatedAt,
 			&i.Role,
+			&i.Score,
 			&i.DisplayUsername,
 			&i.DisplayWallet,
 		); err != nil {
@@ -643,6 +681,38 @@ func (q *Queries) SetUsername(ctx context.Context, arg SetUsernameParams) error 
 	return err
 }
 
+const upsertCommentVote = `-- name: UpsertCommentVote :execrows
+INSERT INTO comment_votes (comment_id, chain_id, deployment_id, voter_did, value)
+VALUES ($1, $2, $3, $4, $5::smallint)
+ON CONFLICT (comment_id, voter_did) DO UPDATE
+SET value = EXCLUDED.value, updated_at = now()
+WHERE comment_votes.value <> EXCLUDED.value
+`
+
+type UpsertCommentVoteParams struct {
+	CommentID    int64
+	ChainID      int64
+	DeploymentID string
+	VoterDid     string
+	VoteValue    int16
+}
+
+// Comment votes (docs/specs/2026-11-12-comment-votes-design.md). A repeat of the same value
+// touches no row, so it costs nothing against the hourly limit.
+func (q *Queries) UpsertCommentVote(ctx context.Context, arg UpsertCommentVoteParams) (int64, error) {
+	result, err := q.db.Exec(ctx, upsertCommentVote,
+		arg.CommentID,
+		arg.ChainID,
+		arg.DeploymentID,
+		arg.VoterDid,
+		arg.VoteValue,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const usernameUnavailable = `-- name: UsernameUnavailable :one
 SELECT EXISTS (
     SELECT 1 FROM social_users
@@ -677,4 +747,51 @@ func (q *Queries) UsernameUnavailable(ctx context.Context, arg UsernameUnavailab
 	var unavailable pgtype.Bool
 	err := row.Scan(&unavailable)
 	return unavailable, err
+}
+
+const voteRateState = `-- name: VoteRateState :one
+SELECT count(*)::BIGINT AS count_in_window,
+       (SELECT r.updated_at
+        FROM comment_votes AS r
+        WHERE r.chain_id = $1
+          AND r.deployment_id = $2
+          AND r.voter_did = $3
+          AND r.updated_at > now() - make_interval(secs => $4::double precision)
+        ORDER BY r.updated_at DESC
+        OFFSET $5::integer - 1
+        LIMIT 1)::timestamptz AS release_at,
+       now()::timestamptz AS db_now
+FROM comment_votes
+WHERE chain_id = $1
+  AND deployment_id = $2
+  AND voter_did = $3
+  AND updated_at > now() - make_interval(secs => $4::double precision)
+`
+
+type VoteRateStateParams struct {
+	ChainID       int64
+	DeploymentID  string
+	VoterDid      string
+	WindowSeconds float64
+	HourlyLimit   int32
+}
+
+type VoteRateStateRow struct {
+	CountInWindow int64
+	ReleaseAt     pgtype.Timestamptz
+	DbNow         pgtype.Timestamptz
+}
+
+// release_at: the hourly_limit-th newest vote set in the window (see CommentRateState).
+func (q *Queries) VoteRateState(ctx context.Context, arg VoteRateStateParams) (VoteRateStateRow, error) {
+	row := q.db.QueryRow(ctx, voteRateState,
+		arg.ChainID,
+		arg.DeploymentID,
+		arg.VoterDid,
+		arg.WindowSeconds,
+		arg.HourlyLimit,
+	)
+	var i VoteRateStateRow
+	err := row.Scan(&i.CountInWindow, &i.ReleaseAt, &i.DbNow)
+	return i, err
 }

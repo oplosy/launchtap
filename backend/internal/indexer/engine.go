@@ -54,6 +54,7 @@ type BatchHeaderSource interface {
 var _ BatchHeaderSource = (*chain.Client)(nil)
 var _ SenderSource = (*chain.Client)(nil)
 
+// Engine is not safe for concurrent Step calls; Run drives it from one goroutine.
 type Engine struct {
 	settings  Settings
 	store     Store
@@ -61,6 +62,26 @@ type Engine struct {
 	discovery Discovery
 	decoder   *chain.Decoder
 	router    Router
+	// identities caches the persisted token identities, with their V4 pools attached, across
+	// steps; nil means "load inside the next step's state transaction". Only this engine writes
+	// the rows behind it, so it is dropped on every write that can change them
+	// (docs/specs/2026-11-13-indexer-identity-cache-preflight.md). The slice is read-only once
+	// cached.
+	identities []TokenIdentity
+}
+
+func (e *Engine) invalidateIdentities() { e.identities = nil }
+
+// changesIdentities reports whether a committed chunk can change the persisted token
+// identities or graduated V4 pools.
+func changesIdentities(decoded []chain.DecodedLog) bool {
+	for _, log := range decoded {
+		switch log.Value.(type) {
+		case chain.TokenLaunched, chain.TokenLaunchedV2, chain.Graduated, chain.GraduatedV2:
+			return true
+		}
+	}
+	return false
 }
 
 func New(settings Settings, store Store, source Source, discovery Discovery, decoder *chain.Decoder, router Router) (*Engine, error) {
@@ -173,246 +194,6 @@ func (e *Engine) reportSenderMisses(m senderMisses) {
 	slog.Warn("pool swap sender lookup missed; swaps stored without tx_from, the indexer retries them once their block is safe", attrs...)
 }
 
-// Step commits at most one block-aligned chunk. RPC snapshots are checked against
-// each other before opening the write transaction; no watermark describes work
-// that has not committed locally.
-func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
-	defer func() {
-		if err != nil && e.settings.OnFailure != nil {
-			e.settings.OnFailure(err)
-		}
-	}()
-	var state State
-	var identities []TokenIdentity
-	if err = e.store.Transaction(ctx, func(ctx context.Context, u UnitOfWork) error {
-		var err error
-		others, err := u.ForeignDeployments(ctx, e.settings.ChainID, e.settings.DeploymentID)
-		if err != nil {
-			return err
-		}
-		if len(others) != 0 {
-			return &ForeignDeploymentError{ChainID: e.settings.ChainID, DeploymentID: e.settings.DeploymentID, Others: others}
-		}
-		state, err = u.ReadState(ctx, e.settings.ChainID, e.settings.DeploymentID)
-		if err != nil {
-			return err
-		}
-		identities, err = u.TokenIdentities(ctx, e.settings.ChainID)
-		if err != nil {
-			return err
-		}
-		pools, err := u.GraduatedV4Pools(ctx, e.settings.ChainID)
-		if err != nil {
-			return err
-		}
-		return attachPools(identities, pools)
-	}); err != nil {
-		return false, err
-	}
-	heads, err := e.source.Heads(ctx)
-	if err != nil {
-		return false, rpcFailure("read heads", err)
-	}
-	if e.settings.OnHeads != nil && heads.Latest != nil && heads.Latest.Number != nil {
-		e.settings.OnHeads(heads.Latest.Number.Int64())
-	}
-	latest, err := e.block(heads.Latest)
-	if err != nil {
-		return false, err
-	}
-	safe, err := e.block(heads.Safe)
-	if err != nil {
-		return false, err
-	}
-	finalized, err := e.block(heads.Finalized)
-	if err != nil {
-		return false, err
-	}
-	if safe.BlockNumber > latest.BlockNumber || finalized.BlockNumber > safe.BlockNumber {
-		return false, errors.New("inconsistent RPC head ordering")
-	}
-	for _, saved := range []*ledger.IndexedBlock{state.Safe, state.Observed} {
-		if saved == nil {
-			continue
-		}
-		remote, err := e.source.HeaderByNumber(ctx, uint64(saved.BlockNumber))
-		if err != nil {
-			return false, rpcFailure("read saved header", err)
-		}
-		if remote.Hash() != saved.BlockHash {
-			if state.Safe != nil && saved.BlockNumber <= state.Safe.BlockNumber {
-				return false, ErrSafeViolation
-			}
-			tip, err := e.block(remote)
-			if err != nil {
-				return false, err
-			}
-			if err := e.recoverReorg(ctx, state, tip); err != nil {
-				return false, err
-			}
-			return true, nil
-		}
-	}
-	from := e.settings.StartBlock
-	if state.Observed != nil {
-		from = state.Observed.BlockNumber + 1
-	}
-	to := latest.BlockNumber
-	if to-from >= e.settings.ChunkSize {
-		to = from + e.settings.ChunkSize - 1
-	}
-	prefetched, err := e.prefetchHeaders(ctx, from, to)
-	if err != nil {
-		return false, err
-	}
-	blocks := make(map[int64]ledger.IndexedBlock)
-	previous := state.Observed
-	for number := from; number <= to; number++ {
-		header := prefetched[number]
-		if header == nil {
-			if header, err = e.source.HeaderByNumber(ctx, uint64(number)); err != nil {
-				return false, rpcFailure("read chunk header", err)
-			}
-		}
-		block, err := e.block(header)
-		if err != nil {
-			return false, err
-		}
-		if block.BlockNumber != number {
-			return false, errors.New("RPC header number differs from requested number")
-		}
-		if previous != nil && block.ParentHash != previous.BlockHash {
-			if state.Safe != nil && previous.BlockNumber <= state.Safe.BlockNumber {
-				return false, ErrSafeViolation
-			}
-			if err := e.recoverReorg(ctx, state, block); err != nil {
-				return false, err
-			}
-			return true, nil
-		}
-		blocks[number] = block
-		previous = &block
-	}
-	decoded := make([]chain.DecodedLog, 0)
-	var misses senderMisses
-	if len(blocks) > 0 {
-		emitters := chain.Emitters{Factory: e.settings.Factory, Curves: chain.NewAddressSet(), Tokens: chain.NewAddressSet(), Pairs: chain.NewAddressSet(), Pools: make(map[common.Hash]common.Address)}
-		engineVersion := e.decoder.EngineVersion()
-		for _, identity := range identities {
-			// One deployment per chain (pre-flight B2), so every persisted token was launched by
-			// the decoder's engine.
-			if identity.EngineVersion != engineVersion {
-				return false, fmt.Errorf("persisted token %s has engine version %d, deployment decodes engine %d", identity.Token.Hex(), identity.EngineVersion, engineVersion)
-			}
-			emitters.Curves[identity.Curve] = struct{}{}
-			emitters.Tokens[identity.Token] = struct{}{}
-			if engineVersion == 1 {
-				emitters.Pairs[identity.Pair] = struct{}{}
-			}
-			if identity.PoolID != nil {
-				emitters.Pools[*identity.PoolID] = identity.Token
-			}
-		}
-		result, err := e.discovery.Discover(ctx, uint64(from), uint64(to), emitters)
-		if err != nil {
-			return false, err
-		}
-		for _, log := range result.Logs {
-			if log.BlockNumber > math.MaxInt64 || log.TxIndex > math.MaxInt32 || log.Index > math.MaxInt32 || log.Removed {
-				return false, errors.New("invalid log coordinates")
-			}
-			block, ok := blocks[int64(log.BlockNumber)]
-			if !ok || block.BlockHash != log.BlockHash {
-				return false, ErrCanonicalMismatch
-			}
-			event, err := e.decoder.Decode(log, result.Emitters)
-			if err != nil {
-				return false, err
-			}
-			decoded = append(decoded, event)
-		}
-		misses = e.attachSenders(ctx, decoded)
-		check, err := e.source.HeaderByNumber(ctx, uint64(to))
-		if err != nil {
-			return false, rpcFailure("recheck chunk header", err)
-		}
-		if check.Hash() != blocks[to].BlockHash {
-			return false, ErrCanonicalMismatch
-		}
-		state.Observed = previous
-	}
-	if state.Observed == nil {
-		return false, nil
-	}
-	previousSafe, previousFinalized := int64(-1), int64(-1)
-	if state.Safe != nil {
-		previousSafe = state.Safe.BlockNumber
-	}
-	if state.Finalized != nil {
-		previousFinalized = state.Finalized.BlockNumber
-	}
-	// When RPC tags are ahead, promote only the locally processed intersection.
-	for _, promotion := range []struct {
-		remote ledger.IndexedBlock
-		target **ledger.IndexedBlock
-		status string
-	}{{safe, &state.Safe, "safe"}, {finalized, &state.Finalized, "finalized"}} {
-		number := min(promotion.remote.BlockNumber, state.Observed.BlockNumber)
-		if number < e.settings.StartBlock || (*promotion.target != nil && number <= (*promotion.target).BlockNumber) {
-			continue
-		}
-		var local ledger.IndexedBlock
-		var ok bool
-		local, ok = blocks[number]
-		if !ok {
-			if err := e.store.Transaction(ctx, func(ctx context.Context, u UnitOfWork) error {
-				var err error
-				local, ok, err = u.ReadBlock(ctx, e.settings.ChainID, number)
-				return err
-			}); err != nil {
-				return false, err
-			}
-		}
-		if !ok {
-			return false, fmt.Errorf("missing promotion block %d", number)
-		}
-		remote, err := e.source.HeaderByNumber(ctx, uint64(number))
-		if err != nil {
-			return false, rpcFailure("read promotion header", err)
-		}
-		if remote.Hash() != local.BlockHash || (number == promotion.remote.BlockNumber && local.BlockHash != promotion.remote.BlockHash) {
-			return false, ErrCanonicalMismatch
-		}
-		local.FinalityStatus = promotion.status
-		*promotion.target = &local
-	}
-	err = e.store.Transaction(ctx, func(ctx context.Context, u UnitOfWork) error {
-		for number := from; number <= to; number++ {
-			result, err := u.UpsertIndexedBlock(ctx, blocks[number])
-			if err != nil {
-				return err
-			}
-			if !result.Changed {
-				return ErrCanonicalMismatch
-			}
-		}
-		if err := e.router.Apply(ctx, u, decoded, blocks, identities); err != nil {
-			return err
-		}
-		if err := u.PromoteBlocks(ctx, e.settings.ChainID, state.Safe, state.Finalized, previousSafe, previousFinalized); err != nil {
-			return err
-		}
-		return u.WriteState(ctx, state)
-	})
-	if err == nil {
-		e.reportSenderMisses(misses)
-		if e.settings.OnCommitted != nil {
-			e.settings.OnCommitted(state)
-		}
-	}
-	return len(blocks) > 0, err
-}
-
 func rpcFailure(operation string, err error) error {
 	return fmt.Errorf("%w while %s: %w", ErrRPCUnhealthy, operation, err)
 }
@@ -424,22 +205,67 @@ func (e *Engine) prefetchHeaders(ctx context.Context, from, to int64) (map[int64
 	if !ok || from > to {
 		return nil, nil
 	}
-	headers := make(map[int64]*types.Header, to-from+1)
-	for start := from; start <= to; start += headerBatchSize {
-		end := min(start+headerBatchSize-1, to)
-		numbers := make([]uint64, 0, end-start+1)
-		for number := start; number <= end; number++ {
-			numbers = append(numbers, uint64(number))
+	numbers := make([]int64, 0, to-from+1)
+	for number := from; number <= to; number++ {
+		numbers = append(numbers, number)
+	}
+	return batchHeaders(ctx, batcher, "read chunk headers", numbers)
+}
+
+// fetchHeaders reads each distinct number once, in batches when the source supports it and
+// one by one otherwise. Every returned header is non-nil. Transport errors are RPC failures
+// named after operation; a malformed reply (wrong batch length, missing header) is not.
+func (e *Engine) fetchHeaders(ctx context.Context, operation string, numbers []int64) (map[int64]*types.Header, error) {
+	unique := make([]int64, 0, len(numbers))
+	seen := make(map[int64]struct{}, len(numbers))
+	for _, number := range numbers {
+		if _, ok := seen[number]; !ok {
+			seen[number] = struct{}{}
+			unique = append(unique, number)
 		}
-		batch, err := batcher.HeadersByNumbers(ctx, numbers)
+	}
+	var headers map[int64]*types.Header
+	if batcher, ok := e.source.(BatchHeaderSource); ok {
+		var err error
+		if headers, err = batchHeaders(ctx, batcher, operation, unique); err != nil {
+			return nil, err
+		}
+	} else {
+		headers = make(map[int64]*types.Header, len(unique))
+		for _, number := range unique {
+			header, err := e.source.HeaderByNumber(ctx, uint64(number))
+			if err != nil {
+				return nil, rpcFailure(operation, err)
+			}
+			headers[number] = header
+		}
+	}
+	for _, number := range unique {
+		if headers[number] == nil {
+			return nil, fmt.Errorf("RPC returned no header for block %d", number)
+		}
+	}
+	return headers, nil
+}
+
+// batchHeaders reads numbers in groups of headerBatchSize, one round trip per group.
+func batchHeaders(ctx context.Context, batcher BatchHeaderSource, operation string, numbers []int64) (map[int64]*types.Header, error) {
+	headers := make(map[int64]*types.Header, len(numbers))
+	for start := 0; start < len(numbers); start += headerBatchSize {
+		group := numbers[start:min(start+headerBatchSize, len(numbers))]
+		request := make([]uint64, len(group))
+		for index, number := range group {
+			request[index] = uint64(number)
+		}
+		batch, err := batcher.HeadersByNumbers(ctx, request)
 		if err != nil {
-			return nil, rpcFailure("read chunk headers", err)
+			return nil, rpcFailure(operation, err)
 		}
-		if len(batch) != len(numbers) {
+		if len(batch) != len(request) {
 			return nil, errors.New("RPC header batch length differs from request")
 		}
 		for index, header := range batch {
-			headers[int64(numbers[index])] = header
+			headers[group[index]] = header
 		}
 	}
 	return headers, nil

@@ -16,7 +16,26 @@ const (
 	MaxPageSize     = 50
 	// HotWindowHours is the community "hot" window, measured by the database clock.
 	HotWindowHours = 24
+	// BestWindowDays is the "best" posts window, measured by the database clock.
+	BestWindowDays = 7
 )
+
+// PostSort orders the post feed: newest first (paginated) or by score (one page).
+type PostSort string
+
+const (
+	PostSortNew  PostSort = "new"
+	PostSortBest PostSort = "best"
+)
+
+// ParsePostSort accepts exactly "new" or "best".
+func ParsePostSort(s string) (PostSort, bool) {
+	switch PostSort(s) {
+	case PostSortNew, PostSortBest:
+		return PostSort(s), true
+	}
+	return "", false
+}
 
 // Sort ranks communities.
 type Sort string
@@ -59,5 +78,7 @@ type Community struct {
 // Store reads the forum. Posts returns social.ErrInvalidCursor for a malformed cursor.
 type Store interface {
 	Posts(ctx context.Context, s social.Scope, cursor string, limit int) (PostPage, error)
+	// BestPosts returns visible posts from the last BestWindowDays by score, then newest.
+	BestPosts(ctx context.Context, s social.Scope, limit int) ([]Post, error)
 	Communities(ctx context.Context, s social.Scope, sort Sort, limit int) ([]Community, error)
 }

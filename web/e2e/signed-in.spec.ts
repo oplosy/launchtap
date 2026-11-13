@@ -199,6 +199,73 @@ test("a holder-less account is told to hold the token instead of seeing a compos
   await expect(panel.getByRole("textbox", { name: "Comment" })).toHaveCount(0);
 });
 
+test("a holder votes on a comment, switches and clears the vote, and sees refusals", async ({
+  page,
+}) => {
+  const votes: Array<{ id: string; value: number }> = [];
+  await signIn(page);
+  const unauthenticated = await installApi(page, async (path, request, json) => {
+    const vote = path.match(/^\/comments\/(\d+)\/vote$/);
+    if (vote && request.method() === "PUT") {
+      const { value } = request.postDataJSON() as { value: number };
+      if (vote[1] === "6") return json({ type: "urn:launchpad:problem:not_holder" }, 403);
+      votes.push({ id: vote[1]!, value });
+      return json({ score: 3 + value, vote: value });
+    }
+    if (path === `/tokens/${TOKEN}/comments/eligibility`)
+      return json({ banned: false, username: null, eligible_wallets: [] });
+    if (path.startsWith(`/tokens/${TOKEN}/comments`))
+      return json({
+        comment_count: 2,
+        next_cursor: undefined,
+        items: ["5", "6"].map((id) => ({
+          id,
+          token: TOKEN,
+          body: `comment ${id}`,
+          created_at: "2026-11-10T12:00:00.000000Z",
+          author: { username: null, wallet: WALLET_B, role: "holder" },
+          score: 3,
+        })),
+      });
+    if (path.startsWith(`/tokens/${TOKEN}/watchers`)) return json({ watch_count: 0 });
+    if (path.startsWith(`/tokens/${TOKEN}?`) || path === `/tokens/${TOKEN}`)
+      return json(tokenDetail);
+    return false;
+  });
+  await page.goto(`/token/${TOKEN}`);
+  const rows = page.getByRole("list", { name: "Comments" }).getByRole("listitem");
+  const first = rows.filter({ hasText: "comment 5" });
+  const up = first.getByRole("button", { name: "Upvote" });
+  const down = first.getByRole("button", { name: "Downvote" });
+  await expect(first.getByRole("group", { name: "Vote, 3 points" })).toBeVisible();
+
+  await up.click();
+  await expect(up).toHaveAttribute("aria-pressed", "true");
+  await expect(first.getByRole("group", { name: "Vote, 4 points" })).toBeVisible();
+  await first.screenshot({
+    path: "test-results/screenshots/comment-votes.png",
+    animations: "disabled",
+  });
+  await down.click();
+  await expect(down).toHaveAttribute("aria-pressed", "true");
+  await expect(up).toHaveAttribute("aria-pressed", "false");
+  await expect(first.getByRole("group", { name: "Vote, 2 points" })).toBeVisible();
+  await down.click();
+  await expect(down).toHaveAttribute("aria-pressed", "false");
+  await expect(first.getByRole("group", { name: "Vote, 3 points" })).toBeVisible();
+  expect(votes).toEqual([
+    { id: "5", value: 1 },
+    { id: "5", value: -1 },
+    { id: "5", value: 0 },
+  ]);
+
+  const second = rows.filter({ hasText: "comment 6" });
+  await second.getByRole("button", { name: "Upvote" }).click();
+  await expect(second.getByRole("alert")).toHaveText("Hold this token to vote on its comments.");
+  await expect(second.getByRole("group", { name: "Vote, 3 points" })).toBeVisible();
+  expect(unauthenticated).toEqual([]);
+});
+
 test("the username form saves a name and published wallets, and shows server rejections", async ({
   page,
 }) => {
@@ -303,4 +370,90 @@ test("the inbox lists notifications, marks them read and loads more", async ({ p
   await expect(list.getByText("Large buy on OLD: 2 ETH")).toBeVisible();
   await expect(page.getByRole("button", { name: "Load more" })).toHaveCount(0);
   expect(unauthenticated).toEqual([]);
+});
+
+test("Telegram alerts connect through a deep link, save settings and disconnect", async ({
+  page,
+}) => {
+  const puts: unknown[] = [];
+  let linked = false;
+  let settings = { graduations: true, large_trades: true, min_trade_wei: "500000000000000000" };
+  const status = () => ({
+    linked,
+    linked_at: linked ? "2026-11-12T10:00:00.000000Z" : null,
+    ...settings,
+  });
+  await signIn(page);
+  await page.addInitScript(() => {
+    // Record the deep link instead of opening a Telegram tab.
+    Object.assign(window, {
+      open: (url: string) => {
+        Object.assign(window, { __openedLink: url });
+        return null;
+      },
+    });
+  });
+  const unauthenticated = await installApi(page, async (path, request, json) => {
+    if (path === "/me/telegram/link")
+      return json({
+        url: "https://t.me/LaunchBot?start=e2e-code",
+        expires_at: "2026-11-12T10:15:00.000000Z",
+      });
+    if (path === "/me/telegram") {
+      if (request.method() === "PUT") {
+        const body = request.postDataJSON();
+        puts.push(body);
+        settings = body;
+      }
+      if (request.method() === "DELETE") {
+        linked = false;
+        return json(null, 204);
+      }
+      return json(status());
+    }
+    if (path.startsWith("/me/notifications")) return json({ items: [], unread_count: 0 });
+    return false;
+  });
+
+  await page.goto("/notifications");
+  const card = page.getByRole("region", { name: "Telegram alerts" });
+  await card.getByRole("button", { name: "Connect Telegram" }).click();
+  await expect(card.getByText("Waiting for Start in Telegram.")).toBeVisible();
+  expect(
+    await page.evaluate(() => (window as unknown as { __openedLink?: string }).__openedLink),
+  ).toBe("https://t.me/LaunchBot?start=e2e-code");
+  linked = true;
+  await card.getByRole("button", { name: "I pressed Start" }).click();
+  await expect(card.getByText("Connected. Alerts cover the tokens you watch.")).toBeVisible();
+
+  const threshold = card.getByRole("textbox", { name: "Smallest trade in ETH" });
+  await expect(threshold).toHaveValue("0.5");
+  await threshold.fill("0.1");
+  await card.getByRole("button", { name: "Save" }).click();
+  await expect(card.getByRole("alert")).toHaveText("Enter a trade size from 0.5 to 10,000 ETH.");
+  expect(puts).toEqual([]);
+  await card.getByRole("checkbox", { name: "Graduations" }).uncheck();
+  await threshold.fill("2.5");
+  await card.getByRole("button", { name: "Save" }).click();
+  await expect(card.getByRole("status")).toHaveText("Saved.");
+  expect(puts).toEqual([
+    { graduations: false, large_trades: true, min_trade_wei: "2500000000000000000" },
+  ]);
+  await page.screenshot({ path: "test-results/screenshots/telegram-alerts.png", fullPage: true });
+
+  await card.getByRole("button", { name: "Disconnect" }).click();
+  await expect(card.getByRole("button", { name: "Connect Telegram" })).toBeVisible();
+  expect(unauthenticated).toEqual([]);
+});
+
+test("the Telegram card stays hidden when the API has no bot", async ({ page }) => {
+  await signIn(page);
+  await installApi(page, async (path, _request, json) => {
+    if (path === "/me/telegram") return json({ type: "urn:launchpad:telegram_unavailable" }, 503);
+    if (path.startsWith("/me/notifications")) return json({ items: [], unread_count: 0 });
+    return false;
+  });
+  await page.goto("/notifications");
+  await expect(page.getByRole("heading", { name: "No notifications yet" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Telegram alerts" })).toHaveCount(0);
 });

@@ -2,7 +2,6 @@
 /* The callbacks intentionally coordinate external REST/SSE state and are not compiler memoization candidates. */
 /* eslint-disable react-hooks/preserve-manual-memoization */
 
-import Link from "next/link";
 import { ArrowUpRight, Check, Copy, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import type { components } from "@/api/generated";
@@ -12,7 +11,6 @@ import type { LiveEvent } from "@/api/types";
 import { useLiveEvents } from "@/live/live-events";
 import type { FeedItem } from "@/live/feed-store";
 import { liveRefreshKind, liveTradeRows, reduceTokenTrades } from "@/live/live-strip-model";
-import { formatCanonicalBaseUnits, formatSignificantPrice } from "@/amounts";
 import { CoinGeckoAttribution, UsdLine } from "@/market/usd-line";
 import { DEFAULT_E2E_WEB_URL, publicConfiguration } from "@/config/public";
 import { reviewedDeployments } from "@/contracts/generated";
@@ -25,7 +23,6 @@ import { ShareActions } from "@/share/share-actions";
 import {
   Badge,
   Button,
-  EmptyState,
   ErrorState,
   SafeExternalLink,
   SafeImage,
@@ -33,8 +30,7 @@ import {
   Tabs,
 } from "@/components/primitives";
 import { SlidingIndicator } from "@/components/sliding-indicator";
-import { walletPath } from "@/portfolio/wallet-model";
-import { addressHue, parseTokenAddress, shortAddress } from "./address";
+import { addressHue, shortAddress } from "./address";
 import { transformCandles, type CandleChartPoint } from "./chart-data";
 import {
   appendTokenCollectionPage,
@@ -47,7 +43,18 @@ import { isTokenEventForAddress } from "./sse-scope";
 import { TradingPanel } from "@/transactions-panel";
 import { MetadataEditor } from "./metadata-editor";
 import { PRICE_FLASH_MS, priceDirection } from "./price-flash";
-import { v2Facts, type V2Facts } from "./v2-facts";
+import { launchFacts } from "./launch-facts";
+import { v2Facts } from "./v2-facts";
+import {
+  amount,
+  finalityTone,
+  finalityLabel,
+  safeTokenAmount,
+  safeMarketValue,
+} from "./token-format";
+import { V2FactsPanel, LaunchFactsPanel, Metric } from "./facts-panels";
+import { Trades, Holders, CreatorLine, EarlyBuyers } from "./token-activity";
+import { TokenUnavailable, TokenMissing, TokenLoadError, TokenSkeleton } from "./token-states";
 
 type TokenDetailProps = { address: `0x${string}` };
 type Tab = "trades" | "holders";
@@ -55,23 +62,6 @@ export const intervals = ["1m", "5m", "1h", "1d", "6h", "all"] as const;
 /** Display order, shortest to longest. */
 const INTERVAL_ORDER: readonly (typeof intervals)[number][] = ["1m", "5m", "1h", "6h", "1d", "all"];
 export const CANDLE_LIMIT = 100;
-
-function amount(raw: string) {
-  const value = formatCanonicalBaseUnits(raw, 5);
-  return value === null ? "Unavailable" : `${value} ETH`;
-}
-
-function finalityTone(value: string): "success" | "warning" | "neutral" {
-  return value === "safe" || value === "finalized"
-    ? "success"
-    : value === "provisional" || value === "stale"
-      ? "warning"
-      : "neutral";
-}
-
-function finalityLabel(value: string) {
-  return value === "safe" || value === "finalized" ? "Verified" : "Updating";
-}
 
 export function TokenDetail({
   address,
@@ -522,6 +512,7 @@ export function TokenDetail({
 
   const progress = Math.max(0, Math.min(100, token.graduation_progress_bps / 100));
   const facts = v2Facts(token);
+  const engineOneFacts = launchFacts(token);
   const liquidityIndexed = facts?.liquidityIndexed ?? true;
   const pagesItems: unknown[] = [];
   for (const page of pages) {
@@ -728,6 +719,9 @@ export function TokenDetail({
           </section>
 
           {facts ? <V2FactsPanel facts={facts} configuration={configuration} /> : null}
+          {engineOneFacts ? (
+            <LaunchFactsPanel token={token} facts={engineOneFacts} configuration={configuration} />
+          ) : null}
 
           <section className="token-history-panel" aria-labelledby="history-title">
             <div className="token-section-head">
@@ -768,11 +762,24 @@ export function TokenDetail({
                   value: "holders",
                   label: "Holders",
                   panel: (
-                    <Holders
-                      items={holderItems}
-                      loading={collectionLoading}
-                      error={collectionError}
-                    />
+                    <>
+                      <Holders
+                        items={holderItems}
+                        totalSupply={token.total_supply}
+                        launchBlock={token.launch_block}
+                        hasMore={Boolean(nextCursor)}
+                        loading={collectionLoading}
+                        error={collectionError}
+                      />
+                      <EarlyBuyers
+                        key={token.address}
+                        tokenAddress={token.address}
+                        totalSupply={token.total_supply}
+                        apiBaseUrl={
+                          configuration.status === "ready" ? configuration.apiBaseUrl : null
+                        }
+                      />
+                    </>
                   ),
                 },
               ]}
@@ -825,6 +832,12 @@ export function TokenDetail({
                 <SafeExternalLink href={market.geckoterminal}>GeckoTerminal</SafeExternalLink>
               ) : null}
             </div>
+            <CreatorLine
+              key={`${token.creator}:${token.address}`}
+              creator={token.creator}
+              tokenAddress={token.address}
+              apiBaseUrl={configuration.status === "ready" ? configuration.apiBaseUrl : null}
+            />
           </section>
           {!useFixture ? (
             <MetadataEditor
@@ -871,6 +884,7 @@ export function TokenDetail({
                 engineVersion: token.engine_version,
                 antiSnipeEndsAt: token.v2?.anti_snipe.ends_at ?? null,
                 v2PoolId: token.v2?.pool?.pool_id ?? null,
+                spotPriceWei: token.spot_price_eth,
               }}
             />
             <p className="token-aside-note">
@@ -927,307 +941,5 @@ function CopyAddress({ address }: { address: string }) {
       {shortAddress(address)}
       {copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
     </button>
-  );
-}
-
-function safeTokenAmount(raw: string) {
-  return formatCanonicalBaseUnits(raw, 3) ?? "Unavailable";
-}
-
-function safeMarketValue(raw: string) {
-  return formatSignificantPrice(raw) ?? "Unavailable";
-}
-/** Engine-2 launch, pool and fee recipient facts (Plan v2-C Task 8), from the indexed API. */
-function V2FactsPanel({
-  facts,
-  configuration,
-}: {
-  facts: V2Facts;
-  configuration: Parameters<typeof addressExplorerUrl>[0];
-}) {
-  const link = (address: string) => {
-    const href = addressExplorerUrl(configuration, address as `0x${string}`);
-    return href ? (
-      <a className="mono" href={href} target="_blank" rel="noreferrer" title={address}>
-        {address}
-      </a>
-    ) : (
-      <span className="mono" title={address}>
-        {address}
-      </span>
-    );
-  };
-  return (
-    <section className="token-v2-facts" aria-labelledby="v2-facts-title">
-      <div className="token-section-head">
-        <h2 id="v2-facts-title">Engine v2</h2>
-      </div>
-      <dl className="token-summary-grid">
-        <div>
-          <dt>Anti-snipe tax</dt>
-          <dd title={facts.antiSnipe}>{facts.antiSnipe}</dd>
-        </div>
-        <div>
-          <dt>Tax ends</dt>
-          <dd>
-            <time dateTime={facts.antiSnipeEndsAt}>{facts.antiSnipeEndsAt}</time>
-          </dd>
-        </div>
-        <div>
-          <dt>Pool fee creator share</dt>
-          <dd>{facts.lpCreatorShare}</dd>
-        </div>
-        <div>
-          <dt>Fee recipient</dt>
-          <dd>{link(facts.feeRecipient)}</dd>
-        </div>
-        {facts.pendingFeeRecipient ? (
-          <div>
-            <dt>Pending recipient</dt>
-            <dd>{link(facts.pendingFeeRecipient)}</dd>
-          </div>
-        ) : null}
-        {facts.pool ? (
-          <>
-            <div>
-              <dt>Pool id</dt>
-              <dd className="mono" title={facts.pool.poolId}>
-                {facts.pool.poolId}
-              </dd>
-            </div>
-            <div>
-              <dt>Pool hook</dt>
-              <dd>{link(facts.pool.hook)}</dd>
-            </div>
-          </>
-        ) : null}
-        {facts.lockerOwed.map((owed) => (
-          <div key={owed.account}>
-            <dt title={owed.account}>Locker owes {owed.account.slice(0, 10)}…</dt>
-            <dd>
-              {amount(owed.eth)} + {safeTokenAmount(owed.token)} tokens
-            </dd>
-          </div>
-        ))}
-      </dl>
-      {facts.pool ? (
-        <p className="token-aside-note">
-          Pool liquidity is not indexed yet; price comes from the indexed spot price.
-        </p>
-      ) : null}
-    </section>
-  );
-}
-
-function Metric({ label, value, eth }: { label: string; value: string; eth?: string }) {
-  return (
-    <div>
-      <dt>{label}</dt>
-      <dd>
-        {value}
-        {eth ? <UsdLine wei={eth} /> : null}
-      </dd>
-    </div>
-  );
-}
-function Trades({
-  items,
-  loading,
-  error,
-}: {
-  items: components["schemas"]["TradeDTO"][];
-  loading: boolean;
-  error: Error | null;
-}) {
-  if (loading && !items.length)
-    return (
-      <div className="history-state">
-        <Skeleton />
-        <Skeleton />
-        <Skeleton />
-      </div>
-    );
-  if (error)
-    return (
-      <ErrorState title="Trades unavailable" description="Trade history could not be loaded." />
-    );
-  if (!items.length)
-    return (
-      <EmptyState title="No trades yet" description="This token has no recorded trades yet." />
-    );
-  return (
-    <div className="history-table" role="table" aria-label="Recent trades">
-      <div className="history-row history-heading" role="row">
-        <span>Time</span>
-        <span>Trader</span>
-        <span>Side</span>
-        <span>Token volume</span>
-        <span>ETH volume</span>
-        <span>Execution / spot</span>
-        <span>Finality</span>
-      </div>
-      {items.map((item) => (
-        <div
-          className="history-row"
-          role="row"
-          key={`${item.tx_hash}-${item.log_index}`}
-          data-pending={item.finality === "observed" ? "" : undefined}
-        >
-          <span className="mono">{safeDate(item.time)}</span>
-          <span className="mono">
-            <WalletLink address={item.trader} />
-          </span>
-          <span className={item.side === "buy" ? "trade-buy" : "trade-sell"}>
-            {item.side || "—"}
-          </span>
-          <span className="mono">{safeTokenAmount(item.token_volume)}</span>
-          <span className="mono">
-            {amount(item.eth_volume)}
-            <UsdLine wei={item.eth_volume} />
-          </span>
-          <span className="mono trade-prices">
-            {item.execution_price === "" ? (
-              "—"
-            ) : (
-              <>
-                {safeMarketValue(item.execution_price)} /{" "}
-                {/* A live row has no spot price until the next REST refresh. */}
-                {item.spot_price === "" ? "—" : safeMarketValue(item.spot_price)}
-                <UsdLine wei={item.execution_price} />
-              </>
-            )}
-          </span>
-          <span>
-            <Badge tone={finalityTone(item.finality)}>{finalityLabel(item.finality)}</Badge>
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-function Holders({
-  items,
-  loading,
-  error,
-}: {
-  items: components["schemas"]["HolderDTO"][];
-  loading: boolean;
-  error: Error | null;
-}) {
-  if (loading && !items.length)
-    return (
-      <div className="history-state">
-        <Skeleton />
-        <Skeleton />
-        <Skeleton />
-      </div>
-    );
-  if (error)
-    return (
-      <ErrorState title="Holders unavailable" description="Holder data could not be loaded." />
-    );
-  if (!items.length)
-    return (
-      <EmptyState title="No holders yet" description="No holder balances are available yet." />
-    );
-  return (
-    <div className="history-table" role="table" aria-label="Token holders">
-      <div className="history-row history-heading" role="row">
-        <span>Address</span>
-        <span>Balance</span>
-        <span>First acquired block</span>
-      </div>
-      {items.map((item) => (
-        <div className="history-row holder-row" role="row" key={item.address}>
-          <span className="mono">
-            <WalletLink address={item.address} />
-          </span>
-          <span className="mono">{safeTokenAmount(item.balance)}</span>
-          <span className="mono">
-            {Number.isSafeInteger(item.first_acquired_block)
-              ? item.first_acquired_block.toLocaleString("en-US")
-              : "Unavailable"}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-/** Links an address to its wallet page; a missing or malformed address stays a dash. */
-function WalletLink({ address }: { address: string | null | undefined }) {
-  const parsed = parseTokenAddress(address);
-  if (!parsed) return <>—</>;
-  return (
-    <Link href={walletPath(parsed) as never} title={parsed}>
-      {shortAddress(parsed)}
-    </Link>
-  );
-}
-function safeDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.valueOf())
-    ? "Unavailable"
-    : date.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
-}
-function TokenUnavailable({ address }: { address: string }) {
-  return (
-    <div className="page-stack token-page">
-      <UnavailableBlock
-        title="Token unavailable"
-        description={`The reviewed deployment is not configured. ${shortAddress(address)} was not loaded.`}
-      />
-    </div>
-  );
-}
-function TokenMissing({ address }: { address: string }) {
-  return (
-    <div className="page-stack token-page">
-      <UnavailableBlock
-        title="Token not found"
-        description={`No token was found for ${shortAddress(address)}.`}
-      />
-    </div>
-  );
-}
-function TokenLoadError({ onRetry }: { onRetry: () => void }) {
-  return (
-    <div className="page-stack token-page">
-      <ErrorState
-        title="Token unavailable"
-        description="This token could not be loaded. Try again."
-        action={<Button onClick={onRetry}>Retry</Button>}
-      />
-    </div>
-  );
-}
-function UnavailableBlock({ title, description }: { title: string; description: string }) {
-  return (
-    <section className="workspace-panel token-unavailable">
-      <p className="panel-kicker">Token route</p>
-      <h1>{title}</h1>
-      <p>{description}</p>
-      <Link className="ui-button ui-button-secondary ui-button-md" href="/explore">
-        Return to Explore
-      </Link>
-    </section>
-  );
-}
-function TokenSkeleton() {
-  return (
-    <div className="token-page" aria-busy="true">
-      <section className="token-header token-skeleton">
-        <Skeleton className="token-detail-image" />
-        <Skeleton className="token-skeleton-title" />
-        <Skeleton className="token-skeleton-copy" />
-      </section>
-      <div className="token-layout">
-        <div className="token-main">
-          <Skeleton className="chart-skeleton" />
-        </div>
-        <div className="token-aside">
-          <Skeleton className="token-skeleton-trade" />
-        </div>
-      </div>
-    </div>
   );
 }

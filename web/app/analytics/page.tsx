@@ -6,7 +6,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ApiClient, type ProtocolDailyResponse } from "@/api/client";
-import { publicConfiguration } from "@/config/public";
+import { protocolRevenueView, type ProtocolRevenueView } from "@/analytics/protocol-revenue";
+import { DEFAULT_E2E_WEB_URL, publicConfiguration } from "@/config/public";
 import { PageHeader } from "@/components/layout";
 import { formatCanonicalBaseUnits } from "@/amounts";
 import { Badge, Button, ErrorState, Skeleton, UnavailableState } from "@/components/primitives";
@@ -27,20 +28,35 @@ export default function AnalyticsPage() {
     null,
   );
   const [daily, setDaily] = useState<ProtocolDailyResponse | null>(null);
+  // Revenue is a separate read: its failure leaves the rest of Analytics standing.
+  const [revenue, setRevenue] = useState<ProtocolRevenueView | "unavailable" | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const load = async () => {
-    if (configuration.status !== "ready" || !configuration.apiBaseUrl) {
+    // E2E-only: `?fixture=populated` reads the routed fixture API, as the token page does.
+    const fixtureBase =
+      process.env.NEXT_PUBLIC_E2E_FIXTURE === "1" &&
+      new URLSearchParams(window.location.search).get("fixture") === "populated"
+        ? process.env.NEXT_PUBLIC_TASK6_ANVIL_WEB_URL || DEFAULT_E2E_WEB_URL
+        : null;
+    const apiBaseUrl =
+      fixtureBase ?? (configuration.status === "ready" ? configuration.apiBaseUrl : null);
+    if (!apiBaseUrl) {
       setLoading(false);
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const client = new ApiClient({ baseUrl: configuration.apiBaseUrl });
-      const [nextSummary, nextDaily] = await Promise.all([
+      const client = new ApiClient({ baseUrl: apiBaseUrl });
+      const revenueRequest = client.getProtocolRevenue().then(
+        (body) => protocolRevenueView(body) ?? "unavailable",
+        () => "unavailable" as const,
+      );
+      const [nextSummary, nextDaily, nextRevenue] = await Promise.all([
         client.getProtocol(),
         client.getProtocolDaily({ limit: 366 }),
+        revenueRequest,
       ]);
       if (
         nextSummary.snapshot.as_of_block !== nextDaily.snapshot.as_of_block ||
@@ -49,6 +65,7 @@ export default function AnalyticsPage() {
         throw new Error("The API returned mixed canonical snapshots. Refresh to retry.");
       setSummary(nextSummary);
       setDaily(nextDaily);
+      setRevenue(nextRevenue);
     } catch (cause) {
       setError(cause instanceof Error ? cause : new Error("Analytics unavailable"));
     } finally {
@@ -124,6 +141,7 @@ export default function AnalyticsPage() {
               value={`${summary.graduations_24h.toLocaleString("en-US")} / ${summary.graduations_all_time.toLocaleString("en-US")}`}
             />
           </section>
+          {revenue ? <RevenueCard revenue={revenue} /> : null}
           <section className="analytics-history" aria-labelledby="daily-history-title">
             <div className="panel-head">
               <div>
@@ -171,6 +189,63 @@ export default function AnalyticsPage() {
         />
       ) : null}
     </div>
+  );
+}
+
+function RevenueCard({ revenue }: { revenue: ProtocolRevenueView | "unavailable" }) {
+  return (
+    <section className="analytics-history analytics-revenue" aria-labelledby="revenue-title">
+      <div className="panel-head">
+        <div>
+          <p className="panel-kicker">Protocol revenue</p>
+          <h2 id="revenue-title">
+            {revenue === "unavailable" ? "Protocol revenue" : `${revenue.total} earned`}
+          </h2>
+        </div>
+        {revenue === "unavailable" ? null : (
+          <span className="mono">All-time · block {revenue.block.toLocaleString("en-US")}</span>
+        )}
+      </div>
+      {revenue === "unavailable" ? (
+        <UnavailableState
+          title="Protocol revenue is unavailable"
+          description="The revenue read could not be loaded. The other analytics above are unaffected."
+        />
+      ) : revenue.rows.length ? (
+        <div className="analytics-table" role="table" aria-label="Protocol revenue by source">
+          <div className="analytics-row analytics-revenue-row analytics-heading" role="row">
+            <span role="columnheader">Source</span>
+            <span role="columnheader">Engine 1</span>
+            <span role="columnheader">Engine 2</span>
+            <span role="columnheader">Total</span>
+          </div>
+          {revenue.rows.map((row) => (
+            <div className="analytics-row analytics-revenue-row" role="row" key={row.label}>
+              <span role="cell">{row.label}</span>
+              <span className="mono" role="cell">
+                {row.engine1}
+              </span>
+              <span className="mono" role="cell">
+                {row.engine2}
+              </span>
+              <span className="mono" role="cell">
+                {row.total}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <UnavailableState
+          title="No protocol revenue yet"
+          description="Revenue appears once launches and trades are indexed."
+        />
+      )}
+      <p className="ui-field-hint">
+        ETH credited to the protocol when it happens (launch fees, the protocol share of trade and
+        LP fees, snipe tax, graduation remainders), whether or not the treasury has claimed it yet.
+        Token-denominated amounts are not included.
+      </p>
+    </section>
   );
 }
 

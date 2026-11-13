@@ -1,5 +1,8 @@
 # Frontend rebuild: design
 
+> **2026-11-12:** `.impeccable/` was removed from the repository; review captures are now
+> written to `web/test-results/screenshots/` (gitignored). References below are historical.
+
 - **Date:** 2026-11-10
 - **Status:** draft for owner review
 - **Scope:** full rebuild of the web presentation layer (`web/`): visual language, information

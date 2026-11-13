@@ -36,12 +36,16 @@ func (s IndexerStore) Transaction(ctx context.Context, fn func(context.Context, 
 	}
 	transactionContext := context.WithValue(ctx, refreshDeploymentContextKey{}, s.DeploymentID)
 	if s.Owner != nil {
-		if err := s.Owner.WithinTx(transactionContext, func(ctx context.Context, a *Adapter) error { return fn(ctx, a.WithFactory(s.Factory)) }); err != nil {
+		if err := s.Owner.WithinTx(transactionContext, func(ctx context.Context, a *Adapter) error {
+			return fn(ctx, a.WithFactory(s.Factory).WithDirtyMarkDedupe())
+		}); err != nil {
 			return err
 		}
 		return s.notifyRefresh(ctx)
 	}
-	if err := WithinTx(transactionContext, beginner, func(ctx context.Context, a *Adapter) error { return fn(ctx, a.WithFactory(s.Factory)) }); err != nil {
+	if err := WithinTx(transactionContext, beginner, func(ctx context.Context, a *Adapter) error {
+		return fn(ctx, a.WithFactory(s.Factory).WithDirtyMarkDedupe())
+	}); err != nil {
 		return err
 	}
 	return s.notifyRefresh(ctx)

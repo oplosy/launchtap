@@ -262,6 +262,18 @@ func TestEngineV2Projections(t *testing.T) {
 	// The engine-1 projection schema cannot hold these rows, so the migration's Down refuses (after
 	// the V4 swap sender index, which rolls back freely).
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the incremental protocol aggregates: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the wallet funding: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the Telegram links: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the comment votes: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
 		t.Fatalf("roll back the V4 swap sender index: %v", err)
 	}
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err == nil || !strings.Contains(err.Error(), "engine v2 projection rows exist") {

@@ -11,6 +11,95 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const listForumBestPosts = `-- name: ListForumBestPosts :many
+SELECT c.id, c.token_address::bytea AS token_address, l.name, l.symbol, c.body, c.created_at,
+       c.author_role AS role,
+       COALESCE((SELECT sum(v.value)
+                 FROM comment_votes AS v
+                 JOIN social_users AS vu
+                   ON vu.chain_id = v.chain_id AND vu.deployment_id = v.deployment_id AND vu.privy_did = v.voter_did
+                 WHERE v.comment_id = c.id AND vu.banned_at IS NULL), 0)::bigint AS score,
+       u.username AS display_username,
+       (CASE
+            WHEN u.username IS NULL OR pw.wallet IS NOT NULL THEN c.wallet
+            ELSE NULL
+        END)::bytea AS display_wallet
+FROM token_comments AS c
+JOIN token_launches AS l ON l.chain_id = c.chain_id AND l.token_address = c.token_address
+JOIN tokens AS tk ON tk.chain_id = c.chain_id AND tk.token_address = c.token_address
+LEFT JOIN social_users AS u
+  ON u.chain_id = c.chain_id AND u.deployment_id = c.deployment_id AND u.privy_did = c.privy_did
+LEFT JOIN social_public_wallets AS pw
+  ON pw.chain_id = c.chain_id AND pw.deployment_id = c.deployment_id
+ AND pw.wallet = c.wallet AND pw.privy_did = c.privy_did
+WHERE c.chain_id = $1
+  AND c.deployment_id = $2
+  AND c.hidden_at IS NULL
+  AND u.banned_at IS NULL
+  AND c.created_at >= now() - make_interval(days => $3::integer)
+ORDER BY score DESC, c.id DESC
+LIMIT $4::integer
+`
+
+type ListForumBestPostsParams struct {
+	ChainID      int64
+	DeploymentID string
+	WindowDays   int32
+	RowLimit     int32
+}
+
+type ListForumBestPostsRow struct {
+	ID              int64
+	TokenAddress    []byte
+	Name            string
+	Symbol          string
+	Body            string
+	CreatedAt       pgtype.Timestamptz
+	Role            string
+	Score           int64
+	DisplayUsername pgtype.Text
+	DisplayWallet   []byte
+}
+
+// Forum "Best" (docs/specs/2026-11-12-comment-votes-design.md): the feed's visible posts from the
+// last window_days by the database clock, highest score first, then newest. One page, no cursor.
+// Same existence rule as the token comment list (TokenExists): a reorged token drops out.
+func (q *Queries) ListForumBestPosts(ctx context.Context, arg ListForumBestPostsParams) ([]ListForumBestPostsRow, error) {
+	rows, err := q.db.Query(ctx, listForumBestPosts,
+		arg.ChainID,
+		arg.DeploymentID,
+		arg.WindowDays,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListForumBestPostsRow{}
+	for rows.Next() {
+		var i ListForumBestPostsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TokenAddress,
+			&i.Name,
+			&i.Symbol,
+			&i.Body,
+			&i.CreatedAt,
+			&i.Role,
+			&i.Score,
+			&i.DisplayUsername,
+			&i.DisplayWallet,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listForumCommunities = `-- name: ListForumCommunities :many
 SELECT c.token_address::bytea AS token_address, l.name, l.symbol,
        count(*)::bigint AS comment_count,
@@ -83,6 +172,11 @@ func (q *Queries) ListForumCommunities(ctx context.Context, arg ListForumCommuni
 const listForumPosts = `-- name: ListForumPosts :many
 SELECT c.id, c.token_address::bytea AS token_address, l.name, l.symbol, c.body, c.created_at,
        c.author_role AS role,
+       COALESCE((SELECT sum(v.value)
+                 FROM comment_votes AS v
+                 JOIN social_users AS vu
+                   ON vu.chain_id = v.chain_id AND vu.deployment_id = v.deployment_id AND vu.privy_did = v.voter_did
+                 WHERE v.comment_id = c.id AND vu.banned_at IS NULL), 0)::bigint AS score,
        u.username AS display_username,
        (CASE
             WHEN u.username IS NULL OR pw.wallet IS NOT NULL THEN c.wallet
@@ -120,6 +214,7 @@ type ListForumPostsRow struct {
 	Body            string
 	CreatedAt       pgtype.Timestamptz
 	Role            string
+	Score           int64
 	DisplayUsername pgtype.Text
 	DisplayWallet   []byte
 }
@@ -149,6 +244,7 @@ func (q *Queries) ListForumPosts(ctx context.Context, arg ListForumPostsParams) 
 			&i.Body,
 			&i.CreatedAt,
 			&i.Role,
+			&i.Score,
 			&i.DisplayUsername,
 			&i.DisplayWallet,
 		); err != nil {

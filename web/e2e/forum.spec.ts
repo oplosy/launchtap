@@ -19,6 +19,7 @@ const post = (id: number, overrides: Record<string, unknown> = {}) => ({
   author: { username: null, wallet: WALLET, role: "holder" },
   name: "Pons",
   symbol: "PONS",
+  score: 0,
   ...overrides,
 });
 
@@ -31,6 +32,8 @@ async function installApi(page: Page, calls: Calls) {
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
     if (url.pathname.endsWith("/forum/posts")) {
       calls.posts.push(url.search);
+      if (url.searchParams.get("sort") === "best")
+        return json({ items: [post(7, { body: "most liked", score: 12 }), post(3, { score: 1 })] });
       if (url.searchParams.get("cursor") === "page2")
         return json({ items: [post(3), post(1, { body: "oldest" })] });
       return json({
@@ -110,6 +113,21 @@ test("the forum feed lists posts as text, links tokens and loads more", async ({
   await expect(page.locator('a[href="/forum"]').first()).toBeAttached();
 });
 
+test("the best tab lists posts ranked by their votes", async ({ page }) => {
+  const calls: Calls = { posts: [], communities: [] };
+  await installApi(page, calls);
+  await page.goto("/forum");
+  const feed = page.getByRole("region", { name: "Forum posts" });
+  await feed.getByRole("link", { name: "Best" }).click();
+  await expect(page).toHaveURL(/\/forum\?tab=best$/);
+  const posts = feed.getByRole("listitem");
+  await expect(posts.first()).toContainText("most liked");
+  await expect(posts.first()).toContainText("12 points");
+  await expect(posts.nth(1)).toContainText("1 point");
+  await expect(feed.getByRole("button", { name: "Load more" })).toHaveCount(0);
+  expect(calls.posts).toEqual(["?limit=20", "?sort=best&limit=20"]);
+});
+
 test("hot and top tabs rank communities from the URL", async ({ page }) => {
   const calls: Calls = { posts: [], communities: [] };
   await installApi(page, calls);
@@ -136,7 +154,7 @@ test("forum tabs are centred over the feed and a whole post card opens its token
   const feed = (await page.getByRole("region", { name: "Forum posts" }).boundingBox())!;
   expect(Math.abs(box.x + box.width / 2 - (feed.x + feed.width / 2))).toBeLessThanOrEqual(2);
   await page.screenshot({
-    path: `../.impeccable/review/rebuild-forum-${testInfo.project.name}.png`,
+    path: `test-results/screenshots/rebuild-forum-${testInfo.project.name}.png`,
     fullPage: true,
     animations: "disabled",
   });

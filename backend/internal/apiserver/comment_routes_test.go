@@ -30,6 +30,9 @@ type commentStoreStub struct {
 	eligErr   error
 	postErr   error
 	reportErr error
+	voteErr   error
+	voteRes   social.VoteResult
+	votes     []int
 	page      social.CommentPage
 	elig      social.Eligibility
 	posted    social.Comment
@@ -74,6 +77,14 @@ func (s *commentStoreStub) Report(_ context.Context, a social.Actor, _ int64, re
 	s.actors = append(s.actors, a)
 	s.reports = append(s.reports, reason)
 	return s.reportErr
+}
+
+func (s *commentStoreStub) Vote(_ context.Context, a social.Actor, _ int64, value int) (social.VoteResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.actors = append(s.actors, a)
+	s.votes = append(s.votes, value)
+	return s.voteRes, s.voteErr
 }
 
 func newCommentServer(store social.CommentStore, logger *slog.Logger) *Server {
@@ -128,6 +139,11 @@ func TestCommentRoutesStatusTable(t *testing.T) {
 		}
 	}
 	postReq := func() *http.Request { return commentRequest("POST", tokenPath, postBody, true) }
+	voteReq := func(id, value string) func() *http.Request {
+		return func() *http.Request {
+			return commentRequest("PUT", "/v1/comments/"+id+"/vote", `{"value":`+value+`}`, true)
+		}
+	}
 	cases := []struct {
 		name   string
 		mutate func(*commentStoreStub)
@@ -168,6 +184,17 @@ func TestCommentRoutesStatusTable(t *testing.T) {
 		{"report rate limited", func(s *commentStoreStub) { s.reportErr = &social.RateLimitedError{RetryAfter: 2 * time.Second} }, reportReq("7", "spam"), 429, "rate_limited"},
 		{"report ok", nil, reportReq("7", "scam"), 204, ""},
 		{"report non-positive id", nil, reportReq("0", "spam"), 404, "comment_not_found"},
+		{"vote unauthenticated", nil, func() *http.Request {
+			return commentRequest("PUT", "/v1/comments/7/vote", `{"value":1}`, false)
+		}, 401, "authentication_failed"},
+		{"vote invalid value", nil, voteReq("7", "2"), 422, "invalid_vote"},
+		{"vote non-positive id", nil, voteReq("0", "1"), 404, "comment_not_found"},
+		{"vote not found", func(s *commentStoreStub) { s.voteErr = social.ErrCommentNotFound }, voteReq("7", "1"), 404, "comment_not_found"},
+		{"vote own", func(s *commentStoreStub) { s.voteErr = social.ErrOwnVote }, voteReq("7", "1"), 422, "own_comment"},
+		{"vote not holder", func(s *commentStoreStub) { s.voteErr = social.ErrNotHolder }, voteReq("7", "-1"), 403, "not_holder"},
+		{"vote banned", func(s *commentStoreStub) { s.voteErr = social.ErrBanned }, voteReq("7", "1"), 403, "banned"},
+		{"vote rate limited", func(s *commentStoreStub) { s.voteErr = &social.RateLimitedError{RetryAfter: time.Second} }, voteReq("7", "1"), 429, "rate_limited"},
+		{"vote ok", nil, voteReq("7", "0"), 200, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -382,5 +409,29 @@ func TestCommentRoutesRejectVerifierFailureWith401(t *testing.T) {
 	}
 	if len(store.actors) != 0 || len(store.bodies) != 0 {
 		t.Fatal("store reached after verifier rejection")
+	}
+}
+
+func TestVoteReturnsScoreAndVote(t *testing.T) {
+	store := &commentStoreStub{voteRes: social.VoteResult{Score: -3, Vote: -1}}
+	w := serveComment(newCommentServer(store, nil), commentRequest("PUT", "/v1/comments/7/vote", `{"value":-1}`, true))
+	if w.Code != 200 || w.Header().Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("status=%d cache=%q body=%s", w.Code, w.Header().Get("Cache-Control"), w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"score":-3`) || !strings.Contains(w.Body.String(), `"vote":-1`) {
+		t.Fatalf("body=%s", w.Body.String())
+	}
+	if len(store.votes) != 1 || store.votes[0] != -1 || len(store.actors[0].Wallets) != 1 {
+		t.Fatalf("store got votes=%v actors=%+v", store.votes, store.actors)
+	}
+}
+
+func TestCommentListCarriesScore(t *testing.T) {
+	store := &commentStoreStub{page: social.CommentPage{Count: 1, Items: []social.Comment{
+		{ID: 5, Token: common.HexToAddress(commentTokenHex), Body: "b", CreatedAt: time.Now(), Author: social.Author{Role: social.RoleHolder}, Score: 4},
+	}}}
+	w := serveComment(newCommentServer(store, nil), commentRequest("GET", "/v1/tokens/"+commentTokenHex+"/comments", "", false))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"score":4`) {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 	}
 }

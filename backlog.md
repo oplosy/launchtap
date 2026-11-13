@@ -56,7 +56,11 @@
   `docs/audits/runtime-advisory-review-2026-11-06.md`. The upgrade was not done.
   **Re-checked 2026-11-09 and 2026-11-12:** the newest release, `@privy-io/react-auth` 3.51.3,
   still depends on `x402` ^0.7.1 (latest 1.2.0 of `x402` itself still requires wagmi ^2.15.6
-  and zod ^3.24.2), so both highs remain.
+  and zod ^3.24.2), so both highs remain. **Trial lockfile 2026-11-12** (`@privy-io/react-auth`
+  3.51.3 + `@privy-io/wagmi` 4.0.20, viem 2.57.16, wagmi 2.16.9): `npm audit --omit=dev` still
+  reports GHSA-mrhx-c7xc-m3w5 (zod via `x402` 0.7.3) and GHSA-qr28-fpjm-wq7f
+  (decode-uri-component); the owner asked for the upgrade that day and it was declined on this
+  evidence. The current tree passes `scripts/audit-runtime.mjs`.
 - **Resume (next step):** Before 2027-02-01, re-run the trial install from that document with
   the then-current Privy release. Upgrade only once `npm audit --omit=dev` on the trial tree no
   longer reports the two highs; otherwise renew the allowlist entries with a fresh impact review.
@@ -122,23 +126,54 @@
   deployment addresses. The monitoring owner and the real alert destination
   (`ALERTMANAGER_WEBHOOK_URL_FILE`, see the runbook "Monitoring" section) are also still unassigned.
 
-### P0-C5 forum deferrals: ticker tape and votes
+### P0-C5 forum deferral: ticker tape
 
 - **Date:** 2026-11-10
 - **Reason:** scope decision (made while the owner was away; spec
   `docs/specs/2026-11-10-p0c5-forum-memestock-design.md` non-goals)
-- **Where it stopped:** the forum shipped as read views over token comments. Two reference-screen
-  pieces were left out:
-  - The scrolling stock ticker tape. It needs a third-party equities quote feed (provider choice,
-    licence for redistribution, an API secret, a new external dependency). Owner input.
-  - Up/down votes and vote-ranked Hot. Needs a sybil rule (one Privy account per vote is cheap to
-    farm) and moderation of vote abuse before it is worth building.
-- **Related files:** `web/app/forum/page.tsx`, `web/src/forum/forum-view.tsx`,
-  `backend/internal/forum/`.
-- **Resume (next step):** owner picks an equities data provider (or drops the tape); for votes,
-  decide whether only holders may vote (reusing the C2 holder gate) before a spec.
+- **Where it stopped:** the forum shipped as read views over token comments; votes and the
+  vote-ranked "Best" tab shipped on 2026-11-12 (`docs/specs/2026-11-12-comment-votes-design.md`).
+  One reference-screen piece is left out: the scrolling stock ticker tape. It needs a
+  third-party equities quote feed (provider choice, licence for redistribution, an API secret, a
+  new external dependency). Owner input.
+- **Related files:** `web/app/forum/page.tsx`, `web/src/forum/forum-view.tsx`.
+- **Resume (next step):** owner picks an equities data provider (or drops the tape).
 - **Pitfalls / notes:** the tape must stay a client-side widget with its own failure state so a
   provider outage never blocks the forum.
+
+### Telegram alerts: bot and process setup
+
+- **Date:** 2026-11-12
+- **Reason:** scope decision (owner input: a bot account and a secret)
+- **Where it stopped:** the feature is built and tested
+  (`docs/specs/2026-11-12-telegram-alerts-design.md`): link codes, settings and unlink on the
+  API, the `cmd/telegram` worker, the "Telegram alerts" card on `/notifications`. It is off
+  everywhere because no bot exists yet, and Compose does not start `cmd/telegram`.
+- **Related files:** `backend/cmd/telegram/main.go`, `deploy/README.md`, `deploy/compose.yaml`,
+  `deploy/backend.env.example`.
+- **Resume (next step):** owner creates the bot with BotFather; put `TELEGRAM_BOT_TOKEN` in
+  `BACKEND_ENV_FILE`, set `TELEGRAM_BOT_USERNAME` and `TELEGRAM_WEB_ORIGIN`, then add a
+  `telegram` service (same backend image, `telegram` binary, one replica) to Compose and
+  `deploy/check.ps1`.
+- **Pitfalls / notes:** run exactly one worker per deployment (an advisory lock refuses a second
+  one); the bot was never exercised against the real Bot API, only a fake server.
+
+### Early-buyer clusters Level 2: archive RPC and exclusion list
+
+- **Date:** 2026-11-12
+- **Reason:** scope decision (owner input: a paid data source and a secret)
+- **Where it stopped:** built off by default (`docs/specs/2026-11-12-funding-source-clusters-design.md`):
+  `cmd/funding`, `wallet_funding`, `funding_excluded_funders`, the `funding_source` link and the
+  web coverage line. Tested against Anvil only; the official mainnet RPC has no historical state
+  and no tracing, so nothing runs in production yet.
+- **Related files:** `backend/internal/funding/`, `backend/cmd/funding/`,
+  `backend/internal/earlybuyer/group.go`, migration `00029_wallet_funding.sql`.
+- **Resume (next step):** owner picks an archive + trace provider for Robinhood Chain, sets
+  `FUNDING_RPC_URL`, runs `cmd/funding` once against it and checks a few results on an explorer;
+  then fills `funding_excluded_funders` (canonical bridge's aliased L1 sender, known exchanges).
+- **Pitfalls / notes:** the exclusion list is reviewed operator data, not code guesses; the
+  provider must support `debug_traceBlockByNumber` with the callTracer or every wallet funded by
+  a contract call ends as `unknown`.
 
 ### <short title>
 - **Date:** YYYY-MM-DD
@@ -151,23 +186,27 @@
 
 ---
 
+## Done
+
+### Telegram alerts
+
+- **Date:** 2026-11-12
+- **What closed:** the notes.md "cheap v1 win" Telegram alerts, per
+  `docs/specs/2026-11-12-telegram-alerts-design.md`: opt-in through a one-time deep link
+  (SHA-256-stored, 15 minutes, single use), one private chat per account, settings for
+  graduations, large trades and a 0.5-10,000 ETH threshold, delivery of the account's inbox
+  events from safe blocks only behind a forward-only cursor (migration 00028), plain-text
+  messages, `/stop` and 403 unlink. The bot setup itself stays an active item.
+
 ### Engine v2 protocol revenue projection
 
 - **Date:** 2026-11-12
-- **Reason:** scope decision (no consumer exists: no API field, no screen, no spec)
-- **Where it stopped:** the other engine v2 backend limitations are closed (see Done). Plan v2-B
-  lists a protocol revenue projection (`snipe_tax` and the graduation `eth_remainder`, with
-  `SnipeTaxClaimed` as its own claim stream), but nothing reads protocol revenue for engine 1
-  either, so a projection now would be unread.
-- **Related files:** `docs/plans/2026-11-11-v2-engine-backend.md` ("Protocol revenue"),
-  `backend/internal/store/postgres/migrations/00025_engine_v2_projections.sql`
-- **Resume (next step):** owner decides where protocol revenue is shown (an analytics card, an
-  operator-only endpoint, or nowhere); then spec the read model for both engines and build the
-  projection with its first consumer.
-- **Pitfalls / notes:** treasury fee claims already exist as ledger rows; derive revenue from the
-  ledger, never from on-chain balance reads.
-
-## Done
+- **What closed:** built as a read-at-query-time aggregate with its first consumer, per
+  `docs/specs/2026-11-12-protocol-revenue-design.md`: `GET /v1/stats/protocol/revenue` sums the
+  ETH credited to the protocol (launch fees, trade-fee protocol share, snipe tax, graduation ETH
+  remainder, LP-fee protocol share mirroring `LpFeeLocker._credit`) per engine, and Analytics
+  shows a "Protocol revenue" card. No projection table; move it into `protocol_stats` if the
+  sums get slow.
 
 ### Engine v2 backend limitations: V4 positions, valuation, leaderboard
 
@@ -227,7 +266,7 @@
   task: the missing `minHopPriceX36` (Task 4), the v2 fixture wallet stack (Task 2), V4 swaps
   absent from `/v1/transactions` (Plan v2-B), and curve claims hidden after graduation (Task 6).
 - **Windows note:** the router's nested submodules exceed MAX_PATH; set `core.longpaths` (see
-  `AGENTS.md` setup).
+  `CLAUDE.md` "Don't / watch out").
 
 ### P0-C2 signed-in e2e coverage
 

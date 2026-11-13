@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Contictus/launchtap/backend/internal/earlybuyer"
 	"github.com/Contictus/launchtap/backend/internal/holder"
 	"github.com/Contictus/launchtap/backend/internal/pagination"
 	"github.com/Contictus/launchtap/backend/internal/stats"
@@ -24,9 +25,13 @@ type PublicRoutes struct {
 		trading.Reader
 		holder.Reader
 	}
+	// EarlyBuyers serves the early-buyer clusters read; nil answers 503.
+	EarlyBuyers   earlybuyer.Reader
 	Protocol      stats.Reader
 	ProtocolDaily stats.DailyReader
-	ChainID       int64
+	// Revenue serves the protocol revenue read; nil answers 503.
+	Revenue stats.RevenueReader
+	ChainID int64
 }
 type addressInput struct {
 	Token string `path:"token"`
@@ -77,6 +82,8 @@ type tokenDetailDTO struct {
 	ATHAt                 string      `json:"ath_at"`
 	PriceChange24hBPS     int64       `json:"price_change_24h_bps" minimum:"-9007199254740991" maximum:"9007199254740991"`
 	HolderCount           int64       `json:"holder_count"`
+	LaunchBlock           int64       `json:"launch_block" doc:"Block of the launch transaction; holders first acquiring in it were bundled with the launch."`
+	LaunchTime            string      `json:"launch_time"`
 	V2                    *tokenV2DTO `json:"v2" doc:"Engine-2 launch, pool and fee facts; null for engine 1."`
 }
 
@@ -174,13 +181,33 @@ type protocolDailyBody struct {
 	Items    []protocolDailyDTO `json:"items"`
 }
 type protocolDailyOutput struct{ Body protocolDailyBody }
+type revenueSourceDTO struct {
+	Engine1 string `json:"engine_1"`
+	Engine2 string `json:"engine_2"`
+	Total   string `json:"total"`
+}
+type revenueSourcesDTO struct {
+	LaunchFees          revenueSourceDTO `json:"launch_fees"`
+	TradeFees           revenueSourceDTO `json:"trade_fees"`
+	SnipeTax            revenueSourceDTO `json:"snipe_tax"`
+	GraduationRemainder revenueSourceDTO `json:"graduation_remainder"`
+	LPFees              revenueSourceDTO `json:"lp_fees"`
+}
+type revenueBody struct {
+	Snapshot snapshotDTO       `json:"snapshot"`
+	Total    string            `json:"total"`
+	Sources  revenueSourcesDTO `json:"sources"`
+}
+type revenueOutput struct{ Body revenueBody }
 
 func (r PublicRoutes) Register(api huma.API) {
 	huma.Register(api, huma.Operation{OperationID: "getToken", Method: http.MethodGet, Path: "/tokens/{token}", Tags: []string{"tokens"}}, r.detail)
 	huma.Register(api, huma.Operation{OperationID: "listTrades", Method: http.MethodGet, Path: "/tokens/{token}/trades", Tags: []string{"market"}}, r.trades)
 	huma.Register(api, huma.Operation{OperationID: "listHolders", Method: http.MethodGet, Path: "/tokens/{token}/holders", Tags: []string{"market"}}, r.holders)
+	huma.Register(api, huma.Operation{OperationID: "getEarlyBuyers", Method: http.MethodGet, Path: "/tokens/{token}/early-buyers", Tags: []string{"market"}, Description: "Wallets that received tokens from the curve within the early window after launch, grouped by same-transaction deliveries and token transfers between them."}, r.earlyBuyers)
 	huma.Register(api, huma.Operation{OperationID: "getProtocolStats", Method: http.MethodGet, Path: "/stats/protocol", Tags: []string{"stats"}}, r.protocol)
 	huma.Register(api, huma.Operation{OperationID: "listProtocolDaily", Method: http.MethodGet, Path: "/stats/protocol/daily", Tags: []string{"stats"}}, r.protocolDaily)
+	huma.Register(api, huma.Operation{OperationID: "getProtocolRevenue", Method: http.MethodGet, Path: "/stats/protocol/revenue", Tags: []string{"stats"}, Description: "ETH credited to the protocol, all-time, by source and engine (earned basis, wei)."}, r.protocolRevenue)
 }
 func address(value string) (common.Address, error) {
 	if !common.IsHexAddress(value) {
@@ -228,7 +255,7 @@ func (r PublicRoutes) detail(ctx context.Context, in *addressInput) (*detailOutp
 	if e != nil {
 		return nil, mapReadError(ctx, e)
 	}
-	d := tokenDetailDTO{Snapshot: snapDTO(v.Snapshot, v.Finality), Address: v.Address.Hex(), Curve: v.Curve.Hex(), Pair: v.Pair.Hex(), WETH: v.WETH.Hex(), Creator: v.Creator.Hex(), ProtocolTreasury: v.ProtocolTreasury.Hex(), Name: v.Name, Symbol: v.Symbol, Phase: v.Phase, EngineVersion: v.EngineVersion, TotalSupply: decimal(v.TotalSupply), InitialVirtualETH: decimal(v.InitialVirtualETH), InitialVirtualToken: decimal(v.InitialVirtualToken), CurveTokens: decimal(v.CurveTokens), LPTokens: decimal(v.LPTokens), GraduationETH: decimal(v.GraduationETH), TradeFeeBPS: v.TradeFeeBPS, ProtocolShareBPS: v.ProtocolShareBPS, ReserveSource: v.ReserveSource, ETHReserve: decimal(v.ETHReserve), TokenReserve: decimal(v.TokenReserve), RealCurveETH: decimal(v.RealCurveETH), GraduationProgressBPS: v.GraduationProgressBPS, ReserveBlock: v.ReserveBlock, ReserveHash: v.ReserveHash.Hex(), Description: v.Description, ImageURL: v.ImageURL, XURL: v.XURL, TelegramURL: v.TelegramURL, SpotPriceETH: decimal(v.SpotPriceETH), MarketCapETH: decimal(v.MarketCapETH), FDVETH: decimal(v.FDVETH), LiquidityETH: decimal(v.LiquidityETH), ATHPriceETH: decimal(v.ATHPriceETH), Volume24hETH: decimal(v.Volume24hETH), ATHAt: v.ATHAt.UTC().Format(time.RFC3339Nano), PriceChange24hBPS: v.PriceChange24hBPS, HolderCount: v.HolderCount, V2: v2DTO(v)}
+	d := tokenDetailDTO{Snapshot: snapDTO(v.Snapshot, v.Finality), Address: v.Address.Hex(), Curve: v.Curve.Hex(), Pair: v.Pair.Hex(), WETH: v.WETH.Hex(), Creator: v.Creator.Hex(), ProtocolTreasury: v.ProtocolTreasury.Hex(), Name: v.Name, Symbol: v.Symbol, Phase: v.Phase, EngineVersion: v.EngineVersion, TotalSupply: decimal(v.TotalSupply), InitialVirtualETH: decimal(v.InitialVirtualETH), InitialVirtualToken: decimal(v.InitialVirtualToken), CurveTokens: decimal(v.CurveTokens), LPTokens: decimal(v.LPTokens), GraduationETH: decimal(v.GraduationETH), TradeFeeBPS: v.TradeFeeBPS, ProtocolShareBPS: v.ProtocolShareBPS, ReserveSource: v.ReserveSource, ETHReserve: decimal(v.ETHReserve), TokenReserve: decimal(v.TokenReserve), RealCurveETH: decimal(v.RealCurveETH), GraduationProgressBPS: v.GraduationProgressBPS, ReserveBlock: v.ReserveBlock, ReserveHash: v.ReserveHash.Hex(), Description: v.Description, ImageURL: v.ImageURL, XURL: v.XURL, TelegramURL: v.TelegramURL, SpotPriceETH: decimal(v.SpotPriceETH), MarketCapETH: decimal(v.MarketCapETH), FDVETH: decimal(v.FDVETH), LiquidityETH: decimal(v.LiquidityETH), ATHPriceETH: decimal(v.ATHPriceETH), Volume24hETH: decimal(v.Volume24hETH), ATHAt: v.ATHAt.UTC().Format(time.RFC3339Nano), PriceChange24hBPS: v.PriceChange24hBPS, HolderCount: v.HolderCount, LaunchBlock: v.LaunchBlock, LaunchTime: v.LaunchTime.UTC().Format("2006-01-02T15:04:05.000000Z"), V2: v2DTO(v)}
 	return &detailOutput{Body: d}, nil
 }
 func cursor(value string) (*pagination.Cursor, error) {
@@ -288,12 +315,75 @@ func (r PublicRoutes) holders(ctx context.Context, in *pageInput) (*holdersOutpu
 	}
 	return &holdersOutput{Body: body}, nil
 }
+
+type earlyWalletDTO struct {
+	Address string `json:"address"`
+	Balance string `json:"balance"`
+}
+type earlyClusterDTO struct {
+	WalletCount     int              `json:"wallet_count"`
+	Balance         string           `json:"balance" doc:"What every wallet of the cluster holds now."`
+	Links           []string         `json:"links" doc:"Link kinds present: same_transaction, token_transfer, funding_source."`
+	IncludesCreator bool             `json:"includes_creator"`
+	Wallets         []earlyWalletDTO `json:"wallets" doc:"At most 20 wallets, largest balance first."`
+}
+type earlyBuyersBody struct {
+	Snapshot         snapshotDTO       `json:"snapshot"`
+	WindowSeconds    int               `json:"window_seconds"`
+	WindowOpen       bool              `json:"window_open" doc:"The early window had not ended at the snapshot block."`
+	EarlyWalletCount int               `json:"early_wallet_count"`
+	EarlyBalance     string            `json:"early_balance" doc:"What every early wallet holds now."`
+	ClusterCount     int               `json:"cluster_count"`
+	Clusters         []earlyClusterDTO `json:"clusters" doc:"At most 10 clusters, largest combined balance first."`
+	FundingChecked   int               `json:"funding_checked" doc:"Early wallets whose funding source has been checked; funding_source links cover only these."`
+}
+type earlyBuyersOutput struct{ Body earlyBuyersBody }
+
+func (r PublicRoutes) earlyBuyers(ctx context.Context, in *addressInput) (*earlyBuyersOutput, error) {
+	a, e := address(in.Token)
+	if e != nil {
+		return nil, e
+	}
+	if r.EarlyBuyers == nil {
+		return nil, apiProblem(http.StatusServiceUnavailable, "early_buyers_unavailable", "Early-buyer reads are not configured")
+	}
+	v, e := r.EarlyBuyers.ReadEarlyBuyers(ctx, earlybuyer.Query{ChainID: r.ChainID, Token: a})
+	if e != nil {
+		return nil, mapReadError(ctx, e)
+	}
+	body := earlyBuyersBody{Snapshot: snapDTO(v.Snapshot, v.Finality), WindowSeconds: earlybuyer.WindowSeconds, WindowOpen: v.WindowOpen, EarlyWalletCount: v.EarlyWalletCount, EarlyBalance: decimal(v.EarlyBalance), ClusterCount: v.ClusterCount, Clusters: make([]earlyClusterDTO, 0, len(v.Clusters)), FundingChecked: v.FundingChecked}
+	for _, c := range v.Clusters {
+		dto := earlyClusterDTO{WalletCount: c.WalletCount, Balance: decimal(c.Balance), Links: append([]string{}, c.Links...), IncludesCreator: c.IncludesCreator, Wallets: make([]earlyWalletDTO, 0, len(c.Wallets))}
+		for _, w := range c.Wallets {
+			dto.Wallets = append(dto.Wallets, earlyWalletDTO{Address: w.Address.Hex(), Balance: decimal(w.Balance)})
+		}
+		body.Clusters = append(body.Clusters, dto)
+	}
+	return &earlyBuyersOutput{Body: body}, nil
+}
 func (r PublicRoutes) protocol(ctx context.Context, _ *struct{}) (*protocolOutput, error) {
 	v, e := r.Protocol.ReadProtocol(ctx, r.ChainID)
 	if e != nil {
 		return nil, mapReadError(ctx, e)
 	}
 	return &protocolOutput{Body: protocolDTO{Snapshot: snapDTO(v.Snapshot, v.Finality), Volume24hETH: decimal(v.Volume24hETH), VolumeAllTimeETH: decimal(v.VolumeAllTimeETH), Launches24h: v.Launches24h, LaunchesAllTime: v.LaunchesAllTime, Trades24h: v.Trades24h, TradesAllTime: v.TradesAllTime, Graduations24h: v.Graduations24h, GraduationsAllTime: v.GraduationsAllTime, UpdatedAt: v.UpdatedAt.UTC().Format(time.RFC3339Nano)}}, nil
+}
+
+func (r PublicRoutes) protocolRevenue(ctx context.Context, _ *struct{}) (*revenueOutput, error) {
+	if r.Revenue == nil {
+		return nil, apiProblem(http.StatusServiceUnavailable, "stats_unavailable", "Protocol revenue is unavailable")
+	}
+	v, e := r.Revenue.ReadProtocolRevenue(ctx, r.ChainID)
+	if e != nil {
+		return nil, mapReadError(ctx, e)
+	}
+	source := func(s stats.RevenueSource) revenueSourceDTO {
+		return revenueSourceDTO{Engine1: decimal(s.Engine1), Engine2: decimal(s.Engine2), Total: decimal(s.Total)}
+	}
+	return &revenueOutput{Body: revenueBody{Snapshot: snapDTO(v.Snapshot, v.Finality), Total: decimal(v.Total), Sources: revenueSourcesDTO{
+		LaunchFees: source(v.LaunchFees), TradeFees: source(v.TradeFees), SnipeTax: source(v.SnipeTax),
+		GraduationRemainder: source(v.GraduationRemainder), LPFees: source(v.LPFees),
+	}}}, nil
 }
 
 func (r PublicRoutes) protocolDaily(ctx context.Context, in *protocolDailyInput) (*protocolDailyOutput, error) {

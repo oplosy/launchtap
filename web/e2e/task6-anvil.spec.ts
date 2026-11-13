@@ -163,7 +163,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.getByLabel("Ticker", { exact: true }).fill("B6");
     await page.getByRole("button", { name: "Review launch" }).click();
     await expect(page.getByRole("heading", { name: "Confirm launch" })).toBeVisible();
-    const evidenceDir = path.resolve(process.cwd(), "..", ".impeccable", "review");
+    const evidenceDir = path.resolve(process.cwd(), "test-results", "screenshots");
     fs.mkdirSync(evidenceDir, { recursive: true });
     await page.screenshot({
       path: path.join(evidenceDir, `task6-create-confirm-${testInfo.project.name}.png`),
@@ -241,6 +241,8 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await expect(buyTab).toHaveAttribute("aria-selected", "true");
     await expect(buyTab).toBeFocused();
     await page.getByLabel("ETH input").fill("0.001");
+    // A small buy on a fresh curve moves the price a little, measured against the indexed spot.
+    await expect(page.locator(".quote-summary")).toContainText(/Price impact \d+\.\d{2}%/);
     await page.getByRole("button", { name: "Review buy" }).click();
     const tradeReview = page.getByRole("region", { name: "Trade confirmation" });
     const reviewedField = (name: string) =>
@@ -251,6 +253,10 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await expect(tradeReview.getByText("Function and arguments", { exact: true })).toBeVisible();
     await expect(tradeReview.getByText("Native value", { exact: true })).toBeVisible();
     await expect(tradeReview.getByText("Deadline", { exact: true })).toBeVisible();
+    // The curve fee is listed as its protocol and creator shares (CurveMath.splitFees).
+    await expect(reviewedField("Protocol fee")).toHaveText(/^\d+(\.\d+)? ETH$/);
+    await expect(reviewedField("Creator fee")).toHaveText(/^\d+(\.\d+)? ETH$/);
+    await expect(reviewedField("Network fee")).toHaveText("Shown and paid in your wallet");
 
     // Change the on-chain quote while the original confirmation remains open.
     const reviewedDeadline = BigInt(
@@ -298,7 +304,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
           (window as unknown as { __task6WriteRequests: unknown[] }).__task6WriteRequests.length,
       );
     expect(await pageWriteCount()).toBe(0);
-    const evidenceDir = path.resolve(process.cwd(), "..", ".impeccable", "review");
+    const evidenceDir = path.resolve(process.cwd(), "test-results", "screenshots");
     fs.mkdirSync(evidenceDir, { recursive: true });
     await page.screenshot({
       path: path.join(evidenceDir, `task6-trade-confirm-${testInfo.project.name}.png`),
@@ -610,7 +616,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
     await page.getByLabel("ETH input").fill("0.001");
     await page.getByRole("button", { name: "Review buy" }).click();
     await expect(page.getByText(/0 ETH router fee/i)).toBeVisible();
-    const evidenceDir = path.resolve(process.cwd(), "..", ".impeccable", "review");
+    const evidenceDir = path.resolve(process.cwd(), "test-results", "screenshots");
     fs.mkdirSync(evidenceDir, { recursive: true });
     await page.screenshot({
       path: path.join(evidenceDir, `task6-graduated-confirm-${testInfo.project.name}.png`),

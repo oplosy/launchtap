@@ -89,6 +89,59 @@ async function installFixture(page: Page, tokenOverrides: Record<string, unknown
       });
       return;
     }
+    if (url.pathname.endsWith("/created")) {
+      // The fixture creator launched this token and one other that graduated.
+      const created = (token: string, phase: string) => ({
+        token,
+        phase,
+        name: "Created",
+        symbol: "CRT",
+        launch_block: 100,
+        market_cap_wei: "0",
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          snapshot,
+          items: [
+            created(tokenAddress, "curve"),
+            created("0x0000000000000000000000000000000000000002", "graduated"),
+          ],
+        }),
+      });
+      return;
+    }
+    if (url.pathname.endsWith("/early-buyers")) {
+      // Three early wallets; the creator and one other were delivered in one transaction and
+      // got their first ETH from the same wallet; two of the three were funding-checked.
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          snapshot,
+          window_seconds: 60,
+          window_open: false,
+          early_wallet_count: 3,
+          early_balance: wad("300"),
+          cluster_count: 1,
+          funding_checked: 2,
+          clusters: [
+            {
+              wallet_count: 2,
+              balance: wad("250"),
+              links: ["same_transaction", "funding_source"],
+              includes_creator: true,
+              wallets: [
+                { address: "0x0000000000000000000000000000000000000002", balance: wad("150") },
+                { address: tokenAddress, balance: wad("100") },
+              ],
+            },
+          ],
+        }),
+      });
+      return;
+    }
     if (url.pathname.endsWith("/holders")) {
       await route.fulfill({
         status: 200,
@@ -122,6 +175,9 @@ async function installFixture(page: Page, tokenOverrides: Record<string, unknown
         image_url: "javascript:alert(1)",
         initial_virtual_eth: wad("1"),
         initial_virtual_token: wad("1000"),
+        // The one fixture holder first acquired at block 120, the launch block.
+        launch_block: 120,
+        launch_time: "2026-09-10T12:00:00.000000Z",
         liquidity_eth: wad("50"),
         lp_tokens: wad("10"),
         market_cap_eth: wad("500"),
@@ -201,8 +257,40 @@ test("populated token detail renders controls, pages, and responsive captures", 
   await expect.poll(() => candleRequests.length).toBe(2);
   expect(new URLSearchParams(candleRequests[1]).get("interval")).toBe("6h");
   expect(new URLSearchParams(candleRequests[1]).get("limit")).toBe("100");
+  // Engine-1 launch facts: graduation seeds 70 ETH against 10 tokens out of a 1,000 supply.
+  const launchFactsPanel = page.locator(".token-launch-facts");
+  await expect(launchFactsPanel.getByRole("heading", { name: "Launch facts" })).toBeVisible();
+  await expect(launchFactsPanel).toContainText("1% to the protocol, 99% to the creator");
+  await expect(launchFactsPanel).toContainText("Left to graduate");
+  await launchFactsPanel.screenshot({
+    path: path.resolve(process.cwd(), "test-results/screenshots/v1-launch-facts.png"),
+  });
+  await expect(page.locator(".token-creator")).toHaveText(
+    "Created by 0x000000…000001. Launched 1 other token on Launchpad; 1 graduated.",
+  );
   await page.getByRole("tab", { name: "Holders" }).click();
   await expect(page.getByRole("table", { name: "Token holders" })).toContainText("100");
+  // One holder of 100 out of the 1,000 supply.
+  await expect(page.locator(".holder-concentration").first()).toHaveText(
+    /^Top 1 holder owns 10\.00% of the supply/,
+  );
+  await expect(page.locator(".holder-concentration").nth(1)).toHaveText(
+    "1 holder first got in at the launch block (bundled with the launch, including any launch buy by the creator) and still holds 10.00% of the supply.",
+  );
+  const earlyBuyers = page.getByRole("region", { name: "Linked early wallets" });
+  await expect(earlyBuyers).toContainText(
+    "3 wallets got tokens from the curve in the first 60 seconds and hold 30.00% of the supply now.",
+  );
+  const group = earlyBuyers.locator("details").first();
+  await expect(group.locator("summary")).toHaveText(
+    "2 wallets hold 25.00% of the supply: received tokens in the same transaction and funded by the same wallet Creator",
+  );
+  await expect(earlyBuyers).toContainText("Funding sources checked for 2 of 3 early wallets.");
+  await group.locator("summary").click();
+  await expect(group.getByRole("link")).toHaveCount(2);
+  await earlyBuyers.screenshot({
+    path: path.resolve(process.cwd(), "test-results/screenshots/early-buyers.png"),
+  });
   await page.getByRole("tab", { name: "Recent trades" }).click();
   await page.getByRole("button", { name: "Candles" }).click();
   await expect(page.locator(".market-chart")).toBeVisible();
@@ -243,19 +331,19 @@ test("populated token detail renders controls, pages, and responsive captures", 
     .not.toBe(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(1280);
   await page.screenshot({
-    path: path.resolve(process.cwd(), "../.impeccable/review/task5-token-wide.png"),
+    path: path.resolve(process.cwd(), "test-results/screenshots/task5-token-wide.png"),
     fullPage: true,
   });
   await page.setViewportSize({ width: 768, height: 900 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(768);
   await page.screenshot({
-    path: path.resolve(process.cwd(), "../.impeccable/review/task5-token-tablet.png"),
+    path: path.resolve(process.cwd(), "test-results/screenshots/task5-token-tablet.png"),
     fullPage: true,
   });
   await page.setViewportSize({ width: 360, height: 800 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
   await page.screenshot({
-    path: path.resolve(process.cwd(), "../.impeccable/review/task5-token-mobile.png"),
+    path: path.resolve(process.cwd(), "test-results/screenshots/task5-token-mobile.png"),
     fullPage: true,
   });
 });

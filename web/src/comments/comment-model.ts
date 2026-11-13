@@ -83,3 +83,27 @@ const PROBLEM_MESSAGES: Record<string, string> = {
 export function problemMessage(code: string | undefined): string {
   return (code && PROBLEM_MESSAGES[code]) || "Something went wrong. Try again.";
 }
+
+/** Vote values: 1 up, -1 down, 0 none (docs/specs/2026-11-12-comment-votes-design.md). */
+export type VoteValue = -1 | 0 | 1;
+
+/** Clicking the active arrow clears the vote; the other arrow switches to it. */
+export function nextVote(current: VoteValue, clicked: 1 | -1): VoteValue {
+  return current === clicked ? 0 : clicked;
+}
+
+export function scoreLabel(score: number): string {
+  return `${score} ${score === 1 ? "point" : "points"}`;
+}
+
+const VOTE_PROBLEM_MESSAGES: Record<string, string> = {
+  not_holder: "Hold this token to vote on its comments.",
+  own_comment: "You cannot vote on your own comment.",
+  rate_limited: "You are voting too fast. Try again shortly.",
+  invalid_vote: "Choose up or down.",
+};
+
+/** Vote refusals in vote terms; other codes read as in problemMessage. */
+export function voteProblemMessage(code: string | undefined): string {
+  return (code && VOTE_PROBLEM_MESSAGES[code]) || problemMessage(code);
+}

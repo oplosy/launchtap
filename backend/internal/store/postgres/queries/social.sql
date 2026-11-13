@@ -62,6 +62,11 @@ RETURNING id, chain_id, deployment_id, token_address, privy_did, wallet, author_
 -- only when the author has no username or published that wallet.
 -- name: ListTokenComments :many
 SELECT c.id, c.body, c.created_at, c.author_role AS role,
+       COALESCE((SELECT sum(v.value)
+                 FROM comment_votes AS v
+                 JOIN social_users AS vu
+                   ON vu.chain_id = v.chain_id AND vu.deployment_id = v.deployment_id AND vu.privy_did = v.voter_did
+                 WHERE v.comment_id = c.id AND vu.banned_at IS NULL), 0)::bigint AS score,
        u.username AS display_username,
        (CASE
             WHEN u.username IS NULL OR pw.wallet IS NOT NULL THEN c.wallet
@@ -200,3 +205,43 @@ VALUES (sqlc.arg(chain_id), sqlc.arg(deployment_id), sqlc.arg(wallet), sqlc.arg(
 ON CONFLICT (chain_id, deployment_id, wallet)
 DO UPDATE SET privy_did = EXCLUDED.privy_did, created_at = now()
 WHERE social_public_wallets.privy_did <> EXCLUDED.privy_did;
+
+-- Comment votes (docs/specs/2026-11-12-comment-votes-design.md). A repeat of the same value
+-- touches no row, so it costs nothing against the hourly limit.
+-- name: UpsertCommentVote :execrows
+INSERT INTO comment_votes (comment_id, chain_id, deployment_id, voter_did, value)
+VALUES (sqlc.arg(comment_id), sqlc.arg(chain_id), sqlc.arg(deployment_id), sqlc.arg(voter_did), sqlc.arg(vote_value)::smallint)
+ON CONFLICT (comment_id, voter_did) DO UPDATE
+SET value = EXCLUDED.value, updated_at = now()
+WHERE comment_votes.value <> EXCLUDED.value;
+
+-- name: DeleteCommentVote :exec
+DELETE FROM comment_votes
+WHERE comment_id = sqlc.arg(comment_id) AND voter_did = sqlc.arg(voter_did);
+
+-- name: VoteRateState :one
+-- release_at: the hourly_limit-th newest vote set in the window (see CommentRateState).
+SELECT count(*)::BIGINT AS count_in_window,
+       (SELECT r.updated_at
+        FROM comment_votes AS r
+        WHERE r.chain_id = sqlc.arg(chain_id)
+          AND r.deployment_id = sqlc.arg(deployment_id)
+          AND r.voter_did = sqlc.arg(voter_did)
+          AND r.updated_at > now() - make_interval(secs => sqlc.arg(window_seconds)::double precision)
+        ORDER BY r.updated_at DESC
+        OFFSET sqlc.arg(hourly_limit)::integer - 1
+        LIMIT 1)::timestamptz AS release_at,
+       now()::timestamptz AS db_now
+FROM comment_votes
+WHERE chain_id = sqlc.arg(chain_id)
+  AND deployment_id = sqlc.arg(deployment_id)
+  AND voter_did = sqlc.arg(voter_did)
+  AND updated_at > now() - make_interval(secs => sqlc.arg(window_seconds)::double precision);
+
+-- Sum of votes from voters who are not banned.
+-- name: CommentScore :one
+SELECT COALESCE(sum(v.value), 0)::bigint AS score
+FROM comment_votes AS v
+JOIN social_users AS vu
+  ON vu.chain_id = v.chain_id AND vu.deployment_id = v.deployment_id AND vu.privy_did = v.voter_did
+WHERE v.comment_id = sqlc.arg(comment_id) AND vu.banned_at IS NULL;

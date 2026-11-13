@@ -240,6 +240,18 @@ func TestEngineV2LedgerDownRefusesV2Rows(t *testing.T) {
 	// The V4 swap sender index rolls back first; the v2 projections migration holds no projection
 	// rows here, so it rolls back next.
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the incremental protocol aggregates: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the wallet funding: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the Telegram links: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the comment votes: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
 		t.Fatalf("roll back the V4 swap sender index: %v", err)
 	}
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {

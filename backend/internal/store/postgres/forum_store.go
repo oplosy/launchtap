@@ -53,13 +53,35 @@ func (s ForumStore) Posts(ctx context.Context, sc social.Scope, cursor string, l
 		if err != nil {
 			return forum.PostPage{}, err
 		}
-		c, err := commentFromParts(row.ID, token, row.Body, row.CreatedAt, row.Role, row.DisplayUsername, row.DisplayWallet)
+		c, err := commentFromParts(row.ID, token, row.Body, row.CreatedAt, row.Role, row.DisplayUsername, row.DisplayWallet, row.Score)
 		if err != nil {
 			return forum.PostPage{}, err
 		}
 		page.Items = append(page.Items, forum.Post{Comment: c, Name: row.Name, Symbol: row.Symbol})
 	}
 	return page, nil
+}
+
+func (s ForumStore) BestPosts(ctx context.Context, sc social.Scope, limit int) ([]forum.Post, error) {
+	rows, err := sqlc.New(s.Pool).ListForumBestPosts(ctx, sqlc.ListForumBestPostsParams{
+		ChainID: sc.ChainID, DeploymentID: sc.DeploymentID, WindowDays: forum.BestWindowDays, RowLimit: int32(clampForumLimit(limit)),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list best forum posts: %w", err)
+	}
+	out := make([]forum.Post, 0, len(rows))
+	for _, row := range rows {
+		token, err := forumToken(row.TokenAddress)
+		if err != nil {
+			return nil, err
+		}
+		c, err := commentFromParts(row.ID, token, row.Body, row.CreatedAt, row.Role, row.DisplayUsername, row.DisplayWallet, row.Score)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, forum.Post{Comment: c, Name: row.Name, Symbol: row.Symbol})
+	}
+	return out, nil
 }
 
 func (s ForumStore) Communities(ctx context.Context, sc social.Scope, sort forum.Sort, limit int) ([]forum.Community, error) {

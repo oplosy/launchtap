@@ -136,31 +136,46 @@ func (c *Client) HeaderByHash(ctx context.Context, hash common.Hash) (*types.Hea
 
 type Heads struct{ Latest, Safe, Finalized *types.Header }
 
+// Heads reads the latest, safe and finalized headers in one JSON-RPC batch. The first failing
+// element, in that order, decides the error: "read latest head" for latest, and a
+// FinalityTagError for an unsupported or missing safe/finalized tag.
 func (c *Client) Heads(ctx context.Context) (Heads, error) {
-	latest, err := c.header(ctx, big.NewInt(int64(rpc.LatestBlockNumber)))
-	if err != nil {
-		return Heads{}, fmt.Errorf("read latest head: %w", err)
-	}
-	safe, err := c.finalityHeader(ctx, "safe", rpc.SafeBlockNumber)
-	if err != nil {
-		return Heads{}, err
-	}
-	finalized, err := c.finalityHeader(ctx, "finalized", rpc.FinalizedBlockNumber)
-	if err != nil {
-		return Heads{}, err
-	}
-	return Heads{Latest: latest, Safe: safe, Finalized: finalized}, nil
-}
-
-func (c *Client) finalityHeader(ctx context.Context, tag string, number rpc.BlockNumber) (*types.Header, error) {
-	header, err := c.header(ctx, big.NewInt(int64(number)))
-	if err != nil {
-		if isUnsupportedTag(err) {
-			return nil, &FinalityTagError{Tag: tag, Err: err}
+	tags := [3]string{"latest", "safe", "finalized"}
+	var headers [3]*types.Header
+	failed := -1
+	err := c.retry(ctx, "eth_getBlockByNumber", false, func(callContext context.Context) error {
+		failed = -1
+		batch := make([]rpc.BatchElem, len(tags))
+		for index, tag := range tags {
+			headers[index] = nil
+			batch[index] = rpc.BatchElem{Method: "eth_getBlockByNumber", Args: []any{tag, false}, Result: &headers[index]}
 		}
-		return nil, fmt.Errorf("read %s head: %w", tag, err)
+		if err := c.rpc.BatchCallContext(callContext, batch); err != nil {
+			return err
+		}
+		for index, element := range batch {
+			if element.Error != nil {
+				failed = index
+				return element.Error
+			}
+			if headers[index] == nil {
+				failed = index
+				return ethereum.NotFound
+			}
+		}
+		return nil
+	})
+	switch {
+	case err == nil:
+		return Heads{Latest: headers[0], Safe: headers[1], Finalized: headers[2]}, nil
+	case failed <= 0:
+		// The batch itself failed, or latest did.
+		return Heads{}, fmt.Errorf("read latest head: %w", err)
+	case isUnsupportedTag(err):
+		return Heads{}, &FinalityTagError{Tag: tags[failed], Err: err}
+	default:
+		return Heads{}, fmt.Errorf("read %s head: %w", tags[failed], err)
 	}
-	return header, nil
 }
 
 func isUnsupportedTag(err error) bool {

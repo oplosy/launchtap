@@ -39,6 +39,10 @@ func run() error {
 	if err := c.RequireAPI(); err != nil {
 		return err
 	}
+	telegramBot, err := config.TelegramBotUsername(os.Getenv)
+	if err != nil {
+		return err
+	}
 	verifier, err := privyauth.NewES256Verifier(c.PrivyAppID, c.PrivyVerificationKey)
 	if err != nil {
 		return err
@@ -86,13 +90,14 @@ func run() error {
 	tokens := storepostgres.TokenReader{Pool: pool, DeploymentID: c.DeploymentID}
 	market := storepostgres.MarketReader{Pool: pool, DeploymentID: c.DeploymentID}
 	protocol := storepostgres.ProtocolReader{Pool: pool, DeploymentID: c.DeploymentID}
-	server.RegisterPublicRoutes(apiserver.PublicRoutes{Tokens: tokens, Market: market, Protocol: protocol, ProtocolDaily: protocol, ChainID: int64(c.ChainID)})
+	server.RegisterPublicRoutes(apiserver.PublicRoutes{Tokens: tokens, Market: market, EarlyBuyers: market, Protocol: protocol, ProtocolDaily: protocol, Revenue: protocol, ChainID: int64(c.ChainID)})
 	server.RegisterQuoteRoutes(apiserver.QuoteRoutes{Provider: quote.Service{Reader: tokens, ChainID: int64(c.ChainID)}})
 	hub := realtime.NewHub(1000, 64)
 	server.RegisterMetadataRoutes(apiserver.MetadataRoutes{Store: storepostgres.MetadataStore{Pool: pool, DeploymentID: c.DeploymentID}, Verifier: verifier, ChainID: int64(c.ChainID)})
 	server.RegisterProfileRoutes(apiserver.ProfileRoutes{Reader: storepostgres.ProfileReader{Pool: pool, DeploymentID: c.DeploymentID}, Verifier: verifier, ChainID: int64(c.ChainID)})
 	server.RegisterWatchlistRoutes(apiserver.WatchlistRoutes{Verifier: verifier, Store: storepostgres.WatchlistStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterInboxRoutes(apiserver.InboxRoutes{Verifier: verifier, Store: storepostgres.InboxStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
+	server.RegisterTelegramRoutes(apiserver.TelegramRoutes{Verifier: verifier, Store: storepostgres.TelegramStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, BotUsername: telegramBot})
 	server.RegisterForumRoutes(apiserver.ForumRoutes{Store: storepostgres.ForumStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterWatchersRoutes(apiserver.WatchersRoutes{Counter: storepostgres.WatchlistStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterCommentRoutes(apiserver.CommentRoutes{Verifier: verifier, Store: storepostgres.SocialStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})

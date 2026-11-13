@@ -28,6 +28,47 @@ func (q *Queries) CountWalletCreated(ctx context.Context, arg CountWalletCreated
 	return column_1, err
 }
 
+const getEarlyBuyerToken = `-- name: GetEarlyBuyerToken :one
+SELECT t.creator,
+       COALESCE((SELECT b.block_time FROM indexed_blocks AS b
+                 WHERE b.chain_id = t.chain_id
+                   AND b.block_number = $1::bigint
+                   AND b.block_hash = $2::bytea
+                 LIMIT 1), now())
+         < t.launch_block_time + make_interval(secs => $3::integer) AS window_open
+FROM tokens AS t
+WHERE t.chain_id = $4 AND t.token_address = $5
+`
+
+type GetEarlyBuyerTokenParams struct {
+	SnapshotBlock int64
+	SnapshotHash  []byte
+	WindowSeconds int32
+	ChainID       int64
+	TokenAddress  Address
+}
+
+type GetEarlyBuyerTokenRow struct {
+	Creator    Address
+	WindowOpen bool
+}
+
+// Early-buyer clusters (docs/specs/2026-11-12-early-buyer-clusters-design.md). The token's
+// creator, and whether the snapshot block is still inside the early window. A pruned or missing
+// snapshot block falls back to the current time.
+func (q *Queries) GetEarlyBuyerToken(ctx context.Context, arg GetEarlyBuyerTokenParams) (GetEarlyBuyerTokenRow, error) {
+	row := q.db.QueryRow(ctx, getEarlyBuyerToken,
+		arg.SnapshotBlock,
+		arg.SnapshotHash,
+		arg.WindowSeconds,
+		arg.ChainID,
+		arg.TokenAddress,
+	)
+	var i GetEarlyBuyerTokenRow
+	err := row.Scan(&i.Creator, &i.WindowOpen)
+	return i, err
+}
+
 const getKingOfTheHill = `-- name: GetKingOfTheHill :one
 WITH curve_tokens AS (
     SELECT t.token_address, t.name, t.symbol, t.phase,
@@ -719,6 +760,53 @@ func (q *Queries) ListCandlesAggregated(ctx context.Context, arg ListCandlesAggr
 	return items, nil
 }
 
+const listEarlyCurveDeliveries = `-- name: ListEarlyCurveDeliveries :many
+SELECT tr.tx_hash, tr.to_address
+FROM tokens AS t
+JOIN transfers AS tr ON tr.chain_id = t.chain_id AND tr.token_address = t.token_address
+LEFT JOIN v4_pool_managers AS manager ON manager.chain_id = t.chain_id
+WHERE t.chain_id = $1 AND t.token_address = $2
+  AND tr.from_address = t.curve_address
+  AND tr.block_number >= t.launch_block_number
+  AND tr.block_time <= t.launch_block_time + make_interval(secs => $3::integer)
+  AND NOT token_holder_excluded(t.engine_version, tr.to_address, t.curve_address, t.lp_pair,
+                                t.locker, manager.pool_manager)
+ORDER BY tr.block_number, tr.transaction_index, tr.log_index
+`
+
+type ListEarlyCurveDeliveriesParams struct {
+	ChainID       int64
+	TokenAddress  Address
+	WindowSeconds int32
+}
+
+type ListEarlyCurveDeliveriesRow struct {
+	TxHash    Hash
+	ToAddress Address
+}
+
+// Curve deliveries (a Transfer from the curve is a buy output) within the early window of the
+// launch block's time, infrastructure recipients excluded.
+func (q *Queries) ListEarlyCurveDeliveries(ctx context.Context, arg ListEarlyCurveDeliveriesParams) ([]ListEarlyCurveDeliveriesRow, error) {
+	rows, err := q.db.Query(ctx, listEarlyCurveDeliveries, arg.ChainID, arg.TokenAddress, arg.WindowSeconds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEarlyCurveDeliveriesRow{}
+	for rows.Next() {
+		var i ListEarlyCurveDeliveriesRow
+		if err := rows.Scan(&i.TxHash, &i.ToAddress); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listGraduationsAfter = `-- name: ListGraduationsAfter :many
 SELECT g.token_address, g.lp_pair, l.name, l.symbol, g.tx_hash, g.block_number, g.transaction_index, g.log_index
 FROM graduations AS g
@@ -774,6 +862,44 @@ func (q *Queries) ListGraduationsAfter(ctx context.Context, arg ListGraduationsA
 			&i.TransactionIndex,
 			&i.LogIndex,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listHolderBalancesFor = `-- name: ListHolderBalancesFor :many
+SELECT holder_address, balance
+FROM holder_balances
+WHERE chain_id = $1 AND token_address = $2
+  AND holder_address = ANY($3::bytea[]) AND balance > 0
+`
+
+type ListHolderBalancesForParams struct {
+	ChainID      int64
+	TokenAddress Address
+	Wallets      [][]byte
+}
+
+type ListHolderBalancesForRow struct {
+	HolderAddress Address
+	Balance       Uint256
+}
+
+func (q *Queries) ListHolderBalancesFor(ctx context.Context, arg ListHolderBalancesForParams) ([]ListHolderBalancesForRow, error) {
+	rows, err := q.db.Query(ctx, listHolderBalancesFor, arg.ChainID, arg.TokenAddress, arg.Wallets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListHolderBalancesForRow{}
+	for rows.Next() {
+		var i ListHolderBalancesForRow
+		if err := rows.Scan(&i.HolderAddress, &i.Balance); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1270,6 +1396,82 @@ func (q *Queries) ListProtocolDaily(ctx context.Context, arg ListProtocolDailyPa
 			&i.LaunchesCount,
 			&i.TradesCount,
 			&i.GraduationsCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listProtocolRevenueByEngine = `-- name: ListProtocolRevenueByEngine :many
+WITH engines AS (
+    SELECT DISTINCT engine_version FROM token_launches WHERE chain_id = $1::bigint
+), launch_fees AS (
+    SELECT engine_version, SUM(launch_fee_paid) AS amount
+    FROM token_launches WHERE chain_id = $1::bigint GROUP BY engine_version
+), trade_fees AS (
+    SELECT l.engine_version, SUM(t.protocol_fee) AS fee, SUM(t.snipe_tax) AS tax
+    FROM trades t
+    JOIN token_launches l ON l.chain_id = t.chain_id AND l.token_address = t.token_address
+    WHERE t.chain_id = $1::bigint GROUP BY l.engine_version
+), remainders AS (
+    SELECT l.engine_version, SUM(g.eth_remainder) AS amount
+    FROM graduations g
+    JOIN token_launches l ON l.chain_id = g.chain_id AND l.token_address = g.token_address
+    WHERE g.chain_id = $1::bigint GROUP BY l.engine_version
+), lp_fees AS (
+    SELECT l.engine_version,
+           SUM(c.eth_amount - div(c.eth_amount * COALESCE(l.lp_creator_share_bps, 0), 10000)) AS amount
+    FROM lp_fee_collections c
+    JOIN token_launches l ON l.chain_id = c.chain_id AND l.token_address = c.token_address
+    WHERE c.chain_id = $1::bigint GROUP BY l.engine_version
+)
+SELECT e.engine_version::integer AS engine_version,
+       COALESCE(lf.amount, 0)::text AS launch_fees,
+       COALESCE(tf.fee, 0)::text AS trade_fees,
+       COALESCE(tf.tax, 0)::text AS snipe_tax,
+       COALESCE(r.amount, 0)::text AS graduation_remainder,
+       COALESCE(lp.amount, 0)::text AS lp_fees
+FROM engines e
+LEFT JOIN launch_fees lf ON lf.engine_version = e.engine_version
+LEFT JOIN trade_fees tf ON tf.engine_version = e.engine_version
+LEFT JOIN remainders r ON r.engine_version = e.engine_version
+LEFT JOIN lp_fees lp ON lp.engine_version = e.engine_version
+ORDER BY e.engine_version
+`
+
+type ListProtocolRevenueByEngineRow struct {
+	EngineVersion       int32
+	LaunchFees          string
+	TradeFees           string
+	SnipeTax            string
+	GraduationRemainder string
+	LpFees              string
+}
+
+// ETH the contracts credit to the protocol, per engine, earned basis
+// (docs/specs/2026-11-12-protocol-revenue-design.md). The LP share mirrors
+// LpFeeLocker._credit: the creator gets floor(eth * bps / 10000), the protocol the rest.
+func (q *Queries) ListProtocolRevenueByEngine(ctx context.Context, chainID int64) ([]ListProtocolRevenueByEngineRow, error) {
+	rows, err := q.db.Query(ctx, listProtocolRevenueByEngine, chainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListProtocolRevenueByEngineRow{}
+	for rows.Next() {
+		var i ListProtocolRevenueByEngineRow
+		if err := rows.Scan(
+			&i.EngineVersion,
+			&i.LaunchFees,
+			&i.TradeFees,
+			&i.SnipeTax,
+			&i.GraduationRemainder,
+			&i.LpFees,
 		); err != nil {
 			return nil, err
 		}
@@ -1874,6 +2076,53 @@ func (q *Queries) ListTokenHolders(ctx context.Context, arg ListTokenHoldersPara
 	for rows.Next() {
 		var i ListTokenHoldersRow
 		if err := rows.Scan(&i.HolderAddress, &i.Balance, &i.FirstAcquiredBlockNumber); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTokenTransfersTouching = `-- name: ListTokenTransfersTouching :many
+SELECT tr.from_address, tr.to_address
+FROM tokens AS t
+JOIN transfers AS tr ON tr.chain_id = t.chain_id AND tr.token_address = t.token_address
+LEFT JOIN v4_pool_managers AS manager ON manager.chain_id = t.chain_id
+WHERE t.chain_id = $1 AND t.token_address = $2
+  AND (tr.from_address = ANY($3::bytea[]) OR tr.to_address = ANY($3::bytea[]))
+  AND tr.from_address <> tr.to_address
+  AND NOT token_holder_excluded(t.engine_version, tr.from_address, t.curve_address, t.lp_pair,
+                                t.locker, manager.pool_manager)
+  AND NOT token_holder_excluded(t.engine_version, tr.to_address, t.curve_address, t.lp_pair,
+                                t.locker, manager.pool_manager)
+`
+
+type ListTokenTransfersTouchingParams struct {
+	ChainID      int64
+	TokenAddress Address
+	Wallets      [][]byte
+}
+
+type ListTokenTransfersTouchingRow struct {
+	FromAddress Address
+	ToAddress   Address
+}
+
+// Transfers of the token touching one of the given wallets, between two non-infrastructure
+// wallets.
+func (q *Queries) ListTokenTransfersTouching(ctx context.Context, arg ListTokenTransfersTouchingParams) ([]ListTokenTransfersTouchingRow, error) {
+	rows, err := q.db.Query(ctx, listTokenTransfersTouching, arg.ChainID, arg.TokenAddress, arg.Wallets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTokenTransfersTouchingRow{}
+	for rows.Next() {
+		var i ListTokenTransfersTouchingRow
+		if err := rows.Scan(&i.FromAddress, &i.ToAddress); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

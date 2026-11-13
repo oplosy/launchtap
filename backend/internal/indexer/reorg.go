@@ -31,6 +31,8 @@ type RecoveryUnit interface {
 }
 
 func (e *Engine) recoverReorg(ctx context.Context, state State, tip ledger.IndexedBlock) error {
+	// Recovery deletes and rebuilds token projections and graduations, whatever its outcome.
+	defer e.invalidateIdentities()
 	if state.Observed == nil {
 		return errors.New("cannot recover reorg without observed tip")
 	}

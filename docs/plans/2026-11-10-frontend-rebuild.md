@@ -1,5 +1,8 @@
 # Frontend Rebuild Implementation Plan
 
+> **2026-11-12:** `.impeccable/` was removed from the repository; review captures are now
+> written to `web/test-results/screenshots/` (gitignored). References below are historical.
+
 > **For agentic workers:** execute inline with superpowers:executing-plans (the owner forbids
 > subagent-driven development in this repo). Steps use checkbox (`- [ ]`) syntax for tracking.
 

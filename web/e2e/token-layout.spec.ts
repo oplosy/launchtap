@@ -150,7 +150,7 @@ test("the header is centred and shows name, symbol and price", async ({ page }, 
   await expect(header.locator(".market-price-value")).toContainText("1");
   const box = (await title.boundingBox())!;
   expect(Math.abs(box.x + box.width / 2 - 640)).toBeLessThanOrEqual(2);
-  await page.screenshot({ path: "../.impeccable/review/rebuild-token-wide.png" });
+  await page.screenshot({ path: "test-results/screenshots/rebuild-token-wide.png" });
 });
 
 test("the trade card stays in view while the page scrolls at 1280 px", async ({
@@ -163,7 +163,7 @@ test("the trade card stays in view while the page scrolls at 1280 px", async ({
   await page.mouse.wheel(0, 1500);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThanOrEqual(1000);
   await expect(tradeHeading(page)).toBeInViewport();
-  await page.screenshot({ path: "../.impeccable/review/rebuild-token-scrolled.png" });
+  await page.screenshot({ path: "test-results/screenshots/rebuild-token-scrolled.png" });
 });
 
 test("at 360 px the Buy bar button opens the trade card as a Trade dialog", async ({
@@ -180,7 +180,7 @@ test("at 360 px the Buy bar button opens the trade card as a Trade dialog", asyn
   // One trade card: the dialog is that card, never a second copy of it.
   await expect(page.getByLabel("ETH input")).toHaveCount(1);
   await page.screenshot({
-    path: "../.impeccable/review/rebuild-token-sheet-mobile.png",
+    path: "test-results/screenshots/rebuild-token-sheet-mobile.png",
     animations: "disabled",
   });
   await page.keyboard.press("Escape");

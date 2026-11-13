@@ -1,7 +1,7 @@
 # Notes — launchpad
 
 > Free-form project notes: ideas, decisions, open questions, research output.
-> Unfinished work goes to `backlog.md`; durable agent instructions to `AGENTS.md`.
+> Unfinished work goes to `backlog.md`; durable agent instructions to `CLAUDE.md`.
 
 ---
 
@@ -194,7 +194,8 @@ after product-market fit. No new tokenomics on mainnet before Gate 0 closes.
 - Trade preview: separate fee lines (protocol / creator / network), minimum received,
   `eth_call` simulation before the wallet opens, revert reason on failure.
 - Graduation preview: remaining ETH, implied opening price, estimated market cap.
-- Telegram alerts: watchlist, graduation, large trades (thresholds, dedup, opt-in).
+- Telegram alerts: watchlist, graduation, large trades (thresholds, dedup, opt-in). Built 2026-11-12
+  (`docs/specs/2026-11-12-telegram-alerts-design.md`); waits on a bot token.
 
 **v2 engine (needs a pre-flight spec first — contract economics, high risk):**
 - Post-graduation creator revenue. Biggest competitive gap: v1 creator fees stop at
@@ -557,7 +558,7 @@ i18n, telemetry, referrals, Limit/Orders, Stocks pairing, forum, mobile.
 
 ### Parallel / text work (🟢)
 Terms/Privacy/risk copy, geo-restriction policy (US/OFAC block?), domain/DNS,
-`AGENTS.md` command + code-style sections.
+`CLAUDE.md` command + code-style sections.
 
 ## Resources / links
 

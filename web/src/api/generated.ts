@@ -15,6 +15,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/comments/{id}/vote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Sets or clears the caller's vote. Needs a linked wallet that is the creator or a holder of the comment's token (docs/specs/2026-11-12-comment-votes-design.md). */
+        put: operations["voteComment"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events": {
         parameters: {
             query?: never;
@@ -143,6 +160,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/telegram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getTelegram"];
+        put: operations["updateTelegram"];
+        post?: never;
+        delete: operations["unlinkTelegram"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/telegram/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createTelegramLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/watchlist": {
         parameters: {
             query?: never;
@@ -255,6 +304,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/stats/protocol/revenue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description ETH credited to the protocol, all-time, by source and engine (earned basis, wei). */
+        get: operations["getProtocolRevenue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tokens": {
         parameters: {
             query?: never;
@@ -359,6 +425,23 @@ export interface paths {
             cookie?: never;
         };
         get: operations["listCandles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tokens/{token}/early-buyers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Wallets that received tokens from the curve within the early window after launch, grouped by same-transaction deliveries and token transfers between them. */
+        get: operations["getEarlyBuyers"];
         put?: never;
         post?: never;
         delete?: never;
@@ -641,6 +724,11 @@ export interface components {
             created_at: string;
             /** @description Decimal string. */
             id: string;
+            /**
+             * Format: int64
+             * @description Sum of up (+1) and down (-1) votes from voters who are not banned.
+             */
+            score: number;
             token: string;
         };
         CommentEvent: {
@@ -660,6 +748,47 @@ export interface components {
             comment_count: number;
             items: components["schemas"]["CommentDTO"][] | null;
             next_cursor?: string;
+        };
+        EarlyBuyersBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/EarlyBuyersBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            cluster_count: number;
+            /** @description At most 10 clusters, largest combined balance first. */
+            clusters: components["schemas"]["EarlyClusterDTO"][] | null;
+            /** @description What every early wallet holds now. */
+            early_balance: string;
+            /** Format: int64 */
+            early_wallet_count: number;
+            /**
+             * Format: int64
+             * @description Early wallets whose funding source has been checked; funding_source links cover only these.
+             */
+            funding_checked: number;
+            snapshot: components["schemas"]["SnapshotDTO"];
+            /** @description The early window had not ended at the snapshot block. */
+            window_open: boolean;
+            /** Format: int64 */
+            window_seconds: number;
+        };
+        EarlyClusterDTO: {
+            /** @description What every wallet of the cluster holds now. */
+            balance: string;
+            includes_creator: boolean;
+            /** @description Link kinds present: same_transaction, token_transfer, funding_source. */
+            links: string[] | null;
+            /** Format: int64 */
+            wallet_count: number;
+            /** @description At most 20 wallets, largest balance first. */
+            wallets: components["schemas"]["EarlyWalletDTO"][] | null;
+        };
+        EarlyWalletDTO: {
+            address: string;
+            balance: string;
         };
         EligibilityBody: {
             /**
@@ -777,6 +906,11 @@ export interface components {
             id: string;
             /** @description Token launch name; user-controlled text. */
             name: string;
+            /**
+             * Format: int64
+             * @description Sum of votes from voters who are not banned.
+             */
+            score: number;
             /** @description Token launch symbol; user-controlled text. */
             symbol: string;
             token: string;
@@ -1153,6 +1287,29 @@ export interface components {
             /** @description One of spam, scam, abuse, other. */
             reason: string;
         };
+        RevenueBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/RevenueBody.json
+             */
+            readonly $schema?: string;
+            snapshot: components["schemas"]["SnapshotDTO"];
+            sources: components["schemas"]["RevenueSourcesDTO"];
+            total: string;
+        };
+        RevenueSourceDTO: {
+            engine_1: string;
+            engine_2: string;
+            total: string;
+        };
+        RevenueSourcesDTO: {
+            graduation_remainder: components["schemas"]["RevenueSourceDTO"];
+            launch_fees: components["schemas"]["RevenueSourceDTO"];
+            lp_fees: components["schemas"]["RevenueSourceDTO"];
+            snipe_tax: components["schemas"]["RevenueSourceDTO"];
+            trade_fees: components["schemas"]["RevenueSourceDTO"];
+        };
         RevisionBody: {
             /**
              * Format: uri
@@ -1171,6 +1328,45 @@ export interface components {
             /** Format: int64 */
             chain_id: number;
             finality: string;
+        };
+        TelegramLinkBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/TelegramLinkBody.json
+             */
+            readonly $schema?: string;
+            expires_at: string;
+            /** @description Telegram deep link; open it and press Start to connect the chat. */
+            url: string;
+        };
+        TelegramSettingsDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/TelegramSettingsDTO.json
+             */
+            readonly $schema?: string;
+            /** @description Send graduations of watched tokens. */
+            graduations: boolean;
+            /** @description Send trades of at least min_trade_wei on watched tokens. */
+            large_trades: boolean;
+            /** @description Decimal wei, 0.5 ETH to 10,000 ETH. */
+            min_trade_wei: string;
+        };
+        TelegramStatusBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/TelegramStatusBody.json
+             */
+            readonly $schema?: string;
+            graduations: boolean;
+            large_trades: boolean;
+            linked: boolean;
+            linked_at: string | null;
+            /** @description Decimal wei; the default 0.5 ETH when not linked. */
+            min_trade_wei: string;
         };
         TokenDTO: {
             address: string;
@@ -1212,6 +1408,12 @@ export interface components {
             image_url: string;
             initial_virtual_eth: string;
             initial_virtual_token: string;
+            /**
+             * Format: int64
+             * @description Block of the launch transaction; holders first acquiring in it were bundled with the launch.
+             */
+            launch_block: number;
+            launch_time: string;
             liquidity_eth: string;
             lp_tokens: string;
             market_cap_eth: string;
@@ -1359,6 +1561,37 @@ export interface components {
             pool_id: string;
             position_token_id: string;
         } | null;
+        VoteBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/VoteBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description The comment's score after the vote.
+             */
+            score: number;
+            /**
+             * Format: int64
+             * @description The caller's vote after the request: 1, -1 or 0.
+             */
+            vote: number;
+        };
+        VoteCommentInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/VoteCommentInputBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description 1 (up), -1 (down) or 0 (clear).
+             */
+            value: number;
+        };
         WalletCreatedBody: {
             /**
              * Format: uri
@@ -1527,6 +1760,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    voteComment: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoteCommentInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoteBody"];
+                };
             };
             /** @description Error */
             default: {
@@ -1710,6 +1981,9 @@ export interface operations {
     listForumPosts: {
         parameters: {
             query?: {
+                /** @description new (default): newest first, paginated; best: posts from the last 7 days by score, one page. Any other value is a 400 invalid_sort. */
+                sort?: string;
+                /** @description Only for sort=new. */
                 cursor?: string;
                 /** @description Number of posts, 1-50; defaults to 20. */
                 limit?: number;
@@ -1973,6 +2247,136 @@ export interface operations {
             };
         };
     };
+    getTelegram: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramStatusBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    updateTelegram: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelegramSettingsDTO"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramStatusBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    unlinkTelegram: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    createTelegramLink: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "privy-id-token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramLinkBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     listWatchlist: {
         parameters: {
             query?: never;
@@ -2209,6 +2613,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProtocolDailyBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getProtocolRevenue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevenueBody"];
                 };
             };
             /** @description Error */
@@ -2482,6 +2915,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CandleBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getEarlyBuyers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EarlyBuyersBody"];
                 };
             };
             /** @description Error */

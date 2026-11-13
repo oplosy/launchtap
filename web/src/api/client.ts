@@ -4,11 +4,13 @@ import { mapProblem } from "./problems";
 export type ProtocolDailyResponse =
   paths["/stats/protocol/daily"]["get"]["responses"][200]["content"]["application/json"];
 export type ProtocolDailyItem = components["schemas"]["ProtocolDailyDTO"];
+export type ProtocolRevenueResponse = components["schemas"]["RevenueBody"];
 export type TokenListResponse = components["schemas"]["TokenListBody"];
 export type TokenDetailResponse = components["schemas"]["TokenDetailDTO"];
 export type CandleResponse = components["schemas"]["CandleBody"];
 export type TradesResponse = components["schemas"]["TradesBody"];
 export type HoldersResponse = components["schemas"]["HoldersBody"];
+export type EarlyBuyersResponse = components["schemas"]["EarlyBuyersBody"];
 export type QuoteResponse = components["schemas"]["QuoteBody"];
 export type CanonicalTransactionResponse = components["schemas"]["CanonicalObservationBody"];
 export type EthUsdReference = components["schemas"]["EthUsdBody"];
@@ -39,6 +41,12 @@ export type CommentEligibilityResponse = components["schemas"]["EligibilityBody"
 export type ReportReason = "spam" | "scam" | "abuse" | "other";
 export type PublicProfileResponse = components["schemas"]["PublicProfileDTO"];
 export type InboxResponse = components["schemas"]["InboxBody"];
+export type TelegramStatus = components["schemas"]["TelegramStatusBody"];
+export type TelegramLink = components["schemas"]["TelegramLinkBody"];
+export type TelegramSettings = Pick<
+  TelegramStatus,
+  "graduations" | "large_trades" | "min_trade_wei"
+>;
 export type InboxItem = components["schemas"]["InboxItemDTO"];
 export type ForumPostsResponse = components["schemas"]["ForumPostsBody"];
 export type ForumPost = components["schemas"]["ForumPostDTO"];
@@ -220,6 +228,10 @@ export class ApiClient {
     return this.request<components["schemas"]["ProtocolDTO"]>("/v1/stats/protocol", { signal });
   }
 
+  getProtocolRevenue(signal?: AbortSignal) {
+    return this.request<ProtocolRevenueResponse>("/v1/stats/protocol/revenue", { signal });
+  }
+
   getProfile(auth: AuthHeaders, signal?: AbortSignal) {
     return this.request<ProfileResponse>("/v1/profile", { signal }, auth);
   }
@@ -280,6 +292,19 @@ export class ApiClient {
         signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+      },
+      auth,
+    );
+  }
+
+  voteComment(id: string, value: -1 | 0 | 1, auth: AuthHeaders, signal?: AbortSignal) {
+    return this.request<components["schemas"]["VoteBody"]>(
+      `/v1/comments/${encodeURIComponent(id)}/vote`,
+      {
+        method: "PUT",
+        signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value }),
       },
       auth,
     );
@@ -348,8 +373,13 @@ export class ApiClient {
   }
 
   /** Visible comments across tokens, newest first (spec P0-C5). */
-  getForumPosts(query: { cursor?: string; limit?: number } = {}, signal?: AbortSignal) {
+  /** `best` is one page of the last 7 days' posts by score; `new` (default) pages by cursor. */
+  getForumPosts(
+    query: { sort?: "new" | "best"; cursor?: string; limit?: number } = {},
+    signal?: AbortSignal,
+  ) {
     const params = new URLSearchParams();
+    if (query.sort === "best") params.set("sort", "best");
     if (query.cursor) params.set("cursor", query.cursor);
     if (query.limit) params.set("limit", String(query.limit));
     const encoded = params.toString();
@@ -398,6 +428,38 @@ export class ApiClient {
     );
   }
 
+  /** Telegram alert link and settings (docs/specs/2026-11-12-telegram-alerts-design.md). */
+  getTelegram(auth: AuthHeaders, signal?: AbortSignal) {
+    return this.request<TelegramStatus>("/v1/me/telegram", { signal, cache: "no-store" }, auth);
+  }
+
+  updateTelegram(settings: TelegramSettings, auth: AuthHeaders, signal?: AbortSignal) {
+    return this.request<TelegramStatus>(
+      "/v1/me/telegram",
+      {
+        method: "PUT",
+        signal,
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      },
+      auth,
+    );
+  }
+
+  unlinkTelegram(auth: AuthHeaders, signal?: AbortSignal) {
+    return this.requestNoContent("/v1/me/telegram", { method: "DELETE", signal }, auth);
+  }
+
+  /** A one-time deep link; the chat connects when the reader presses Start in Telegram. */
+  createTelegramLink(auth: AuthHeaders, signal?: AbortSignal) {
+    return this.request<TelegramLink>(
+      "/v1/me/telegram/link",
+      { method: "POST", signal, cache: "no-store" },
+      auth,
+    );
+  }
+
   getToken(address: string, signal?: AbortSignal) {
     return this.request<TokenDetailResponse>(`/v1/tokens/${encodeURIComponent(address)}`, {
       signal,
@@ -439,6 +501,13 @@ export class ApiClient {
     signal?: AbortSignal,
   ) {
     return this.getCursorCollection<HoldersResponse>(address, "holders", options, signal);
+  }
+
+  getEarlyBuyers(address: string, signal?: AbortSignal) {
+    return this.request<EarlyBuyersResponse>(
+      `/v1/tokens/${encodeURIComponent(address)}/early-buyers`,
+      { signal },
+    );
   }
 
   private getCursorCollection<T>(

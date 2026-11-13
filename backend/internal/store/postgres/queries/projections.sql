@@ -599,44 +599,81 @@ ON CONFLICT (chain_id,token_address) DO UPDATE SET
  volume_24h_eth_wad=EXCLUDED.volume_24h_eth_wad,price_change_24h_bps=EXCLUDED.price_change_24h_bps,
  holder_count=EXCLUDED.holder_count,updated_at=EXCLUDED.updated_at;
 
+-- Serializes protocol aggregate refreshes of one chain, so a refresh reads the watermark only
+-- after any concurrent refresh (including a reorg's full rebuild) has committed.
+-- name: LockProtocolAggregates :exec
+SELECT pg_advisory_xact_lock(hashtextextended('protocol_aggregates:' || sqlc.arg(chain_id)::bigint::text, 0));
+
+-- -1 stands for "none": no watermark yet, or no indexed block.
+-- name: GetProtocolAggregateBounds :one
+SELECT COALESCE((SELECT stats.daily_through_block FROM protocol_stats AS stats WHERE stats.chain_id = $1), -1)::BIGINT AS daily_through_block,
+       COALESCE((SELECT max(block.block_number) FROM indexed_blocks AS block WHERE block.chain_id = $1), -1)::BIGINT AS head_block;
+
+-- The earliest UTC day of the blocks indexed after the watermark; NULL when there are none.
+-- name: GetProtocolDailyRefreshDay :one
+SELECT (min(block_time) AT TIME ZONE 'UTC')::date AS from_day
+FROM indexed_blocks
+WHERE chain_id = sqlc.arg(chain_id)
+  AND block_number > sqlc.arg(after_block)::bigint
+  AND block_number <= sqlc.arg(through_block)::bigint;
+
+-- from_day '-infinity' clears every day of the chain.
 -- name: ClearProtocolDaily :exec
-DELETE FROM protocol_daily WHERE chain_id=$1;
+DELETE FROM protocol_daily WHERE chain_id = sqlc.arg(chain_id) AND day >= sqlc.arg(from_day)::date;
 
 -- Trades are market_trades (curve trades plus DEX swaps), the same source as volume. Days are
--- UTC calendar days regardless of the session TimeZone.
+-- UTC calendar days regardless of the session TimeZone. Only days >= from_day are rebuilt;
+-- from_day '-infinity' rebuilds the whole history.
 -- name: RecomputeProtocolDaily :exec
-WITH daily AS (
+WITH bounds AS (
+ SELECT (sqlc.arg(from_day)::date::timestamp AT TIME ZONE 'UTC') AS from_time
+), daily AS (
  SELECT (block_time AT TIME ZONE 'UTC')::date AS day, sum(gross_eth_volume) AS volume, 0::bigint AS launches, count(*)::bigint AS trades, 0::bigint AS graduations
- FROM market_trades WHERE chain_id=$1 GROUP BY 1
- UNION ALL SELECT (block_time AT TIME ZONE 'UTC')::date,0,count(*)::bigint,0,0 FROM token_launches WHERE chain_id=$1 GROUP BY 1
- UNION ALL SELECT (block_time AT TIME ZONE 'UTC')::date,0,0,0,count(*)::bigint FROM graduations WHERE chain_id=$1 GROUP BY 1
+ FROM market_trades WHERE chain_id=sqlc.arg(chain_id) AND block_time >= (SELECT from_time FROM bounds) GROUP BY 1
+ UNION ALL SELECT (block_time AT TIME ZONE 'UTC')::date,0,count(*)::bigint,0,0 FROM token_launches WHERE chain_id=sqlc.arg(chain_id) AND block_time >= (SELECT from_time FROM bounds) GROUP BY 1
+ UNION ALL SELECT (block_time AT TIME ZONE 'UTC')::date,0,0,0,count(*)::bigint FROM graduations WHERE chain_id=sqlc.arg(chain_id) AND block_time >= (SELECT from_time FROM bounds) GROUP BY 1
 ), daily_rollup AS (
  SELECT day,coalesce(sum(volume),0) volume,coalesce(sum(launches),0)::integer launches,coalesce(sum(trades),0)::integer trades,coalesce(sum(graduations),0)::integer graduations
  FROM daily GROUP BY day
 )
 INSERT INTO protocol_daily (chain_id,day,volume_eth_wad,launches_count,trades_count,graduations_count)
-SELECT $1,day,volume,launches,trades,graduations FROM daily_rollup
+SELECT sqlc.arg(chain_id),day,volume,launches,trades,graduations FROM daily_rollup
 ON CONFLICT (chain_id,day) DO UPDATE SET volume_eth_wad=excluded.volume_eth_wad,launches_count=excluded.launches_count,trades_count=excluded.trades_count,graduations_count=excluded.graduations_count;
 
+-- The all-time columns are the sums of protocol_daily, which the caller has just brought up to
+-- daily_through_block; the 24h columns read the sources by block_time range.
 -- name: RecomputeProtocolStats :exec
 INSERT INTO protocol_stats (
  chain_id,volume_24h_eth_wad,volume_all_time_eth_wad,launches_24h,launches_all_time,
- trades_24h,trades_all_time,graduations_24h,graduations_all_time,updated_at
+ trades_24h,trades_all_time,graduations_24h,graduations_all_time,daily_through_block,updated_at
 )
-SELECT $1,
- COALESCE((SELECT sum(gross_eth_volume) FROM market_trades WHERE chain_id=$1 AND block_time>=now()-interval '24 hours'),0),
- COALESCE((SELECT sum(gross_eth_volume) FROM market_trades WHERE chain_id=$1),0),
- (SELECT count(*) FROM token_launches WHERE chain_id=$1 AND block_time>=now()-interval '24 hours'),
- (SELECT count(*) FROM token_launches WHERE chain_id=$1),
- (SELECT count(*) FROM market_trades WHERE chain_id=$1 AND block_time>=now()-interval '24 hours'),
- (SELECT count(*) FROM market_trades WHERE chain_id=$1),
- (SELECT count(*) FROM graduations WHERE chain_id=$1 AND block_time>=now()-interval '24 hours'),
- (SELECT count(*) FROM graduations WHERE chain_id=$1),now()
+SELECT sqlc.arg(chain_id),
+ COALESCE(recent.volume,0),
+ COALESCE(daily.volume,0),
+ (SELECT count(*) FROM token_launches WHERE chain_id=sqlc.arg(chain_id) AND block_time>=now()-interval '24 hours'),
+ COALESCE(daily.launches,0)::integer,
+ recent.trades,
+ COALESCE(daily.trades,0)::bigint,
+ (SELECT count(*) FROM graduations WHERE chain_id=sqlc.arg(chain_id) AND block_time>=now()-interval '24 hours'),
+ COALESCE(daily.graduations,0)::integer,
+ sqlc.narg(daily_through_block)::bigint,
+ now()
+FROM (
+ SELECT sum(volume_eth_wad) AS volume, sum(launches_count) AS launches,
+        sum(trades_count) AS trades, sum(graduations_count) AS graduations
+ FROM protocol_daily WHERE chain_id=sqlc.arg(chain_id)
+) AS daily
+CROSS JOIN (
+ -- One pass over the 24h market_trades window for both volume and count.
+ SELECT sum(gross_eth_volume) AS volume, count(*) AS trades
+ FROM market_trades WHERE chain_id=sqlc.arg(chain_id) AND block_time>=now()-interval '24 hours'
+) AS recent
 ON CONFLICT (chain_id) DO UPDATE SET
  volume_24h_eth_wad=EXCLUDED.volume_24h_eth_wad,volume_all_time_eth_wad=EXCLUDED.volume_all_time_eth_wad,
  launches_24h=EXCLUDED.launches_24h,launches_all_time=EXCLUDED.launches_all_time,
  trades_24h=EXCLUDED.trades_24h,trades_all_time=EXCLUDED.trades_all_time,
- graduations_24h=EXCLUDED.graduations_24h,graduations_all_time=EXCLUDED.graduations_all_time,updated_at=EXCLUDED.updated_at;
+ graduations_24h=EXCLUDED.graduations_24h,graduations_all_time=EXCLUDED.graduations_all_time,
+ daily_through_block=EXCLUDED.daily_through_block,updated_at=EXCLUDED.updated_at;
 
 -- Marks every token with a canonical trade or DEX swap in [window_from, window_to) dirty.
 -- name: MarkTokensDirtyInWindow :execrows
