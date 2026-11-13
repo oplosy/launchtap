@@ -5,6 +5,7 @@ import type { WalletPositionsResponse } from "@/api/client";
 import { shortAddress } from "@/token/address";
 import { Badge, Button, EmptyState, ErrorState, Skeleton } from "@/components/primitives";
 import { formatSignificantPrice } from "@/amounts";
+import { PriceText } from "@/components/price-text";
 import { UsdLine } from "@/market/usd-line";
 import {
   eth,
@@ -234,9 +235,13 @@ export function Holdings({
                   {tokenAmount(item.balance)}
                 </span>
                 <span role="cell" className="mono">
-                  {item.average_cost_wad === null
-                    ? "—"
-                    : (formatSignificantPrice(item.average_cost_wad) ?? "Unavailable")}
+                  {item.average_cost_wad === null ? (
+                    "—"
+                  ) : (
+                    <PriceText
+                      value={formatSignificantPrice(item.average_cost_wad) ?? "Unavailable"}
+                    />
+                  )}
                 </span>
                 <span role="cell" className="mono">
                   {eth(item.current_value_wei)}

@@ -6,6 +6,7 @@ import type { components } from "@/api/generated";
 import { ApiClient } from "@/api/client";
 import { UsdLine } from "@/market/usd-line";
 import { Badge, EmptyState, ErrorState, Skeleton } from "@/components/primitives";
+import { PriceText } from "@/components/price-text";
 import { walletPath } from "@/portfolio/wallet-model";
 import { parseTokenAddress, shortAddress } from "./address";
 import { creatorHistoryLine } from "./creator-history";
@@ -83,9 +84,13 @@ export function Trades({
               "—"
             ) : (
               <>
-                {safeMarketValue(item.execution_price)} /{" "}
+                <PriceText value={safeMarketValue(item.execution_price)} /> /{" "}
                 {/* A live row has no spot price until the next REST refresh. */}
-                {item.spot_price === "" ? "—" : safeMarketValue(item.spot_price)}
+                {item.spot_price === "" ? (
+                  "—"
+                ) : (
+                  <PriceText value={safeMarketValue(item.spot_price)} />
+                )}
                 <UsdLine wei={item.execution_price} />
               </>
             )}

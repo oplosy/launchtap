@@ -211,7 +211,7 @@ describe("priceFormatFor", () => {
     const at = (high: number) => [{ time: 1, open: high, high, low: high, close: high, volume: 0 }];
     expect(priceFormatFor([]).formatter(1.5)).toBe("1.50");
     expect(priceFormatFor(at(1.5)).formatter(1.5)).toBe("1.500");
-    expect(priceFormatFor(at(0.00000001234)).formatter(0.00000001234)).toBe("0.00000001234");
+    expect(priceFormatFor(at(0.00000001234)).formatter(0.00000001234)).toBe("0.0₇1234");
     expect(priceFormatFor(at(1e-30)).minMove).toBe(1e-15);
   });
 });
