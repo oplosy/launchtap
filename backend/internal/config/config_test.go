@@ -22,6 +22,7 @@ func TestLoadParsesCompleteConfiguration(t *testing.T) {
 	env["INDEXER_REORG_SEARCH_DEPTH"] = "512"
 	env["INDEXER_REORG_RECOVERY_MODE"] = "true"
 	env["INDEXER_LOG_ADDRESS_BATCH_SIZE"] = "750"
+	env["INDEXER_LOG_FETCH_CONCURRENCY"] = "8"
 	env["INDEXER_POLL_INTERVAL"] = "2s"
 	env["RPC_TIMEOUT"] = "15s"
 	env["RPC_MAX_RETRIES"] = "5"
@@ -58,6 +59,7 @@ func TestLoadParsesCompleteConfiguration(t *testing.T) {
 		IndexerReorgSearchDepth:       512,
 		IndexerReorgRecoveryMode:      true,
 		IndexerLogAddressBatchSize:    750,
+		IndexerLogFetchConcurrency:    8,
 		IndexerPollInterval:           2 * time.Second,
 		RPCTimeout:                    15 * time.Second,
 		RPCMaxRetries:                 5,
@@ -103,6 +105,7 @@ func TestConfigEnvironmentMapping(t *testing.T) {
 		"IndexerReorgSearchDepth":       "INDEXER_REORG_SEARCH_DEPTH",
 		"IndexerReorgRecoveryMode":      "INDEXER_REORG_RECOVERY_MODE",
 		"IndexerLogAddressBatchSize":    "INDEXER_LOG_ADDRESS_BATCH_SIZE",
+		"IndexerLogFetchConcurrency":    "INDEXER_LOG_FETCH_CONCURRENCY",
 		"IndexerPollInterval":           "INDEXER_POLL_INTERVAL",
 		"RPCTimeout":                    "RPC_TIMEOUT",
 		"RPCMaxRetries":                 "RPC_MAX_RETRIES",
@@ -200,6 +203,9 @@ func TestLoadUsesBoundedDefaults(t *testing.T) {
 	}
 	if got.IndexerLogAddressBatchSize != 500 {
 		t.Errorf("IndexerLogAddressBatchSize = %d, want 500", got.IndexerLogAddressBatchSize)
+	}
+	if got.IndexerLogFetchConcurrency != 4 {
+		t.Errorf("IndexerLogFetchConcurrency = %d, want 4", got.IndexerLogFetchConcurrency)
 	}
 	if got.IndexerPollInterval != time.Second {
 		t.Errorf("IndexerPollInterval = %v, want 1s", got.IndexerPollInterval)
@@ -385,6 +391,8 @@ func TestLoadRejectsInvalidBoundedSettings(t *testing.T) {
 		{name: "invalid reorg recovery mode", field: "INDEXER_REORG_RECOVERY_MODE", value: "yes"},
 		{name: "zero address batch", field: "INDEXER_LOG_ADDRESS_BATCH_SIZE", value: "0"},
 		{name: "address batch above provider maximum", field: "INDEXER_LOG_ADDRESS_BATCH_SIZE", value: "2001"},
+		{name: "zero log fetch concurrency", field: "INDEXER_LOG_FETCH_CONCURRENCY", value: "0"},
+		{name: "log fetch concurrency above maximum", field: "INDEXER_LOG_FETCH_CONCURRENCY", value: "17"},
 		{name: "zero poll interval", field: "INDEXER_POLL_INTERVAL", value: "0s"},
 		{name: "invalid RPC timeout", field: "RPC_TIMEOUT", value: "soon"},
 		{name: "too many retries", field: "RPC_MAX_RETRIES", value: "21"},

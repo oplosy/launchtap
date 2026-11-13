@@ -25,6 +25,8 @@ type Discoverer struct {
 	verifyLaunchPair func(context.Context, TokenLaunched) error
 	// v4 is set only for an engine-2 discoverer (NewDiscovererV2).
 	v4 *V4Config
+	// slots caps eth_getLogs calls in flight; nil fetches sequentially (WithLogConcurrency).
+	slots chan struct{}
 }
 
 func NewDiscoverer(source LogSource, decoder *Decoder, factory common.Address, addressBatchSize uint64) (*Discoverer, error) {
@@ -111,11 +113,15 @@ func (d *Discoverer) Discover(ctx context.Context, from, to uint64, known Emitte
 	// Curve events have protocol-unique signatures, so one topic-only query covers every known
 	// and newly launched curve instead of one address-batched query per 500 curves. Logs from
 	// other contracts that reuse these signatures are not ours and are dropped.
-	curveLogs, err := d.fetchByTopics(ctx, from, to, d.decoder.Topics(EmitterCurve), emitters.Curves)
-	if err != nil {
-		return DiscoveryResult{}, fmt.Errorf("fetch curve logs by topic: %w", err)
-	}
-	allLogs = append(allLogs, curveLogs...)
+	// The factory logs above name the new emitters; every query below is independent of the
+	// others, so they may run concurrently (WithLogConcurrency).
+	jobs := []logJob{func(ctx context.Context) ([]types.Log, error) {
+		logs, fetchErr := d.fetchByTopics(ctx, from, to, d.decoder.Topics(EmitterCurve), emitters.Curves)
+		if fetchErr != nil {
+			return nil, fmt.Errorf("fetch curve logs by topic: %w", fetchErr)
+		}
+		return logs, nil
+	}}
 
 	launchBlocks := make([]uint64, 0, len(newByBlock))
 	for block := range newByBlock {
@@ -127,21 +133,30 @@ func (d *Discoverer) Discover(ctx context.Context, from, to uint64, known Emitte
 		// Token Transfer and pair events use standard ERC-20/Uniswap signatures, so they stay
 		// address-filtered.
 		for _, kind := range []EmitterKind{EmitterToken, EmitterPair} {
-			logs, fetchErr := d.fetch(ctx, block, to, addressesFor(fresh, kind), d.decoder.Topics(kind))
-			if fetchErr != nil {
-				return DiscoveryResult{}, fmt.Errorf("refetch discovered addresses from block %d: %w", block, fetchErr)
-			}
-			allLogs = append(allLogs, logs...)
+			jobs = append(jobs, func(ctx context.Context) ([]types.Log, error) {
+				logs, fetchErr := d.fetch(ctx, block, to, addressesFor(fresh, kind), d.decoder.Topics(kind))
+				if fetchErr != nil {
+					return nil, fmt.Errorf("refetch discovered addresses from block %d: %w", block, fetchErr)
+				}
+				return logs, nil
+			})
 		}
 	}
 
 	for _, kind := range []EmitterKind{EmitterToken, EmitterPair} {
-		logs, fetchErr := d.fetch(ctx, from, to, addressesFor(known, kind), d.decoder.Topics(kind))
-		if fetchErr != nil {
-			return DiscoveryResult{}, fmt.Errorf("fetch known emitter kind %d: %w", kind, fetchErr)
-		}
-		allLogs = append(allLogs, logs...)
+		jobs = append(jobs, func(ctx context.Context) ([]types.Log, error) {
+			logs, fetchErr := d.fetch(ctx, from, to, addressesFor(known, kind), d.decoder.Topics(kind))
+			if fetchErr != nil {
+				return nil, fmt.Errorf("fetch known emitter kind %d: %w", kind, fetchErr)
+			}
+			return logs, nil
+		})
 	}
+	results, err := d.runLogJobs(ctx, jobs)
+	if err != nil {
+		return DiscoveryResult{}, err
+	}
+	allLogs = append(allLogs, concatLogs(results)...)
 
 	deduplicated, err := deduplicateAndSort(allLogs)
 	if err != nil {
@@ -155,33 +170,39 @@ func (d *Discoverer) fetch(ctx context.Context, from, to uint64, addresses []com
 		return nil, nil
 	}
 	slices.SortFunc(addresses, func(a, b common.Address) int { return bytes.Compare(a[:], b[:]) })
-	result := make([]types.Log, 0)
+	allowedTopics := make(map[common.Hash]struct{}, len(topics))
+	for _, topic := range topics {
+		allowedTopics[topic] = struct{}{}
+	}
+	jobs := make([]logJob, 0, (len(addresses)+d.addressBatchSize-1)/d.addressBatchSize)
 	for start := 0; start < len(addresses); start += d.addressBatchSize {
 		end := min(start+d.addressBatchSize, len(addresses))
 		batch := addresses[start:end]
-		logs, err := d.fetchRange(ctx, from, to, batch, topics)
-		if err != nil {
-			return nil, err
-		}
-		allowedAddresses := NewAddressSet(batch...)
-		allowedTopics := make(map[common.Hash]struct{}, len(topics))
-		for _, topic := range topics {
-			allowedTopics[topic] = struct{}{}
-		}
-		for _, log := range logs {
-			if _, ok := allowedAddresses[log.Address]; !ok {
-				return nil, &EmitterError{Address: log.Address, Coordinates: coordinates(log)}
+		jobs = append(jobs, func(ctx context.Context) ([]types.Log, error) {
+			logs, err := d.fetchRange(ctx, from, to, batch, topics)
+			if err != nil {
+				return nil, err
 			}
-			if len(log.Topics) == 0 {
-				return nil, &LogError{Coordinates: coordinates(log), Err: fmt.Errorf("%w: missing topic0", ErrMalformedLog)}
+			allowedAddresses := NewAddressSet(batch...)
+			for _, log := range logs {
+				if _, ok := allowedAddresses[log.Address]; !ok {
+					return nil, &EmitterError{Address: log.Address, Coordinates: coordinates(log)}
+				}
+				if len(log.Topics) == 0 {
+					return nil, &LogError{Coordinates: coordinates(log), Err: fmt.Errorf("%w: missing topic0", ErrMalformedLog)}
+				}
+				if _, ok := allowedTopics[log.Topics[0]]; !ok {
+					return nil, &LogError{Coordinates: coordinates(log), Err: fmt.Errorf("%w: %s", ErrUnknownTopic, log.Topics[0])}
+				}
 			}
-			if _, ok := allowedTopics[log.Topics[0]]; !ok {
-				return nil, &LogError{Coordinates: coordinates(log), Err: fmt.Errorf("%w: %s", ErrUnknownTopic, log.Topics[0])}
-			}
-		}
-		result = append(result, logs...)
+			return logs, nil
+		})
 	}
-	return result, nil
+	results, err := d.runLogJobs(ctx, jobs)
+	if err != nil {
+		return nil, err
+	}
+	return concatLogs(results), nil
 }
 
 // fetchByTopics queries a range by event signature only and keeps logs from allowed emitters.
@@ -225,7 +246,7 @@ func (d *Discoverer) fetchRange(ctx context.Context, from, to uint64, addresses 
 // the provider reports a capacity error.
 func (d *Discoverer) fetchRangeTopics(ctx context.Context, from, to uint64, addresses []common.Address, topics [][]common.Hash) ([]types.Log, error) {
 	query := ethereum.FilterQuery{FromBlock: new(big.Int).SetUint64(from), ToBlock: new(big.Int).SetUint64(to), Addresses: addresses, Topics: topics}
-	logs, err := d.source.FilterLogs(ctx, query)
+	logs, err := d.filterLogs(ctx, query)
 	if err == nil {
 		return logs, nil
 	}
