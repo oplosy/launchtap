@@ -1,6 +1,9 @@
+import type { Metadata } from "next";
 import { ProfileView } from "@/profile/profile-view";
 import { publicConfiguration } from "@/config/public";
 import { UnavailableState } from "@/components/primitives";
+
+export const metadata: Metadata = { title: "Profile" };
 
 export default function ProfilePage() {
   const configuration = publicConfiguration();

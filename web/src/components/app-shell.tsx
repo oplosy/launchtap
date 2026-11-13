@@ -124,7 +124,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         onPointerLeave={hoverLeave}
       >
         <div className="navbar-inner">
-          <Link className="navbar-brand" href="/" aria-label="Open home">
+          <Link className="navbar-brand" href="/">
             Launchpad
           </Link>
           <nav className="navbar-links" aria-label="Primary">

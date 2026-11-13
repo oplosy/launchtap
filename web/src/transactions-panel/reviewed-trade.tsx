@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { Abi } from "viem";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { parseDecimal } from "@/amounts";
@@ -8,6 +8,7 @@ import { publicConfiguration } from "@/config/public";
 import { TradeUsdHint } from "@/market/usd-line";
 import { Button, Input } from "@/components/primitives";
 import { useWalletReadiness } from "@/wallet/readiness";
+import { WalletConnectButton } from "@/wallet/connection-context";
 import type { PersistedTransactionAction } from "@/transaction-storage";
 import {
   classifyTransactionFailure,
@@ -407,6 +408,15 @@ export function ReviewNotice({ notice }: { notice: string | null }) {
       {notice}
     </p>
   ) : null;
+}
+
+/**
+ * With no wallet selected the primary action is connecting one: a disabled "Review" button would
+ * not say why it cannot be pressed.
+ */
+export function ConnectOr({ write, children }: { write: ReviewedWrite; children: ReactNode }) {
+  if (write.readiness.address) return <>{children}</>;
+  return <WalletConnectButton className="trade-wallet-button" variant="primary" size="lg" />;
 }
 
 /** Back and sign buttons under a confirmation. */

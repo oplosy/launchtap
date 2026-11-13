@@ -51,15 +51,19 @@ export function LeaderboardView({
   return (
     <div className="analytics-table" role="table" aria-label="Leaderboard">
       <div className="analytics-row leaderboard-row analytics-heading" role="row">
-        <span className="leaderboard-rank">Rank</span>
-        <span>Wallet</span>
-        <span>Realized PnL</span>
-        <span>Tokens traded</span>
+        <span role="cell" className="leaderboard-rank">
+          Rank
+        </span>
+        <span role="cell">Wallet</span>
+        <span role="cell">Realized PnL</span>
+        <span role="cell">Tokens traded</span>
       </div>
       {items.map((item) => (
         <div className="analytics-row leaderboard-row" role="row" key={item.address}>
-          <span className="mono leaderboard-rank">{item.rank.toLocaleString("en-US")}</span>
-          <span className="mono">
+          <span role="cell" className="mono leaderboard-rank">
+            {item.rank.toLocaleString("en-US")}
+          </span>
+          <span role="cell" className="mono">
             <Link
               href={walletPath(item.address) as never}
               title={item.username ? shortAddress(item.address) : item.address}
@@ -67,10 +71,12 @@ export function LeaderboardView({
               {item.username ? `@${item.username}` : shortAddress(item.address)}
             </Link>
           </span>
-          <span className={`mono pnl pnl-${pnlTone(item.realized_pnl_wei)}`}>
+          <span role="cell" className={`mono pnl pnl-${pnlTone(item.realized_pnl_wei)}`}>
             {formatSignedEth(item.realized_pnl_wei)}
           </span>
-          <span className="mono">{item.tokens_traded.toLocaleString("en-US")}</span>
+          <span role="cell" className="mono">
+            {item.tokens_traded.toLocaleString("en-US")}
+          </span>
         </div>
       ))}
     </div>

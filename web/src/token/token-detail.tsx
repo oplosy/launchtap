@@ -72,7 +72,12 @@ export function TokenDetail({
   const { sheetSide, setSheetSide, asideRef } = useTradeSheet();
   const explorer = addressExplorerUrl(configuration, tokenAddress);
   const market = marketLinks(configuration.deployment, token?.pair ?? null, token?.phase ?? "");
-  const currentImageUrl = resolveApiAssetUrl(configuration.apiBaseUrl, token?.image_url);
+  // The same artwork route the cards use: it serves the uploaded image or the generated artwork, so
+  // the header never falls back to a letter while the card shows a picture.
+  const currentImageUrl = resolveApiAssetUrl(
+    configuration.apiBaseUrl,
+    `/v1/tokens/${encodeURIComponent(tokenAddress)}/image`,
+  );
 
   if (configuration.status !== "ready") return <TokenUnavailable address={tokenAddress} />;
   if (loading) return <TokenSkeleton />;

@@ -28,6 +28,7 @@ import {
   TransactionProgress,
 } from "./shared";
 import {
+  ConnectOr,
   ReviewActions,
   ReviewNotice,
   TradeAmountFields,
@@ -435,7 +436,7 @@ function TradingPanelReady({
           <TradeAmountFields
             trade={trade}
             symbol={token.symbol}
-            inputHint="Integer base units are used for signing; decimals are presentation only."
+            inputHint="Up to 18 decimal places."
             slippageHint="Minimum output is rounded down on-chain. At most 50%."
           />
           {quoteError ? (
@@ -490,20 +491,22 @@ function TradingPanelReady({
         ) : (
           <>
             <ReviewNotice notice={reviewNotice} />
-            <Button
-              variant="primary"
-              size="lg"
-              disabled={
-                executionBusy ||
-                !canTrade ||
-                !transaction.ready ||
-                (side === "sell" && !approvalTransaction.ready) ||
-                trade.unresolved
-              }
-              onClick={() => void prepareTradeReview()}
-            >
-              {side === "sell" && approvalHash ? "Resume sell" : `Review ${side}`}
-            </Button>
+            <ConnectOr write={trade}>
+              <Button
+                variant="primary"
+                size="lg"
+                disabled={
+                  executionBusy ||
+                  !canTrade ||
+                  !transaction.ready ||
+                  (side === "sell" && !approvalTransaction.ready) ||
+                  trade.unresolved
+                }
+                onClick={() => void prepareTradeReview()}
+              >
+                {side === "sell" && approvalHash ? "Resume sell" : `Review ${side}`}
+              </Button>
+            </ConnectOr>
           </>
         )}
       </TradeSideTabs>

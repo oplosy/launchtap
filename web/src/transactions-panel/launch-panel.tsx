@@ -123,6 +123,9 @@ function LaunchPanelReady() {
     telegramUrl,
     developerBuyGross: buyUnits ?? -1n,
   });
+  // Shown under a field once it has content; an empty required field only keeps review disabled.
+  const fieldError = (field: keyof typeof validMetadata, input: string) =>
+    input.trim() ? validMetadata[field] : undefined;
   const canReview =
     Object.keys(validMetadata).length === 0 &&
     value !== null &&
@@ -233,6 +236,7 @@ function LaunchPanelReady() {
                     value={imageUrl}
                     onChange={(event) => edit(setImageUrl)(event.target.value)}
                     placeholder="https://…"
+                    error={fieldError("imageUrl", imageUrl)}
                     info="An https image URL. It becomes the token's artwork on cards and its page."
                   />
                   {imageUrl ? (
@@ -252,6 +256,7 @@ function LaunchPanelReady() {
                       onChange={(event) => edit(setName)(event.target.value)}
                       maxLength={64}
                       placeholder="Token name"
+                      error={fieldError("name", name)}
                     />
                     <Input
                       label="Ticker"
@@ -259,6 +264,7 @@ function LaunchPanelReady() {
                       onChange={(event) => edit(setSymbol)(event.target.value.toUpperCase())}
                       maxLength={16}
                       placeholder="Symbol"
+                      error={fieldError("symbol", symbol)}
                       info="Up to 16 characters, shown in capitals."
                     />
                   </div>
@@ -278,12 +284,14 @@ function LaunchPanelReady() {
                       value={xUrl}
                       onChange={(event) => edit(setXUrl)(event.target.value)}
                       placeholder="https://x.com/handle"
+                      error={fieldError("xUrl", xUrl)}
                     />
                     <Input
                       label="Telegram"
                       value={telegramUrl}
                       onChange={(event) => edit(setTelegramUrl)(event.target.value)}
                       placeholder="https://t.me/community"
+                      error={fieldError("telegramUrl", telegramUrl)}
                     />
                   </div>
                 </section>
@@ -307,11 +315,16 @@ function LaunchPanelReady() {
                       </div>
                     </div>
                     <Input
-                      label="Developer buy"
+                      label="Developer buy (ETH)"
                       value={buy}
                       onChange={(event) => edit(setBuy)(event.target.value)}
                       inputMode="decimal"
                       placeholder="0 ETH, optional"
+                      error={
+                        buyUnits === null
+                          ? "Enter an ETH amount, like 0.1."
+                          : fieldError("developerBuyGross", buy)
+                      }
                       info={
                         engineVersion === 2
                           ? "Optional. Launch value is the launch fee plus this buy. The developer buy is exempt from the anti-snipe tax."

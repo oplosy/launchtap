@@ -111,7 +111,12 @@ export function MarketChart({
   return (
     <div className="market-chart-wrap">
       {points.length ? (
-        <div ref={hostRef} className="market-chart" aria-label={`${mode} market chart`} />
+        <div
+          ref={hostRef}
+          className="market-chart"
+          role="img"
+          aria-label={`${mode} market chart`}
+        />
       ) : (
         <p className="chart-empty">No candles in this range.</p>
       )}

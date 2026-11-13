@@ -17,7 +17,7 @@ export function CopyAddress({ address }: { address: string }) {
       type="button"
       className="copy-address mono"
       title={address}
-      aria-label={copied ? "Address copied" : `Copy address ${address}`}
+      aria-label={`${shortAddress(address)}, ${copied ? "copied" : "copy address"}`}
       onClick={() =>
         void navigator.clipboard
           ?.writeText(address)
