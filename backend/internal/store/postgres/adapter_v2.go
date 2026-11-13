@@ -32,6 +32,10 @@ func (adapter *Adapter) InsertTokenLaunchV2(ctx context.Context, event ledger.To
 
 // IngestTokenLaunchV2 writes the launch and its tokens row, which carries the v2 columns.
 func (adapter *Adapter) IngestTokenLaunchV2(ctx context.Context, event ledger.TokenLaunchV2) (ledger.InsertResult, error) {
+	// A launch adds the token and its curve and locker exclusions, and clears launch-mint marks;
+	// marks written before it in this transaction resolved without the token, so they are forgotten too.
+	adapter.forgetDirtyMarks()
+	defer adapter.forgetDirtyMarks()
 	result, err := adapter.InsertTokenLaunchV2(ctx, event)
 	if err != nil || !result.Inserted {
 		return result, err
@@ -85,6 +89,8 @@ func (adapter *Adapter) InsertGraduationV2(ctx context.Context, event ledger.Gra
 // IngestGraduationV2 moves the token to the graduated phase, registers its V4 pool, and prices
 // the token from the pool's opening sqrtPriceX96.
 func (adapter *Adapter) IngestGraduationV2(ctx context.Context, event ledger.GraduationV2) (ledger.InsertResult, error) {
+	// A graduation registers the V4 pool that pool marks resolve against.
+	defer adapter.forgetDirtyMarks()
 	result, err := adapter.InsertGraduationV2(ctx, event)
 	if err != nil || !result.Inserted {
 		return result, err
@@ -192,12 +198,23 @@ func (adapter *Adapter) IngestV4Swap(ctx context.Context, event ledger.V4Swap) (
 		return ledger.InsertResult{}, fmt.Errorf("apply V4 swap candles: %w", err)
 	}
 	poolID := sqlc.Hash(event.PoolID)
-	if err := adapter.queries.MarkV4PoolTokenDirty(ctx, sqlc.MarkV4PoolTokenDirtyParams{ChainID: event.ChainID, PoolID: &poolID}); err != nil {
-		return ledger.InsertResult{}, fmt.Errorf("mark V4 pool token dirty: %w", err)
+	if err := adapter.markOnce(dirtyMark{kind: markV4PoolToken, chainID: event.ChainID, subject: event.PoolID}, func() error {
+		if err := adapter.queries.MarkV4PoolTokenDirty(ctx, sqlc.MarkV4PoolTokenDirtyParams{ChainID: event.ChainID, PoolID: &poolID}); err != nil {
+			return fmt.Errorf("mark V4 pool token dirty: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return ledger.InsertResult{}, err
 	}
 	if event.TxFrom != nil {
-		if err := adapter.queries.MarkV4SwapPositionDirty(ctx, sqlc.MarkV4SwapPositionDirtyParams{ChainID: event.ChainID, PoolID: poolID[:], TxFrom: event.TxFrom[:], Factory: adapter.factory[:]}); err != nil {
-			return ledger.InsertResult{}, fmt.Errorf("mark V4 swap position dirty: %w", err)
+		sender := *event.TxFrom
+		if err := adapter.markOnce(dirtyMark{kind: markV4SwapPosition, chainID: event.ChainID, subject: event.PoolID, wallet: sender}, func() error {
+			if err := adapter.queries.MarkV4SwapPositionDirty(ctx, sqlc.MarkV4SwapPositionDirtyParams{ChainID: event.ChainID, PoolID: poolID[:], TxFrom: sender[:], Factory: adapter.factory[:]}); err != nil {
+				return fmt.Errorf("mark V4 swap position dirty: %w", err)
+			}
+			return nil
+		}); err != nil {
+			return ledger.InsertResult{}, err
 		}
 	}
 	return result, nil

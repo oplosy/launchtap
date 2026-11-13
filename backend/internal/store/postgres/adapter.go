@@ -51,6 +51,9 @@ type Adapter struct {
 	beginner TransactionBeginner
 	// factory is excluded from wallet position tracking (R4). The zero value is already excluded.
 	factory common.Address
+	// marks remembers the dirty marks written in this transaction; nil marks every time
+	// (WithDirtyMarkDedupe).
+	marks map[dirtyMark]struct{}
 }
 
 func NewAdapter(db DBTX) *Adapter {
@@ -67,10 +70,12 @@ func (adapter *Adapter) WithFactory(factory common.Address) *Adapter {
 }
 
 func (adapter *Adapter) markPositionDirty(ctx context.Context, chainID int64, wallet, token common.Address) error {
-	if err := adapter.queries.MarkPositionDirty(ctx, sqlc.MarkPositionDirtyParams{ChainID: chainID, Wallet: wallet[:], TokenAddress: token[:], Factory: adapter.factory[:]}); err != nil {
-		return fmt.Errorf("mark position dirty: %w", err)
-	}
-	return nil
+	return adapter.markOnce(dirtyMark{kind: markPosition, chainID: chainID, subject: addressSubject(token), wallet: wallet}, func() error {
+		if err := adapter.queries.MarkPositionDirty(ctx, sqlc.MarkPositionDirtyParams{ChainID: chainID, Wallet: wallet[:], TokenAddress: token[:], Factory: adapter.factory[:]}); err != nil {
+			return fmt.Errorf("mark position dirty: %w", err)
+		}
+		return nil
+	})
 }
 
 func (adapter *Adapter) InsertTrade(ctx context.Context, trade ledger.Trade) (ledger.InsertResult, error) {
@@ -276,6 +281,10 @@ func (adapter *Adapter) insertEvent(ctx context.Context, entity string, coordina
 
 // IngestTokenLaunch writes a canonical launch and its projection only once.
 func (adapter *Adapter) IngestTokenLaunch(ctx context.Context, event ledger.TokenLaunch) (ledger.InsertResult, error) {
+	// A launch adds the token, its curve and pair exclusions, and clears launch-mint marks; marks
+	// written before it in this transaction resolved without the token, so they are forgotten too.
+	adapter.forgetDirtyMarks()
+	defer adapter.forgetDirtyMarks()
 	result, err := adapter.InsertTokenLaunch(ctx, event)
 	if err != nil || !result.Inserted {
 		return result, err
@@ -284,8 +293,8 @@ func (adapter *Adapter) IngestTokenLaunch(ctx context.Context, event ledger.Toke
 	if err := adapter.queries.ApplyTokenLaunchProjection(ctx, identity); err != nil {
 		return ledger.InsertResult{}, fmt.Errorf("apply token launch projection: %w", err)
 	}
-	if err := adapter.queries.MarkTokenDirty(ctx, sqlc.MarkTokenDirtyParams{ChainID: event.ChainID, TokenAddress: sqlc.Address(event.Token)}); err != nil {
-		return ledger.InsertResult{}, fmt.Errorf("mark token dirty: %w", err)
+	if err := adapter.markTokenDirty(ctx, event.ChainID, event.Token); err != nil {
+		return ledger.InsertResult{}, err
 	}
 	// The launch mint is ingested before this row exists, so it was marked as a position (R4).
 	if err := adapter.queries.ClearLaunchPositionDirty(ctx, sqlc.ClearLaunchPositionDirtyParams{ChainID: event.ChainID, TokenAddress: event.Token[:], Curve: event.Curve[:], LpPair: event.LPPair[:]}); err != nil {
@@ -313,13 +322,15 @@ func (adapter *Adapter) applyTradeProjections(ctx context.Context, event ledger.
 	if err := adapter.queries.ApplyMarketTradeCandles(ctx, sqlc.ApplyMarketTradeCandlesParams(identity)); err != nil {
 		return fmt.Errorf("apply trade candles: %w", err)
 	}
-	if err := adapter.queries.MarkTokenDirty(ctx, sqlc.MarkTokenDirtyParams{ChainID: event.ChainID, TokenAddress: sqlc.Address(event.Token)}); err != nil {
-		return fmt.Errorf("mark token dirty: %w", err)
+	if err := adapter.markTokenDirty(ctx, event.ChainID, event.Token); err != nil {
+		return err
 	}
 	return adapter.markPositionDirty(ctx, event.ChainID, event.Trader, event.Token)
 }
 
 func (adapter *Adapter) IngestGraduation(ctx context.Context, event ledger.Graduation) (ledger.InsertResult, error) {
+	// A graduation moves the token to its pair, which pair marks resolve against.
+	defer adapter.forgetDirtyMarks()
 	result, err := adapter.InsertGraduation(ctx, event)
 	if err != nil || !result.Inserted {
 		return result, err
@@ -331,8 +342,8 @@ func (adapter *Adapter) IngestGraduation(ctx context.Context, event ledger.Gradu
 	if err := adapter.queries.ApplyGraduationPoolSyncReserveProjection(ctx, sqlc.ApplyGraduationPoolSyncReserveProjectionParams(identity)); err != nil {
 		return ledger.InsertResult{}, fmt.Errorf("apply graduation pool sync reserve projection: %w", err)
 	}
-	if err := adapter.queries.MarkTokenDirty(ctx, sqlc.MarkTokenDirtyParams{ChainID: event.ChainID, TokenAddress: sqlc.Address(event.Token)}); err != nil {
-		return ledger.InsertResult{}, fmt.Errorf("mark token dirty: %w", err)
+	if err := adapter.markTokenDirty(ctx, event.ChainID, event.Token); err != nil {
+		return ledger.InsertResult{}, err
 	}
 	return result, nil
 }
@@ -353,11 +364,11 @@ func (adapter *Adapter) IngestTransfer(ctx context.Context, event ledger.Transfe
 	if !applied.Valid || !applied.Bool {
 		return ledger.InsertResult{}, &NegativeBalanceError{Token: event.Token.Hex(), Holder: event.From.Hex(), Key: eventKey(event.ChainID, sqlc.Hash(event.TxHash), event.LogIndex)}
 	}
-	if err := adapter.queries.MarkTokenDirty(ctx, sqlc.MarkTokenDirtyParams{ChainID: event.ChainID, TokenAddress: sqlc.Address(event.Token)}); err != nil {
-		return ledger.InsertResult{}, fmt.Errorf("mark token dirty: %w", err)
+	if err := adapter.markTokenDirty(ctx, event.ChainID, event.Token); err != nil {
+		return ledger.InsertResult{}, err
 	}
-	if err := adapter.queries.MarkTransferPositionsDirty(ctx, sqlc.MarkTransferPositionsDirtyParams{ChainID: event.ChainID, TokenAddress: event.Token[:], FromAddress: event.From[:], ToAddress: event.To[:], Factory: adapter.factory[:]}); err != nil {
-		return ledger.InsertResult{}, fmt.Errorf("mark transfer positions dirty: %w", err)
+	if err := adapter.markTransferPositionsDirty(ctx, event); err != nil {
+		return ledger.InsertResult{}, err
 	}
 	return result, nil
 }
@@ -371,8 +382,8 @@ func (adapter *Adapter) IngestPoolSync(ctx context.Context, event ledger.PoolSyn
 	if err := adapter.queries.ApplyPoolSyncReserveProjection(ctx, sqlc.ApplyPoolSyncReserveProjectionParams(identity)); err != nil {
 		return ledger.InsertResult{}, fmt.Errorf("apply pool sync reserve projection: %w", err)
 	}
-	if err := adapter.queries.MarkPairTokenDirty(ctx, sqlc.MarkPairTokenDirtyParams{ChainID: event.ChainID, LpPair: addressPointer(event.Pair)}); err != nil {
-		return ledger.InsertResult{}, fmt.Errorf("mark pair token dirty: %w", err)
+	if err := adapter.markPairTokenDirty(ctx, event.ChainID, event.Pair); err != nil {
+		return ledger.InsertResult{}, err
 	}
 	return result, nil
 }
@@ -386,15 +397,21 @@ func (adapter *Adapter) IngestPoolSwap(ctx context.Context, event ledger.PoolSwa
 	if err := adapter.queries.ApplyMarketTradeCandles(ctx, sqlc.ApplyMarketTradeCandlesParams(identity)); err != nil {
 		return ledger.InsertResult{}, fmt.Errorf("apply pool swap candles: %w", err)
 	}
-	if err := adapter.queries.MarkPairTokenDirty(ctx, sqlc.MarkPairTokenDirtyParams{ChainID: event.ChainID, LpPair: addressPointer(event.Pair)}); err != nil {
-		return ledger.InsertResult{}, fmt.Errorf("mark pair token dirty: %w", err)
+	if err := adapter.markPairTokenDirty(ctx, event.ChainID, event.Pair); err != nil {
+		return ledger.InsertResult{}, err
 	}
-	var txFrom []byte
-	if event.TxFrom != nil {
-		txFrom = event.TxFrom[:]
+	// The query is a no-op for an unknown sender (NULL tx_from), so skip the round trip.
+	if event.TxFrom == nil {
+		return result, nil
 	}
-	if err := adapter.queries.MarkPoolSwapPositionDirty(ctx, sqlc.MarkPoolSwapPositionDirtyParams{ChainID: event.ChainID, Pair: event.Pair[:], TxFrom: txFrom, Factory: adapter.factory[:]}); err != nil {
-		return ledger.InsertResult{}, fmt.Errorf("mark pool swap position dirty: %w", err)
+	sender := *event.TxFrom
+	if err := adapter.markOnce(dirtyMark{kind: markPairSwapPosition, chainID: event.ChainID, subject: addressSubject(event.Pair), wallet: sender}, func() error {
+		if err := adapter.queries.MarkPoolSwapPositionDirty(ctx, sqlc.MarkPoolSwapPositionDirtyParams{ChainID: event.ChainID, Pair: event.Pair[:], TxFrom: sender[:], Factory: adapter.factory[:]}); err != nil {
+			return fmt.Errorf("mark pool swap position dirty: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return ledger.InsertResult{}, err
 	}
 	return result, nil
 }
@@ -469,16 +486,41 @@ func (adapter *Adapter) IngestFutureTreasuryConfiguration(ctx context.Context, e
 }
 
 func (adapter *Adapter) markTokenDirty(ctx context.Context, chainID int64, token common.Address) error {
-	if err := adapter.queries.MarkTokenDirty(ctx, sqlc.MarkTokenDirtyParams{ChainID: chainID, TokenAddress: sqlc.Address(token)}); err != nil {
-		return fmt.Errorf("mark token dirty: %w", err)
-	}
-	return nil
+	return adapter.markOnce(dirtyMark{kind: markToken, chainID: chainID, subject: addressSubject(token)}, func() error {
+		if err := adapter.queries.MarkTokenDirty(ctx, sqlc.MarkTokenDirtyParams{ChainID: chainID, TokenAddress: sqlc.Address(token)}); err != nil {
+			return fmt.Errorf("mark token dirty: %w", err)
+		}
+		return nil
+	})
 }
 
 func (adapter *Adapter) markPairTokenDirty(ctx context.Context, chainID int64, pair common.Address) error {
-	if err := adapter.queries.MarkPairTokenDirty(ctx, sqlc.MarkPairTokenDirtyParams{ChainID: chainID, LpPair: addressPointer(pair)}); err != nil {
-		return fmt.Errorf("mark pair token dirty: %w", err)
+	return adapter.markOnce(dirtyMark{kind: markPairToken, chainID: chainID, subject: addressSubject(pair)}, func() error {
+		if err := adapter.queries.MarkPairTokenDirty(ctx, sqlc.MarkPairTokenDirtyParams{ChainID: chainID, LpPair: addressPointer(pair)}); err != nil {
+			return fmt.Errorf("mark pair token dirty: %w", err)
+		}
+		return nil
+	})
+}
+
+// markTransferPositionsDirty marks both sides of a transfer. With de-duplication a side already
+// marked is skipped; MarkPositionDirty applies the same exclusions as MarkTransferPositionsDirty.
+func (adapter *Adapter) markTransferPositionsDirty(ctx context.Context, event ledger.Transfer) error {
+	from := dirtyMark{kind: markPosition, chainID: event.ChainID, subject: addressSubject(event.Token), wallet: event.From}
+	to := dirtyMark{kind: markPosition, chainID: event.ChainID, subject: addressSubject(event.Token), wallet: event.To}
+	fromDone, toDone := adapter.marked(from), adapter.marked(to)
+	switch {
+	case fromDone && toDone:
+		return nil
+	case fromDone:
+		return adapter.markPositionDirty(ctx, event.ChainID, event.To, event.Token)
+	case toDone:
+		return adapter.markPositionDirty(ctx, event.ChainID, event.From, event.Token)
 	}
+	if err := adapter.queries.MarkTransferPositionsDirty(ctx, sqlc.MarkTransferPositionsDirtyParams{ChainID: event.ChainID, TokenAddress: event.Token[:], FromAddress: event.From[:], ToAddress: event.To[:], Factory: adapter.factory[:]}); err != nil {
+		return fmt.Errorf("mark transfer positions dirty: %w", err)
+	}
+	adapter.remember(from, to)
 	return nil
 }
 
@@ -630,6 +672,7 @@ func (adapter *Adapter) GetSyncState(ctx context.Context, chainID int64, deploym
 }
 
 func (adapter *Adapter) RebuildTokenProjections(ctx context.Context, chainID int64, token common.Address) error {
+	defer adapter.forgetDirtyMarks()
 	exists, err := adapter.queries.HasCanonicalLaunch(ctx, sqlc.HasCanonicalLaunchParams{ChainID: chainID, TokenAddress: sqlc.Address(token)})
 	if err != nil {
 		return fmt.Errorf("check canonical launch: %w", err)
