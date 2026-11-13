@@ -384,9 +384,11 @@ type Querier interface {
 	// The all-time columns are the sums of protocol_daily, which the caller has just brought up to
 	// daily_through_block; the 24h columns read the sources by block_time range.
 	RecomputeProtocolStats(ctx context.Context, arg RecomputeProtocolStatsParams) error
-	// Every trade is bucketed into all four candle intervals; ATH, baseline, latest, and volume
-	// read only the finest ('1m') series so each trade is counted once.
-	RecomputeTokenStats(ctx context.Context, arg RecomputeTokenStatsParams) error
+	// Recomputes token_stats for every listed token of one chain in one statement (pre-flight
+	// 2026-11-13-batch-token-stats-recompute). Unknown tokens are skipped; duplicates are collapsed
+	// because ON CONFLICT cannot update the same row twice.
+	// A fixed row order keeps concurrent multi-token upserts from locking rows in opposite orders.
+	RecomputeTokensStats(ctx context.Context, arg RecomputeTokensStatsParams) error
 	// Rebuilds one wallet's totals from its positions; the row is deleted when none remain.
 	RecomputeWalletTotals(ctx context.Context, arg RecomputeWalletTotalsParams) error
 	RecordIndexerReorg(ctx context.Context, arg RecordIndexerReorgParams) (int64, error)

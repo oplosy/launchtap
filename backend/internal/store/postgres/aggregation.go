@@ -52,7 +52,17 @@ func (adapter *Adapter) CompleteAggregationDirty(
 }
 
 func (adapter *Adapter) RecomputeTokenStats(ctx context.Context, chainID int64, token common.Address) error {
-	if err := adapter.queries.RecomputeTokenStats(ctx, sqlc.RecomputeTokenStatsParams{ChainID: chainID, TokenAddress: sqlc.Address(token)}); err != nil {
+	return adapter.RecomputeTokensStats(ctx, chainID, []common.Address{token})
+}
+
+// RecomputeTokensStats recomputes token_stats for every listed token of one chain in one
+// statement; unknown tokens are skipped.
+func (adapter *Adapter) RecomputeTokensStats(ctx context.Context, chainID int64, tokens []common.Address) error {
+	addresses := make([][]byte, len(tokens))
+	for i, token := range tokens {
+		addresses[i] = token.Bytes()
+	}
+	if err := adapter.queries.RecomputeTokensStats(ctx, sqlc.RecomputeTokensStatsParams{ChainID: chainID, TokenAddresses: addresses}); err != nil {
 		return fmt.Errorf("recompute token stats: %w", err)
 	}
 	return nil

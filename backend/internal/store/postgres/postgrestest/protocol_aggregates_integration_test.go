@@ -133,10 +133,11 @@ func TestAggregationSourceBatchMatchesPerClaimRefresh(t *testing.T) {
 	if !reflect.DeepEqual(after, baseline) {
 		t.Fatalf("batched aggregate output differs from per-claim baseline:\nbaseline: %#v\nafter:   %#v", baseline, after)
 	}
-	// The baseline left the daily watermark at the head, so the batch rewrites no daily row and
-	// only refreshes the summary, in one aggregate transaction.
-	if countingDB.tokenStatsCalls != len(claims) || countingDB.clearDailyCalls != 0 || countingDB.dailyCalls != 0 || countingDB.protocolStatsCalls != 1 || countingDB.transactions != 1 {
-		t.Fatalf("batch calls: token=%d clear=%d daily=%d stats=%d tx=%d; want token=%d, no daily rewrite and one aggregate transaction", countingDB.tokenStatsCalls, countingDB.clearDailyCalls, countingDB.dailyCalls, countingDB.protocolStatsCalls, countingDB.transactions, len(claims))
+	// One token stats statement covers every claim of the chain. The baseline left the daily
+	// watermark at the head, so the batch rewrites no daily row and only refreshes the summary,
+	// in one aggregate transaction.
+	if countingDB.tokenStatsCalls != 1 || countingDB.clearDailyCalls != 0 || countingDB.dailyCalls != 0 || countingDB.protocolStatsCalls != 1 || countingDB.transactions != 1 {
+		t.Fatalf("batch calls: token=%d clear=%d daily=%d stats=%d tx=%d; want one token stats statement, no daily rewrite and one aggregate transaction", countingDB.tokenStatsCalls, countingDB.clearDailyCalls, countingDB.dailyCalls, countingDB.protocolStatsCalls, countingDB.transactions)
 	}
 }
 
