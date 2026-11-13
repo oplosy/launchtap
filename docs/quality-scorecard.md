@@ -21,7 +21,7 @@ Overall is the unweighted mean of the categories, rounded to one decimal.
 | 7 | CI/CD and infrastructure | 7.5 | 7.5 | Pinned tools, 5 workflows, branch protection, Compose + Caddy. Single host, no CDN, no scaling plan. |
 | 8 | Performance | 7.0 | 7.5 | Batched stats (#56), parallel `eth_getLogs` (#58), parallel token-page reads and hidden-tab polling (#59). No measured targets, no cache layer. |
 | 9 | Maintainability (spaghetti code) | 7.0 | 8.0 | One reviewed-write pipeline for the curve, V2, V4 and launch panels (#59, #60); `token-detail` 950 → 185, `wallet-view` 669 → 201 lines (#60). |
-| 10 | UX and interface | 7.0 | 8.0 | Recorded review (`docs/audits/2026-11-13-ux-review.md`): 13 issues fixed. Lighthouse accessibility is 100 on home, token, create, wallet and forum (from 90–100). Open items: image upload, tiny-price notation, default slippage, creator-only sections. |
+| 10 | UX and interface | 7.0 | 8.0 | Recorded review (`docs/audits/2026-11-13-ux-review.md`): 13 issues fixed. Lighthouse accessibility is 100 on home, token, create, wallet and forum (from 90–100). Tiny-price notation closed. Open items: image upload, default slippage, creator-only sections. |
 | 11 | Product completeness (vs pons.family) | 6.5 | 6.5 | Launch, curve, graduation, swaps, forum, analytics and docs ship. Ticker tape, Telegram bot, CoinGecko links, clusters L2 and operator actions open. |
 |   | **Overall** | **7.7** | **7.9** | |
 
