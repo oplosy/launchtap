@@ -2,7 +2,6 @@
 
 import type { launchRulesV2 } from "@/launch-v2";
 import type { ReviewedWriteIntent } from "@/transactions";
-import { SafeImage } from "@/components/primitives";
 import { type Address, eth } from "./shared";
 import { ReviewActions, ReviewNotice, type ReviewedWrite } from "./reviewed-trade";
 
@@ -25,14 +24,15 @@ export function launchBlockers(
 }
 
 export function LaunchPreview({
-  imageUrl,
+  previewUrl,
   name,
   symbol,
   launchFee,
   value,
   v2Rules,
 }: {
-  imageUrl: string;
+  /** A `blob:` URL of the chosen file; never a remote URL. */
+  previewUrl: string | null;
   name: string;
   symbol: string;
   launchFee: bigint | null;
@@ -44,8 +44,10 @@ export function LaunchPreview({
   return (
     <aside className="launch-preview-card" aria-label="Token preview">
       <div className="launch-preview-image">
-        {imageUrl.trim() ? (
-          <SafeImage src={imageUrl} alt="Token preview" />
+        {previewUrl ? (
+          // A local object URL of the file being uploaded; CSP allows blob: images.
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src={previewUrl} alt="Token preview" />
         ) : (
           <span aria-hidden="true">◈</span>
         )}

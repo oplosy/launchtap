@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { parseDecimal } from "@/amounts";
-import type { Abi } from "viem";
+import type { Abi, TransactionReceipt } from "viem";
 import { launchRulesV2 } from "@/launch-v2";
 import { browserAbis, type ReviewedDeployment } from "@/contracts/generated";
 import { addressExplorerUrl } from "@/wallet/explorer";
@@ -16,7 +16,7 @@ import {
   transitionTransaction,
   type ReviewedWriteIntent,
 } from "@/transactions";
-import { Button, ErrorState, InfoTip, Input, SafeImage } from "@/components/primitives";
+import { Button, ErrorState, InfoTip, Input } from "@/components/primitives";
 import {
   DEFAULT_TTL,
   type Address,
@@ -26,6 +26,14 @@ import {
 } from "./shared";
 import { ReviewNotice, useReviewedWrite, WrongNetworkBanner } from "./reviewed-trade";
 import { LaunchConfirmation, LaunchPreview, launchBlockers } from "./launch-views";
+import {
+  LaunchAttachStatus,
+  LaunchDescriptionField,
+  LaunchImageField,
+  LaunchSignIn,
+  useLaunchExtras,
+} from "./launch-extras";
+import { launchedToken } from "./launch-metadata";
 
 export function LaunchPanel() {
   return (
@@ -49,9 +57,9 @@ function LaunchPanelReady() {
   } = write;
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
   const [xUrl, setXUrl] = useState("");
   const [telegramUrl, setTelegramUrl] = useState("");
+  const extras = useLaunchExtras({ xUrl, telegramUrl });
   const [buy, setBuy] = useState("0");
   const [error, setError] = useState<string | null>(null);
   const [launchFee, setLaunchFee] = useState<bigint | null>(null);
@@ -118,7 +126,6 @@ function LaunchPanelReady() {
   const validMetadata = validateLaunchInput({
     name,
     symbol,
-    imageUrl,
     xUrl,
     telegramUrl,
     developerBuyGross: buyUnits ?? -1n,
@@ -128,6 +135,8 @@ function LaunchPanelReady() {
     input.trim() ? validMetadata[field] : undefined;
   const canReview =
     Object.keys(validMetadata).length === 0 &&
+    !extras.descriptionError &&
+    !extras.needsSignIn &&
     value !== null &&
     buyUnits !== null &&
     defaultsRead &&
@@ -165,6 +174,8 @@ function LaunchPanelReady() {
     if (!canReview || !reviewIntent || !publicClient) return;
     const reviewed = reviewIntent;
     const reviewedBuy = (reviewed.args[0] as { developerBuyGross: bigint }).developerBuyGross;
+    // Details are written only for a launch whose receipt this run saw, after the lock is released.
+    let receipt: TransactionReceipt | undefined;
     await write.runExecution(async (run) => {
       // Throws unless the wallet and configuration are ready to sign.
       write.transaction.setState(
@@ -191,7 +202,7 @@ function LaunchPanelReady() {
       if (nativeBalance < exactValue) throw new Error("InsufficientETHBalance");
       if (exactValue !== reviewed.value) throw new Error("LaunchValueMismatch");
       await run.ensureWallet(reviewed);
-      await run.sign(reviewed, {
+      receipt = await run.sign(reviewed, {
         abi: factoryAbi,
         // After simulation and right before signing: a pause or a fee change stops the launch.
         requote: async () => {
@@ -206,6 +217,14 @@ function LaunchPanelReady() {
         },
       });
     });
+    if (!receipt || !extras.wanted) return;
+    const token = launchedToken(
+      receipt,
+      factoryAbi,
+      deployment.factory as Address,
+      reviewed.account as Address,
+    );
+    if (token) await extras.run(token);
   };
   /** Any edit after review invalidates the reviewed call; the user reviews again. */
   const edit = (setter: (value: string) => void) => (value: string) => {
@@ -231,21 +250,7 @@ function LaunchPanelReady() {
               <div className="transaction-form">
                 <section className="launch-section" aria-labelledby="launch-step-image">
                   <h2 id="launch-step-image">Image</h2>
-                  <Input
-                    label="Token image"
-                    value={imageUrl}
-                    onChange={(event) => edit(setImageUrl)(event.target.value)}
-                    placeholder="https://…"
-                    error={fieldError("imageUrl", imageUrl)}
-                    info="An https image URL. It becomes the token's artwork on cards and its page."
-                  />
-                  {imageUrl ? (
-                    <SafeImage
-                      src={imageUrl}
-                      alt="Token image preview"
-                      className="launch-image-preview"
-                    />
-                  ) : null}
+                  <LaunchImageField extras={extras} onChange={() => write.closeReview()} />
                 </section>
                 <section className="launch-section" aria-labelledby="launch-step-name">
                   <h2 id="launch-step-name">Name and symbol</h2>
@@ -271,13 +276,14 @@ function LaunchPanelReady() {
                 </section>
                 <section className="launch-section" aria-labelledby="launch-step-links">
                   <h2 id="launch-step-links">
-                    Links
+                    About
                     <InfoTip
                       align="start"
-                      label="links"
-                      text="Optional. Add a description from the token page after launch."
+                      label="the description and links"
+                      text="Optional. Saved after the launch confirms; you can change them later from the token page."
                     />
                   </h2>
+                  <LaunchDescriptionField extras={extras} onChange={() => write.closeReview()} />
                   <div className="launch-field-row">
                     <Input
                       label="X profile"
@@ -337,7 +343,7 @@ function LaunchPanelReady() {
               {/* Right column on wide screens: live preview, terms and the launch action stay in view. */}
               <div className="launch-aside">
                 <LaunchPreview
-                  imageUrl={imageUrl}
+                  previewUrl={extras.preview}
                   name={name}
                   symbol={symbol}
                   launchFee={launchFee}
@@ -379,6 +385,8 @@ function LaunchPanelReady() {
                     variant="primary"
                     size="lg"
                   />
+                ) : extras.needsSignIn ? (
+                  <LaunchSignIn extras={extras} />
                 ) : (
                   <>
                     <ReviewNotice notice={reviewNotice} />
@@ -401,6 +409,7 @@ function LaunchPanelReady() {
         state={state}
         tone={state.status === "reverted" ? "danger" : "warning"}
       />
+      <LaunchAttachStatus extras={extras} />
     </section>
   );
 }

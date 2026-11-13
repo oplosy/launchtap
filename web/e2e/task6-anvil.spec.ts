@@ -185,6 +185,83 @@ test.describe("Task 6 Anvil transaction gate", () => {
       .toBe(200);
   });
 
+  test("launches with an image and details, then saves them through the creator endpoints", async ({
+    page,
+  }, testInfo) => {
+    testInfo.skip(testInfo.project.name !== "small-laptop", "One viewport is enough.");
+    // The fixture session stands in for Privy (src/e2e/session-provider.tsx). The real API would
+    // verify a Privy token, so only the two creator writes are answered here; every read and the
+    // launch itself go to the real stack.
+    await page.addInitScript(() => {
+      Object.assign(window, {
+        __e2eSession: {
+          userId: "did:privy:e2e-creator",
+          email: "creator@example.test",
+          accessToken: "e2e-access-token",
+          identityToken: "e2e-identity-token",
+          linkedWallets: ["0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"],
+        },
+      });
+    });
+    const writes: { path: string; headers: Record<string, string>; body: string }[] = [];
+    await page.route(/\/v1\/tokens\/0x[0-9a-fA-F]{40}\/(metadata|image)$/, async (route) => {
+      const request = route.request();
+      if (request.method() !== "PUT") return route.continue();
+      writes.push({
+        path: new URL(request.url()).pathname,
+        headers: request.headers(),
+        body: request.postDataBuffer()?.toString("base64") ?? "",
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        headers: { ETag: '"1"' },
+        body: JSON.stringify({ revision: 1 }),
+      });
+    });
+    await installWallet(page);
+    await page.goto("/create");
+    await connectWallet(page);
+    await page.getByLabel("Name", { exact: true }).fill("Pictured Task 6");
+    await page.getByLabel("Ticker", { exact: true }).fill("PIC6");
+    // A 1x1 PNG.
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    await page
+      .getByLabel("Token image", { exact: true })
+      .setInputFiles({ name: "art.png", mimeType: "image/png", buffer: png });
+    await expect(page.getByRole("img", { name: "Token image preview" })).toBeVisible();
+    await page.getByLabel("Description", { exact: true }).fill("A pictured launch.");
+    await page.getByLabel("X profile", { exact: true }).fill("https://x.com/pictured");
+    await page.getByRole("button", { name: "Review launch" }).click();
+    await page.getByRole("button", { name: "Sign launch" }).click();
+    await expect(page.getByText(/Launched, with your image and details saved/)).toBeVisible({
+      timeout: 60_000,
+    });
+    expect(writes.map((write) => write.path.split("/").pop())).toEqual(["metadata", "image"]);
+    const [metadata, image] = writes;
+    expect(metadata!.path).toBe(image!.path.replace(/image$/, "metadata"));
+    for (const write of writes) {
+      expect(write.headers["authorization"]).toBe("Bearer e2e-access-token");
+      expect(write.headers["privy-id-token"]).toBe("e2e-identity-token");
+      expect(write.headers["if-match"]).toBe('"0"');
+    }
+    expect(JSON.parse(Buffer.from(metadata!.body, "base64").toString())).toEqual({
+      description: "A pictured launch.",
+      x_url: "https://x.com/pictured",
+      telegram_url: "",
+    });
+    expect(image!.headers["content-type"]).toBe("image/png");
+    expect(Buffer.from(image!.body, "base64").equals(png)).toBe(true);
+    // The written token is the one the real indexer recorded for this launch.
+    const token = metadata!.path.split("/")[3]!;
+    const detail = await page.request.get(`${process.env.TASK6_ANVIL_API_URL}/v1/tokens/${token}`);
+    expect(detail.status()).toBe(200);
+    expect((await detail.json()).name).toBe("Pictured Task 6");
+  });
+
   test("buys and sells through curve controls with a separate approval transaction", async ({
     page,
   }, testInfo) => {
