@@ -1,55 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useAccount, usePublicClient, useWalletClient } from "wagmi";
+import { useEffect, useMemo, useState } from "react";
 import { parseDecimal } from "@/amounts";
 import type { Abi } from "viem";
 import { launchRulesV2 } from "@/launch-v2";
 import { browserAbis, type ReviewedDeployment } from "@/contracts/generated";
-import { publicConfiguration } from "@/config/public";
 import { addressExplorerUrl } from "@/wallet/explorer";
-import { useWalletReadiness } from "@/wallet/readiness";
 import { WalletConnectButton } from "@/wallet/connection-context";
 import {
   calculateLaunchValue,
-  classifyTransactionFailure,
-  decodeTransactionError,
-  sameWriteIntent,
   transactionDeadline,
   validateLaunchInput,
   createTransactionState,
   transitionTransaction,
+  type ReviewedWriteIntent,
 } from "@/transactions";
 import { Button, ErrorState, InfoTip, Input, SafeImage } from "@/components/primitives";
 import {
   DEFAULT_TTL,
   type Address,
-  eth,
-  hasUnresolvedSubmission,
   currentUnixSeconds,
-  usePersistedTransactionState,
   ReadinessGate,
   TransactionProgress,
 } from "./shared";
-
-/**
- * Reasons the launch (or its developer buy) cannot go through right now, read from the factory.
- * Empty until the factory has been read: a failed read already shows its own error.
- */
-function launchBlockers(
-  defaultsRead: boolean,
-  launchesPaused: boolean | null,
-  tradingPaused: boolean | null,
-  engineEnabled: boolean | null,
-): string[] {
-  const blockers: string[] = [];
-  if (!defaultsRead) return blockers;
-  if (launchesPaused !== false) blockers.push("Launches are paused by the protocol.");
-  if (engineEnabled !== true) blockers.push("Engine v1 is disabled, so launching is unavailable.");
-  if (tradingPaused) blockers.push("Buying is paused, so a developer buy cannot go through.");
-  return blockers;
-}
+import { ReviewNotice, useReviewedWrite, WrongNetworkBanner } from "./reviewed-trade";
+import { LaunchConfirmation, LaunchPreview, launchBlockers } from "./launch-views";
 
 export function LaunchPanel() {
   return (
@@ -59,120 +35,30 @@ export function LaunchPanel() {
   );
 }
 
-function LaunchPreview({
-  imageUrl,
-  name,
-  symbol,
-  launchFee,
-  value,
-  v2Rules,
-}: {
-  imageUrl: string;
-  name: string;
-  symbol: string;
-  launchFee: bigint | null;
-  value: bigint | null;
-  /** Engine 2 only; `null` while `futureDefaults()` is unread. */
-  v2Rules?: ReturnType<typeof launchRulesV2> | null;
-}) {
-  const v2 = v2Rules !== undefined;
-  return (
-    <aside className="launch-preview-card" aria-label="Token preview">
-      <div className="launch-preview-image">
-        {imageUrl.trim() ? (
-          <SafeImage src={imageUrl} alt="Token preview" />
-        ) : (
-          <span aria-hidden="true">◈</span>
-        )}
-      </div>
-      <div className="launch-preview-identity">
-        <p className="launch-preview-name">{name.trim() || "Your token"}</p>
-        <p className="mono">{symbol.trim() || "ticker"}</p>
-      </div>
-      <dl>
-        <div>
-          <dt>Launch fee</dt>
-          <dd>{launchFee === null ? "Unavailable" : eth(launchFee)}</dd>
-        </div>
-        <div>
-          <dt>Paired with</dt>
-          <dd>ETH</dd>
-        </div>
-        <div>
-          <dt>Trade fee</dt>
-          <dd>1.00%</dd>
-        </div>
-        <div>
-          <dt>Launch value</dt>
-          <dd>{value === null ? "Unavailable" : eth(value)}</dd>
-        </div>
-        <div>
-          <dt>Graduation</dt>
-          <dd>4.2 ETH</dd>
-        </div>
-        {v2 ? (
-          <>
-            <div>
-              <dt>Anti-snipe tax</dt>
-              <dd>
-                {v2Rules
-                  ? `${v2Rules.taxStart}, decaying to 0 over ${v2Rules.taxWindow}`
-                  : "Unavailable"}
-              </dd>
-            </div>
-            <div>
-              <dt>Pool fee</dt>
-              <dd>
-                {v2Rules
-                  ? `1% · ${v2Rules.lpCreatorShare} creator / ${v2Rules.lpProtocolShare} protocol`
-                  : "Unavailable"}
-              </dd>
-            </div>
-            <div>
-              <dt>Liquidity</dt>
-              <dd>Uniswap V4 position, locked forever</dd>
-            </div>
-          </>
-        ) : (
-          <div>
-            <dt>Liquidity</dt>
-            <dd>Initial LP burned</dd>
-          </div>
-        )}
-      </dl>
-    </aside>
-  );
-}
-
 function LaunchPanelReady() {
-  const configuration = publicConfiguration();
-  const readiness = useWalletReadiness();
-  const account = useAccount();
-  const launchChainId = readiness.chainId;
-  const publicClient = usePublicClient();
-  const { data: walletClient } = useWalletClient();
-  const transaction = usePersistedTransactionState(
-    "launch",
-    configuration.chainId,
-    account.address,
-    null,
-    configuration.apiBaseUrl,
-  );
-  const { state, setState } = transaction;
+  const write = useReviewedWrite("launch", null);
+  const {
+    account,
+    readiness,
+    publicClient,
+    configuration,
+    state,
+    confirming,
+    reviewIntent,
+    reviewNotice,
+  } = write;
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [xUrl, setXUrl] = useState("");
   const [telegramUrl, setTelegramUrl] = useState("");
   const [buy, setBuy] = useState("0");
-  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [launchFee, setLaunchFee] = useState<bigint | null>(null);
   const [defaultsRead, setDefaultsRead] = useState(false);
   const [launchesPaused, setLaunchesPaused] = useState<boolean | null>(null);
   const [tradingPaused, setTradingPaused] = useState<boolean | null>(null);
   const [engineEnabled, setEngineEnabled] = useState<boolean | null>(null);
-  const executionLockRef = useRef(false);
   const deployment = configuration.deployment as ReviewedDeployment;
   // One deployment serves one engine (Plan v2-B B2). LaunchFactoryV2 has no per-engine switch;
   // its launch reverts on its own pause, so the engine-enabled read is v1 only.
@@ -182,38 +68,31 @@ function LaunchPanelReady() {
   const factoryExplorer = deployment.factory
     ? addressExplorerUrl(configuration, deployment.factory as Address)
     : null;
-  const switchNetwork = () => void readiness.switchNetwork();
+  const readFactory = (functionName: string, args?: readonly unknown[]) =>
+    publicClient!.readContract({
+      address: deployment.factory as Address,
+      abi: factoryAbi,
+      functionName,
+      args,
+    } as never) as Promise<unknown>;
+  /** v1 factories gate each engine; a v2 factory has a single engine and only its pause. */
+  const readEngineEnabled = () =>
+    engineVersion === 2 ? Promise.resolve(true) : readFactory("engineEnabled", [1]);
   useEffect(() => {
     if (!publicClient || !deployment.factory) return;
+    const read = (functionName: string, args?: readonly unknown[]) =>
+      publicClient.readContract({
+        address: deployment.factory as Address,
+        abi: factoryAbi,
+        functionName,
+        args,
+      } as never) as Promise<unknown>;
     void Promise.all([
-      publicClient.readContract({
-        address: deployment.factory as Address,
-        abi: factoryAbi,
-        functionName: "launchFee",
-      }),
-      publicClient.readContract({
-        address: deployment.factory as Address,
-        abi: factoryAbi,
-        functionName: "futureDefaults",
-      }),
-      publicClient.readContract({
-        address: deployment.factory as Address,
-        abi: factoryAbi,
-        functionName: "launchesPaused",
-      }),
-      publicClient.readContract({
-        address: deployment.factory as Address,
-        abi: factoryAbi,
-        functionName: "tradingPaused",
-      }),
-      engineVersion === 2
-        ? Promise.resolve(true)
-        : publicClient.readContract({
-            address: deployment.factory as Address,
-            abi: factoryAbi,
-            functionName: "engineEnabled",
-            args: [1],
-          }),
+      read("launchFee"),
+      read("futureDefaults"),
+      read("launchesPaused"),
+      read("tradingPaused"),
+      engineVersion === 2 ? Promise.resolve(true) : read("engineEnabled", [1]),
     ])
       .then(([fee, defaults, paused, trading, enabled]) => {
         setLaunchFee(fee as bigint);
@@ -244,35 +123,27 @@ function LaunchPanelReady() {
     telegramUrl,
     developerBuyGross: buyUnits ?? -1n,
   });
-  const submit = async () => {
-    if (executionLockRef.current) return;
-    if (
-      Object.keys(validMetadata).length ||
-      !publicClient ||
-      !walletClient ||
-      !account.address ||
-      !deployment.factory ||
-      value === null ||
-      launchFee === null ||
-      !readiness.selectedAccountVerified ||
-      !transaction.ready ||
-      hasUnresolvedSubmission(state)
-    )
-      return;
-    setConfirming(false);
-    executionLockRef.current = true;
-    let submittedHash: Address | undefined;
-    let failurePhase: "preflight" | "simulation" | "write" | "receipt" = "preflight";
-    try {
-      setState(
-        transitionTransaction(
-          createTransactionState("disconnected"),
-          { type: "validate" },
-          readiness.transactionReadiness,
-        ),
-      );
-      const deadline = transactionDeadline(currentUnixSeconds(), DEFAULT_TTL);
-      const args = [
+  const canReview =
+    Object.keys(validMetadata).length === 0 &&
+    value !== null &&
+    buyUnits !== null &&
+    defaultsRead &&
+    (engineVersion !== 2 || v2Rules !== null) &&
+    launchesPaused === false &&
+    engineEnabled === true &&
+    Boolean(deployment.factory) &&
+    configuration.chainId !== null &&
+    write.walletReady &&
+    !write.unresolved;
+  /** The exact `launch` call the confirmation shows and the wallet later signs. */
+  const reviewLaunch = () => {
+    if (!canReview || !account.address) return;
+    const deadline = transactionDeadline(currentUnixSeconds(), DEFAULT_TTL);
+    write.openReview({
+      account: account.address,
+      target: deployment.factory as Address,
+      value: value!,
+      args: [
         {
           name: name.trim(),
           symbol: symbol.trim(),
@@ -281,126 +152,62 @@ function LaunchPanelReady() {
           minDeveloperTokensOut: 0n,
           deadline,
         },
-      ] as const;
+      ] as const,
+      deadline,
+      chainId: configuration.chainId!,
+      functionName: "launch",
+    } satisfies ReviewedWriteIntent);
+  };
+  const submit = async () => {
+    if (!canReview || !reviewIntent || !publicClient) return;
+    const reviewed = reviewIntent;
+    const reviewedBuy = (reviewed.args[0] as { developerBuyGross: bigint }).developerBuyGross;
+    await write.runExecution(async (run) => {
+      // Throws unless the wallet and configuration are ready to sign.
+      write.transaction.setState(
+        transitionTransaction(
+          createTransactionState("disconnected"),
+          { type: "validate" },
+          readiness.transactionReadiness,
+        ),
+      );
       const [latestLaunchFee, latestLaunchesPaused, latestTradingPaused, latestEngineEnabled] =
         await Promise.all([
-          publicClient.readContract({
-            address: deployment.factory as Address,
-            abi: factoryAbi,
-            functionName: "launchFee",
-          }) as Promise<bigint>,
-          publicClient.readContract({
-            address: deployment.factory as Address,
-            abi: factoryAbi,
-            functionName: "launchesPaused",
-          }) as Promise<boolean>,
-          publicClient.readContract({
-            address: deployment.factory as Address,
-            abi: factoryAbi,
-            functionName: "tradingPaused",
-          }) as Promise<boolean>,
-          (engineVersion === 2
-            ? Promise.resolve(true)
-            : publicClient.readContract({
-                address: deployment.factory as Address,
-                abi: factoryAbi,
-                functionName: "engineEnabled",
-                args: [1],
-              })) as Promise<boolean>,
+          readFactory("launchFee") as Promise<bigint>,
+          readFactory("launchesPaused"),
+          readFactory("tradingPaused"),
+          readEngineEnabled(),
         ]);
       if (!latestEngineEnabled) throw new Error("EngineDisabled");
       if (latestLaunchesPaused) throw new Error("LaunchesPaused");
-      if (buyUnits! > 0n && latestTradingPaused) throw new Error("TradingPaused");
-      const exactValue = calculateLaunchValue(latestLaunchFee, buyUnits!);
-      const nativeBalance = await publicClient.getBalance({ address: account.address });
-      if (nativeBalance < exactValue) throw new Error("InsufficientETHBalance");
-      if (latestLaunchFee !== launchFee || exactValue !== value)
-        throw new Error("LaunchValueMismatch");
-      const capturedIntent = {
-        account: account.address,
-        target: deployment.factory,
-        value: exactValue,
-        args,
-        deadline,
-      };
-      const [simulationAccounts, simulationChainId] = await Promise.all([
-        walletClient.getAddresses(),
-        publicClient.getChainId(),
-      ]);
-      if (
-        simulationChainId !== configuration.chainId ||
-        simulationAccounts[0]?.toLowerCase() !== account.address.toLowerCase()
-      )
-        throw new Error("Wallet or network changed; review the launch again.");
-      failurePhase = "simulation";
-      await publicClient.simulateContract({
-        address: deployment.factory as Address,
-        abi: factoryAbi,
-        functionName: "launch",
-        account: account.address,
-        args,
-        value: exactValue,
-      } as never);
-      const [beforeSignLaunchesPaused, beforeSignEngineEnabled] = await Promise.all([
-        publicClient.readContract({
-          address: deployment.factory as Address,
-          abi: factoryAbi,
-          functionName: "launchesPaused",
-        }) as Promise<boolean>,
-        (engineVersion === 2
-          ? Promise.resolve(true)
-          : publicClient.readContract({
-              address: deployment.factory as Address,
-              abi: factoryAbi,
-              functionName: "engineEnabled",
-              args: [1],
-            })) as Promise<boolean>,
-      ]);
-      if (beforeSignLaunchesPaused) throw new Error("LaunchesPaused");
-      if (!beforeSignEngineEnabled) throw new Error("EngineDisabled");
-      const [writeAccounts, writeChainId] = await Promise.all([
-        walletClient.getAddresses(),
-        publicClient.getChainId(),
-      ]);
-      if (
-        writeChainId !== configuration.chainId ||
-        writeAccounts[0]?.toLowerCase() !== account.address.toLowerCase()
-      )
-        throw new Error("Wallet or network changed; review the launch again.");
-      const writeIntent = {
-        account: account.address,
-        target: deployment.factory,
-        value: exactValue,
-        args,
-        deadline,
-      };
-      if (!sameWriteIntent(capturedIntent, writeIntent))
-        throw new Error("Write intent changed; retry safely.");
-      setState({ status: "awaiting-signature" });
-      failurePhase = "write";
-      const hash = await walletClient.writeContract({
-        address: deployment.factory as Address,
-        abi: factoryAbi,
-        functionName: "launch",
-        account: account.address,
-        args,
-        value: exactValue,
-      } as never);
-      submittedHash = hash as Address;
-      setState({ status: "submitted", hash: hash as Address });
-      failurePhase = "receipt";
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") throw new Error("ReceiptReverted");
-      setState({ status: "indexing", hash: hash as Address });
-    } catch (cause) {
-      setState({
-        status: classifyTransactionFailure(cause, failurePhase),
-        hash: submittedHash,
-        error: decodeTransactionError(cause).message,
+      if (reviewedBuy > 0n && latestTradingPaused) throw new Error("TradingPaused");
+      const exactValue = calculateLaunchValue(latestLaunchFee, reviewedBuy);
+      const nativeBalance = await publicClient.getBalance({
+        address: reviewed.account as Address,
       });
-    } finally {
-      executionLockRef.current = false;
-    }
+      if (nativeBalance < exactValue) throw new Error("InsufficientETHBalance");
+      if (exactValue !== reviewed.value) throw new Error("LaunchValueMismatch");
+      await run.ensureWallet(reviewed);
+      await run.sign(reviewed, {
+        abi: factoryAbi,
+        // After simulation and right before signing: a pause or a fee change stops the launch.
+        requote: async () => {
+          const [fee, paused, enabled] = await Promise.all([
+            readFactory("launchFee") as Promise<bigint>,
+            readFactory("launchesPaused"),
+            readEngineEnabled(),
+          ]);
+          if (paused) throw new Error("LaunchesPaused");
+          if (!enabled) throw new Error("EngineDisabled");
+          return { intent: { ...reviewed, value: calculateLaunchValue(fee, reviewedBuy) } };
+        },
+      });
+    });
+  };
+  /** Any edit after review invalidates the reviewed call; the user reviews again. */
+  const edit = (setter: (value: string) => void) => (value: string) => {
+    setter(value);
+    write.closeReview();
   };
   return (
     <section
@@ -415,14 +222,7 @@ function LaunchPanelReady() {
         <ErrorState title="Launch unavailable" description={error} />
       ) : (
         <>
-          {readiness.address && launchChainId !== configuration.chainId ? (
-            <div className="transaction-warning" role="alert">
-              Wrong network. Switch to {deployment.name} before signing.
-              <Button size="sm" onClick={switchNetwork}>
-                Switch network
-              </Button>
-            </div>
-          ) : null}
+          <WrongNetworkBanner write={write} />
           <div className="launch-layout">
             <div className="launch-main">
               <div className="transaction-form">
@@ -431,7 +231,7 @@ function LaunchPanelReady() {
                   <Input
                     label="Token image"
                     value={imageUrl}
-                    onChange={(event) => setImageUrl(event.target.value)}
+                    onChange={(event) => edit(setImageUrl)(event.target.value)}
                     placeholder="https://…"
                     info="An https image URL. It becomes the token's artwork on cards and its page."
                   />
@@ -449,14 +249,14 @@ function LaunchPanelReady() {
                     <Input
                       label="Name"
                       value={name}
-                      onChange={(event) => setName(event.target.value)}
+                      onChange={(event) => edit(setName)(event.target.value)}
                       maxLength={64}
                       placeholder="Token name"
                     />
                     <Input
                       label="Ticker"
                       value={symbol}
-                      onChange={(event) => setSymbol(event.target.value.toUpperCase())}
+                      onChange={(event) => edit(setSymbol)(event.target.value.toUpperCase())}
                       maxLength={16}
                       placeholder="Symbol"
                       info="Up to 16 characters, shown in capitals."
@@ -476,13 +276,13 @@ function LaunchPanelReady() {
                     <Input
                       label="X profile"
                       value={xUrl}
-                      onChange={(event) => setXUrl(event.target.value)}
+                      onChange={(event) => edit(setXUrl)(event.target.value)}
                       placeholder="https://x.com/handle"
                     />
                     <Input
                       label="Telegram"
                       value={telegramUrl}
-                      onChange={(event) => setTelegramUrl(event.target.value)}
+                      onChange={(event) => edit(setTelegramUrl)(event.target.value)}
                       placeholder="https://t.me/community"
                     />
                   </div>
@@ -509,7 +309,7 @@ function LaunchPanelReady() {
                     <Input
                       label="Developer buy"
                       value={buy}
-                      onChange={(event) => setBuy(event.target.value)}
+                      onChange={(event) => edit(setBuy)(event.target.value)}
                       inputMode="decimal"
                       placeholder="0 ETH, optional"
                       info={
@@ -548,53 +348,18 @@ function LaunchPanelReady() {
                   </span>
                   How launching works
                 </Link>
-                {confirming ? (
-                  <div className="transaction-confirmation">
-                    <h3>Confirm launch</h3>
-                    <dl>
-                      <dt>Token</dt>
-                      <dd>
-                        {name || "—"} ({symbol || "—"})
-                      </dd>
-                      <dt>Launch value</dt>
-                      <dd className="mono">{value === null ? "Unavailable" : eth(value)}</dd>
-                      <dt>Fee</dt>
-                      <dd className="mono">
-                        {launchFee === null ? "Unavailable" : eth(launchFee)}
-                      </dd>
-                      <dt>Developer buy / minimum output</dt>
-                      <dd className="mono">{buy || "0"} ETH / 0 tokens</dd>
-                      <dt>Network</dt>
-                      <dd>{deployment.name}</dd>
-                      <dt>Contract</dt>
-                      <dd className="mono">
-                        {factoryExplorer ? (
-                          <a href={factoryExplorer} target="_blank" rel="noreferrer">
-                            {deployment.factory}
-                          </a>
-                        ) : (
-                          deployment.factory
-                        )}
-                      </dd>
-                      <dt>Deadline</dt>
-                      <dd className="mono">
-                        {transactionDeadline(currentUnixSeconds(), DEFAULT_TTL).toString()} (Unix
-                        seconds)
-                      </dd>
-                    </dl>
-                    <div className="transaction-actions">
-                      <Button variant="quiet" onClick={() => setConfirming(false)}>
-                        Back
-                      </Button>
-                      <Button
-                        variant="primary"
-                        loading={state.status === "awaiting-signature"}
-                        onClick={() => void submit()}
-                      >
-                        Sign launch
-                      </Button>
-                    </div>
-                  </div>
+                {confirming && reviewIntent ? (
+                  <LaunchConfirmation
+                    write={write}
+                    reviewed={reviewIntent}
+                    launchFee={launchFee}
+                    networkName={deployment.name}
+                    factory={deployment.factory as Address}
+                    factoryExplorer={factoryExplorer}
+                    notice={reviewNotice}
+                    canSign={canReview}
+                    onSign={() => void submit()}
+                  />
                 ) : !readiness.address ? (
                   <WalletConnectButton
                     className="launch-wallet-button"
@@ -602,24 +367,17 @@ function LaunchPanelReady() {
                     size="lg"
                   />
                 ) : (
-                  <Button
-                    variant="primary"
-                    size="lg"
-                    disabled={
-                      Object.keys(validMetadata).length > 0 ||
-                      value === null ||
-                      !defaultsRead ||
-                      (engineVersion === 2 && v2Rules === null) ||
-                      launchesPaused !== false ||
-                      engineEnabled !== true ||
-                      !readiness.selectedAccountVerified ||
-                      !transaction.ready ||
-                      hasUnresolvedSubmission(state)
-                    }
-                    onClick={() => setConfirming(true)}
-                  >
-                    Review launch
-                  </Button>
+                  <>
+                    <ReviewNotice notice={reviewNotice} />
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      disabled={!canReview}
+                      onClick={reviewLaunch}
+                    >
+                      Review launch
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
