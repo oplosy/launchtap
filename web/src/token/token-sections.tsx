@@ -2,6 +2,7 @@
 
 import { ArrowUpRight, X } from "@phosphor-icons/react";
 import { CopyAddress } from "@/components/copy-address";
+import { PriceText } from "@/components/price-text";
 import { useState, type RefObject } from "react";
 import type { components } from "@/api/generated";
 import type { TokenDetailResponse } from "@/api/client";
@@ -85,7 +86,7 @@ export function TokenHeader({
           data-flash={priceFlash?.direction}
           key={priceFlash?.id}
         >
-          {safeMarketValue(token.spot_price_eth)}
+          <PriceText value={safeMarketValue(token.spot_price_eth)} />
           <small> ETH</small>
         </strong>
         <UsdLine wei={token.spot_price_eth} />
