@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"math/big"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -84,8 +85,10 @@ func (u *memoryUnit) ReadBlock(_ context.Context, _ int64, n int64) (ledger.Inde
 	b, ok := u.blocks[n]
 	return b, ok, nil
 }
-func (u *memoryUnit) UpsertIndexedBlock(_ context.Context, b ledger.IndexedBlock) (ledger.UpsertResult, error) {
-	u.blocks[b.BlockNumber] = b
+func (u *memoryUnit) UpsertIndexedBlocks(_ context.Context, blocks []ledger.IndexedBlock) (ledger.UpsertResult, error) {
+	for _, b := range blocks {
+		u.blocks[b.BlockNumber] = b
+	}
 	return ledger.UpsertResult{Changed: true}, nil
 }
 
@@ -369,14 +372,77 @@ func TestChunkHeadersUseOneBatchWhenSupported(t *testing.T) {
 	if advanced, err := e.Step(t.Context()); err != nil || !advanced {
 		t.Fatalf("step: %t %v", advanced, err)
 	}
-	if len(batcher.batches) != 1 || len(batcher.batches[0]) != 2 || batcher.batches[0][0] != 1 || batcher.batches[0][1] != 2 {
-		t.Fatalf("batches = %v", batcher.batches)
+	// The chunk, then the tip recheck that is also both promotion numbers (fetched once).
+	if want := [][]uint64{{1, 2}, {2}}; !reflect.DeepEqual(batcher.batches, want) {
+		t.Fatalf("batches = %v, want %v", batcher.batches, want)
 	}
 	if source.headerRequestsAt(1) != 0 {
 		t.Fatalf("chunk header fetched individually despite batch support: %v", source.requests)
 	}
 	if store.unit.state.Observed.BlockNumber != 2 {
 		t.Fatalf("observed = %+v", store.unit.state.Observed)
+	}
+}
+
+func TestStepBatchesSavedRecheckAndPromotionHeaders(t *testing.T) {
+	e, store, source := newTestEngine(t)
+	batcher := &batchSource{fakeSource: source}
+	e.source = batcher
+	for step := 0; step < 2; step++ {
+		if advanced, err := e.Step(t.Context()); err != nil || !advanced {
+			t.Fatalf("step %d: %t %v", step, advanced, err)
+		}
+	}
+	// Step 2: saved Safe and Observed (both 2) once, the chunk, then the tip recheck (4)
+	// with the safe (4) and finalized (3) promotions in one batch.
+	want := [][]uint64{{1, 2}, {2}, {2}, {3, 4}, {4, 3}}
+	if !reflect.DeepEqual(batcher.batches, want) {
+		t.Fatalf("batches = %v, want %v", batcher.batches, want)
+	}
+	if len(source.requests) != 0 {
+		t.Fatalf("headers fetched individually despite batch support: %v", source.requests)
+	}
+	if store.unit.state.Safe.BlockNumber != 4 || store.unit.state.Finalized.BlockNumber != 3 {
+		t.Fatalf("state = %+v", store.unit.state)
+	}
+}
+
+func TestStepReadsPromotionBlocksOutsideTheChunkInOneTransaction(t *testing.T) {
+	e, store, source := newTestEngine(t)
+	for step := 0; step < 3; step++ {
+		if _, err := e.Step(t.Context()); err != nil {
+			t.Fatalf("step %d: %v", step, err)
+		}
+	}
+	if store.unit.state.Observed.BlockNumber != 5 || store.unit.state.Safe.BlockNumber != 4 {
+		t.Fatalf("state before promotion = %+v", store.unit.state)
+	}
+	source.heads.Safe, source.heads.Finalized = source.headers[5], source.headers[5]
+	before := store.nextTransaction
+	source.requests = nil
+	if advanced, err := e.Step(t.Context()); err != nil || advanced {
+		t.Fatalf("promotion step: %t %v", advanced, err)
+	}
+	// State read, one promotion read for block 5 (both tags), commit.
+	if got := store.nextTransaction - before; got != 3 {
+		t.Fatalf("transactions = %d, want 3", got)
+	}
+	if source.headerRequestsAt(5) != 2 {
+		t.Fatalf("header requests = %v, want block 5 once as saved and once as promotion", source.requests)
+	}
+	if store.unit.state.Safe.BlockNumber != 5 || store.unit.state.Finalized.BlockNumber != 5 {
+		t.Fatalf("state = %+v", store.unit.state)
+	}
+}
+
+func TestStepRejectsMissingHeaderFromSource(t *testing.T) {
+	e, _, source := newTestEngine(t)
+	if _, err := e.Step(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	source.headerResponses = map[uint64][]*types.Header{2: {nil}}
+	if _, err := e.Step(t.Context()); err == nil || !strings.Contains(err.Error(), "no header for block 2") {
+		t.Fatalf("Step() error = %v, want missing header error", err)
 	}
 }
 

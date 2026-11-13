@@ -127,3 +127,51 @@ func (q *Queries) UpsertIndexedBlock(ctx context.Context, arg UpsertIndexedBlock
 	}
 	return result.RowsAffected(), nil
 }
+
+const upsertIndexedBlocks = `-- name: UpsertIndexedBlocks :execrows
+INSERT INTO indexed_blocks (
+    chain_id,
+    block_number,
+    block_hash,
+    parent_hash,
+    block_time,
+    finality_status
+)
+SELECT $1::bigint, n.block_number, h.block_hash, p.parent_hash, t.block_time, f.finality_status
+FROM unnest($2::bigint[]) WITH ORDINALITY AS n(block_number, ord)
+JOIN unnest($3::bytea[]) WITH ORDINALITY AS h(block_hash, ord) ON h.ord = n.ord
+JOIN unnest($4::bytea[]) WITH ORDINALITY AS p(parent_hash, ord) ON p.ord = n.ord
+JOIN unnest($5::timestamptz[]) WITH ORDINALITY AS t(block_time, ord) ON t.ord = n.ord
+JOIN unnest($6::text[]) WITH ORDINALITY AS f(finality_status, ord) ON f.ord = n.ord
+ON CONFLICT (chain_id, block_number) DO UPDATE
+SET finality_status = EXCLUDED.finality_status
+WHERE indexed_blocks.block_hash = EXCLUDED.block_hash
+  AND indexed_blocks.parent_hash = EXCLUDED.parent_hash
+  AND indexed_blocks.block_time = EXCLUDED.block_time
+`
+
+type UpsertIndexedBlocksParams struct {
+	ChainID          int64
+	BlockNumbers     []int64
+	BlockHashes      [][]byte
+	ParentHashes     [][]byte
+	BlockTimes       []pgtype.Timestamptz
+	FinalityStatuses []string
+}
+
+// Multi-row form of UpsertIndexedBlock with the same conflict rule: a row whose identity
+// differs from the stored one is skipped, so fewer affected rows than given means a conflict.
+func (q *Queries) UpsertIndexedBlocks(ctx context.Context, arg UpsertIndexedBlocksParams) (int64, error) {
+	result, err := q.db.Exec(ctx, upsertIndexedBlocks,
+		arg.ChainID,
+		arg.BlockNumbers,
+		arg.BlockHashes,
+		arg.ParentHashes,
+		arg.BlockTimes,
+		arg.FinalityStatuses,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}

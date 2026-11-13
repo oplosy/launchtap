@@ -1,6 +1,7 @@
 package chain
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -193,18 +195,7 @@ func TestCapacityClassificationDoesNotConfuseRateLimiting(t *testing.T) {
 
 func fakeRPCServer(t *testing.T, respond func(rpcRequest) any) *httptest.Server {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		defer func() {
-			if err := request.Body.Close(); err != nil {
-				t.Errorf("close request body: %v", err)
-			}
-		}()
-		var call rpcRequest
-		if err := json.NewDecoder(request.Body).Decode(&call); err != nil {
-			t.Errorf("decode request: %v", err)
-			writer.WriteHeader(http.StatusBadRequest)
-			return
-		}
+	answer := func(call rpcRequest) map[string]any {
 		response := map[string]any{"jsonrpc": "2.0", "id": call.ID}
 		switch value := respond(call).(type) {
 		case rpcFailure:
@@ -212,8 +203,44 @@ func fakeRPCServer(t *testing.T, respond func(rpcRequest) any) *httptest.Server 
 		default:
 			response["result"] = value
 		}
+		return response
+	}
+	return httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		defer func() {
+			if err := request.Body.Close(); err != nil {
+				t.Errorf("close request body: %v", err)
+			}
+		}()
+		var raw json.RawMessage
+		if err := json.NewDecoder(request.Body).Decode(&raw); err != nil {
+			t.Errorf("decode request: %v", err)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var body any
+		if trimmed := bytes.TrimSpace(raw); len(trimmed) > 0 && trimmed[0] == '[' {
+			var calls []rpcRequest
+			if err := json.Unmarshal(trimmed, &calls); err != nil {
+				t.Errorf("decode batch request: %v", err)
+				writer.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			responses := make([]map[string]any, len(calls))
+			for index, call := range calls {
+				responses[index] = answer(call)
+			}
+			body = responses
+		} else {
+			var call rpcRequest
+			if err := json.Unmarshal(trimmed, &call); err != nil {
+				t.Errorf("decode request: %v", err)
+				writer.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			body = answer(call)
+		}
 		writer.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(writer).Encode(response); err != nil {
+		if err := json.NewEncoder(writer).Encode(body); err != nil {
 			t.Errorf("encode response: %v", err)
 		}
 	}))
@@ -403,5 +430,73 @@ func TestTransactionSendersBatchesAndSkipsMissing(t *testing.T) {
 	}
 	if _, ok := senders[missing]; ok || senders[hashes[0]] != sender {
 		t.Fatalf("missing hash present or sender wrong: %v", senders[hashes[0]])
+	}
+}
+
+func TestClientHeadsMapsBatchElementFailures(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		failTag   string
+		null      bool
+		wantTag   string
+		wantPlain string
+	}{
+		{name: "missing finalized is a finality tag error", failTag: "finalized", null: true, wantTag: "finalized"},
+		{name: "unsupported safe is a finality tag error", failTag: "safe", wantTag: "safe"},
+		{name: "latest failure is a latest head error", failTag: "latest", null: true, wantPlain: "read latest head"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			observer := &recordingObserver{}
+			server := fakeRPCServer(t, func(request rpcRequest) any {
+				var tag string
+				_ = json.Unmarshal(request.Params[0], &tag)
+				if tag == tc.failTag {
+					if tc.null {
+						return nil
+					}
+					return rpcFailure{Code: -32602, Message: "unsupported block tag"}
+				}
+				return testHeader(30)
+			})
+			defer server.Close()
+			client, err := Dial(context.Background(), server.URL, RPCConfig{Timeout: time.Second, RetryBackoff: time.Millisecond, Observer: observer})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer client.Close()
+			_, err = client.Heads(context.Background())
+			var tagErr *FinalityTagError
+			switch {
+			case tc.wantTag != "":
+				if !errors.As(err, &tagErr) || tagErr.Tag != tc.wantTag {
+					t.Fatalf("Heads() error = %v, want FinalityTagError for %s", err, tc.wantTag)
+				}
+			default:
+				if err == nil || errors.As(err, &tagErr) || !strings.HasPrefix(err.Error(), tc.wantPlain) {
+					t.Fatalf("Heads() error = %v, want prefix %q", err, tc.wantPlain)
+				}
+			}
+		})
+	}
+}
+
+func TestRPCObserverCountsHeadsBatchOnce(t *testing.T) {
+	t.Parallel()
+	server := fakeRPCServer(t, func(rpcRequest) any { return testHeader(5) })
+	defer server.Close()
+	observer := &recordingObserver{}
+	client, err := Dial(context.Background(), server.URL, RPCConfig{Timeout: time.Second, RetryBackoff: time.Millisecond, Observer: observer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if _, err := client.Heads(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := observer.take(), []recordedRPC{{"eth_getBlockByNumber", "ok"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("Heads observations = %v, want %v", got, want)
 	}
 }

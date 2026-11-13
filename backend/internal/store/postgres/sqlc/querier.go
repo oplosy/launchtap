@@ -431,6 +431,9 @@ type Querier interface {
 	// touches no row, so it costs nothing against the hourly limit.
 	UpsertCommentVote(ctx context.Context, arg UpsertCommentVoteParams) (int64, error)
 	UpsertIndexedBlock(ctx context.Context, arg UpsertIndexedBlockParams) (int64, error)
+	// Multi-row form of UpsertIndexedBlock with the same conflict rule: a row whose identity
+	// differs from the stored one is skipped, so fewer affected rows than given means a conflict.
+	UpsertIndexedBlocks(ctx context.Context, arg UpsertIndexedBlocksParams) (int64, error)
 	UpsertSyncState(ctx context.Context, arg UpsertSyncStateParams) (SyncState, error)
 	// Binds the chat to the account. A new or moved link starts its cursor at the safe head, so no
 	// backlog is sent; settings survive a re-link.

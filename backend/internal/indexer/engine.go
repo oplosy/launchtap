@@ -266,14 +266,20 @@ func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
 	if safe.BlockNumber > latest.BlockNumber || finalized.BlockNumber > safe.BlockNumber {
 		return false, errors.New("inconsistent RPC head ordering")
 	}
+	savedBlocks := make([]*ledger.IndexedBlock, 0, 2)
+	savedNumbers := make([]int64, 0, 2)
 	for _, saved := range []*ledger.IndexedBlock{state.Safe, state.Observed} {
-		if saved == nil {
-			continue
+		if saved != nil {
+			savedBlocks = append(savedBlocks, saved)
+			savedNumbers = append(savedNumbers, saved.BlockNumber)
 		}
-		remote, err := e.source.HeaderByNumber(ctx, uint64(saved.BlockNumber))
-		if err != nil {
-			return false, rpcFailure("read saved header", err)
-		}
+	}
+	savedHeaders, err := e.fetchHeaders(ctx, "read saved headers", savedNumbers)
+	if err != nil {
+		return false, err
+	}
+	for _, saved := range savedBlocks {
+		remote := savedHeaders[saved.BlockNumber]
 		if remote.Hash() != saved.BlockHash {
 			if state.Safe != nil && saved.BlockNumber <= state.Safe.BlockNumber {
 				return false, ErrSafeViolation
@@ -367,13 +373,6 @@ func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
 			decoded = append(decoded, event)
 		}
 		misses = e.attachSenders(ctx, decoded)
-		check, err := e.source.HeaderByNumber(ctx, uint64(to))
-		if err != nil {
-			return false, rpcFailure("recheck chunk header", err)
-		}
-		if check.Hash() != blocks[to].BlockHash {
-			return false, ErrCanonicalMismatch
-		}
 		state.Observed = previous
 	}
 	if state.Observed == nil {
@@ -387,43 +386,79 @@ func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
 		previousFinalized = state.Finalized.BlockNumber
 	}
 	// When RPC tags are ahead, promote only the locally processed intersection.
-	for _, promotion := range []struct {
+	type promotion struct {
+		number int64
 		remote ledger.IndexedBlock
 		target **ledger.IndexedBlock
 		status string
-	}{{safe, &state.Safe, "safe"}, {finalized, &state.Finalized, "finalized"}} {
-		number := min(promotion.remote.BlockNumber, state.Observed.BlockNumber)
-		if number < e.settings.StartBlock || (*promotion.target != nil && number <= (*promotion.target).BlockNumber) {
+	}
+	promotions := make([]promotion, 0, 2)
+	for _, candidate := range []promotion{{remote: safe, target: &state.Safe, status: "safe"}, {remote: finalized, target: &state.Finalized, status: "finalized"}} {
+		candidate.number = min(candidate.remote.BlockNumber, state.Observed.BlockNumber)
+		if candidate.number < e.settings.StartBlock || (*candidate.target != nil && candidate.number <= (*candidate.target).BlockNumber) {
 			continue
 		}
-		var local ledger.IndexedBlock
-		var ok bool
-		local, ok = blocks[number]
-		if !ok {
-			if err := e.store.Transaction(ctx, func(ctx context.Context, u UnitOfWork) error {
-				var err error
-				local, ok, err = u.ReadBlock(ctx, e.settings.ChainID, number)
-				return err
-			}); err != nil {
-				return false, err
+		promotions = append(promotions, candidate)
+	}
+	locals := make(map[int64]ledger.IndexedBlock, len(promotions))
+	var unread []int64
+	for _, candidate := range promotions {
+		if local, ok := blocks[candidate.number]; ok {
+			locals[candidate.number] = local
+		} else if len(unread) == 0 || unread[len(unread)-1] != candidate.number {
+			unread = append(unread, candidate.number)
+		}
+	}
+	if len(unread) > 0 {
+		if err := e.store.Transaction(ctx, func(ctx context.Context, u UnitOfWork) error {
+			for _, number := range unread {
+				local, ok, err := u.ReadBlock(ctx, e.settings.ChainID, number)
+				if err != nil {
+					return err
+				}
+				if ok {
+					locals[number] = local
+				}
 			}
+			return nil
+		}); err != nil {
+			return false, err
 		}
+	}
+	// The chunk-tip recheck and the promotion headers share one batch; a number requested
+	// twice (the tip is often the safe promotion) is fetched once, so both checks see it.
+	checkNumbers := make([]int64, 0, 1+len(promotions))
+	if len(blocks) > 0 {
+		checkNumbers = append(checkNumbers, to)
+	}
+	for _, candidate := range promotions {
+		checkNumbers = append(checkNumbers, candidate.number)
+	}
+	checkHeaders, err := e.fetchHeaders(ctx, "recheck chunk and promotion headers", checkNumbers)
+	if err != nil {
+		return false, err
+	}
+	if len(blocks) > 0 && checkHeaders[to].Hash() != blocks[to].BlockHash {
+		return false, ErrCanonicalMismatch
+	}
+	for _, candidate := range promotions {
+		local, ok := locals[candidate.number]
 		if !ok {
-			return false, fmt.Errorf("missing promotion block %d", number)
+			return false, fmt.Errorf("missing promotion block %d", candidate.number)
 		}
-		remote, err := e.source.HeaderByNumber(ctx, uint64(number))
-		if err != nil {
-			return false, rpcFailure("read promotion header", err)
-		}
-		if remote.Hash() != local.BlockHash || (number == promotion.remote.BlockNumber && local.BlockHash != promotion.remote.BlockHash) {
+		if checkHeaders[candidate.number].Hash() != local.BlockHash || (candidate.number == candidate.remote.BlockNumber && local.BlockHash != candidate.remote.BlockHash) {
 			return false, ErrCanonicalMismatch
 		}
-		local.FinalityStatus = promotion.status
-		*promotion.target = &local
+		local.FinalityStatus = candidate.status
+		*candidate.target = &local
+	}
+	chunk := make([]ledger.IndexedBlock, 0, len(blocks))
+	for number := from; number <= to; number++ {
+		chunk = append(chunk, blocks[number])
 	}
 	err = e.store.Transaction(ctx, func(ctx context.Context, u UnitOfWork) error {
-		for number := from; number <= to; number++ {
-			result, err := u.UpsertIndexedBlock(ctx, blocks[number])
+		if len(chunk) > 0 {
+			result, err := u.UpsertIndexedBlocks(ctx, chunk)
 			if err != nil {
 				return err
 			}
@@ -462,22 +497,67 @@ func (e *Engine) prefetchHeaders(ctx context.Context, from, to int64) (map[int64
 	if !ok || from > to {
 		return nil, nil
 	}
-	headers := make(map[int64]*types.Header, to-from+1)
-	for start := from; start <= to; start += headerBatchSize {
-		end := min(start+headerBatchSize-1, to)
-		numbers := make([]uint64, 0, end-start+1)
-		for number := start; number <= end; number++ {
-			numbers = append(numbers, uint64(number))
+	numbers := make([]int64, 0, to-from+1)
+	for number := from; number <= to; number++ {
+		numbers = append(numbers, number)
+	}
+	return batchHeaders(ctx, batcher, "read chunk headers", numbers)
+}
+
+// fetchHeaders reads each distinct number once, in batches when the source supports it and
+// one by one otherwise. Every returned header is non-nil. Transport errors are RPC failures
+// named after operation; a malformed reply (wrong batch length, missing header) is not.
+func (e *Engine) fetchHeaders(ctx context.Context, operation string, numbers []int64) (map[int64]*types.Header, error) {
+	unique := make([]int64, 0, len(numbers))
+	seen := make(map[int64]struct{}, len(numbers))
+	for _, number := range numbers {
+		if _, ok := seen[number]; !ok {
+			seen[number] = struct{}{}
+			unique = append(unique, number)
 		}
-		batch, err := batcher.HeadersByNumbers(ctx, numbers)
+	}
+	var headers map[int64]*types.Header
+	if batcher, ok := e.source.(BatchHeaderSource); ok {
+		var err error
+		if headers, err = batchHeaders(ctx, batcher, operation, unique); err != nil {
+			return nil, err
+		}
+	} else {
+		headers = make(map[int64]*types.Header, len(unique))
+		for _, number := range unique {
+			header, err := e.source.HeaderByNumber(ctx, uint64(number))
+			if err != nil {
+				return nil, rpcFailure(operation, err)
+			}
+			headers[number] = header
+		}
+	}
+	for _, number := range unique {
+		if headers[number] == nil {
+			return nil, fmt.Errorf("RPC returned no header for block %d", number)
+		}
+	}
+	return headers, nil
+}
+
+// batchHeaders reads numbers in groups of headerBatchSize, one round trip per group.
+func batchHeaders(ctx context.Context, batcher BatchHeaderSource, operation string, numbers []int64) (map[int64]*types.Header, error) {
+	headers := make(map[int64]*types.Header, len(numbers))
+	for start := 0; start < len(numbers); start += headerBatchSize {
+		group := numbers[start:min(start+headerBatchSize, len(numbers))]
+		request := make([]uint64, len(group))
+		for index, number := range group {
+			request[index] = uint64(number)
+		}
+		batch, err := batcher.HeadersByNumbers(ctx, request)
 		if err != nil {
-			return nil, rpcFailure("read chunk headers", err)
+			return nil, rpcFailure(operation, err)
 		}
-		if len(batch) != len(numbers) {
+		if len(batch) != len(request) {
 			return nil, errors.New("RPC header batch length differs from request")
 		}
 		for index, header := range batch {
-			headers[int64(numbers[index])] = header
+			headers[group[index]] = header
 		}
 	}
 	return headers, nil
