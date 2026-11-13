@@ -1,7 +1,7 @@
 import { createConfig as createPrivyConfig } from "@privy-io/wagmi";
 import { createConfig as createWagmiConfig, type Config } from "wagmi";
 import { injected } from "wagmi/connectors";
-import { defineChain, http, type Chain } from "viem";
+import { defineChain, http, type Chain, type HttpTransport } from "viem";
 import { isAnvilWalletFixture, type PublicConfiguration } from "@/config/public";
 
 export function supportedChain(configuration: PublicConfiguration): Chain | null {
@@ -23,6 +23,14 @@ export function supportedChain(configuration: PublicConfiguration): Chain | null
   });
 }
 
+/**
+ * The read transport for the configured RPC. JSON-RPC batching sends reads issued in the same
+ * tick (for example a Promise.all of contract reads) as one HTTP request instead of one each.
+ */
+export function rpcTransport(rpcUrl: string): HttpTransport {
+  return http(rpcUrl, { batch: true });
+}
+
 export function createWeb3Config(configuration: PublicConfiguration): {
   chain: Chain;
   config: Config;
@@ -32,12 +40,12 @@ export function createWeb3Config(configuration: PublicConfiguration): {
   const config = isAnvilWalletFixture(configuration)
     ? createWagmiConfig({
         chains: [chain] as const,
-        transports: { [chain.id]: http(configuration.rpcUrl) },
+        transports: { [chain.id]: rpcTransport(configuration.rpcUrl) },
         connectors: [injected()],
       })
     : createPrivyConfig({
         chains: [chain] as const,
-        transports: { [chain.id]: http(configuration.rpcUrl) },
+        transports: { [chain.id]: rpcTransport(configuration.rpcUrl) },
       });
   return { chain, config };
 }

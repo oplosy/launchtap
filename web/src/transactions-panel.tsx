@@ -61,6 +61,11 @@ import {
 import { SlidingIndicator } from "@/components/sliding-indicator";
 
 const DEFAULT_TTL = 900n;
+/**
+ * Informational quotes wait for typing to pause this long, so each keystroke does not send a
+ * backend or RPC quote. Signing never uses these quotes: review and preflight re-read on-chain.
+ */
+const QUOTE_DEBOUNCE_MS = 250;
 
 /**
  * Reasons the launch (or its developer buy) cannot go through right now, read from the factory.
@@ -645,43 +650,48 @@ function TradingPanelReady({
     )
       return;
     const client = new ApiClient({ baseUrl: configuration.apiBaseUrl });
-    void client
-      .getQuote(token.address, { amount: inputUnits.toString(), side })
-      .then((result) => {
-        if (!cancelled) {
-          if (parseQuoteQuantity(result.input, "quote input") !== inputUnits)
-            throw new Error("QuoteChanged");
-          const output = parseQuoteQuantity(result.output, "quote output");
-          const refund = parseQuoteQuantity(result.refund, "quote refund");
-          if (refund > inputUnits) throw new Error("QuoteChanged");
-          parseQuoteQuantity(result.next_virtual_eth, "next virtual ETH");
-          parseQuoteQuantity(result.next_virtual_token, "next virtual token");
-          parseQuoteQuantity(result.reserve_source_block.toString(), "quote source block");
-          const protocolFee = parseQuoteQuantity(result.protocol_fee, "protocol fee");
-          setQuote({
-            output,
-            fee: protocolFee + parseQuoteQuantity(result.creator_fee, "creator fee"),
-            protocolFee,
-            source: "backend",
-          });
-          setTaxQuote({
-            snipeTax: parseQuoteQuantity(result.snipe_tax, "snipe tax"),
-            taxBps: result.tax_bps,
-          });
-          setQuoteInputUsed(side === "buy" ? inputUnits - refund : inputUnits);
-          setQuoteError(null);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setQuote(null);
-          setTaxQuote(null);
-          setQuoteInputUsed(null);
-          setQuoteError("Informational quote unavailable. Refresh before trading.");
-        }
-      });
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void client
+        .getQuote(token.address, { amount: inputUnits.toString(), side }, controller.signal)
+        .then((result) => {
+          if (!cancelled) {
+            if (parseQuoteQuantity(result.input, "quote input") !== inputUnits)
+              throw new Error("QuoteChanged");
+            const output = parseQuoteQuantity(result.output, "quote output");
+            const refund = parseQuoteQuantity(result.refund, "quote refund");
+            if (refund > inputUnits) throw new Error("QuoteChanged");
+            parseQuoteQuantity(result.next_virtual_eth, "next virtual ETH");
+            parseQuoteQuantity(result.next_virtual_token, "next virtual token");
+            parseQuoteQuantity(result.reserve_source_block.toString(), "quote source block");
+            const protocolFee = parseQuoteQuantity(result.protocol_fee, "protocol fee");
+            setQuote({
+              output,
+              fee: protocolFee + parseQuoteQuantity(result.creator_fee, "creator fee"),
+              protocolFee,
+              source: "backend",
+            });
+            setTaxQuote({
+              snipeTax: parseQuoteQuantity(result.snipe_tax, "snipe tax"),
+              taxBps: result.tax_bps,
+            });
+            setQuoteInputUsed(side === "buy" ? inputUnits - refund : inputUnits);
+            setQuoteError(null);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setQuote(null);
+            setTaxQuote(null);
+            setQuoteInputUsed(null);
+            setQuoteError("Informational quote unavailable. Refresh before trading.");
+          }
+        });
+    }, QUOTE_DEBOUNCE_MS);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
+      controller.abort();
     };
   }, [configuration.apiBaseUrl, configuration.status, inputUnits, side, token.address]);
 
@@ -938,26 +948,28 @@ function TradingPanelReady({
     let approvalWrite = false;
     let failurePhase: "preflight" | "simulation" | "write" | "receipt" = "preflight";
     try {
-      const phase = await publicClient.readContract({
-        address: safeCurveAddress,
-        abi: curveAbi,
-        functionName: "phase",
-      });
+      // Independent reads go out together; the checks keep their original order.
+      const [phase, tokenBalance, nativeBalance] = await Promise.all([
+        publicClient.readContract({
+          address: safeCurveAddress,
+          abi: curveAbi,
+          functionName: "phase",
+        }),
+        publicClient.readContract({
+          address: safeTokenAddress,
+          abi: browserAbis.token,
+          functionName: "balanceOf",
+          args: [reviewed.account as Address],
+        }),
+        reviewedSide === "buy"
+          ? publicClient.getBalance({ address: reviewed.account as Address })
+          : Promise.resolve(null),
+      ]);
       if (Number(phase) !== 0) throw new Error("WrongPhase");
-      const tokenBalance = await publicClient.readContract({
-        address: safeTokenAddress,
-        abi: browserAbis.token,
-        functionName: "balanceOf",
-        args: [reviewed.account as Address],
-      });
       if (reviewedSide === "sell" && tokenBalance < reviewedInput)
         throw new Error("ERC20InsufficientBalance");
-      if (reviewedSide === "buy") {
-        const nativeBalance = await publicClient.getBalance({
-          address: reviewed.account as Address,
-        });
-        if (nativeBalance < reviewedInput) throw new Error("InsufficientETHBalance");
-      }
+      if (nativeBalance !== null && nativeBalance < reviewedInput)
+        throw new Error("InsufficientETHBalance");
       const [walletAccounts, latestChainId] = await Promise.all([
         walletClient.getAddresses(),
         publicClient.getChainId(),
@@ -2067,15 +2079,18 @@ function V4SwapPanel({
   useEffect(() => {
     let cancelled = false;
     if (!key || !inputUnits || inputUnits <= 0n || !publicClient) return;
-    void quoteExactIn(side === "buy", inputUnits)
-      .then((amount) => {
-        if (!cancelled) setOutput(amount);
-      })
-      .catch(() => {
-        if (!cancelled) setOutput(null);
-      });
+    const timer = setTimeout(() => {
+      void quoteExactIn(side === "buy", inputUnits)
+        .then((amount) => {
+          if (!cancelled) setOutput(amount);
+        })
+        .catch(() => {
+          if (!cancelled) setOutput(null);
+        });
+    }, QUOTE_DEBOUNCE_MS);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [inputUnits, key, publicClient, quoteExactIn, side]);
   const minimum =
@@ -2654,24 +2669,27 @@ function GraduatedSwapPanel({
   useEffect(() => {
     let cancelled = false;
     if (!tokenAddress || !inputUnits || inputUnits <= 0n || !publicClient) return;
-    void publicClient
-      .readContract({
-        address: router,
-        abi: browserAbis.router,
-        functionName: "getAmountsOut",
-        args: [inputUnits, side === "buy" ? [weth, tokenAddress] : [tokenAddress, weth]],
-      } as never)
-      .then((amounts) => {
-        if (!cancelled)
-          setOutput(
-            parseQuoteQuantity(String((amounts as readonly unknown[]).at(-1)), "router output"),
-          );
-      })
-      .catch(() => {
-        if (!cancelled) setOutput(null);
-      });
+    const timer = setTimeout(() => {
+      void publicClient
+        .readContract({
+          address: router,
+          abi: browserAbis.router,
+          functionName: "getAmountsOut",
+          args: [inputUnits, side === "buy" ? [weth, tokenAddress] : [tokenAddress, weth]],
+        } as never)
+        .then((amounts) => {
+          if (!cancelled)
+            setOutput(
+              parseQuoteQuantity(String((amounts as readonly unknown[]).at(-1)), "router output"),
+            );
+        })
+        .catch(() => {
+          if (!cancelled) setOutput(null);
+        });
+    }, QUOTE_DEBOUNCE_MS);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [inputUnits, publicClient, router, side, tokenAddress, weth]);
   const minimum =
@@ -2825,19 +2843,21 @@ function GraduatedSwapPanel({
         if (balance < reviewedInput) throw new Error("InsufficientETHBalance");
       }
       if (reviewedSide === "sell") {
-        const balance = await publicClient.readContract({
-          address: tokenAddress,
-          abi: browserAbis.token,
-          functionName: "balanceOf",
-          args: [reviewed.account as Address],
-        });
+        const [balance, allowance] = await Promise.all([
+          publicClient.readContract({
+            address: tokenAddress,
+            abi: browserAbis.token,
+            functionName: "balanceOf",
+            args: [reviewed.account as Address],
+          }),
+          publicClient.readContract({
+            address: tokenAddress,
+            abi: browserAbis.token,
+            functionName: "allowance",
+            args: [reviewed.account as Address, router],
+          }),
+        ]);
         if (balance < reviewedInput) throw new Error("ERC20InsufficientBalance");
-        const allowance = await publicClient.readContract({
-          address: tokenAddress,
-          abi: browserAbis.token,
-          functionName: "allowance",
-          args: [reviewed.account as Address, router],
-        });
         if (allowance < reviewedInput) {
           approvalWrite = true;
           const [approvalAccounts, approvalChainId] = await Promise.all([
