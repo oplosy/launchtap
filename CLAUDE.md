@@ -72,6 +72,15 @@ CI and any developer machine execute the identical pinned version.
   (the realistic "default cache location is inaccessible" case) — it does not override an
   already-exported, broken `GOCACHE` value in the shell.
 
+## Quality scorecard — standing goal overall ≥ 9
+
+- `docs/quality-scorecard.md` holds the per-category scores, the evidence behind each one, and what
+  each category needs to reach 9. It is the baseline for prioritising work; keep it, never replace it.
+- After each milestone, or any merged change that moves a category, re-score: update the "Current"
+  column and its evidence, and append a row to the history. A score rises only on merged evidence.
+- When choosing between tasks, prefer the one that closes a "Path to 9" item in the lowest-scoring
+  category. Every task report states the current overall score.
+
 ## Working practice — backlog & limit management
 
 - Every unfinished piece of work is written to `backlog.md` → "Active" section
