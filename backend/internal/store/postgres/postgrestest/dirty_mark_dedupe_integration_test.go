@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Contictus/launchtap/backend/internal/chain"
+	"github.com/Contictus/launchtap/backend/internal/indexer"
 	"github.com/Contictus/launchtap/backend/internal/ledger"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/ethereum/go-ethereum/common"
@@ -90,6 +92,85 @@ func ingestDirtyMarkFixture(t *testing.T, dedupe bool) (string, int) {
 		readDirtyKeys(t, ctx, database, `SELECT chain_id, encode(token_address, 'hex') FROM aggregation_dirty ORDER BY 1, 2`),
 		readDirtyKeys(t, ctx, database, `SELECT chain_id, encode(wallet, 'hex') || ':' || encode(token_address, 'hex') FROM position_dirty ORDER BY 1, 2`),
 		snapshot), counter.statements
+}
+
+// TestDirtyMarkDedupeMarksTheSameV4Rows does the same for the engine-2 fixture, whose V4 swaps
+// alternate between two senders so pool and sender keys are both exercised.
+func TestDirtyMarkDedupeMarksTheSameV4Rows(t *testing.T) {
+	plain, plainStatements := ingestV4DirtyMarkFixture(t, false)
+	deduped, dedupedStatements := ingestV4DirtyMarkFixture(t, true)
+	if plain != deduped {
+		t.Fatalf("de-duplicated ingest marked different rows\nplain=%s\ndeduped=%s", plain, deduped)
+	}
+	if dedupedStatements >= plainStatements {
+		t.Fatalf("de-duplicated ingest sent %d statements, plain %d; want fewer", dedupedStatements, plainStatements)
+	}
+	t.Logf("statements: plain %d, de-duplicated %d", plainStatements, dedupedStatements)
+}
+
+func ingestV4DirtyMarkFixture(t *testing.T, dedupe bool) (string, int) {
+	t.Helper()
+	database := NewMigrated(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancel()
+	pool := openPool(t, ctx, database.URL)
+	const chainID int64 = 49031
+	block := ledger.IndexedBlock{ChainID: chainID, BlockNumber: 9, BlockHash: common.Hash{0xc9}, ParentHash: common.Hash{0xc8}, BlockTime: time.Date(2026, 11, 12, 9, 30, 0, 0, time.UTC), FinalityStatus: "observed"}
+	decoded := decodeV2Fixture(t, block, common.HexToAddress("0x0b0b"))
+	var token common.Address
+	other := common.HexToAddress("0x0c0c")
+	var swaps []chain.DecodedLog
+	for index, log := range decoded {
+		switch value := log.Value.(type) {
+		case chain.TokenLaunchedV2:
+			token = value.Token
+		case chain.V4Swap:
+			if len(swaps)%2 == 1 {
+				value.TxFrom = &other
+				decoded[index].Value = value
+			}
+			swaps = append(swaps, decoded[index])
+		}
+	}
+	if len(swaps) < 2 {
+		t.Fatalf("fixture precondition: %d V4 swaps, want at least 2", len(swaps))
+	}
+	// Replay each swap once more in new transactions, so both senders repeat on the pool.
+	last := decoded[len(decoded)-1].Coordinates
+	for index, swap := range swaps {
+		next := uint(index + 1)
+		swap.Coordinates.TransactionIndex = last.TransactionIndex + next
+		swap.Coordinates.TransactionHash = common.BigToHash(big.NewInt(int64(1000 + index)))
+		swap.Coordinates.LogIndex = last.LogIndex + next
+		decoded = append(decoded, swap)
+	}
+	if err := storepostgres.NewAdapter(pool).RegisterV4PoolManager(ctx, chainID, v2FixturePoolManager); err != nil {
+		t.Fatalf("register pool manager: %v", err)
+	}
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	counter := &countingDB{tx: tx}
+	adapter := storepostgres.NewAdapter(counter)
+	if dedupe {
+		adapter = adapter.WithDirtyMarkDedupe()
+	}
+	if _, err := adapter.UpsertIndexedBlock(ctx, block); err != nil {
+		t.Fatalf("upsert block: %v", err)
+	}
+	if err := (indexer.LedgerRouter{ChainID: chainID}).Apply(ctx, adapter, decoded, map[int64]ledger.IndexedBlock{block.BlockNumber: block}, nil); err != nil {
+		t.Fatalf("ingest: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	return fmt.Sprintf("aggregation=%s positions=%s projections=%+v",
+		readDirtyKeys(t, ctx, database, `SELECT chain_id, encode(token_address, 'hex') FROM aggregation_dirty ORDER BY 1, 2`),
+		readDirtyKeys(t, ctx, database, `SELECT chain_id, encode(wallet, 'hex') || ':' || encode(token_address, 'hex') FROM position_dirty ORDER BY 1, 2`),
+		readV2ProjectionSnapshot(t, ctx, database.DB, chainID, token)), counter.statements
 }
 
 // knownSenderPoolSwaps adds two post-graduation swaps sent by the same wallet in block 4.
