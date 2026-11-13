@@ -9,6 +9,7 @@ import {
   createChart,
   type IChartApi,
 } from "lightweight-charts";
+import { compactZeros } from "@/amounts";
 import { useResolvedTheme } from "@/components/theme";
 import { setChartSnapshot, type CandleChartPoint, type ChartSnapshotSeries } from "./chart-data";
 
@@ -162,6 +163,6 @@ export function priceFormatFor(points: readonly CandleChartPoint[]) {
   return {
     type: "custom" as const,
     minMove: 10 ** -precision,
-    formatter: (price: number) => price.toFixed(precision),
+    formatter: (price: number) => compactZeros(price.toFixed(precision)),
   };
 }

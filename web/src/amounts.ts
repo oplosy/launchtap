@@ -73,6 +73,21 @@ export function formatSignificantPrice(value: string): string | null {
   return formatCanonicalBaseUnits(value, digits);
 }
 
+/** Fraction zeros from which a price is shown as `0.0₈1699`; fewer still read fine in full. */
+export const COMPACT_ZERO_MIN = 4;
+const SUBSCRIPT_DIGITS = "₀₁₂₃₄₅₆₇₈₉";
+
+/**
+ * Display only: writes a run of leading fraction zeros as a subscript count, so
+ * "0.000000001699" reads "0.0₈1699". Any other string is returned unchanged.
+ */
+export function compactZeros(decimal: string): string {
+  const match = /^0\.(0+)([1-9]\d*)$/.exec(decimal);
+  if (!match || match[1]!.length < COMPACT_ZERO_MIN) return decimal;
+  const count = [...String(match[1]!.length)].map((digit) => SUBSCRIPT_DIGITS[Number(digit)]);
+  return `0.0${count.join("")}${match[2]}`;
+}
+
 export function parseDecimal(value: string, decimals = 18): bigint {
   if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255 || !DECIMAL.test(value.trim()))
     throw new Error("Invalid decimal amount");
