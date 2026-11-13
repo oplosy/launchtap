@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import type { Abi } from "viem";
+import type { Abi, TransactionReceipt } from "viem";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { parseDecimal } from "@/amounts";
 import { publicConfiguration } from "@/config/public";
@@ -64,6 +64,7 @@ export type ReviewedExecution = {
   /**
    * Simulates the reviewed write, re-reads it (`requote` may throw to stop), re-checks the wallet,
    * signs exactly the reviewed target, function, arguments and value, and waits for the receipt.
+   * Resolves to the successful receipt, or `undefined` when the fresh read changed the review.
    */
   sign: (
     reviewed: ReviewedWriteIntent,
@@ -72,7 +73,7 @@ export type ReviewedExecution = {
       requote: () => Promise<RequotedIntent>;
       beforeSimulate?: () => Promise<void>;
     },
-  ) => Promise<void>;
+  ) => Promise<TransactionReceipt | undefined>;
   /** The hash a failure is reported against when nothing was submitted in this run. */
   setFallbackHash: (hash: Address | undefined) => void;
 };
@@ -228,7 +229,7 @@ export function useReviewedWrite(
         phase = "simulation";
         await client.simulateContract(request);
         const fresh = await requote();
-        if (!execution.unchanged(reviewed, fresh)) return;
+        if (!execution.unchanged(reviewed, fresh)) return undefined;
         await execution.ensureWallet(reviewed, WALLET_CHANGED_DURING_SIMULATION);
         setState({ status: "awaiting-signature" });
         phase = "write";
@@ -240,6 +241,7 @@ export function useReviewedWrite(
         const receipt = await client.waitForTransactionReceipt({ hash });
         if (receipt.status !== "success") throw new Error("ReceiptReverted");
         setState({ status: "indexing", hash });
+        return receipt;
       },
     };
     try {
