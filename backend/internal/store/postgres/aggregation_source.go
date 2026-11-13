@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/Contictus/launchtap/backend/internal/stats"
@@ -39,18 +40,42 @@ func (s AggregationSource) Compute(ctx context.Context, claim stats.Claim) error
 func (s AggregationSource) ComputeBatch(ctx context.Context, claims []stats.Claim) []error {
 	results := make([]error, len(claims))
 	chains := make([]int64, 0, len(claims))
-	computedByChain := make(map[int64][]int, len(claims))
+	claimsByChain := make(map[int64][]int, len(claims))
 	for i, claim := range claims {
-		if err := s.Adapter.RecomputeTokenStats(ctx, claim.ChainID, common.Address(claim.Token)); err != nil {
-			results[i] = err
-			continue
-		}
-		if _, exists := computedByChain[claim.ChainID]; !exists {
+		if _, exists := claimsByChain[claim.ChainID]; !exists {
 			chains = append(chains, claim.ChainID)
 		}
-		computedByChain[claim.ChainID] = append(computedByChain[claim.ChainID], i)
+		claimsByChain[claim.ChainID] = append(claimsByChain[claim.ChainID], i)
+	}
+	computedByChain := make(map[int64][]int, len(chains))
+	for _, chainID := range chains {
+		indexes := claimsByChain[chainID]
+		tokens := make([]common.Address, len(indexes))
+		for n, i := range indexes {
+			tokens[n] = common.Address(claims[i].Token)
+		}
+		// One statement per chain; if it fails, recompute one token at a time so a bad token
+		// fails only its own claim.
+		if len(indexes) > 1 {
+			err := s.Adapter.RecomputeTokensStats(ctx, chainID, tokens)
+			if err == nil {
+				computedByChain[chainID] = indexes
+				continue
+			}
+			slog.WarnContext(ctx, "batch token stats recompute failed; retrying per token", "chain_id", chainID, "tokens", len(tokens), "error", err)
+		}
+		for n, i := range indexes {
+			if err := s.Adapter.RecomputeTokenStats(ctx, chainID, tokens[n]); err != nil {
+				results[i] = err
+				continue
+			}
+			computedByChain[chainID] = append(computedByChain[chainID], i)
+		}
 	}
 	for _, chainID := range chains {
+		if len(computedByChain[chainID]) == 0 {
+			continue
+		}
 		if err := s.Adapter.RefreshProtocolAggregates(ctx, chainID); err != nil {
 			for _, i := range computedByChain[chainID] {
 				results[i] = err

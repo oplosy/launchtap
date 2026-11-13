@@ -469,9 +469,15 @@ ON CONFLICT (chain_id, wallet) DO UPDATE SET
     realized_pnl = EXCLUDED.realized_pnl, tokens_traded = EXCLUDED.tokens_traded, held_count = EXCLUDED.held_count,
     first_block_number = EXCLUDED.first_block_number, last_block_number = EXCLUDED.last_block_number;
 
--- name: RecomputeTokenStats :exec
+-- name: RecomputeTokensStats :exec
+-- Recomputes token_stats for every listed token of one chain in one statement (pre-flight
+-- 2026-11-13-batch-token-stats-recompute). Unknown tokens are skipped; duplicates are collapsed
+-- because ON CONFLICT cannot update the same row twice.
 WITH clock AS (
     SELECT now() AS now_at
+), targets AS (
+    SELECT DISTINCT target.token_address
+    FROM unnest(sqlc.arg(token_addresses)::bytea[]) AS target(token_address)
 ), prices AS (
     SELECT
         t.chain_id,
@@ -495,37 +501,12 @@ WITH clock AS (
         t.engine_version,
         t.locker,
         manager.pool_manager
-    FROM tokens AS t
+    FROM targets
+    JOIN tokens AS t
+      ON t.chain_id = sqlc.arg(chain_id)::bigint AND t.token_address = targets.token_address
     LEFT JOIN token_reserves AS reserve
       ON reserve.chain_id = t.chain_id AND reserve.token_address = t.token_address
     LEFT JOIN v4_pool_managers AS manager ON manager.chain_id = t.chain_id
-    WHERE t.chain_id = $1 AND t.token_address = $2
--- Every trade is bucketed into all four candle intervals; ATH, baseline, latest, and volume
--- read only the finest ('1m') series so each trade is counted once.
-), candles_ath AS (
-    SELECT c.chain_id, c.token_address, c.high_price_wad, c.bucket_start_time
-    FROM candles AS c
-    WHERE c.chain_id = $1 AND c.token_address = $2 AND c.interval = '1m'
-    ORDER BY c.high_price_wad DESC, c.bucket_start_time ASC
-    LIMIT 1
-), baseline AS (
-    SELECT c.close_price_wad
-    FROM candles AS c CROSS JOIN clock
-    WHERE c.chain_id = $1 AND c.token_address = $2 AND c.interval = '1m'
-      AND c.bucket_start_time <= clock.now_at - interval '24 hours'
-    ORDER BY c.bucket_start_time DESC
-    LIMIT 1
-), latest AS (
-    SELECT c.close_price_wad
-    FROM candles AS c
-    WHERE c.chain_id = $1 AND c.token_address = $2 AND c.interval = '1m'
-    ORDER BY c.bucket_start_time DESC
-    LIMIT 1
-), rolling AS (
-    SELECT COALESCE(sum(c.gross_eth_volume), 0) AS volume_24h
-    FROM candles AS c CROSS JOIN clock
-    WHERE c.chain_id = $1 AND c.token_address = $2 AND c.interval = '1m'
-      AND c.bucket_start_time >= clock.now_at - interval '24 hours'
 ), holders AS (
     SELECT
         p.chain_id,
@@ -560,10 +541,37 @@ WITH clock AS (
         previous.ath_at AS previous_ath_at
     FROM prices AS p
     JOIN holders AS h USING (chain_id, token_address)
-    CROSS JOIN rolling
-    LEFT JOIN candles_ath USING (chain_id, token_address)
-    LEFT JOIN baseline ON TRUE
-    LEFT JOIN latest ON TRUE
+    CROSS JOIN clock
+    -- Every trade is bucketed into all four candle intervals; ATH, baseline, latest, and volume
+    -- read only the finest ('1m') series so each trade is counted once.
+    LEFT JOIN LATERAL (
+        SELECT c.high_price_wad, c.bucket_start_time
+        FROM candles AS c
+        WHERE c.chain_id = p.chain_id AND c.token_address = p.token_address AND c.interval = '1m'
+        ORDER BY c.high_price_wad DESC, c.bucket_start_time ASC
+        LIMIT 1
+    ) AS candles_ath ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT c.close_price_wad
+        FROM candles AS c
+        WHERE c.chain_id = p.chain_id AND c.token_address = p.token_address AND c.interval = '1m'
+          AND c.bucket_start_time <= clock.now_at - interval '24 hours'
+        ORDER BY c.bucket_start_time DESC
+        LIMIT 1
+    ) AS baseline ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT c.close_price_wad
+        FROM candles AS c
+        WHERE c.chain_id = p.chain_id AND c.token_address = p.token_address AND c.interval = '1m'
+        ORDER BY c.bucket_start_time DESC
+        LIMIT 1
+    ) AS latest ON TRUE
+    CROSS JOIN LATERAL (
+        SELECT COALESCE(sum(c.gross_eth_volume), 0) AS volume_24h
+        FROM candles AS c
+        WHERE c.chain_id = p.chain_id AND c.token_address = p.token_address AND c.interval = '1m'
+          AND c.bucket_start_time >= clock.now_at - interval '24 hours'
+    ) AS rolling
     LEFT JOIN token_stats AS previous
       ON previous.chain_id = p.chain_id AND previous.token_address = p.token_address
 )
@@ -592,6 +600,8 @@ SELECT chain_id, token_address,
  holder_count,
  now()
 FROM computed
+-- A fixed row order keeps concurrent multi-token upserts from locking rows in opposite orders.
+ORDER BY chain_id, token_address
 ON CONFLICT (chain_id,token_address) DO UPDATE SET
  spot_price_eth_wad=EXCLUDED.spot_price_eth_wad,market_cap_eth_wad=EXCLUDED.market_cap_eth_wad,
  fdv_eth_wad=EXCLUDED.fdv_eth_wad,liquidity_eth_wad=EXCLUDED.liquidity_eth_wad,
