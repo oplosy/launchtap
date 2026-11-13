@@ -232,7 +232,7 @@ export function GraduatedSwapPanel({
   );
   return (
     <div className="graduated-swap">
-      <WrongNetworkBanner trade={trade} />
+      <WrongNetworkBanner write={trade} />
       <p className="transaction-risk">
         Reviewed router only:{" "}
         {routerExplorer ? (
@@ -345,7 +345,12 @@ export function GraduatedSwapPanel({
                 </>
               ) : null}
             </dl>
-            <ReviewActions trade={trade} canSign={ready} onSign={() => void execute()} />
+            <ReviewActions
+              write={trade}
+              label={`Sign ${side}`}
+              canSign={ready}
+              onSign={() => void execute()}
+            />
           </div>
         ) : (
           <>

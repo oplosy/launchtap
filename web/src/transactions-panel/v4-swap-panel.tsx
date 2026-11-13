@@ -261,7 +261,7 @@ export function V4SwapPanel({
   );
   return (
     <div className="graduated-swap">
-      <WrongNetworkBanner trade={trade} />
+      <WrongNetworkBanner write={trade} />
       <p className="transaction-risk">
         Reviewed Universal Router only:{" "}
         {routerExplorer ? (
@@ -353,7 +353,12 @@ export function V4SwapPanel({
                 </>
               ) : null}
             </dl>
-            <ReviewActions trade={trade} canSign={ready} onSign={() => void execute()} />
+            <ReviewActions
+              write={trade}
+              label={`Sign ${side}`}
+              canSign={ready}
+              onSign={() => void execute()}
+            />
           </div>
         ) : (
           <>

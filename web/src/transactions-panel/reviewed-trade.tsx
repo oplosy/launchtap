@@ -8,6 +8,7 @@ import { publicConfiguration } from "@/config/public";
 import { TradeUsdHint } from "@/market/usd-line";
 import { Button, Input } from "@/components/primitives";
 import { useWalletReadiness } from "@/wallet/readiness";
+import type { PersistedTransactionAction } from "@/transaction-storage";
 import {
   classifyTransactionFailure,
   decodeTransactionError,
@@ -24,6 +25,7 @@ import {
 } from "./shared";
 
 type FailurePhase = "preflight" | "simulation" | "write" | "receipt";
+type PersistedTransaction = ReturnType<typeof usePersistedTransactionState>;
 
 /** A wallet or network switch since review: shown as a review notice, never as a failure. */
 class ReviewChangedError extends Error {}
@@ -35,7 +37,7 @@ const WRITE_CHANGED =
   "The wallet write details changed. Review the updated values, then confirm again.";
 
 /** A fresh on-chain read of the reviewed write, and how the panel shows it if it changed. */
-export type RequotedIntent = { intent: ReviewedWriteIntent; replace: () => void };
+export type RequotedIntent = { intent: ReviewedWriteIntent; replace?: () => void };
 
 export type ExactContractWrite = {
   address: Address;
@@ -45,7 +47,7 @@ export type ExactContractWrite = {
 };
 
 /**
- * The steps every reviewed trade shares. Each one re-checks the selected wallet and network
+ * The steps every reviewed write shares. Each one re-checks the selected wallet and network
  * immediately before a signature, and stops on a changed write instead of signing it.
  */
 export type ReviewedExecution = {
@@ -57,7 +59,10 @@ export type ReviewedExecution = {
   approve: (reviewed: ReviewedWriteIntent, write: ExactContractWrite) => Promise<Address>;
   /** Closes the review after allowances mined; the user signs the trade on a fresh review. */
   approvalsDone: (notice: string) => void;
-  /** Simulates, re-quotes, re-checks the wallet, signs the reviewed write and waits for it. */
+  /**
+   * Simulates the reviewed write, re-reads it (`requote` may throw to stop), re-checks the wallet,
+   * signs exactly the reviewed target, function, arguments and value, and waits for the receipt.
+   */
   sign: (
     reviewed: ReviewedWriteIntent,
     options: {
@@ -71,11 +76,16 @@ export type ReviewedExecution = {
 };
 
 /**
- * Shared state and the signing pipeline of the curve, V2 router and V4 router trade panels.
- * The panels keep what differs: the quote source, the intent they build, balance and
- * allowance preflight, and the confirmation details.
+ * The review state and signing pipeline every transaction panel shares: the selected wallet, the
+ * persisted transaction state, the execution lock and the review/confirm/sign steps. `approval`
+ * is the persisted allowance transaction for panels that write one before the main write.
  */
-export function useReviewedTrade(tokenAddress: Address | null, enabled = true) {
+export function useReviewedWrite(
+  action: PersistedTransactionAction,
+  tokenAddress: Address | null,
+  enabled = true,
+  approval?: PersistedTransaction,
+) {
   const account = useAccount();
   const readiness = useWalletReadiness();
   const publicClient = usePublicClient();
@@ -83,15 +93,7 @@ export function useReviewedTrade(tokenAddress: Address | null, enabled = true) {
   const configuration = publicConfiguration();
   const chainId = readiness.chainId;
   const transaction = usePersistedTransactionState(
-    "trade",
-    configuration.chainId,
-    account.address,
-    tokenAddress,
-    configuration.apiBaseUrl,
-    enabled,
-  );
-  const approvalTransaction = usePersistedTransactionState(
-    "approval",
+    action,
     configuration.chainId,
     account.address,
     tokenAddress,
@@ -99,26 +101,11 @@ export function useReviewedTrade(tokenAddress: Address | null, enabled = true) {
     enabled,
   );
   const { state, setState } = transaction;
-  const setApprovalState = approvalTransaction.setState;
-  const approvalHash = approvalTransaction.ready
-    ? (approvalTransaction.state.hash as Address | undefined)
-    : undefined;
-  const [side, setSide] = useState<"buy" | "sell">("buy");
-  const [input, setInput] = useState("");
-  const [slippage, setSlippage] = useState("5");
   const [executionBusy, setExecutionBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [reviewIntent, setReviewIntent] = useState<ReviewedWriteIntent | null>(null);
   const [reviewNotice, setReviewNotice] = useState<string | null>(null);
   const lockRef = useRef(false);
-  const inputUnits = useMemo(() => {
-    try {
-      return input.trim() ? parseDecimal(input) : null;
-    } catch {
-      return null;
-    }
-  }, [input]);
-  const slippageBps = useMemo(() => parseSlippageBps(slippage), [slippage]);
 
   const closeReview = (clearNotice = true) => {
     setConfirming(false);
@@ -130,19 +117,6 @@ export function useReviewedTrade(tokenAddress: Address | null, enabled = true) {
     setReviewNotice(null);
     setConfirming(true);
   };
-  const changeSide = (next: "buy" | "sell") => {
-    setSide(next);
-    setInput("");
-    closeReview();
-  };
-  const changeInput = (value: string) => {
-    setInput(value);
-    closeReview();
-  };
-  const changeSlippage = (value: string) => {
-    setSlippage(value);
-    closeReview(false);
-  };
 
   /** Everything a review or a signature needs from the wallet and the persisted state. */
   const walletReady = Boolean(
@@ -151,8 +125,7 @@ export function useReviewedTrade(tokenAddress: Address | null, enabled = true) {
     account.address &&
     chainId === configuration.chainId &&
     readiness.selectedAccountVerified &&
-    transaction.ready &&
-    (side !== "sell" || approvalTransaction.ready),
+    transaction.ready,
   );
 
   /** Throws when the wallet's selected account or chain moved since the panel rendered. */
@@ -181,7 +154,7 @@ export function useReviewedTrade(tokenAddress: Address | null, enabled = true) {
     );
   };
 
-  /** Runs one locked execution; a thrown error becomes the trade's (or approval's) failure. */
+  /** Runs one locked execution; a thrown error becomes the write's (or approval's) failure. */
   const runExecution = async (body: (execution: ReviewedExecution) => Promise<void>) => {
     if (lockRef.current || !publicClient || !walletClient) return;
     lockRef.current = true;
@@ -193,42 +166,45 @@ export function useReviewedTrade(tokenAddress: Address | null, enabled = true) {
     let submittedHash: Address | undefined;
     let fallbackHash: Address | undefined;
     let approving = false;
-    const ensureWallet = async (reviewed: ReviewedWriteIntent, notice = WALLET_CHANGED) => {
-      if (!(await walletStillReviewed(reviewed))) throw new ReviewChangedError(notice);
-    };
     const execution: ReviewedExecution = {
-      ensureWallet,
+      ensureWallet: async (reviewed, notice = WALLET_CHANGED) => {
+        if (!(await walletStillReviewed(reviewed))) {
+          setState(priorState);
+          throw new ReviewChangedError(notice);
+        }
+      },
       setFallbackHash: (hash) => {
         fallbackHash = hash;
       },
       unchanged: (reviewed, fresh) => {
         if (sameReviewedWriteIntent(reviewed, fresh.intent)) return true;
-        fresh.replace();
+        fresh.replace?.();
         setReviewIntent(fresh.intent);
         setReviewNotice(WRITE_CHANGED);
         setState(priorState);
         return false;
       },
       approve: async (reviewed, write) => {
+        if (!approval) throw new Error("This write has no approval step");
         approving = true;
-        const priorApproval = approvalTransaction.state;
+        const priorApproval = approval.state;
         const request = { ...write, account: reviewed.account as Address } as never;
         phase = "simulation";
-        setApprovalState({ status: "simulating" });
+        approval.setState({ status: "simulating" });
         await client.simulateContract(request);
         if (!(await walletStillReviewed(reviewed))) {
-          setApprovalState(priorApproval);
+          approval.setState(priorApproval);
           throw new ReviewChangedError(WALLET_CHANGED_DURING_SIMULATION);
         }
         phase = "write";
-        setApprovalState({ status: "awaiting-signature" });
+        approval.setState({ status: "awaiting-signature" });
         const hash = (await wallet.writeContract(request)) as Address;
         submittedHash = hash;
-        setApprovalState({ status: "submitted", hash });
+        approval.setState({ status: "submitted", hash });
         phase = "receipt";
         const receipt = await client.waitForTransactionReceipt({ hash });
         if (receipt.status !== "success") throw new Error("ReceiptReverted");
-        setApprovalState({ status: "mined", hash });
+        approval.setState({ status: "mined", hash });
         return hash;
       },
       approvalsDone: (notice) => {
@@ -251,10 +227,7 @@ export function useReviewedTrade(tokenAddress: Address | null, enabled = true) {
         await client.simulateContract(request);
         const fresh = await requote();
         if (!execution.unchanged(reviewed, fresh)) return;
-        if (!(await walletStillReviewed(reviewed))) {
-          setState(priorState);
-          throw new ReviewChangedError(WALLET_CHANGED_DURING_SIMULATION);
-        }
+        await execution.ensureWallet(reviewed, WALLET_CHANGED_DURING_SIMULATION);
         setState({ status: "awaiting-signature" });
         phase = "write";
         const hash = (await wallet.writeContract(request)) as Address;
@@ -279,7 +252,7 @@ export function useReviewedTrade(tokenAddress: Address | null, enabled = true) {
         hash: submittedHash ?? fallbackHash,
         error: decodeTransactionError(cause).message,
       } satisfies TransactionState;
-      if (approving) setApprovalState(failure);
+      if (approving && approval) approval.setState(failure);
       else setState(failure);
     } finally {
       lockRef.current = false;
@@ -295,25 +268,14 @@ export function useReviewedTrade(tokenAddress: Address | null, enabled = true) {
     configuration,
     chainId,
     transaction,
-    approvalTransaction,
     state,
-    approvalHash,
-    side,
-    input,
-    slippage,
-    inputUnits,
-    slippageBps,
     executionBusy,
     confirming,
     reviewIntent,
     reviewNotice,
     setReviewNotice,
-    setReviewIntent,
     walletReady,
     unresolved: hasUnresolvedSubmission(state),
-    changeSide,
-    changeInput,
-    changeSlippage,
     openReview,
     closeReview,
     assertWalletForReview,
@@ -321,10 +283,70 @@ export function useReviewedTrade(tokenAddress: Address | null, enabled = true) {
   };
 }
 
+export type ReviewedWrite = ReturnType<typeof useReviewedWrite>;
+
+/**
+ * Shared state of the curve, V2 router and V4 router trade panels on top of `useReviewedWrite`:
+ * side, amount, slippage and the persisted allowance transaction. The panels keep what differs:
+ * the quote source, the intent they build, balance and allowance preflight, and the details.
+ */
+export function useReviewedTrade(tokenAddress: Address | null, enabled = true) {
+  const configuration = publicConfiguration();
+  const account = useAccount();
+  const approvalTransaction = usePersistedTransactionState(
+    "approval",
+    configuration.chainId,
+    account.address,
+    tokenAddress,
+    configuration.apiBaseUrl,
+    enabled,
+  );
+  const write = useReviewedWrite("trade", tokenAddress, enabled, approvalTransaction);
+  const [side, setSide] = useState<"buy" | "sell">("buy");
+  const [input, setInput] = useState("");
+  const [slippage, setSlippage] = useState("5");
+  const inputUnits = useMemo(() => {
+    try {
+      return input.trim() ? parseDecimal(input) : null;
+    } catch {
+      return null;
+    }
+  }, [input]);
+  const slippageBps = useMemo(() => parseSlippageBps(slippage), [slippage]);
+  const approvalHash = approvalTransaction.ready
+    ? (approvalTransaction.state.hash as Address | undefined)
+    : undefined;
+  return {
+    ...write,
+    approvalTransaction,
+    approvalHash,
+    side,
+    input,
+    slippage,
+    inputUnits,
+    slippageBps,
+    /** A sell also needs the persisted approval state before it can review or sign. */
+    walletReady: write.walletReady && (side !== "sell" || approvalTransaction.ready),
+    changeSide: (next: "buy" | "sell") => {
+      setSide(next);
+      setInput("");
+      write.closeReview();
+    },
+    changeInput: (value: string) => {
+      setInput(value);
+      write.closeReview();
+    },
+    changeSlippage: (value: string) => {
+      setSlippage(value);
+      write.closeReview(false);
+    },
+  };
+}
+
 export type ReviewedTrade = ReturnType<typeof useReviewedTrade>;
 
-export function WrongNetworkBanner({ trade }: { trade: ReviewedTrade }) {
-  const { readiness, chainId, configuration } = trade;
+export function WrongNetworkBanner({ write }: { write: ReviewedWrite }) {
+  const { readiness, chainId, configuration } = write;
   if (!readiness.address || chainId === configuration.chainId) return null;
   return (
     <div className="transaction-warning" role="alert">
@@ -389,18 +411,20 @@ export function ReviewNotice({ notice }: { notice: string | null }) {
 
 /** Back and sign buttons under a confirmation. */
 export function ReviewActions({
-  trade,
+  write,
+  label,
   canSign,
   onSign,
 }: {
-  trade: ReviewedTrade;
+  write: ReviewedWrite;
+  label: string;
   canSign: boolean;
   onSign: () => void;
 }) {
-  const { executionBusy, state, reviewIntent, transaction, side } = trade;
+  const { executionBusy, state, reviewIntent, transaction } = write;
   return (
     <div className="transaction-actions">
-      <Button variant="quiet" disabled={executionBusy} onClick={() => trade.closeReview()}>
+      <Button variant="quiet" disabled={executionBusy} onClick={() => write.closeReview()}>
         Back
       </Button>
       <Button
@@ -409,7 +433,7 @@ export function ReviewActions({
         disabled={executionBusy || !canSign || !reviewIntent || !transaction.ready}
         onClick={onSign}
       >
-        Sign {side}
+        {label}
       </Button>
     </div>
   );
