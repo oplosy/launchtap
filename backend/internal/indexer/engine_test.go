@@ -32,6 +32,8 @@ type memoryUnit struct {
 	foreign        []string
 	identities     []TokenIdentity
 	pools          map[common.Hash]common.Address
+	// identityLoads, when set, counts TokenIdentities reads across transactions.
+	identityLoads *int
 }
 type memoryStore struct {
 	unit             memoryUnit
@@ -184,6 +186,9 @@ func (u *memoryUnit) PromoteBlocks(_ context.Context, _ int64, safe, final *ledg
 	return nil
 }
 func (u *memoryUnit) TokenIdentities(context.Context, int64) ([]TokenIdentity, error) {
+	if u.identityLoads != nil {
+		*u.identityLoads++
+	}
 	return append([]TokenIdentity(nil), u.identities...), nil
 }
 func (u *memoryUnit) GraduatedV4Pools(context.Context, int64) (map[common.Hash]common.Address, error) {
