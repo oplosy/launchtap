@@ -75,6 +75,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if discovery, err = discovery.WithLogConcurrency(int(c.IndexerLogFetchConcurrency)); err != nil {
+		return err
+	}
 	store := storepostgres.IndexerStore{Pool: pool, Beginner: owner.Beginner(), Owner: owner, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, Factory: deployment.Factory, OnNotify: indexerMetrics.Notified}
 	router := indexer.LedgerRouter{ChainID: int64(c.ChainID)}
 	health.Set(indexer.Health{ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, OwnershipHeld: true, RPCHealthy: true})

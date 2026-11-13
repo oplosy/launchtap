@@ -23,6 +23,8 @@ const (
 	maxIndexerReorgSearchDepth     = uint64(100000)
 	defaultLogAddressBatch         = uint64(500)
 	maxLogAddressBatch             = uint64(2000)
+	defaultLogFetchConcurrency     = uint64(4)
+	maxLogFetchConcurrency         = uint64(16)
 	defaultPollInterval            = time.Second
 	defaultRPCTimeout              = 10 * time.Second
 	defaultRPCMaxRetries           = uint64(3)
@@ -95,6 +97,7 @@ type Config struct {
 	IndexerReorgSearchDepth    uint64        `env:"INDEXER_REORG_SEARCH_DEPTH"`
 	IndexerReorgRecoveryMode   bool          `env:"INDEXER_REORG_RECOVERY_MODE"`
 	IndexerLogAddressBatchSize uint64        `env:"INDEXER_LOG_ADDRESS_BATCH_SIZE"`
+	IndexerLogFetchConcurrency uint64        `env:"INDEXER_LOG_FETCH_CONCURRENCY"`
 	IndexerPollInterval        time.Duration `env:"INDEXER_POLL_INTERVAL"`
 	RPCTimeout                 time.Duration `env:"RPC_TIMEOUT"`
 	RPCMaxRetries              uint64        `env:"RPC_MAX_RETRIES"`
@@ -135,6 +138,13 @@ func Load(getenv func(string) string) (Config, error) {
 	addressBatchSize, err := optionalBoundedUint64(
 		"INDEXER_LOG_ADDRESS_BATCH_SIZE", values.indexerLogAddressBatchSize,
 		defaultLogAddressBatch, 1, maxLogAddressBatch,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	logFetchConcurrency, err := optionalBoundedUint64(
+		"INDEXER_LOG_FETCH_CONCURRENCY", values.indexerLogFetchConcurrency,
+		defaultLogFetchConcurrency, 1, maxLogFetchConcurrency,
 	)
 	if err != nil {
 		return Config{}, err
@@ -276,6 +286,7 @@ func Load(getenv func(string) string) (Config, error) {
 		IndexerReorgSearchDepth:       reorgSearchDepth,
 		IndexerReorgRecoveryMode:      reorgRecoveryMode,
 		IndexerLogAddressBatchSize:    addressBatchSize,
+		IndexerLogFetchConcurrency:    logFetchConcurrency,
 		IndexerPollInterval:           pollInterval,
 		RPCTimeout:                    rpcTimeout,
 		RPCMaxRetries:                 rpcMaxRetries,
@@ -344,6 +355,7 @@ type environmentValues struct {
 	indexerReorgSearchDepth       string
 	indexerReorgRecoveryMode      string
 	indexerLogAddressBatchSize    string
+	indexerLogFetchConcurrency    string
 	indexerPollInterval           string
 	rpcTimeout                    string
 	rpcMaxRetries                 string
@@ -378,6 +390,7 @@ func readEnvironment(getenv func(string) string) environmentValues {
 		indexerReorgSearchDepth:       strings.TrimSpace(getenv("INDEXER_REORG_SEARCH_DEPTH")),
 		indexerReorgRecoveryMode:      strings.TrimSpace(getenv("INDEXER_REORG_RECOVERY_MODE")),
 		indexerLogAddressBatchSize:    strings.TrimSpace(getenv("INDEXER_LOG_ADDRESS_BATCH_SIZE")),
+		indexerLogFetchConcurrency:    strings.TrimSpace(getenv("INDEXER_LOG_FETCH_CONCURRENCY")),
 		indexerPollInterval:           strings.TrimSpace(getenv("INDEXER_POLL_INTERVAL")),
 		rpcTimeout:                    strings.TrimSpace(getenv("RPC_TIMEOUT")),
 		rpcMaxRetries:                 strings.TrimSpace(getenv("RPC_MAX_RETRIES")),

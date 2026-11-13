@@ -479,6 +479,7 @@ requires `DATABASE_URL`.
 | `INDEXER_REORG_SEARCH_DEPTH`     | `128`                              | Default header search window; accepted range 1–100,000                                              |
 | `INDEXER_REORG_RECOVERY_MODE`    | `false`                            | Must be `true` only with an explicitly larger search depth; see the deep-reorg runbook              |
 | `INDEXER_LOG_ADDRESS_BATCH_SIZE` | `500`                              | Addresses per log query batch; default 500, accepted range 1–2,000                                  |
+| `INDEXER_LOG_FETCH_CONCURRENCY`  | `4`                                | `eth_getLogs` calls discovery keeps in flight; default 4, accepted range 1–16 (1 is sequential)     |
 | `INDEXER_POLL_INTERVAL`          | `1s`                               | Positive polling duration; defaults to 1 second                                                     |
 | `INDEXER_SENDER_BACKFILL_INTERVAL` | `60s`                            | Automatic pool swap sender backfill period (safe blocks only); `0` disables, otherwise 1s–24h       |
 | `INDEXER_SENDER_BACKFILL_MAX_TXS`  | `500`                            | Transactions one automatic backfill pass looks up; default 500, accepted range 1–10,000             |
