@@ -89,6 +89,11 @@ database. It is not evidence of Robinhood connectivity, production RPC behavior,
 configuration, liquidity, or returns. Record the exact commit, gate output, browser project, and
 deployment manifest digest in the release ticket.
 
+Record page LCP for the release as well: run Lighthouse in mobile mode against the production
+build on the home, token and create pages, and keep each page's LCP with the release evidence. The
+target is under 2.5 s (`docs/specs/2026-11-14-performance-targets.md`); a page over it blocks the
+release until it is fixed or the miss is accepted in writing in the release ticket.
+
 Live acceptance is a separate, explicitly named check using the production API/RPC and real Privy
 application. Do not substitute test wallet keys or local addresses for that evidence.
 

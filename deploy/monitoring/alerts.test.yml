@@ -285,3 +285,85 @@ tests:
       - eval_time: 25m
         alertname: EthUsdStale
         exp_alerts: []
+
+  # APIReadLatencyHigh
+  - name: APIReadLatencyHigh fires when p95 reads take 500 ms at 2 req/s
+    interval: 1m
+    input_series:
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/tokens",method="GET",le="0.1"}'
+        values: "0x40"
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/tokens",method="GET",le="0.25"}'
+        values: "0x40"
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/tokens",method="GET",le="0.5"}'
+        values: "0+120x40"
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/tokens",method="GET",le="+Inf"}'
+        values: "0+120x40"
+      - series: 'launchpad_api_http_request_duration_seconds_count{job="api",route="GET /v1/tokens",method="GET"}'
+        values: "0+120x40"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: APIReadLatencyHigh
+        exp_alerts:
+          - exp_labels: {severity: ticket}
+            exp_annotations: {summary: "p95 API read latency is above the 250 ms target"}
+  - name: APIReadLatencyHigh quiet when reads finish under 100 ms
+    interval: 1m
+    input_series:
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/tokens",method="GET",le="0.1"}'
+        values: "0+120x40"
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/tokens",method="GET",le="0.25"}'
+        values: "0+120x40"
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/tokens",method="GET",le="0.5"}'
+        values: "0+120x40"
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/tokens",method="GET",le="+Inf"}'
+        values: "0+120x40"
+      - series: 'launchpad_api_http_request_duration_seconds_count{job="api",route="GET /v1/tokens",method="GET"}'
+        values: "0+120x40"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: APIReadLatencyHigh
+        exp_alerts: []
+  - name: APIReadLatencyHigh ignores long-lived SSE streams
+    interval: 1m
+    input_series:
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/tokens",method="GET",le="0.1"}'
+        values: "0+120x40"
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/tokens",method="GET",le="0.25"}'
+        values: "0+120x40"
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/tokens",method="GET",le="0.5"}'
+        values: "0+120x40"
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/tokens",method="GET",le="+Inf"}'
+        values: "0+120x40"
+      - series: 'launchpad_api_http_request_duration_seconds_count{job="api",route="GET /v1/tokens",method="GET"}'
+        values: "0+120x40"
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/events",method="GET",le="0.1"}'
+        values: "0x40"
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/events",method="GET",le="0.25"}'
+        values: "0x40"
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/events",method="GET",le="0.5"}'
+        values: "0x40"
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/events",method="GET",le="+Inf"}'
+        values: "0+60x40"
+      - series: 'launchpad_api_http_request_duration_seconds_count{job="api",route="GET /v1/events",method="GET"}'
+        values: "0+60x40"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: APIReadLatencyHigh
+        exp_alerts: []
+  - name: APIReadLatencyHigh quiet below one request per second
+    interval: 1m
+    input_series:
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/tokens",method="GET",le="0.1"}'
+        values: "0x40"
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/tokens",method="GET",le="0.25"}'
+        values: "0x40"
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/tokens",method="GET",le="0.5"}'
+        values: "0+30x40"
+      - series: 'launchpad_api_http_request_duration_seconds_bucket{job="api",route="GET /v1/tokens",method="GET",le="+Inf"}'
+        values: "0+30x40"
+      - series: 'launchpad_api_http_request_duration_seconds_count{job="api",route="GET /v1/tokens",method="GET"}'
+        values: "0+30x40"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: APIReadLatencyHigh
+        exp_alerts: []

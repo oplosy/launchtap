@@ -84,3 +84,16 @@ groups:
         labels: {severity: ticket}
         annotations:
           summary: "ETH/USD price has not been refreshed for 10 minutes"
+
+      # Performance target (docs/specs/2026-11-14-performance-targets.md): p95 of API reads
+      # stays under 250 ms. The SSE stream is long-lived by design and excluded.
+      - alert: APIReadLatencyHigh
+        expr: |
+          histogram_quantile(0.95, sum by (le) (
+            rate(launchpad_api_http_request_duration_seconds_bucket{method="GET",route!~".*/v1/events"}[10m])
+          )) > 0.25
+          and sum(rate(launchpad_api_http_request_duration_seconds_count{method="GET",route!~".*/v1/events"}[10m])) >= 1
+        for: 15m
+        labels: {severity: ticket}
+        annotations:
+          summary: "p95 API read latency is above the 250 ms target"
