@@ -150,6 +150,8 @@ Alert rules (`deploy/monitoring/alerts.yml`, unit-tested in `alerts.test.yml`):
 | `DatabaseDown` | indexer DB check down, or API pool had to make acquires wait (empty acquires rising) with no idle connection | 2m | page |
 | `WriteRejectionSpike` | 5m rejection rate > 10x the 1h average ending 15m ago, and > 0.05/s | 15m | ticket |
 | `EthUsdStale` | last ETH/USD refresh older than 600s (absent series: price source disabled, no alert) | 10m | ticket |
+| `IndexerStateDrift` | the last reconciliation pass found indexed values that differ from the chain | 25m | page |
+| `IndexerReconciliationStale` | no reconciliation pass has completed its comparison for 3600s | 10m | ticket |
 
 - `IndexerObservedLagHigh` fires during the initial backfill from `StartBlock`; silence it
   during first sync.
@@ -159,6 +161,16 @@ Alert rules (`deploy/monitoring/alerts.yml`, unit-tested in `alerts.test.yml`):
   zero baseline does not produce noise; the owner can retune that floor.
 - `RPCErrorRateHigh` counts an unsupported safe or finalized block tag as an
   `eth_getBlockByNumber` error, so a chain without those tags will raise it.
+- `IndexerStateDrift`: the indexer compares 25 recently traded tokens with `eth_call` reads at the
+  observed block every 10 minutes (phase, curve reserves, holder-balance sum against
+  `totalSupply`, the 5 largest holders). Each mismatch is logged as `indexed state differs from
+  chain` with the check, token, subject and both values. A pass whose block was reorged during
+  the pass is discarded, not reported. On a page: read the logged values and compare them with a
+  block explorer, then re-index into a fresh database to confirm; a mismatch a fresh index also has is an
+  indexer bug. Design: `docs/specs/2026-11-14-state-reconciliation-preflight.md`.
+- `IndexerReconciliationStale` means passes keep failing (`state reconciliation pass failed` in
+  the log, `launchpad_indexer_reconciliation_runs_total{outcome="error"}` rising), usually an RPC
+  that cannot serve `eth_call` at the observed block.
 
 ### Live feed (P0-B)
 

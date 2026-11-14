@@ -280,6 +280,11 @@ type Querier interface {
 	// LpFeeLocker._credit: the creator gets floor(eth * bps / 10000), the protocol the rest.
 	ListProtocolRevenueByEngine(ctx context.Context, chainID int64) ([]ListProtocolRevenueByEngineRow, error)
 	ListRecentMarketTrades(ctx context.Context, arg ListRecentMarketTradesParams) ([]ListRecentMarketTradesRow, error)
+	// Reads for the indexed-state reconciliation pass
+	// (docs/specs/2026-11-14-state-reconciliation-preflight.md). Amounts are read as text so the
+	// comparison parses them into *big.Int without a float on the way.
+	// The tokens whose reserves changed most recently: where trading, and therefore drift, happens.
+	ListReconcileTokens(ctx context.Context, arg ListReconcileTokensParams) ([]ListReconcileTokensRow, error)
 	// Keyset page of the chain's launched tokens for the chunked position seed. Every ledger row
 	// (trades, transfers) references token_launches, so these pages cover the whole ledger.
 	ListSeedTokens(ctx context.Context, arg ListSeedTokensParams) ([]Address, error)
@@ -304,6 +309,7 @@ type Querier interface {
 	// Transfers of the token touching one of the given wallets, between two non-infrastructure
 	// wallets.
 	ListTokenTransfersTouching(ctx context.Context, arg ListTokenTransfersTouchingParams) ([]ListTokenTransfersTouchingRow, error)
+	ListTopHolders(ctx context.Context, arg ListTopHoldersParams) ([]ListTopHoldersRow, error)
 	ListTrendingTokens(ctx context.Context, arg ListTrendingTokensParams) ([]ListTrendingTokensRow, error)
 	// Backfill cursor: distinct transactions that still have a v1 pool swap or a V4 swap without a
 	// sender, in blocks at or below through_block, in (block_number, tx_hash) order, strictly after
@@ -419,6 +425,7 @@ type Querier interface {
 	SnipeTaxClaimMatchesEvent(ctx context.Context, arg SnipeTaxClaimMatchesEventParams) (pgtype.Bool, error)
 	// True when the DID has a user row or at least one comment in scope.
 	SocialDIDKnown(ctx context.Context, arg SocialDIDKnownParams) (bool, error)
+	SumHolderBalances(ctx context.Context, arg SumHolderBalancesParams) (string, error)
 	TokenExists(ctx context.Context, arg TokenExistsParams) (bool, error)
 	TokenLaunchMatchesEvent(ctx context.Context, arg TokenLaunchMatchesEventParams) (pgtype.Bool, error)
 	TokenLaunchV2MatchesEvent(ctx context.Context, arg TokenLaunchV2MatchesEventParams) (pgtype.Bool, error)

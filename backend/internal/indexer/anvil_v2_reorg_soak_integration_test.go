@@ -227,6 +227,11 @@ func TestAnvilV2DeepReorgSoak(t *testing.T) {
 		}
 		t.Logf("round %d: depth %d reorg recovered; %d ledger and projection rows match a fresh index", round, depth, len(recovered))
 	}
+	// After every reorg the indexed curve state agrees with the chain, and a corrupted holder
+	// balance is reported as drift.
+	result := assertReconciled(t, ctx, pool, source, chainID, deploymentID)
+	t.Logf("reconciliation after the soak: %d tokens, %d checks, no drift", result.Tokens, result.Checks)
+	assertDriftDetected(t, ctx, database.DB, pool, source, chainID, deploymentID, token)
 }
 
 // soakRows renders the deployment's canonical ledger and the token's projections as text.
