@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 	"time"
@@ -191,7 +192,7 @@ func (r MarketReader) ListTrades(ctx context.Context, q trading.Query) (trading.
 			args.AfterTransactionIndex = pgtype.Int4{Int32: int32(tx), Valid: true}
 			args.AfterLogIndex = pgtype.Int4{Int32: int32(li), Valid: true}
 		}
-		rows, err := a.queries.ListMarketTrades(ctx, args)
+		rows, err := a.listMarketTrades(ctx, args)
 		if err != nil {
 			return err
 		}
@@ -212,6 +213,45 @@ func (r MarketReader) ListTrades(ctx context.Context, q trading.Query) (trading.
 		return nil
 	})
 	return out, err
+}
+
+// listMarketTrades reads one page of a token's trades. The market_trades view cannot push
+// ORDER BY ... LIMIT into its union branches, so an unbounded page reads and sorts every trade
+// and swap of the token. The page's lower key is found first from the base tables' own indexes
+// and bounds the view read to about one page per source. The unbounded read remains for a token
+// with less than a page of events, and for the case where the view dropped a base-table event
+// inside the bound (a swap without its Sync) and the bounded page came back short.
+func (a *Adapter) listMarketTrades(ctx context.Context, args sqlc.ListMarketTradesParams) ([]sqlc.ListMarketTradesRow, error) {
+	before := sqlc.MarketTradePageFloorParams{
+		ChainID: args.ChainID, TokenAddress: args.TokenAddress, PageSize: args.PageSize,
+		BeforeBlock: math.MaxInt64, BeforeTransactionIndex: math.MaxInt32, BeforeLogIndex: math.MaxInt32,
+	}
+	if args.AfterBlock.Valid {
+		before.BeforeBlock, before.BeforeTransactionIndex, before.BeforeLogIndex = args.AfterBlock.Int64, args.AfterTransactionIndex.Int32, args.AfterLogIndex.Int32
+	}
+	floor, err := a.queries.MarketTradePageFloor(ctx, before)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return a.queries.ListMarketTrades(ctx, args)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find market trade page floor: %w", err)
+	}
+	bounded, err := a.queries.ListMarketTradesFrom(ctx, sqlc.ListMarketTradesFromParams{
+		ChainID: args.ChainID, TokenAddress: args.TokenAddress, PageSize: args.PageSize,
+		BeforeBlock: before.BeforeBlock, BeforeTransactionIndex: before.BeforeTransactionIndex, BeforeLogIndex: before.BeforeLogIndex,
+		FloorBlock: floor.BlockNumber, FloorTransactionIndex: floor.TransactionIndex, FloorLogIndex: floor.LogIndex,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(bounded) < int(args.PageSize) {
+		return a.queries.ListMarketTrades(ctx, args)
+	}
+	rows := make([]sqlc.ListMarketTradesRow, len(bounded))
+	for i, row := range bounded {
+		rows[i] = sqlc.ListMarketTradesRow(row)
+	}
+	return rows, nil
 }
 
 func (r MarketReader) ListHolders(ctx context.Context, q holder.Query) (holder.Page, error) {

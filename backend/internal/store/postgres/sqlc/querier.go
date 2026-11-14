@@ -258,6 +258,10 @@ type Querier interface {
 	ListLockerOwed(ctx context.Context, arg ListLockerOwedParams) ([]ListLockerOwedRow, error)
 	ListMarketTrades(ctx context.Context, arg ListMarketTradesParams) ([]ListMarketTradesRow, error)
 	ListMarketTradesAfter(ctx context.Context, arg ListMarketTradesAfterParams) ([]ListMarketTradesAfterRow, error)
+	// ListMarketTrades bounded below by MarketTradePageFloor: the bound becomes an index condition in
+	// every branch of the view, so a page reads about page_size rows per source instead of the
+	// token's whole history.
+	ListMarketTradesFrom(ctx context.Context, arg ListMarketTradesFromParams) ([]ListMarketTradesFromRow, error)
 	// Comments with open reports, newest open report first. Policy: none; limit is the caller's.
 	ListOpenReportedComments(ctx context.Context, arg ListOpenReportedCommentsParams) ([]ListOpenReportedCommentsRow, error)
 	ListOwnPublicWallets(ctx context.Context, arg ListOwnPublicWalletsParams) ([]Address, error)
@@ -367,6 +371,11 @@ type Querier interface {
 	// A NULL tx_from (sender not yet known) is a no-op; the zero address, the factory, the curve, the
 	// locker and the PoolManager never get a position (token_holder_excluded).
 	MarkV4SwapPositionDirty(ctx context.Context, arg MarkV4SwapPositionDirtyParams) error
+	// The key of the page_size-th newest event before the cursor across the token's base tables
+	// (curve trades, its V2 pair's swaps, its V4 pool's swaps), each read newest first from its own
+	// index. No row means fewer events than one page. The market_trades view keeps a subset of these
+	// rows, so the view's page lies at or above this key unless the view dropped one of them.
+	MarketTradePageFloor(ctx context.Context, arg MarketTradePageFloorParams) (MarketTradePageFloorRow, error)
 	NotifyAPIRefresh(ctx context.Context, payload string) error
 	PoolBurnMatchesEvent(ctx context.Context, arg PoolBurnMatchesEventParams) (pgtype.Bool, error)
 	PoolMintMatchesEvent(ctx context.Context, arg PoolMintMatchesEventParams) (pgtype.Bool, error)
