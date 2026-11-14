@@ -2,21 +2,12 @@
 
 import { useState } from "react";
 import type { Abi } from "viem";
-import { snipeTaxLine } from "@/anti-snipe";
 import { reviewedV4Addresses } from "@/engine";
 import { poolMatchesApi } from "@/v4-swap";
 import { browserAbis } from "@/contracts/generated";
 import { addressExplorerUrl } from "@/wallet/explorer";
-import {
-  decodeTransactionError,
-  minimumOutput,
-  parseRuntimeQuantity,
-  reviewedRouterAddress,
-  transactionDeadline,
-  type ReviewedWriteIntent,
-} from "@/transactions";
-import { curvePriceImpact } from "@/price-impact";
-import { Badge, Button, UnavailableState } from "@/components/primitives";
+import { decodeTransactionError, reviewedRouterAddress, transactionDeadline } from "@/transactions";
+import { Badge, UnavailableState } from "@/components/primitives";
 import {
   DEFAULT_TTL,
   type Address,
@@ -24,44 +15,21 @@ import {
   currentUnixSeconds,
   TradeSideTabs,
   ReadinessGate,
-  useTaxSecondsLeft,
   TransactionProgress,
 } from "./shared";
-import {
-  ConnectOr,
-  ReviewActions,
-  ReviewNotice,
-  TradeAmountFields,
-  useReviewedTrade,
-  WrongNetworkBanner,
-} from "./reviewed-trade";
+import { TradeAmountFields, useReviewedTrade, WrongNetworkBanner } from "./reviewed-trade";
 import { CurveClaimRow, useCurveClaims } from "./curve-claims";
+import { CurveReviewStep } from "./curve-review-step";
+import { readCurveTradeIntent, useCurveTradeFigures, type TradingToken } from "./curve-trade-logic";
 import { V2CreatorPanel } from "./v2-creator-panel";
 import {
   CurveQuoteSummary,
-  CurveTradeDetails,
   GraduatedRoute,
   useCurveQuote,
   type CurveReviewDetails,
 } from "./curve-trade-views";
 
-export function TradingPanel({
-  token,
-}: {
-  token: {
-    address: string;
-    curve: string;
-    pair: string;
-    phase: string;
-    name: string;
-    symbol: string;
-    engineVersion?: number;
-    antiSnipeEndsAt?: string | null;
-    v2PoolId?: string | null;
-    /** Last indexed spot price, wei per whole token; only used for the price-impact estimate. */
-    spotPriceWei?: string | null;
-  };
-}) {
+export function TradingPanel({ token }: { token: TradingToken }) {
   return (
     <ReadinessGate>
       <TradingPanelReady token={token} />
@@ -69,23 +37,7 @@ export function TradingPanel({
   );
 }
 
-function TradingPanelReady({
-  token,
-}: {
-  token: {
-    address: string;
-    curve: string;
-    pair: string;
-    phase: string;
-    name: string;
-    symbol: string;
-    engineVersion?: number;
-    antiSnipeEndsAt?: string | null;
-    v2PoolId?: string | null;
-    /** Last indexed spot price, wei per whole token; only used for the price-impact estimate. */
-    spotPriceWei?: string | null;
-  };
-}) {
+function TradingPanelReady({ token }: { token: TradingToken }) {
   const tokenAddress = safeAddress(token.address);
   const curveAddress = safeAddress(token.curve);
   const safeTokenAddress =
@@ -110,14 +62,11 @@ function TradingPanelReady({
     state,
     approvalHash,
     side,
-    input,
-    slippage,
     inputUnits,
     slippageBps,
     executionBusy,
     confirming,
     reviewIntent,
-    reviewNotice,
   } = trade;
   const {
     quote,
@@ -163,31 +112,16 @@ function TradingPanelReady({
   );
   const reviewedWeth = safeAddress(configuration.deployment?.weth);
 
-  const activeQuote = inputUnits && inputUnits > 0n ? quote : null;
-  const taxSecondsLeft = useTaxSecondsLeft(
-    engineVersion === 2 && !graduated ? (token.antiSnipeEndsAt ?? null) : null,
+  const { taxLine, minimum, priceImpact } = useCurveTradeFigures({
+    quote: inputUnits && inputUnits > 0n ? quote : null,
+    side,
+    slippageBps,
+    taxQuote,
+    quoteInputUsed,
+    antiSnipeEndsAt: engineVersion === 2 && !graduated ? (token.antiSnipeEndsAt ?? null) : null,
+    spotPriceWei: token.spotPriceWei,
     publicClient,
-  );
-  const taxLine =
-    activeQuote && side === "buy" && taxQuote
-      ? snipeTaxLine({ ...taxQuote, remainingSeconds: taxSecondsLeft })
-      : null;
-  const minimum =
-    activeQuote && slippageBps !== null ? minimumOutput(activeQuote.output, slippageBps) : null;
-  // Shown only for an untaxed quote: the anti-snipe tax is a separate charge, not price movement.
-  const priceImpact =
-    activeQuote && quoteInputUsed !== null && taxQuote !== null && taxQuote.snipeTax === 0n
-      ? curvePriceImpact({
-          side,
-          input: quoteInputUsed,
-          output: activeQuote.output,
-          fee: activeQuote.fee,
-          spotPriceWad:
-            token.spotPriceWei && /^[1-9][0-9]*$/.test(token.spotPriceWei)
-              ? BigInt(token.spotPriceWei)
-              : null,
-        })
-      : null;
+  });
   const readCurveIntent = async (
     accountAddress: Address,
     quoteSide: "buy" | "sell",
@@ -195,61 +129,21 @@ function TradingPanelReady({
     toleranceBps: bigint,
     deadline: bigint,
   ) => {
-    const intentChainId = configuration.chainId;
-    if (intentChainId === null) throw new Error("ChainUnavailable");
-    const contractQuote = await publicClient!.readContract({
-      address: safeCurveAddress,
+    const fresh = await readCurveTradeIntent({
+      publicClient: publicClient!,
+      curve: safeCurveAddress,
       abi: curveAbi,
-      functionName: quoteSide === "buy" ? "quoteBuy" : "quoteSell",
-      args: [quantity],
+      engineVersion,
+      chainId: configuration.chainId,
+      account: accountAddress,
+      side: quoteSide,
+      quantity,
+      toleranceBps,
+      deadline,
     });
-    const output =
-      quoteSide === "buy"
-        ? parseRuntimeQuantity((contractQuote as readonly unknown[])[1], "contract output")
-        : parseRuntimeQuantity((contractQuote as readonly unknown[])[0], "contract output");
-    const protocolFee = parseRuntimeQuantity(
-      (contractQuote as readonly unknown[])[2],
-      "protocol fee",
-    );
-    const fee =
-      protocolFee + parseRuntimeQuantity((contractQuote as readonly unknown[])[3], "creator fee");
-    // BondingCurveV2.quoteBuy returns the anti-snipe tax as its fifth value; sells are untaxed.
-    if (engineVersion === 2 && quoteSide === "buy") {
-      const taxBps = await publicClient!.readContract({
-        address: safeCurveAddress,
-        abi: curveAbi,
-        functionName: "currentTaxBps",
-      });
-      setTaxQuote({
-        snipeTax: parseRuntimeQuantity((contractQuote as readonly unknown[])[4], "snipe tax"),
-        taxBps: Number(taxBps),
-      });
-    } else setTaxQuote({ snipeTax: 0n, taxBps: 0 });
-    setQuoteInputUsed(
-      quoteSide === "buy"
-        ? parseRuntimeQuantity((contractQuote as readonly unknown[])[0], "contract input used")
-        : quantity,
-    );
-    const exactMinimum = minimumOutput(output, toleranceBps);
-    const args =
-      quoteSide === "buy"
-        ? ([accountAddress, accountAddress, exactMinimum, deadline] as const)
-        : ([quantity, accountAddress, exactMinimum, deadline] as const);
-    return {
-      intent: {
-        account: accountAddress,
-        target: safeCurveAddress,
-        value: quoteSide === "buy" ? quantity : 0n,
-        args,
-        deadline,
-        minimumOutput: exactMinimum,
-        chainId: intentChainId,
-        functionName: quoteSide,
-      } satisfies ReviewedWriteIntent,
-      output,
-      fee,
-      protocolFee,
-    };
+    setTaxQuote(fresh.taxQuote);
+    setQuoteInputUsed(fresh.inputUsed);
+    return fresh;
   };
   const showContractQuote = (
     quoteSide: "buy" | "sell",
@@ -466,49 +360,16 @@ function TradingPanelReady({
           )}
           .
         </p>
-        {confirming ? (
-          <div className="transaction-confirmation" role="region" aria-label="Trade confirmation">
-            <h3>Confirm {reviewDetails?.side ?? side}</h3>
-            <ReviewNotice notice={reviewNotice} />
-            <CurveTradeDetails
-              token={token}
-              side={side}
-              input={input}
-              reviewDetails={reviewDetails}
-              reviewIntent={reviewIntent}
-              slippage={slippage}
-              slippageBps={slippageBps}
-              configuration={configuration}
-              curveExplorer={curveExplorer}
-            />
-            <ReviewActions
-              write={trade}
-              label={`Sign ${side}`}
-              canSign={canSubmit}
-              onSign={() => void execute()}
-            />
-          </div>
-        ) : (
-          <>
-            <ReviewNotice notice={reviewNotice} />
-            <ConnectOr write={trade}>
-              <Button
-                variant="primary"
-                size="lg"
-                disabled={
-                  executionBusy ||
-                  !canTrade ||
-                  !transaction.ready ||
-                  (side === "sell" && !approvalTransaction.ready) ||
-                  trade.unresolved
-                }
-                onClick={() => void prepareTradeReview()}
-              >
-                {side === "sell" && approvalHash ? "Resume sell" : `Review ${side}`}
-              </Button>
-            </ConnectOr>
-          </>
-        )}
+        <CurveReviewStep
+          trade={trade}
+          token={token}
+          reviewDetails={reviewDetails}
+          curveExplorer={curveExplorer}
+          canTrade={canTrade}
+          canSubmit={canSubmit}
+          onReview={() => void prepareTradeReview()}
+          onSign={() => void execute()}
+        />
       </TradeSideTabs>
       <TransactionProgress
         state={state}
