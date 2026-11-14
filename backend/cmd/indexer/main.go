@@ -21,6 +21,7 @@ import (
 	"github.com/Contictus/launchtap/backend/internal/stats"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/Contictus/launchtap/backend/internal/swapbackfill"
+	"github.com/Contictus/launchtap/backend/internal/wallet"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -173,6 +174,18 @@ func run() error {
 	go func() {
 		if err := sweeper.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Warn("volume window sweeper stopped", "error", err)
+		}
+	}()
+	// Re-ranks the 7d and 30d leaderboards so reads do not aggregate every realized leg
+	// (docs/specs/2026-11-14-windowed-leaderboard-preflight.md). Never stops ingest.
+	leaderboards := stats.LeaderboardRefresher{Source: storepostgres.LeaderboardWindowSource{Adapter: storepostgres.NewAdapter(pool), ChainID: int64(c.ChainID)},
+		Windows: []int{int(wallet.Window7d), int(wallet.Window30d)}, Interval: stats.DefaultLeaderboardRefreshInterval,
+		OnError: func(windowDays int, err error) {
+			slog.Error("leaderboard window refresh failed", "chain_id", c.ChainID, "window_days", windowDays, "error", err)
+		}}
+	go func() {
+		if err := leaderboards.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn("leaderboard refresher stopped", "error", err)
 		}
 	}()
 	positions := stats.Worker{Source: storepostgres.PositionSource{Adapter: storepostgres.NewAdapter(pool), ChainID: int64(c.ChainID)}, WorkerID: c.IndexerWorkerID + "-positions", PollInterval: stats.DefaultDirtyPollInterval, BatchSize: 64, DrainFullBatches: true, Wake: positionWake, OnError: func(claim stats.Claim, err error) {

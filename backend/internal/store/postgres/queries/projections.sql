@@ -835,3 +835,45 @@ WITH pairs AS (
     RETURNING 1
 )
 SELECT (SELECT count(*) FROM pairs)::bigint AS pair_count, (SELECT count(*) FROM marked)::bigint AS marked;
+
+-- Leaderboard window refresh (docs/specs/2026-11-14-windowed-leaderboard-preflight.md). Serializes
+-- refreshes of one chain so two refreshers never interleave a window's delete and insert.
+-- name: LockLeaderboardWindows :exec
+SELECT pg_advisory_xact_lock(hashtextextended('leaderboard_windows:' || sqlc.arg(chain_id)::bigint::text, 0));
+
+-- name: DeleteLeaderboardWindowRanks :exec
+DELETE FROM leaderboard_window_ranks
+WHERE chain_id = sqlc.arg(chain_id) AND window_days = sqlc.arg(window_days)::integer;
+
+-- The top 100 of ListLeaderboardWindow (read.sql), ranked 1..n: the same window, aggregation,
+-- positive-only rule, exclusions and tie-break. TestPrecomputedLeaderboardMatchesLiveQuery keeps
+-- the two in step.
+-- name: InsertLeaderboardWindowRanks :execrows
+INSERT INTO leaderboard_window_ranks (chain_id, window_days, rank, wallet, realized_pnl, tokens_traded)
+SELECT sqlc.arg(chain_id), sqlc.arg(window_days)::integer,
+       row_number() OVER (ORDER BY ranked.realized_pnl DESC, ranked.wallet),
+       ranked.wallet, ranked.realized_pnl, ranked.tokens_traded
+FROM (
+    SELECT w.wallet, w.realized_pnl, w.tokens_traded
+    FROM (
+        SELECT l.wallet, sum(l.realized_pnl) AS realized_pnl, count(DISTINCT l.token_address) AS tokens_traded
+        FROM wallet_realized_legs AS l
+        WHERE l.chain_id = sqlc.arg(chain_id)
+          AND l.block_time >= now() - make_interval(days => sqlc.arg(window_days)::integer)
+        GROUP BY l.wallet
+    ) AS w
+    WHERE w.realized_pnl > 0
+      AND w.wallet <> decode(repeat('00', 20), 'hex')
+      AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = sqlc.arg(chain_id) AND t.curve_address = w.wallet)
+      AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = sqlc.arg(chain_id) AND t.lp_pair = w.wallet)
+      AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = sqlc.arg(chain_id) AND t.locker = w.wallet)
+      AND NOT EXISTS (SELECT 1 FROM v4_pool_managers AS m WHERE m.chain_id = sqlc.arg(chain_id) AND m.pool_manager = w.wallet)
+    ORDER BY w.realized_pnl DESC, w.wallet
+    LIMIT 100
+) AS ranked;
+
+-- Stamps the refresh with the transaction's clock, the same now() the window was computed from.
+-- name: UpsertLeaderboardWindowRefresh :exec
+INSERT INTO leaderboard_window_refreshes (chain_id, window_days, refreshed_at)
+VALUES (sqlc.arg(chain_id), sqlc.arg(window_days)::integer, now())
+ON CONFLICT (chain_id, window_days) DO UPDATE SET refreshed_at = EXCLUDED.refreshed_at;

@@ -92,6 +92,41 @@ func TestPositionLegsIncludeV4Swaps(t *testing.T) {
 	if gotPaid != wantPaid || gotReceived != wantReceived {
 		t.Fatalf("legs of %x: paid %s received %s, want %s / %s (curve trades plus V4 swaps)", trader, gotPaid, gotReceived, wantPaid, wantReceived)
 	}
+
+	// The wallet trade page floor reads V4 swaps by sender: the bounded page below the floor of
+	// the newest trade equals the unbounded page.
+	queries := sqlc.New(pool)
+	full, err := queries.ListWalletTrades(ctx, sqlc.ListWalletTradesParams{ChainID: chainID, Wallet: trader, PageSize: 100})
+	if err != nil || len(full) == 0 {
+		t.Fatalf("wallet trades = %d, %v", len(full), err)
+	}
+	var v4Swaps, dexRows int
+	if err := database.DB.QueryRowContext(ctx, `SELECT count(*) FROM v4_swaps WHERE chain_id = $1 AND tx_from = $2`, chainID, trader).Scan(&v4Swaps); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range full {
+		if row.Source == "dex" {
+			dexRows++
+		}
+	}
+	if v4Swaps == 0 || dexRows != v4Swaps {
+		t.Fatalf("wallet trades hold %d dex rows, want the wallet's %d V4 swaps", dexRows, v4Swaps)
+	}
+	floor, err := queries.WalletTradePageFloor(ctx, sqlc.WalletTradePageFloorParams{ChainID: chainID, Wallet: trader, PageSize: int32(len(full)), BeforeBlock: 1 << 62, BeforeTransactionIndex: 1 << 30, BeforeLogIndex: 1 << 30})
+	if err != nil {
+		t.Fatalf("wallet trade page floor: %v", err)
+	}
+	bounded, err := queries.ListWalletTradesFrom(ctx, sqlc.ListWalletTradesFromParams{ChainID: chainID, Wallet: trader, PageSize: int32(len(full)),
+		BeforeBlock: 1 << 62, BeforeTransactionIndex: 1 << 30, BeforeLogIndex: 1 << 30,
+		FloorBlock: floor.BlockNumber, FloorTransactionIndex: floor.TransactionIndex, FloorLogIndex: floor.LogIndex})
+	if err != nil || len(bounded) != len(full) {
+		t.Fatalf("bounded wallet trades = %d, %v; want %d", len(bounded), err, len(full))
+	}
+	for i := range full {
+		if full[i].TxHash != bounded[i].TxHash || full[i].LogIndex != bounded[i].LogIndex {
+			t.Fatalf("bounded row %d = %+v, want %+v", i, bounded[i], full[i])
+		}
+	}
 }
 
 // A graduated engine-2 holding is valued at the V4 pool's spot price, not at zero.
@@ -168,5 +203,17 @@ func TestLeaderboardExcludesV4Infrastructure(t *testing.T) {
 	}
 	if len(windowed) != 1 || common.BytesToAddress(windowed[0].Wallet) != trader {
 		t.Fatalf("windowed leaderboard = %d rows, want only %s", len(windowed), trader)
+	}
+	// The precomputed ranking applies the same locker and PoolManager exclusions.
+	source := storepostgres.LeaderboardWindowSource{Adapter: storepostgres.NewAdapter(pool), ChainID: chainID}
+	if n, err := source.RefreshLeaderboardWindow(ctx, 7); err != nil || n != 1 {
+		t.Fatalf("refresh 7d = %d, %v; want 1 ranked wallet", n, err)
+	}
+	precomputed, err := queries.ListPrecomputedLeaderboardWindow(ctx, sqlc.ListPrecomputedLeaderboardWindowParams{ChainID: chainID, DeploymentID: "v2-positions", PageSize: 10, WindowDays: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(precomputed) != 1 || common.Address(precomputed[0].Wallet) != trader {
+		t.Fatalf("precomputed leaderboard = %d rows, want only %s", len(precomputed), trader)
 	}
 }

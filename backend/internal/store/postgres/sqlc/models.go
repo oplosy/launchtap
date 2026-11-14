@@ -243,6 +243,21 @@ type LaunchPauseEvent struct {
 	Paused           bool
 }
 
+type LeaderboardWindowRank struct {
+	ChainID      int64
+	WindowDays   int32
+	Rank         int32
+	Wallet       Address
+	RealizedPnl  pgtype.Numeric
+	TokensTraded int64
+}
+
+type LeaderboardWindowRefresh struct {
+	ChainID     int64
+	WindowDays  int32
+	RefreshedAt pgtype.Timestamptz
+}
+
 type LpFeeClaim struct {
 	ChainID          int64
 	BlockNumber      int64
