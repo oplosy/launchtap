@@ -22,8 +22,8 @@ Overall is the unweighted mean of the categories, rounded to one decimal.
 | 8 | Performance | 7.0 | 7.5 | Batched stats (#56), parallel `eth_getLogs` (#58), parallel token-page reads and hidden-tab polling (#59). No measured targets, no cache layer. |
 | 9 | Maintainability (spaghetti code) | 7.0 | 8.0 | One reviewed-write pipeline for the curve, V2, V4 and launch panels (#59, #60); `token-detail` 950 → 185, `wallet-view` 669 → 201 lines (#60). |
 | 10 | UX and interface | 7.0 | 8.5 | Review `docs/audits/2026-11-13-ux-review.md`: 13 issues fixed, then all 8 open product items closed (#62–#65). The fixes: image and description at launch, subscript-zero prices, 2 % default slippage, a trade card without inner scroll, creator-only sections, sparse chart, compact hero, no metadata 404. Lighthouse 2026-11-14 on dev: accessibility, best practices and SEO are 100 on home, token and create, desktop and mobile; no console errors. Token page cold-load CLS 0.136 → 0.0065 (the loading page reserves the viewport height). Open: no signed-in pass recorded yet. |
-| 11 | Product completeness (vs pons.family) | 6.5 | 6.5 | Launch, curve, graduation, swaps, forum, analytics and docs ship. Ticker tape, Telegram bot, CoinGecko links, clusters L2 and operator actions open. |
-|   | **Overall** | **7.7** | **8.0** | |
+| 11 | Product completeness (vs pons.family) | 6.5 | 8.0 | Launch, curve, graduation, swaps, forum, analytics and docs ship. #66: ticker tape and clusters Level 2 removed by scope decision (`docs/specs/2026-11-14-product-scope-decisions.md`), the Telegram worker deployable as an opt-in Compose profile, the ETH/USD feed runs on the free CoinGecko Demo plan. Open: Telegram and USD not live yet (bot token and Demo key pending), CoinGecko market links wait on the mainnet manifest. |
+|   | **Overall** | **7.7** | **8.1** | |
 
 ## Path to 9
 
@@ -57,9 +57,10 @@ named in it.
 10. **UX and interface (8.5 → 9):** a signed-in pass
     with a connected wallet (review, sign, approval, and launch with an image through real Privy on a
     test deployment), recorded like the 2026-11-13 review, with no new P1/P2 findings.
-11. **Product completeness (6.5 → 9):** close the open product backlog items (ticker tape,
-    Telegram bot, CoinGecko market links, clusters Level 2, operator actions) or record a scope
-    decision that removes them.
+11. **Product completeness (8.0 → 9):** run the Telegram worker with a real bot and the ETH/USD
+    feed with a Demo key on a test deployment, recorded with evidence, and ship the CoinGecko
+    market links once the mainnet manifest exists. Ticker tape and clusters Level 2 are out of
+    scope (2026-11-14 decision); operator actions are not product scope.
 
 ## History
 
@@ -69,3 +70,4 @@ named in it.
 | 2026-11-13 | 7.8 | Performance 7.0 → 7.5, Maintainability 7.0 → 7.5 | #58, #59 |
 | 2026-11-13 | 7.9 | Maintainability 7.5 → 8.0, UX 7.0 → 8.0 | #60; UX review and fixes (`docs/audits/2026-11-13-ux-review.md`) |
 | 2026-11-14 | 8.0 | UX 8.0 → 8.5 | #62–#65 closed every open review item; Lighthouse re-run on dev |
+| 2026-11-14 | 8.1 | Product completeness 6.5 → 8.0 | #66: scope decisions, CoinGecko Demo plan, opt-in Telegram profile |
