@@ -557,6 +557,21 @@ func (q *Queries) DatabaseNow(ctx context.Context) (pgtype.Timestamptz, error) {
 	return now, err
 }
 
+const deleteLeaderboardWindowRanks = `-- name: DeleteLeaderboardWindowRanks :exec
+DELETE FROM leaderboard_window_ranks
+WHERE chain_id = $1 AND window_days = $2::integer
+`
+
+type DeleteLeaderboardWindowRanksParams struct {
+	ChainID    int64
+	WindowDays int32
+}
+
+func (q *Queries) DeleteLeaderboardWindowRanks(ctx context.Context, arg DeleteLeaderboardWindowRanksParams) error {
+	_, err := q.db.Exec(ctx, deleteLeaderboardWindowRanks, arg.ChainID, arg.WindowDays)
+	return err
+}
+
 const deleteTokenStats = `-- name: DeleteTokenStats :execrows
 DELETE FROM token_stats WHERE chain_id=$1 AND token_address=$2
 `
@@ -679,6 +694,47 @@ func (q *Queries) HasCanonicalLaunch(ctx context.Context, arg HasCanonicalLaunch
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const insertLeaderboardWindowRanks = `-- name: InsertLeaderboardWindowRanks :execrows
+INSERT INTO leaderboard_window_ranks (chain_id, window_days, rank, wallet, realized_pnl, tokens_traded)
+SELECT $1, $2::integer,
+       row_number() OVER (ORDER BY ranked.realized_pnl DESC, ranked.wallet),
+       ranked.wallet, ranked.realized_pnl, ranked.tokens_traded
+FROM (
+    SELECT w.wallet, w.realized_pnl, w.tokens_traded
+    FROM (
+        SELECT l.wallet, sum(l.realized_pnl) AS realized_pnl, count(DISTINCT l.token_address) AS tokens_traded
+        FROM wallet_realized_legs AS l
+        WHERE l.chain_id = $1
+          AND l.block_time >= now() - make_interval(days => $2::integer)
+        GROUP BY l.wallet
+    ) AS w
+    WHERE w.realized_pnl > 0
+      AND w.wallet <> decode(repeat('00', 20), 'hex')
+      AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = $1 AND t.curve_address = w.wallet)
+      AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = $1 AND t.lp_pair = w.wallet)
+      AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = $1 AND t.locker = w.wallet)
+      AND NOT EXISTS (SELECT 1 FROM v4_pool_managers AS m WHERE m.chain_id = $1 AND m.pool_manager = w.wallet)
+    ORDER BY w.realized_pnl DESC, w.wallet
+    LIMIT 100
+) AS ranked
+`
+
+type InsertLeaderboardWindowRanksParams struct {
+	ChainID    int64
+	WindowDays int32
+}
+
+// The top 100 of ListLeaderboardWindow (read.sql), ranked 1..n: the same window, aggregation,
+// positive-only rule, exclusions and tie-break. TestPrecomputedLeaderboardMatchesLiveQuery keeps
+// the two in step.
+func (q *Queries) InsertLeaderboardWindowRanks(ctx context.Context, arg InsertLeaderboardWindowRanksParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertLeaderboardWindowRanks, arg.ChainID, arg.WindowDays)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const insertWalletRealizedLeg = `-- name: InsertWalletRealizedLeg :exec
@@ -928,6 +984,17 @@ func (q *Queries) ListUnattributedPoolSwaps(ctx context.Context, arg ListUnattri
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockLeaderboardWindows = `-- name: LockLeaderboardWindows :exec
+SELECT pg_advisory_xact_lock(hashtextextended('leaderboard_windows:' || $1::bigint::text, 0))
+`
+
+// Leaderboard window refresh (docs/specs/2026-11-14-windowed-leaderboard-preflight.md). Serializes
+// refreshes of one chain so two refreshers never interleave a window's delete and insert.
+func (q *Queries) LockLeaderboardWindows(ctx context.Context, chainID int64) error {
+	_, err := q.db.Exec(ctx, lockLeaderboardWindows, chainID)
+	return err
 }
 
 const lockProtocolAggregates = `-- name: LockProtocolAggregates :exec
@@ -1671,6 +1738,23 @@ func (q *Queries) SetV4SwapTxFrom(ctx context.Context, arg SetV4SwapTxFromParams
 		return nil, err
 	}
 	return items, nil
+}
+
+const upsertLeaderboardWindowRefresh = `-- name: UpsertLeaderboardWindowRefresh :exec
+INSERT INTO leaderboard_window_refreshes (chain_id, window_days, refreshed_at)
+VALUES ($1, $2::integer, now())
+ON CONFLICT (chain_id, window_days) DO UPDATE SET refreshed_at = EXCLUDED.refreshed_at
+`
+
+type UpsertLeaderboardWindowRefreshParams struct {
+	ChainID    int64
+	WindowDays int32
+}
+
+// Stamps the refresh with the transaction's clock, the same now() the window was computed from.
+func (q *Queries) UpsertLeaderboardWindowRefresh(ctx context.Context, arg UpsertLeaderboardWindowRefreshParams) error {
+	_, err := q.db.Exec(ctx, upsertLeaderboardWindowRefresh, arg.ChainID, arg.WindowDays)
+	return err
 }
 
 const upsertWalletPosition = `-- name: UpsertWalletPosition :exec

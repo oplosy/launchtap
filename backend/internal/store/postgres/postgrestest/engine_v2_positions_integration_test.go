@@ -169,4 +169,16 @@ func TestLeaderboardExcludesV4Infrastructure(t *testing.T) {
 	if len(windowed) != 1 || common.BytesToAddress(windowed[0].Wallet) != trader {
 		t.Fatalf("windowed leaderboard = %d rows, want only %s", len(windowed), trader)
 	}
+	// The precomputed ranking applies the same locker and PoolManager exclusions.
+	source := storepostgres.LeaderboardWindowSource{Adapter: storepostgres.NewAdapter(pool), ChainID: chainID}
+	if n, err := source.RefreshLeaderboardWindow(ctx, 7); err != nil || n != 1 {
+		t.Fatalf("refresh 7d = %d, %v; want 1 ranked wallet", n, err)
+	}
+	precomputed, err := queries.ListPrecomputedLeaderboardWindow(ctx, sqlc.ListPrecomputedLeaderboardWindowParams{ChainID: chainID, DeploymentID: "v2-positions", PageSize: 10, WindowDays: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(precomputed) != 1 || common.Address(precomputed[0].Wallet) != trader {
+		t.Fatalf("precomputed leaderboard = %d rows, want only %s", len(precomputed), trader)
+	}
 }

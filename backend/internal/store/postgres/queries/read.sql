@@ -700,6 +700,26 @@ WHERE w.realized_pnl > 0
 ORDER BY w.realized_pnl DESC, w.wallet
 LIMIT sqlc.arg(page_size)::integer;
 
+-- Whether the window's precomputed ranking was refreshed within max_age_seconds of the
+-- transaction's clock. No row (never refreshed) reads as not fresh.
+-- name: LeaderboardWindowFresh :one
+SELECT EXISTS (
+    SELECT 1 FROM leaderboard_window_refreshes AS f
+    WHERE f.chain_id = sqlc.arg(chain_id) AND f.window_days = sqlc.arg(window_days)::integer
+      AND f.refreshed_at >= now() - make_interval(secs => sqlc.arg(max_age_seconds)::integer)
+) AS fresh;
+
+-- The precomputed ranking of ListLeaderboardWindow (docs/specs/2026-11-14-windowed-leaderboard-preflight.md),
+-- usernames joined at read time.
+-- name: ListPrecomputedLeaderboardWindow :many
+SELECT r.wallet, r.realized_pnl, r.tokens_traded, pu.username
+FROM leaderboard_window_ranks AS r
+LEFT JOIN public_wallet_usernames AS pu
+  ON pu.chain_id = r.chain_id AND pu.deployment_id = sqlc.arg(deployment_id)::text AND pu.wallet = r.wallet
+WHERE r.chain_id = sqlc.arg(chain_id) AND r.window_days = sqlc.arg(window_days)::integer
+ORDER BY r.rank
+LIMIT sqlc.arg(page_size)::integer;
+
 -- Early-buyer clusters (docs/specs/2026-11-12-early-buyer-clusters-design.md). The token's
 -- creator, and whether the snapshot block is still inside the early window. A pruned or missing
 -- snapshot block falls back to the current time.

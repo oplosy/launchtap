@@ -671,6 +671,29 @@ func (q *Queries) GetWalletValuation(ctx context.Context, arg GetWalletValuation
 	return i, err
 }
 
+const leaderboardWindowFresh = `-- name: LeaderboardWindowFresh :one
+SELECT EXISTS (
+    SELECT 1 FROM leaderboard_window_refreshes AS f
+    WHERE f.chain_id = $1 AND f.window_days = $2::integer
+      AND f.refreshed_at >= now() - make_interval(secs => $3::integer)
+) AS fresh
+`
+
+type LeaderboardWindowFreshParams struct {
+	ChainID       int64
+	WindowDays    int32
+	MaxAgeSeconds int32
+}
+
+// Whether the window's precomputed ranking was refreshed within max_age_seconds of the
+// transaction's clock. No row (never refreshed) reads as not fresh.
+func (q *Queries) LeaderboardWindowFresh(ctx context.Context, arg LeaderboardWindowFreshParams) (bool, error) {
+	row := q.db.QueryRow(ctx, leaderboardWindowFresh, arg.ChainID, arg.WindowDays, arg.MaxAgeSeconds)
+	var fresh bool
+	err := row.Scan(&fresh)
+	return fresh, err
+}
+
 const listCandlesAggregated = `-- name: ListCandlesAggregated :many
 SELECT c.group_start AS bucket_start_time,
        (array_agg(c.open_price_wad ORDER BY c.bucket_start_time ASC))[1] AS open_price_wad,
@@ -1340,6 +1363,62 @@ func (q *Queries) ListMarketTradesAfter(ctx context.Context, arg ListMarketTrade
 			&i.LogIndex,
 			&i.BlockTime,
 			&i.Finality,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPrecomputedLeaderboardWindow = `-- name: ListPrecomputedLeaderboardWindow :many
+SELECT r.wallet, r.realized_pnl, r.tokens_traded, pu.username
+FROM leaderboard_window_ranks AS r
+LEFT JOIN public_wallet_usernames AS pu
+  ON pu.chain_id = r.chain_id AND pu.deployment_id = $1::text AND pu.wallet = r.wallet
+WHERE r.chain_id = $2 AND r.window_days = $3::integer
+ORDER BY r.rank
+LIMIT $4::integer
+`
+
+type ListPrecomputedLeaderboardWindowParams struct {
+	DeploymentID string
+	ChainID      int64
+	WindowDays   int32
+	PageSize     int32
+}
+
+type ListPrecomputedLeaderboardWindowRow struct {
+	Wallet       Address
+	RealizedPnl  pgtype.Numeric
+	TokensTraded int64
+	Username     pgtype.Text
+}
+
+// The precomputed ranking of ListLeaderboardWindow (docs/specs/2026-11-14-windowed-leaderboard-preflight.md),
+// usernames joined at read time.
+func (q *Queries) ListPrecomputedLeaderboardWindow(ctx context.Context, arg ListPrecomputedLeaderboardWindowParams) ([]ListPrecomputedLeaderboardWindowRow, error) {
+	rows, err := q.db.Query(ctx, listPrecomputedLeaderboardWindow,
+		arg.DeploymentID,
+		arg.ChainID,
+		arg.WindowDays,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPrecomputedLeaderboardWindowRow{}
+	for rows.Next() {
+		var i ListPrecomputedLeaderboardWindowRow
+		if err := rows.Scan(
+			&i.Wallet,
+			&i.RealizedPnl,
+			&i.TokensTraded,
+			&i.Username,
 		); err != nil {
 			return nil, err
 		}

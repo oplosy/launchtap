@@ -335,17 +335,37 @@ func (r WalletReader) Leaderboard(ctx context.Context, chainID int64, window wal
 				rows = append(rows, rankedRow{common.Address(row.Wallet), row.RealizedPnl, row.TokensTraded, row.Username})
 			}
 		} else {
-			windowed, err := a.queries.ListLeaderboardWindow(ctx, sqlc.ListLeaderboardWindowParams{
-				ChainID: chainID, DeploymentID: r.DeploymentID, PageSize: int32(limit), WindowDays: int32(window),
+			// The refresher's precomputed ranking while it is recent; the live query otherwise
+			// (docs/specs/2026-11-14-windowed-leaderboard-preflight.md).
+			fresh, err := a.queries.LeaderboardWindowFresh(ctx, sqlc.LeaderboardWindowFreshParams{
+				ChainID: chainID, WindowDays: int32(window), MaxAgeSeconds: leaderboardWindowMaxAgeSeconds,
 			})
 			if err != nil {
-				return err
+				return fmt.Errorf("check leaderboard window refresh: %w", err)
 			}
-			for _, row := range windowed {
-				if len(row.Wallet) != common.AddressLength {
-					return fmt.Errorf("leaderboard wallet has %d bytes", len(row.Wallet))
+			if fresh {
+				precomputed, err := a.queries.ListPrecomputedLeaderboardWindow(ctx, sqlc.ListPrecomputedLeaderboardWindowParams{
+					DeploymentID: r.DeploymentID, ChainID: chainID, WindowDays: int32(window), PageSize: int32(limit),
+				})
+				if err != nil {
+					return err
 				}
-				rows = append(rows, rankedRow{common.BytesToAddress(row.Wallet), row.RealizedPnl, row.TokensTraded, row.Username})
+				for _, row := range precomputed {
+					rows = append(rows, rankedRow{common.Address(row.Wallet), row.RealizedPnl, row.TokensTraded, row.Username})
+				}
+			} else {
+				windowed, err := a.queries.ListLeaderboardWindow(ctx, sqlc.ListLeaderboardWindowParams{
+					ChainID: chainID, DeploymentID: r.DeploymentID, PageSize: int32(limit), WindowDays: int32(window),
+				})
+				if err != nil {
+					return err
+				}
+				for _, row := range windowed {
+					if len(row.Wallet) != common.AddressLength {
+						return fmt.Errorf("leaderboard wallet has %d bytes", len(row.Wallet))
+					}
+					rows = append(rows, rankedRow{common.BytesToAddress(row.Wallet), row.RealizedPnl, row.TokensTraded, row.Username})
+				}
 			}
 		}
 		out.Stamp = walletStamp(s)
