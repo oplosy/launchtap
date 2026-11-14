@@ -21,9 +21,9 @@ Overall is the unweighted mean of the categories, rounded to one decimal.
 | 7 | CI/CD and infrastructure | 7.5 | 7.5 | Pinned tools, 5 workflows, branch protection, Compose + Caddy. Single host, no CDN, no scaling plan. |
 | 8 | Performance | 7.0 | 7.5 | Batched stats (#56), parallel `eth_getLogs` (#58), parallel token-page reads and hidden-tab polling (#59). No measured targets, no cache layer. |
 | 9 | Maintainability (spaghetti code) | 7.0 | 8.0 | One reviewed-write pipeline for the curve, V2, V4 and launch panels (#59, #60); `token-detail` 950 → 185, `wallet-view` 669 → 201 lines (#60). |
-| 10 | UX and interface | 7.0 | 8.0 | Recorded review (`docs/audits/2026-11-13-ux-review.md`): 13 issues fixed. Lighthouse accessibility is 100 on home, token, create, wallet and forum (from 90–100). Closed since: image upload at launch, tiny-price notation, default slippage, trade-card scroll, creator-only sections, sparse chart, hero height and the metadata 404 (#62–#65). |
+| 10 | UX and interface | 7.0 | 8.5 | Review `docs/audits/2026-11-13-ux-review.md`: 13 issues fixed, then all 8 open product items closed (#62–#65). The fixes: image and description at launch, subscript-zero prices, 2 % default slippage, a trade card without inner scroll, creator-only sections, sparse chart, compact hero, no metadata 404. Lighthouse 2026-11-14 on dev: accessibility, best practices and SEO are 100 on home, token and create, desktop and mobile; no console errors. Open: token page cold-load CLS is 0.08–0.14 (the footer moves when the loading skeleton is replaced); no signed-in pass recorded yet. |
 | 11 | Product completeness (vs pons.family) | 6.5 | 6.5 | Launch, curve, graduation, swaps, forum, analytics and docs ship. Ticker tape, Telegram bot, CoinGecko links, clusters L2 and operator actions open. |
-|   | **Overall** | **7.7** | **7.9** | |
+|   | **Overall** | **7.7** | **8.0** | |
 
 ## Path to 9
 
@@ -54,11 +54,10 @@ named in it.
 9. **Maintainability (8.0 → 9):** no web source file over ~400 lines (current largest:
    `token-sections.tsx`, `launch-panel.tsx`, `trading-panel.tsx`); no duplicated write/approval
    logic outside the shared pipeline; lint rule or CI check for file size.
-10. **UX and interface (8.0 → 9):** close the open items of the 2026-11-13 review
-    (`docs/audits/2026-11-13-ux-review.md`). That means image upload and a description at launch,
-    subscript-zero price display, a slippage default decision, creator-only sections hidden from
-    visitors, and the trade panel fitting without inner scroll. Then add a signed-in pass (connected
-    wallet: review, sign, approval) recorded the same way.
+10. **UX and interface (8.5 → 9):** token page cold-load CLS under 0.1 (the loading skeleton reserves
+    the loaded page's height, so the footer does not move), measured with Lighthouse. A signed-in pass
+    with a connected wallet (review, sign, approval, and launch with an image through real Privy on a
+    test deployment), recorded like the 2026-11-13 review, with no new P1/P2 findings.
 11. **Product completeness (6.5 → 9):** close the open product backlog items (ticker tape,
     Telegram bot, CoinGecko market links, clusters Level 2, operator actions) or record a scope
     decision that removes them.
@@ -70,3 +69,4 @@ named in it.
 | 2026-11-13 | 7.7 | Baseline | Codebase review after the second cleanup sweep. |
 | 2026-11-13 | 7.8 | Performance 7.0 → 7.5, Maintainability 7.0 → 7.5 | #58, #59 |
 | 2026-11-13 | 7.9 | Maintainability 7.5 → 8.0, UX 7.0 → 8.0 | #60; UX review and fixes (`docs/audits/2026-11-13-ux-review.md`) |
+| 2026-11-14 | 8.0 | UX 8.0 → 8.5 | #62–#65 closed every open review item; Lighthouse re-run on dev |
