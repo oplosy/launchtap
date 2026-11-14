@@ -36,6 +36,16 @@ func TestClientAddressOnlyTrustsForwardedForFromProxies(t *testing.T) {
 			t.Errorf("%s: client=%s want %s", tc.name, got, tc.want)
 		}
 	}
+	// Behind a CDN (docs/runbooks/scale-out-and-cdn.md) the proxy appends the edge address; the
+	// client is resolved only when the CDN egress range is trusted too.
+	cdn := request("10.0.0.2:4000", "203.0.113.7, 198.51.100.20")
+	if got := clientAddress(cdn, proxies).String(); got != "198.51.100.20" {
+		t.Errorf("CDN edge not trusted: client=%s, want the edge address", got)
+	}
+	withCDN := append(proxies, netip.MustParsePrefix("198.51.100.0/24"))
+	if got := clientAddress(cdn, withCDN).String(); got != "203.0.113.7" {
+		t.Errorf("CDN edge trusted: client=%s, want 203.0.113.7", got)
+	}
 	if got := clientKeyFor(netip.MustParseAddr("2001:db8:1:2:3:4:5:6")); got != "2001:db8:1:2::/64" {
 		t.Fatalf("IPv6 key=%s", got)
 	}
