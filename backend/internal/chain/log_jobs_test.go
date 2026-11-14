@@ -133,11 +133,14 @@ func TestParallelDiscoveryV2MatchesSequential(t *testing.T) {
 }
 
 // failingSource answers the factory query, fails every query for one address, and holds the
-// others until they are canceled.
+// others until they are canceled. The failure is returned only once another call is in flight,
+// so the test always has a call to cancel instead of racing the scheduler.
 type failingSource struct {
 	factory  common.Address
 	fail     common.Address
 	err      error
+	inFlight chan struct{}
+	signal   sync.Once
 	mu       sync.Mutex
 	canceled int
 }
@@ -147,8 +150,14 @@ func (s *failingSource) FilterLogs(ctx context.Context, query ethereum.FilterQue
 		return nil, nil
 	}
 	if slices.Contains(query.Addresses, s.fail) {
+		select {
+		case <-s.inFlight:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 		return nil, s.err
 	}
+	s.signal.Do(func() { close(s.inFlight) })
 	<-ctx.Done()
 	s.mu.Lock()
 	s.canceled++
@@ -171,7 +180,9 @@ func TestParallelDiscoveryReturnsFirstFailureAndCancelsTheRest(t *testing.T) {
 		t.Fatal("fixture precondition: no tokens")
 	}
 	failure := errors.New("provider down")
-	source := &failingSource{factory: emitters.Factory, fail: tokens[0], err: failure}
+	source := &failingSource{
+		factory: emitters.Factory, fail: tokens[0], err: failure, inFlight: make(chan struct{}),
+	}
 	discoverer, _ := NewDiscoverer(source, decoder, emitters.Factory, 1)
 	discoverer, err := discoverer.WithLogConcurrency(4)
 	if err != nil {

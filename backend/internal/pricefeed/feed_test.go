@@ -71,6 +71,34 @@ func TestRefreshSendsKeyHeader(t *testing.T) {
 	}
 }
 
+func TestDemoPlanUsesDemoHeaderAndCadence(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("x-cg-demo-api-key"); got != testKey {
+			t.Errorf("demo key header=%q", got)
+		}
+		if got := r.Header.Get("x-cg-pro-api-key"); got != "" {
+			t.Errorf("pro key header sent on the demo plan")
+		}
+		_, _ = w.Write([]byte(body("3456.12", epoch.Add(-4*time.Minute))))
+	}))
+	t.Cleanup(srv.Close)
+	c := &clock{t: epoch}
+	f := New(Options{Plan: PlanDemo, BaseURL: srv.URL, APIKey: testKey, Now: c.Now, Jitter: func(d time.Duration) time.Duration { return d }})
+	if f.interval != demoInterval || f.maxAge != demoMaxAge {
+		t.Fatalf("interval=%v maxAge=%v, want %v and %v", f.interval, f.maxAge, demoInterval, demoMaxAge)
+	}
+	if err := f.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// A four-minute-old sample is beyond the Pro budget but fresh on the Demo cadence.
+	if f.Snapshot().Price == nil {
+		t.Fatal("demo sample reported stale")
+	}
+	if got := New(Options{Plan: PlanDemo}).baseURL; got != demoBaseURL {
+		t.Fatalf("demo base URL=%q", got)
+	}
+}
+
 func TestSnapshotFresh(t *testing.T) {
 	f, _ := newFeed(t, serve(200, body("3456.12", epoch.Add(-30*time.Second))))
 	if err := f.Refresh(context.Background()); err != nil {

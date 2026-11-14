@@ -31,6 +31,7 @@ func TestLoadParsesCompleteConfiguration(t *testing.T) {
 	env["INDEXER_CONFIRMATIONS"] = "12"
 	env["ETH_USD_SOURCE"] = " coingecko "
 	env["COINGECKO_API_KEY"] = " cg-key "
+	env["COINGECKO_API_PLAN"] = " demo "
 	env["API_TRUSTED_PROXY_CIDRS"] = "172.16.0.0/12, 10.1.2.3/8"
 	env["API_RATE_LIMIT_PER_MINUTE"] = "1200"
 	env["API_RATE_LIMIT_BURST"] = "200"
@@ -68,6 +69,7 @@ func TestLoadParsesCompleteConfiguration(t *testing.T) {
 		IndexerConfirmations:          &wantConfirmations,
 		ETHUSDSource:                  "coingecko",
 		CoinGeckoAPIKey:               "cg-key",
+		CoinGeckoAPIPlan:              "demo",
 		APITrustedProxyCIDRs:          []netip.Prefix{netip.MustParsePrefix("172.16.0.0/12"), netip.MustParsePrefix("10.0.0.0/8")},
 		APIRateLimitPerMinute:         1200,
 		APIRateLimitBurst:             200,
@@ -114,6 +116,7 @@ func TestConfigEnvironmentMapping(t *testing.T) {
 		"IndexerConfirmations":          "INDEXER_CONFIRMATIONS",
 		"ETHUSDSource":                  "ETH_USD_SOURCE",
 		"CoinGeckoAPIKey":               "COINGECKO_API_KEY",
+		"CoinGeckoAPIPlan":              "COINGECKO_API_PLAN",
 		"IndexerSenderBackfillInterval": "INDEXER_SENDER_BACKFILL_INTERVAL",
 		"IndexerSenderBackfillMaxTxs":   "INDEXER_SENDER_BACKFILL_MAX_TXS",
 	}
@@ -504,6 +507,32 @@ func TestCoinGeckoEnabled(t *testing.T) {
 	if got.ETHUSDSource != ETHUSDSourceCoinGecko || got.CoinGeckoAPIKey != "cg-key" {
 		t.Fatalf("ETHUSDSource = %q, CoinGeckoAPIKey = %q", got.ETHUSDSource, got.CoinGeckoAPIKey)
 	}
+	if got.CoinGeckoAPIPlan != CoinGeckoPlanPro {
+		t.Fatalf("CoinGeckoAPIPlan = %q, want the %q default", got.CoinGeckoAPIPlan, CoinGeckoPlanPro)
+	}
+}
+
+func TestCoinGeckoPlan(t *testing.T) {
+	t.Parallel()
+
+	env := validEnvironment()
+	env["ETH_USD_SOURCE"] = ETHUSDSourceCoinGecko
+	env["COINGECKO_API_KEY"] = "cg-key"
+	env["COINGECKO_API_PLAN"] = CoinGeckoPlanDemo
+	got, err := Load(mapGetenv(env))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got.CoinGeckoAPIPlan != CoinGeckoPlanDemo {
+		t.Fatalf("CoinGeckoAPIPlan = %q, want %q", got.CoinGeckoAPIPlan, CoinGeckoPlanDemo)
+	}
+
+	env["COINGECKO_API_PLAN"] = "enterprise"
+	assertFieldError(t, Load, env, "COINGECKO_API_PLAN", ErrInvalid)
+
+	disabled := validEnvironment()
+	disabled["COINGECKO_API_PLAN"] = CoinGeckoPlanDemo
+	assertFieldError(t, Load, disabled, "COINGECKO_API_PLAN", ErrInvalid)
 }
 
 func TestCoinGeckoKeyNotInErrorText(t *testing.T) {

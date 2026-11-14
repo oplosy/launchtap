@@ -70,8 +70,11 @@ function Test-ComposeConfig {
         Invoke-Docker @('compose', '-f', "$PSScriptRoot/compose.yaml", '--env-file', $envFile, 'config', '--quiet') | Out-Null
         Invoke-Docker @('compose', '-f', "$PSScriptRoot/compose.yaml", '--env-file', $envFile,
             '--profile', 'monitoring', 'config', '--quiet') | Out-Null
+        Invoke-Docker @('compose', '-f', "$PSScriptRoot/compose.yaml", '--env-file', $envFile,
+            '--profile', 'telegram', 'config', '--quiet') | Out-Null
         $defaultServices = Invoke-Docker @('compose', '-f', "$PSScriptRoot/compose.yaml", '--env-file', $envFile, 'config', '--services')
         if (($defaultServices -join "`n") -match 'prometheus|alertmanager') { throw 'Monitoring services must be opt-in (profile monitoring)' }
+        if (($defaultServices -join "`n") -match 'telegram') { throw 'The Telegram worker must be opt-in (profile telegram)' }
         [IO.File]::WriteAllLines($envFile, [string[]]($values.Keys | Where-Object { $_ -ne 'WEB_DOMAIN' } |
             ForEach-Object { "$_=$($values[$_])" }))
         & docker compose -f "$PSScriptRoot/compose.yaml" --env-file $envFile config --quiet 2>$null | Out-Null

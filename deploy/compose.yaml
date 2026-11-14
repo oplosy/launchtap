@@ -105,6 +105,20 @@ services:
       retries: 3
     restart: unless-stopped
 
+  # Opt-in: docker compose --profile telegram up -d (needs TELEGRAM_BOT_TOKEN and
+  # TELEGRAM_BOT_USERNAME in BACKEND_ENV_FILE). Exactly one replica: a PostgreSQL advisory lock
+  # refuses a second worker, so never scale this service.
+  telegram:
+    <<: *backend
+    profiles: [telegram]
+    command: [/app/telegram]
+    environment:
+      <<: *backend-env
+      TELEGRAM_WEB_ORIGIN: https://${WEB_DOMAIN:?Set WEB_DOMAIN}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
   web:
     image: launchpad-web:${RELEASE_TAG:?Set RELEASE_TAG to the reviewed commit}
     environment:
