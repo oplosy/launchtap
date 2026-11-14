@@ -110,7 +110,7 @@ func run() error {
 	references := apiserver.ReferenceRoutes{}
 	if c.ETHUSDSource == config.ETHUSDSourceCoinGecko {
 		apiMetrics.RegisterPriceFeed(metricsRegistry)
-		prices := pricefeed.New(pricefeed.Options{APIKey: c.CoinGeckoAPIKey, Logger: slog.Default(), Observe: apiMetrics.ObservePriceFeed})
+		prices := pricefeed.New(pricefeed.Options{Plan: c.CoinGeckoAPIPlan, APIKey: c.CoinGeckoAPIKey, Logger: slog.Default(), Observe: apiMetrics.ObservePriceFeed})
 		go func() { _ = prices.Run(ctx) }() // stops with the signal context on shutdown
 		references.Prices = prices
 	}

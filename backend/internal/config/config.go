@@ -49,6 +49,12 @@ const (
 // ETHUSDSourceCoinGecko selects the CoinGecko ETH/USD reference price source.
 const ETHUSDSourceCoinGecko = "coingecko"
 
+// CoinGecko API plans. The Demo plan is free with a monthly call cap; Pro is the paid plan.
+const (
+	CoinGeckoPlanPro  = "pro"
+	CoinGeckoPlanDemo = "demo"
+)
+
 var (
 	ErrInvalid = errors.New("invalid configuration value")
 	ErrMissing = errors.New("missing configuration value")
@@ -109,6 +115,9 @@ type Config struct {
 	// CoinGeckoAPIKey is a secret; it is required when ETHUSDSource is coingecko and
 	// rejected otherwise. It never appears in error text.
 	CoinGeckoAPIKey string `env:"COINGECKO_API_KEY"`
+	// CoinGeckoAPIPlan is CoinGeckoPlanPro (default when CoinGecko is enabled) or
+	// CoinGeckoPlanDemo; empty while ETHUSDSource is empty.
+	CoinGeckoAPIPlan string `env:"COINGECKO_API_PLAN"`
 	// IndexerSenderBackfillInterval is the period of the indexer's automatic pool swap sender
 	// backfill; 0 disables it.
 	IndexerSenderBackfillInterval time.Duration `env:"INDEXER_SENDER_BACKFILL_INTERVAL"`
@@ -254,6 +263,10 @@ func Load(getenv func(string) string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	coinGeckoAPIPlan, err := parseCoinGeckoPlan(ethUSDSource, values.coinGeckoAPIPlan)
+	if err != nil {
+		return Config{}, err
+	}
 	senderBackfillInterval, err := optionalDisableableDuration("INDEXER_SENDER_BACKFILL_INTERVAL", values.indexerSenderBackfillInterval,
 		defaultSenderBackfillInterval, minSenderBackfillInterval, maxSenderBackfillInterval)
 	if err != nil {
@@ -295,6 +308,7 @@ func Load(getenv func(string) string) (Config, error) {
 		IndexerConfirmations:          confirmations,
 		ETHUSDSource:                  ethUSDSource,
 		CoinGeckoAPIKey:               coinGeckoAPIKey,
+		CoinGeckoAPIPlan:              coinGeckoAPIPlan,
 		IndexerSenderBackfillInterval: senderBackfillInterval,
 		IndexerSenderBackfillMaxTxs:   senderBackfillMaxTxs,
 	}, nil
@@ -364,6 +378,7 @@ type environmentValues struct {
 	indexerConfirmations          string
 	ethUSDSource                  string
 	coinGeckoAPIKey               string
+	coinGeckoAPIPlan              string
 	indexerSenderBackfillInterval string
 	indexerSenderBackfillMaxTxs   string
 }
@@ -399,6 +414,7 @@ func readEnvironment(getenv func(string) string) environmentValues {
 		indexerConfirmations:          strings.TrimSpace(getenv("INDEXER_CONFIRMATIONS")),
 		ethUSDSource:                  strings.TrimSpace(getenv("ETH_USD_SOURCE")),
 		coinGeckoAPIKey:               strings.TrimSpace(getenv("COINGECKO_API_KEY")),
+		coinGeckoAPIPlan:              strings.TrimSpace(getenv("COINGECKO_API_PLAN")),
 		indexerSenderBackfillInterval: strings.TrimSpace(getenv("INDEXER_SENDER_BACKFILL_INTERVAL")),
 		indexerSenderBackfillMaxTxs:   strings.TrimSpace(getenv("INDEXER_SENDER_BACKFILL_MAX_TXS")),
 	}
@@ -418,6 +434,25 @@ func parseETHUSDSource(source, apiKey string) (string, string, error) {
 		return source, apiKey, nil
 	default:
 		return "", "", &FieldError{Field: "ETH_USD_SOURCE", Err: ErrInvalid}
+	}
+}
+
+// parseCoinGeckoPlan defaults an enabled CoinGecko source to the Pro plan and rejects a plan
+// set while USD pricing is disabled, so a stray value cannot hide a misconfiguration.
+func parseCoinGeckoPlan(source, plan string) (string, error) {
+	if source == "" {
+		if plan != "" {
+			return "", &FieldError{Field: "COINGECKO_API_PLAN", Err: ErrInvalid}
+		}
+		return "", nil
+	}
+	switch plan {
+	case "":
+		return CoinGeckoPlanPro, nil
+	case CoinGeckoPlanPro, CoinGeckoPlanDemo:
+		return plan, nil
+	default:
+		return "", &FieldError{Field: "COINGECKO_API_PLAN", Err: ErrInvalid}
 	}
 }
 

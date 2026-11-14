@@ -26,16 +26,32 @@ const (
 	defaultBaseURL  = "https://pro-api.coingecko.com/api/v3"
 	defaultInterval = 60 * time.Second
 	defaultMaxAge   = 120 * time.Second
-	defaultTimeout  = 10 * time.Second
-	maxBackoff      = 15 * time.Minute
-	maxBodyBytes    = 64 << 10
-	query           = "ids=ethereum&vs_currencies=usd&include_last_updated_at=true&precision=full"
+	// The Demo plan is capped at 10,000 calls a month (coingecko.com/en/api/pricing, checked
+	// 2026-11-14): a 5-minute poll uses about 8,640, leaving room for restarts and retries.
+	// A sample may then be one jittered interval old (up to 6 minutes), so it stays fresh for
+	// two intervals plus a minute.
+	demoBaseURL    = "https://api.coingecko.com/api/v3"
+	demoInterval   = 5 * time.Minute
+	demoMaxAge     = 11 * time.Minute
+	defaultTimeout = 10 * time.Second
+	maxBackoff     = 15 * time.Minute
+	maxBodyBytes   = 64 << 10
+	query          = "ids=ethereum&vs_currencies=usd&include_last_updated_at=true&precision=full"
+)
+
+// API plans; each has its own host, key header and poll cadence.
+const (
+	PlanPro  = "pro"
+	PlanDemo = "demo"
 )
 
 // Options configures a Feed. Zero values select the documented defaults.
 type Options struct {
-	BaseURL  string       // default "https://pro-api.coingecko.com/api/v3"
-	APIKey   string       // sent only in the x-cg-pro-api-key header
+	// Plan is PlanPro (default) or PlanDemo. It picks the default BaseURL, Interval and
+	// MaxAge, and the key header (x-cg-pro-api-key or x-cg-demo-api-key).
+	Plan     string
+	BaseURL  string       // default: the plan's host
+	APIKey   string       // sent only in the plan's key header
 	Client   *http.Client // default timeout 10s
 	Now      func() time.Time
 	Interval time.Duration // default 60s
@@ -74,6 +90,7 @@ type call struct {
 type Feed struct {
 	baseURL  string
 	apiKey   string
+	keyName  string // the plan's key header
 	client   *http.Client
 	now      func() time.Time
 	interval time.Duration
@@ -102,8 +119,14 @@ func New(o Options) *Feed {
 		logger:   o.Logger,
 		observe:  o.Observe,
 	}
+	baseURL, interval, maxAge := defaultBaseURL, defaultInterval, defaultMaxAge
+	f.keyName = "x-cg-pro-api-key"
+	if o.Plan == PlanDemo {
+		baseURL, interval, maxAge = demoBaseURL, demoInterval, demoMaxAge
+		f.keyName = "x-cg-demo-api-key"
+	}
 	if f.baseURL == "" {
-		f.baseURL = defaultBaseURL
+		f.baseURL = baseURL
 	}
 	if f.client == nil {
 		// Never follow redirects: the API key header must not reach another host.
@@ -113,10 +136,10 @@ func New(o Options) *Feed {
 		f.now = time.Now
 	}
 	if f.interval <= 0 {
-		f.interval = defaultInterval
+		f.interval = interval
 	}
 	if f.maxAge <= 0 {
-		f.maxAge = defaultMaxAge
+		f.maxAge = maxAge
 	}
 	if f.jitter == nil {
 		f.jitter = defaultJitter
@@ -231,7 +254,7 @@ func (f *Feed) fetch(ctx context.Context) (string, error) {
 		return "http_error", errors.New("pricefeed: build request failed")
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("x-cg-pro-api-key", f.apiKey)
+	req.Header.Set(f.keyName, f.apiKey)
 	resp, err := f.client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
