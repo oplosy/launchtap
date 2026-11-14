@@ -1374,6 +1374,97 @@ func (q *Queries) ListMarketTradesAfter(ctx context.Context, arg ListMarketTrade
 	return items, nil
 }
 
+const listMarketTradesFrom = `-- name: ListMarketTradesFrom :many
+SELECT source, COALESCE(encode(trader, 'hex'), '')::text AS trader_hex,
+       side_buy, execution_price_wad, spot_price_wad,
+       gross_eth_volume, token_volume, block_number, transaction_index,
+       tx_hash, log_index, block_time, finality
+FROM market_trades
+WHERE chain_id = $1
+  AND token_address = $2
+  AND (block_number, transaction_index, log_index) <
+      ($3::bigint, $4::integer, $5::integer)
+  AND (block_number, transaction_index, log_index) >=
+      ($6::bigint, $7::integer, $8::integer)
+ORDER BY block_number DESC, transaction_index DESC, log_index DESC
+LIMIT $9::integer
+`
+
+type ListMarketTradesFromParams struct {
+	ChainID                int64
+	TokenAddress           Address
+	BeforeBlock            int64
+	BeforeTransactionIndex int32
+	BeforeLogIndex         int32
+	FloorBlock             int64
+	FloorTransactionIndex  int32
+	FloorLogIndex          int32
+	PageSize               int32
+}
+
+type ListMarketTradesFromRow struct {
+	Source            string
+	TraderHex         string
+	SideBuy           bool
+	ExecutionPriceWad pgtype.Numeric
+	SpotPriceWad      pgtype.Numeric
+	GrossEthVolume    Uint256
+	TokenVolume       Uint256
+	BlockNumber       int64
+	TransactionIndex  int32
+	TxHash            Hash
+	LogIndex          int32
+	BlockTime         pgtype.Timestamptz
+	Finality          string
+}
+
+// ListMarketTrades bounded below by MarketTradePageFloor: the bound becomes an index condition in
+// every branch of the view, so a page reads about page_size rows per source instead of the
+// token's whole history.
+func (q *Queries) ListMarketTradesFrom(ctx context.Context, arg ListMarketTradesFromParams) ([]ListMarketTradesFromRow, error) {
+	rows, err := q.db.Query(ctx, listMarketTradesFrom,
+		arg.ChainID,
+		arg.TokenAddress,
+		arg.BeforeBlock,
+		arg.BeforeTransactionIndex,
+		arg.BeforeLogIndex,
+		arg.FloorBlock,
+		arg.FloorTransactionIndex,
+		arg.FloorLogIndex,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMarketTradesFromRow{}
+	for rows.Next() {
+		var i ListMarketTradesFromRow
+		if err := rows.Scan(
+			&i.Source,
+			&i.TraderHex,
+			&i.SideBuy,
+			&i.ExecutionPriceWad,
+			&i.SpotPriceWad,
+			&i.GrossEthVolume,
+			&i.TokenVolume,
+			&i.BlockNumber,
+			&i.TransactionIndex,
+			&i.TxHash,
+			&i.LogIndex,
+			&i.BlockTime,
+			&i.Finality,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPrecomputedLeaderboardWindow = `-- name: ListPrecomputedLeaderboardWindow :many
 SELECT r.wallet, r.realized_pnl, r.tokens_traded, pu.username
 FROM leaderboard_window_ranks AS r
@@ -2623,6 +2714,78 @@ func (q *Queries) ListWalletTrades(ctx context.Context, arg ListWalletTradesPara
 		return nil, err
 	}
 	return items, nil
+}
+
+const marketTradePageFloor = `-- name: MarketTradePageFloor :one
+SELECT candidate.block_number, candidate.transaction_index, candidate.log_index
+FROM (
+    (SELECT trade.block_number, trade.transaction_index, trade.log_index
+     FROM trades AS trade
+     WHERE trade.chain_id = $1 AND trade.token_address = $2
+       AND (trade.block_number, trade.transaction_index, trade.log_index) <
+           ($3::bigint, $4::integer, $5::integer)
+     ORDER BY trade.block_number DESC, trade.transaction_index DESC, trade.log_index DESC
+     LIMIT $6::integer)
+    UNION ALL
+    (SELECT swap.block_number, swap.transaction_index, swap.log_index
+     FROM pool_swaps AS swap
+     WHERE swap.chain_id = $1
+       AND swap.pair_address = (SELECT token.lp_pair FROM tokens AS token
+                                WHERE token.chain_id = $1 AND token.token_address = $2)
+       AND (swap.block_number, swap.transaction_index, swap.log_index) <
+           ($3::bigint, $4::integer, $5::integer)
+     ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+     LIMIT $6::integer)
+    UNION ALL
+    (SELECT swap.block_number, swap.transaction_index, swap.log_index
+     FROM v4_swaps AS swap
+     WHERE swap.chain_id = $1
+       AND swap.pool_id = (SELECT graduation.pool_id FROM graduations AS graduation
+                           WHERE graduation.chain_id = $1 AND graduation.token_address = $2
+                             AND graduation.pool_id IS NOT NULL
+                           ORDER BY graduation.block_number DESC, graduation.transaction_index DESC, graduation.log_index DESC
+                           LIMIT 1)
+       AND (swap.block_number, swap.transaction_index, swap.log_index) <
+           ($3::bigint, $4::integer, $5::integer)
+     ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+     LIMIT $6::integer)
+) AS candidate
+ORDER BY candidate.block_number DESC, candidate.transaction_index DESC, candidate.log_index DESC
+OFFSET $6::integer - 1
+LIMIT 1
+`
+
+type MarketTradePageFloorParams struct {
+	ChainID                int64
+	TokenAddress           Address
+	BeforeBlock            int64
+	BeforeTransactionIndex int32
+	BeforeLogIndex         int32
+	PageSize               int32
+}
+
+type MarketTradePageFloorRow struct {
+	BlockNumber      int64
+	TransactionIndex int32
+	LogIndex         int32
+}
+
+// The key of the page_size-th newest event before the cursor across the token's base tables
+// (curve trades, its V2 pair's swaps, its V4 pool's swaps), each read newest first from its own
+// index. No row means fewer events than one page. The market_trades view keeps a subset of these
+// rows, so the view's page lies at or above this key unless the view dropped one of them.
+func (q *Queries) MarketTradePageFloor(ctx context.Context, arg MarketTradePageFloorParams) (MarketTradePageFloorRow, error) {
+	row := q.db.QueryRow(ctx, marketTradePageFloor,
+		arg.ChainID,
+		arg.TokenAddress,
+		arg.BeforeBlock,
+		arg.BeforeTransactionIndex,
+		arg.BeforeLogIndex,
+		arg.PageSize,
+	)
+	var i MarketTradePageFloorRow
+	err := row.Scan(&i.BlockNumber, &i.TransactionIndex, &i.LogIndex)
+	return i, err
 }
 
 const tokenExists = `-- name: TokenExists :one

@@ -229,6 +229,66 @@ WHERE chain_id = sqlc.arg(chain_id)
 ORDER BY block_number DESC, transaction_index DESC, log_index DESC
 LIMIT sqlc.arg(page_size)::integer;
 
+-- name: MarketTradePageFloor :one
+-- The key of the page_size-th newest event before the cursor across the token's base tables
+-- (curve trades, its V2 pair's swaps, its V4 pool's swaps), each read newest first from its own
+-- index. No row means fewer events than one page. The market_trades view keeps a subset of these
+-- rows, so the view's page lies at or above this key unless the view dropped one of them.
+SELECT candidate.block_number, candidate.transaction_index, candidate.log_index
+FROM (
+    (SELECT trade.block_number, trade.transaction_index, trade.log_index
+     FROM trades AS trade
+     WHERE trade.chain_id = sqlc.arg(chain_id) AND trade.token_address = sqlc.arg(token_address)
+       AND (trade.block_number, trade.transaction_index, trade.log_index) <
+           (sqlc.arg(before_block)::bigint, sqlc.arg(before_transaction_index)::integer, sqlc.arg(before_log_index)::integer)
+     ORDER BY trade.block_number DESC, trade.transaction_index DESC, trade.log_index DESC
+     LIMIT sqlc.arg(page_size)::integer)
+    UNION ALL
+    (SELECT swap.block_number, swap.transaction_index, swap.log_index
+     FROM pool_swaps AS swap
+     WHERE swap.chain_id = sqlc.arg(chain_id)
+       AND swap.pair_address = (SELECT token.lp_pair FROM tokens AS token
+                                WHERE token.chain_id = sqlc.arg(chain_id) AND token.token_address = sqlc.arg(token_address))
+       AND (swap.block_number, swap.transaction_index, swap.log_index) <
+           (sqlc.arg(before_block)::bigint, sqlc.arg(before_transaction_index)::integer, sqlc.arg(before_log_index)::integer)
+     ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+     LIMIT sqlc.arg(page_size)::integer)
+    UNION ALL
+    (SELECT swap.block_number, swap.transaction_index, swap.log_index
+     FROM v4_swaps AS swap
+     WHERE swap.chain_id = sqlc.arg(chain_id)
+       AND swap.pool_id = (SELECT graduation.pool_id FROM graduations AS graduation
+                           WHERE graduation.chain_id = sqlc.arg(chain_id) AND graduation.token_address = sqlc.arg(token_address)
+                             AND graduation.pool_id IS NOT NULL
+                           ORDER BY graduation.block_number DESC, graduation.transaction_index DESC, graduation.log_index DESC
+                           LIMIT 1)
+       AND (swap.block_number, swap.transaction_index, swap.log_index) <
+           (sqlc.arg(before_block)::bigint, sqlc.arg(before_transaction_index)::integer, sqlc.arg(before_log_index)::integer)
+     ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+     LIMIT sqlc.arg(page_size)::integer)
+) AS candidate
+ORDER BY candidate.block_number DESC, candidate.transaction_index DESC, candidate.log_index DESC
+OFFSET sqlc.arg(page_size)::integer - 1
+LIMIT 1;
+
+-- name: ListMarketTradesFrom :many
+-- ListMarketTrades bounded below by MarketTradePageFloor: the bound becomes an index condition in
+-- every branch of the view, so a page reads about page_size rows per source instead of the
+-- token's whole history.
+SELECT source, COALESCE(encode(trader, 'hex'), '')::text AS trader_hex,
+       side_buy, execution_price_wad, spot_price_wad,
+       gross_eth_volume, token_volume, block_number, transaction_index,
+       tx_hash, log_index, block_time, finality
+FROM market_trades
+WHERE chain_id = sqlc.arg(chain_id)
+  AND token_address = sqlc.arg(token_address)
+  AND (block_number, transaction_index, log_index) <
+      (sqlc.arg(before_block)::bigint, sqlc.arg(before_transaction_index)::integer, sqlc.arg(before_log_index)::integer)
+  AND (block_number, transaction_index, log_index) >=
+      (sqlc.arg(floor_block)::bigint, sqlc.arg(floor_transaction_index)::integer, sqlc.arg(floor_log_index)::integer)
+ORDER BY block_number DESC, transaction_index DESC, log_index DESC
+LIMIT sqlc.arg(page_size)::integer;
+
 -- name: ListTokenHolders :many
 SELECT h.holder_address, h.balance, h.first_acquired_block_number
 FROM holder_balances AS h
