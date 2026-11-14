@@ -141,16 +141,16 @@ Same dataset and machine, after the token trade page fix (#76) and the leaderboa
 `pg_stat_statements`; the 7d/30d leaderboards were re-ranked every 30 s during the run, as the
 indexer's refresher does. Redis cache hit rate is not measured: the stack has no Redis.
 
-| Metric                                | Target (good) | Critical | Measured                                                                                           | Result   |
-| ------------------------------------- | ------------- | -------- | -------------------------------------------------------------------------------------------------- | -------- |
-| LCP (mobile, Slow 4G, 4× CPU)         | ≤ 2.5 s       | > 4.0 s  | home 1,859 ms; token 1,878 ms; leaderboard 1,791 ms                                                | good     |
-| INP (same profile)                    | ≤ 200 ms      | > 500 ms | leaderboard 114 ms; token page 20 ms (was 206 ms)                                                  | good     |
-| CLS                                   | ≤ 0.10        | > 0.25   | home 0.06; token 0.00; leaderboard load and window switches 0.00 (was 0.90)                        | good     |
-| TTFB, server only (median of 5, warm) | ≤ 800 ms      | > 1.8 s  | home 9 ms; token 12 ms (116 ms cold)                                                               | good     |
-| TTFB under Slow 4G                    | ≤ 800 ms      | > 1.8 s  | 564 ms (almost all emulated latency)                                                               | good     |
-| API p95 / p99                         | < 200 ms      | > 500 ms | worst route `/wallets/{w}/trades` 62.5 / 78.8 ms; `/leaderboard` 24.8 / 31.2 ms (was 121 / 158 ms) | good     |
-| 5xx error rate                        | < 0.1 %       | > 1 %    | 0 errors in 53,966 requests                                                                        | good     |
-| DB query time (mean per statement)    | ≤ 15 ms       | > 50 ms  | weighted mean 0.89 ms over 243k statements; one statement over target (below)                      | one over |
+| Metric                                | Target (good) | Critical | Measured                                                                                           | Result |
+| ------------------------------------- | ------------- | -------- | -------------------------------------------------------------------------------------------------- | ------ |
+| LCP (mobile, Slow 4G, 4× CPU)         | ≤ 2.5 s       | > 4.0 s  | home 1,859 ms; token 1,878 ms; leaderboard 1,791 ms                                                | good   |
+| INP (same profile)                    | ≤ 200 ms      | > 500 ms | leaderboard 114 ms; token page 20 ms (was 206 ms)                                                  | good   |
+| CLS                                   | ≤ 0.10        | > 0.25   | home 0.06; token 0.00; leaderboard load and window switches 0.00 (was 0.90)                        | good   |
+| TTFB, server only (median of 5, warm) | ≤ 800 ms      | > 1.8 s  | home 9 ms; token 12 ms (116 ms cold)                                                               | good   |
+| TTFB under Slow 4G                    | ≤ 800 ms      | > 1.8 s  | 564 ms (almost all emulated latency)                                                               | good   |
+| API p95 / p99                         | < 200 ms      | > 500 ms | worst route `/wallets/{w}/trades` 62.5 / 78.8 ms; `/leaderboard` 24.8 / 31.2 ms (was 121 / 158 ms) | good   |
+| 5xx error rate                        | < 0.1 %       | > 1 %    | 0 errors in 53,966 requests                                                                        | good   |
+| DB query time (mean per statement)    | ≤ 15 ms       | > 50 ms  | weighted mean 0.24 ms without contention; slowest request-path statement 8.76 ms (fourth run)      | good   |
 
 ### API latency (loadprobe, 16 workers, 60 s)
 
@@ -234,3 +234,30 @@ Every other route stays at p95 ≤ 20 ms and p99 ≤ 26 ms. 70,214 requests (abo
 900/s), 0 errors. The weighted mean over 320k statements is 0.43 ms (was 0.89 ms).
 `ListWalletTrades` no longer appears among statements over 1 ms. `ListWalletOpenPositions`
 (15.59 ms mean) is now the slowest request-path statement, at the 15 ms target.
+
+## Fourth run: statement times without contention
+
+The 60 s runs use 16 workers on one CPU shared by the client, API and Postgres, so statement
+times there include CPU queueing. This run repeats the same 16 routes with one worker for 60 s
+(15,086 requests, 0 errors) to read each statement's own cost.
+
+| Statement                 | Calls |     Mean |      Max |  Stddev |
+| ------------------------- | ----: | -------: | -------: | ------: |
+| `ListWalletOpenPositions` |   942 |  8.76 ms | 22.31 ms | 0.92 ms |
+| `GetWalletValuation`      |   943 |  5.68 ms | 13.46 ms | 0.61 ms |
+| `ListWalletTrades` (from) |   942 |  0.66 ms |  1.37 ms | 0.06 ms |
+| every other statement     |       | < 0.6 ms |          |         |
+
+The weighted mean over 68,902 statements is 0.24 ms. Every request-path statement is under the
+15 ms target. The one statement above it, `GetKingOfTheHill` (21 ms, 4 calls), runs on a miss of
+the 15 s highlights cache, not per request.
+
+Both wallet valuation statements value every open position at the current reserves before
+sorting, and the busiest wallet holds 1,553 open positions. Two rewrites were tried and dropped:
+joining `tokens` after the limit (6.15 → 6.01 ms) and a covering partial index on open positions
+(the position scan fell from 1.2 to 0.3 ms, but the reserve and token joins dominate: 6.1 → 7.0 ms
+total). Precomputing position values in the indexer would rewrite every holder's value on each
+trade of a token; at under 10 ms this is not worth it.
+
+Route latency with one worker: every route p95 ≤ 5.2 ms, except `/wallets/{busiest}` (p95
+10.9 ms) and `/wallets/{busiest}/positions` (p95 14.8 ms).
