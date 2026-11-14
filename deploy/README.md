@@ -40,6 +40,9 @@ Before public deployment, point both DNS names at the host, allow TCP 80/443, co
 the exact HTTPS web origin in Privy, complete governance/audit sign-off, and run the root
 production release gate in a clean checkout with the same public configuration.
 Use the input/evidence checklist in `docs/runbooks/production-readiness.md`.
+To run more than one API replica (`docker compose up -d --scale api=N`), more hosts, or a CDN
+in front of the proxy, follow `docs/runbooks/scale-out-and-cdn.md`: rate limits are per replica,
+and a CDN needs its egress ranges trusted by both Caddy and the API.
 For the root production release gate, export the same `NEXT_PUBLIC_*` values used for
 the image, including `NEXT_PUBLIC_API_BASE_URL=https://API_DOMAIN` and
 `NEXT_PUBLIC_WEB_ORIGIN=https://WEB_DOMAIN`. The Compose `.env` file is not automatically

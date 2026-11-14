@@ -14,5 +14,12 @@
 		not path /v1/events
 	}
 	encode @compressible zstd gzip
-	reverse_proxy api:8080
+	# Re-resolves the api service name so `docker compose up --scale api=N` spreads requests over
+	# every replica (docs/runbooks/scale-out-and-cdn.md); a single replica works the same way.
+	reverse_proxy {
+		dynamic a api 8080 {
+			refresh 10s
+		}
+		lb_policy least_conn
+	}
 }
