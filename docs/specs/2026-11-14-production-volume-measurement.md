@@ -133,3 +133,70 @@ Both are under the 2.5 s LCP target. Render-blocking CSS is the largest remainin
 - The web build used the E2E fixture env (no Privy), so LCP is likely optimistic for the real
   wallet bundle.
 - History is engine-1 (curve + V2) only; V4 swap volume is not represented.
+
+## Second run: every metric against its target
+
+Same dataset and machine, after the token trade page fix (#76) and the leaderboard work on
+`task/leaderboard-query` (`2026-11-14-windowed-leaderboard-preflight.md`). Postgres ran with
+`pg_stat_statements`; the 7d/30d leaderboards were re-ranked every 30 s during the run, as the
+indexer's refresher does. Redis cache hit rate is not measured: the stack has no Redis.
+
+| Metric                                | Target (good) | Critical | Measured                                                                                           | Result   |
+| ------------------------------------- | ------------- | -------- | -------------------------------------------------------------------------------------------------- | -------- |
+| LCP (mobile, Slow 4G, 4× CPU)         | ≤ 2.5 s       | > 4.0 s  | home 1,859 ms; token 1,878 ms; leaderboard 1,791 ms                                                | good     |
+| INP (same profile)                    | ≤ 200 ms      | > 500 ms | leaderboard 114 ms; token page 20 ms (was 206 ms)                                                  | good     |
+| CLS                                   | ≤ 0.10        | > 0.25   | home 0.06; token 0.00; leaderboard load and window switches 0.00 (was 0.90)                        | good     |
+| TTFB, server only (median of 5, warm) | ≤ 800 ms      | > 1.8 s  | home 9 ms; token 12 ms (116 ms cold)                                                               | good     |
+| TTFB under Slow 4G                    | ≤ 800 ms      | > 1.8 s  | 564 ms (almost all emulated latency)                                                               | good     |
+| API p95 / p99                         | < 200 ms      | > 500 ms | worst route `/wallets/{w}/trades` 62.5 / 78.8 ms; `/leaderboard` 24.8 / 31.2 ms (was 121 / 158 ms) | good     |
+| 5xx error rate                        | < 0.1 %       | > 1 %    | 0 errors in 53,966 requests                                                                        | good     |
+| DB query time (mean per statement)    | ≤ 15 ms       | > 50 ms  | weighted mean 0.89 ms over 243k statements; one statement over target (below)                      | one over |
+
+### API latency (loadprobe, 16 workers, 60 s)
+
+| Route                        | Requests |      p50 |      p95 |      p99 |
+| ---------------------------- | -------: | -------: | -------: | -------: |
+| /tokens                      |     3372 | 13.30 ms | 21.49 ms | 26.02 ms |
+| /tokens?sort=volume_24h      |     3372 | 13.21 ms | 21.74 ms | 26.85 ms |
+| /tokens/highlights           |     3373 |  0.52 ms |  0.66 ms |  1.11 ms |
+| /stats/protocol              |     3374 | 12.18 ms | 20.27 ms | 25.88 ms |
+| /trades/recent               |     3373 | 15.92 ms | 25.34 ms | 31.65 ms |
+| /leaderboard                 |     3373 | 15.81 ms | 24.82 ms | 31.17 ms |
+| /leaderboard?window=7d       |     3374 | 13.88 ms | 22.68 ms | 28.76 ms |
+| /leaderboard?window=30d      |     3374 | 13.83 ms | 22.99 ms | 29.72 ms |
+| /tokens/{hot}                |     3373 | 12.90 ms | 21.58 ms | 28.81 ms |
+| /tokens/{hot}/trades         |     3374 | 15.27 ms | 24.57 ms | 31.03 ms |
+| /tokens/{hot}/candles        |     3375 | 13.59 ms | 22.74 ms | 28.33 ms |
+| /tokens/{hot}/holders        |     3376 | 13.23 ms | 22.24 ms | 27.59 ms |
+| /tokens/{quiet}/trades       |     3374 | 14.64 ms | 23.34 ms | 29.38 ms |
+| /wallets/{busiest}           |     3375 | 24.28 ms | 33.92 ms | 41.21 ms |
+| /wallets/{busiest}/positions |     3373 | 30.55 ms | 41.60 ms | 49.70 ms |
+| /wallets/{busiest}/trades    |     3371 | 47.76 ms | 62.54 ms | 78.79 ms |
+
+About 900 requests/s in total, 0 errors. The client, API and Postgres shared one CPU, so latency
+includes CPU contention.
+
+### Database statements over 1 ms mean (`pg_stat_statements`)
+
+| Statement                           | Calls |     Mean |       Max |
+| ----------------------------------- | ----: | -------: | --------: |
+| `ListWalletTrades` (busiest wallet) |  3372 | 35.83 ms | 255.92 ms |
+| `ListWalletOpenPositions`           |  3373 | 14.56 ms |  54.49 ms |
+| `GetWalletValuation`                |  3375 |  9.17 ms |  45.98 ms |
+
+Every other statement averages under 1 ms; the precomputed leaderboard read averages 0.13 ms and
+the all-time leaderboard 0.84 ms. The 7d/30d refresh takes about 250 ms per window in the
+indexer, off the request path. `ListWalletTrades` is the one statement over the 15 ms target and
+the next item to fix.
+
+### Fixes found by this run
+
+- **Leaderboard, all time:** `tokens.locker` had no index, so the planner hashed every token and
+  wallet instead of walking `wallet_totals_leaderboard_idx` (67 ms → 1.9 ms; migration 00031).
+- **Leaderboard, 7d/30d:** 260–295 ms per request, now precomputed by the indexer (0.17 ms read).
+- **Leaderboard window switch, CLS 0.90:** the `Suspense` boundary was keyed by window, so the
+  table collapsed to the skeleton on every switch; the per-window heading wrapped to two lines on
+  mobile; and rows keyed by wallet were moved to their new rank. Unkeyed boundary, one heading and
+  rank-keyed rows bring every switch to 0.00.
+- **Token chart type switch, INP 206 ms:** the switch rebuilt the chart before the click's next
+  paint; as a transition it runs after it (20 ms).
