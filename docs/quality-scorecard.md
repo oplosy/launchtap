@@ -18,12 +18,12 @@ Overall is the unweighted mean of the categories, rounded to one decimal.
 | 4 | Tests and verification | 8.5 | 8.5 | 155 Go test files, testcontainers integration, 36/36 contract tests, 528 vitest, Anvil e2e (22 + 1). No rendered React hook tests, no load tests. |
 | 5 | Smart contracts | 7.5 | 7.5 | Checked arithmetic, Slither, fork tests, internal audit docs. No external audit yet. |
 | 6 | Application security | 7.5 | 7.5 | Re-read-and-compare before every signature, exact approvals, chain/account re-check, no secrets in URLs. Privy auth not finished. |
-| 7 | CI/CD and infrastructure | 7.5 | 7.5 | Pinned tools, 5 workflows, branch protection, Compose + Caddy. Single host, no CDN, no scaling plan. |
+| 7 | CI/CD and infrastructure | 7.5 | 8.5 | Pinned tools, 5 workflows, branch protection, Compose + Caddy. Postgres backup/restore exercised by `deploy/check.ps1` in CI; `promtool test rules` and `amtool check-config` in CI. #67: Caddy balances over `--scale api=N` replicas (two-replica distribution and failover tested), scale-out and CDN runbook. Open: no CDN in front yet. |
 | 8 | Performance | 7.0 | 7.5 | Batched stats (#56), parallel `eth_getLogs` (#58), parallel token-page reads and hidden-tab polling (#59). No measured targets, no cache layer. |
 | 9 | Maintainability (spaghetti code) | 7.0 | 8.0 | One reviewed-write pipeline for the curve, V2, V4 and launch panels (#59, #60); `token-detail` 950 → 185, `wallet-view` 669 → 201 lines (#60). |
 | 10 | UX and interface | 7.0 | 8.5 | Review `docs/audits/2026-11-13-ux-review.md`: 13 issues fixed, then all 8 open product items closed (#62–#65). The fixes: image and description at launch, subscript-zero prices, 2 % default slippage, a trade card without inner scroll, creator-only sections, sparse chart, compact hero, no metadata 404. Lighthouse 2026-11-14 on dev: accessibility, best practices and SEO are 100 on home, token and create, desktop and mobile; no console errors. Token page cold-load CLS 0.136 → 0.0065 (the loading page reserves the viewport height). Open: no signed-in pass recorded yet. |
 | 11 | Product completeness (vs pons.family) | 6.5 | 8.0 | Launch, curve, graduation, swaps, forum, analytics and docs ship. #66: ticker tape and clusters Level 2 removed by scope decision (`docs/specs/2026-11-14-product-scope-decisions.md`), the Telegram worker deployable as an opt-in Compose profile, the ETH/USD feed runs on the free CoinGecko Demo plan. Open: Telegram and USD not live yet (bot token and Demo key pending), CoinGecko market links wait on the mainnet manifest. |
-|   | **Overall** | **7.7** | **8.1** | |
+|   | **Overall** | **7.7** | **8.2** | |
 
 ## Path to 9
 
@@ -46,9 +46,10 @@ named in it.
 6. **Application security (7.5 → 9):** Privy auth finished (backlog items closed); a security
    review (`security-audit`) of auth, wallet verification and the API with findings closed;
    rate limits and abuse controls documented and tested.
-7. **CI/CD and infrastructure (7.5 → 9):** a CDN or edge cache in front of static assets; a tested
-   backup/restore of Postgres; alerting wired to the monitoring stack; a documented scale-out path
-   for API and indexer.
+7. **CI/CD and infrastructure (8.5 → 9):** a CDN or edge cache in front of the proxy, set up per
+   `docs/runbooks/scale-out-and-cdn.md` (client-IP trust in Caddy and the API) and recorded with
+   evidence. Already met: tested Postgres backup/restore (`deploy/check.ps1` in CI), alert rules
+   unit-tested and Alertmanager config checked in CI, a documented and tested API scale-out path (#67).
 8. **Performance (7.5 → 9):** stated targets (p95 API latency, indexer lag, page LCP) with
    measurements that meet them; a cache layer for hot public reads that respects live freshness.
 9. **Maintainability (8.0 → 9):** no web source file over ~400 lines (current largest:
@@ -71,3 +72,4 @@ named in it.
 | 2026-11-13 | 7.9 | Maintainability 7.5 → 8.0, UX 7.0 → 8.0 | #60; UX review and fixes (`docs/audits/2026-11-13-ux-review.md`) |
 | 2026-11-14 | 8.0 | UX 8.0 → 8.5 | #62–#65 closed every open review item; Lighthouse re-run on dev |
 | 2026-11-14 | 8.1 | Product completeness 6.5 → 8.0 | #66: scope decisions, CoinGecko Demo plan, opt-in Telegram profile |
+| 2026-11-14 | 8.2 | CI/CD 7.5 → 8.5 | #67 scale-out path; backup/restore and alerting checks already in CI were missing from the evidence |
