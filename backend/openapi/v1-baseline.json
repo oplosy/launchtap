@@ -1,0 +1,6131 @@
+{
+  "components": {
+    "schemas": {
+      "AntiSnipeDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "duration_seconds": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ends_at": {
+            "description": "RFC 3339 time at which the anti-snipe tax reaches zero.",
+            "type": "string"
+          },
+          "start_bps": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start_bps",
+          "duration_seconds",
+          "ends_at"
+        ],
+        "type": "object"
+      },
+      "BurstItem": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "description": "Trades of this token folded into the window.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "max_eth_wei": {
+            "description": "Largest gross ETH amount among the folded trades, decimal wei string (same as a trade's eth_volume). \"0\" means none or unknown: no folded trade carried an amount.",
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "traders": {
+            "description": "Distinct non-null traders of the folded trades, lowercase hex, first-seen order, at most 32. Always an array, possibly empty.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "traders_truncated": {
+            "description": "True when more distinct traders were folded than traders lists.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "token",
+          "count",
+          "max_eth_wei",
+          "traders",
+          "traders_truncated"
+        ],
+        "type": "object"
+      },
+      "CandleBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/CandleBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CandleDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          }
+        },
+        "required": [
+          "items",
+          "snapshot"
+        ],
+        "type": "object"
+      },
+      "CandleDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "close": {
+            "type": "string"
+          },
+          "eth_volume": {
+            "type": "string"
+          },
+          "high": {
+            "type": "string"
+          },
+          "low": {
+            "type": "string"
+          },
+          "open": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string"
+          },
+          "token_volume": {
+            "type": "string"
+          },
+          "trade_count": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start",
+          "open",
+          "high",
+          "low",
+          "close",
+          "eth_volume",
+          "token_volume",
+          "trade_count"
+        ],
+        "type": "object"
+      },
+      "CanonicalEventDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "block_hash": {
+            "type": "string"
+          },
+          "block_number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "block_time": {
+            "type": "string"
+          },
+          "finality": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "log_index": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "pair": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "transaction_index": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "tx_hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "tx_hash",
+          "block_number",
+          "block_hash",
+          "block_time",
+          "transaction_index",
+          "log_index",
+          "finality"
+        ],
+        "type": "object"
+      },
+      "CanonicalObservationBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/CanonicalObservationBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deployment_id": {
+            "type": "string"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/CanonicalEventDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "finality": {
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          },
+          "tx_hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_id",
+          "deployment_id",
+          "tx_hash",
+          "snapshot",
+          "finality",
+          "events"
+        ],
+        "type": "object"
+      },
+      "CommentAuthorDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "enum": [
+              "creator",
+              "holder"
+            ],
+            "type": "string"
+          },
+          "username": {
+            "description": "Lowercase username, or null when the author has none or is not public.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "wallet": {
+            "description": "Checksummed posting wallet, or null when the author shows a username only.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "username",
+          "wallet",
+          "role"
+        ],
+        "type": "object"
+      },
+      "CommentDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/CommentDTO.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "author": {
+            "$ref": "#/components/schemas/CommentAuthorDTO"
+          },
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "id": {
+            "description": "Decimal string.",
+            "type": "string"
+          },
+          "score": {
+            "description": "Sum of up (+1) and down (-1) votes from voters who are not banned.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "token",
+          "body",
+          "created_at",
+          "author",
+          "score"
+        ],
+        "type": "object"
+      },
+      "CommentEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deployment_id": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_id",
+          "deployment_id",
+          "token"
+        ],
+        "type": "object"
+      },
+      "CommentListBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/CommentListBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "comment_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CommentDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "comment_count"
+        ],
+        "type": "object"
+      },
+      "EarlyBuyersBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/EarlyBuyersBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "cluster_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "clusters": {
+            "description": "At most 10 clusters, largest combined balance first.",
+            "items": {
+              "$ref": "#/components/schemas/EarlyClusterDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "early_balance": {
+            "description": "What every early wallet holds now.",
+            "type": "string"
+          },
+          "early_wallet_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "funding_checked": {
+            "description": "Early wallets whose funding source has been checked; funding_source links cover only these.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          },
+          "window_open": {
+            "description": "The early window had not ended at the snapshot block.",
+            "type": "boolean"
+          },
+          "window_seconds": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "snapshot",
+          "window_seconds",
+          "window_open",
+          "early_wallet_count",
+          "early_balance",
+          "cluster_count",
+          "clusters",
+          "funding_checked"
+        ],
+        "type": "object"
+      },
+      "EarlyClusterDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "balance": {
+            "description": "What every wallet of the cluster holds now.",
+            "type": "string"
+          },
+          "includes_creator": {
+            "type": "boolean"
+          },
+          "links": {
+            "description": "Link kinds present: same_transaction, token_transfer, funding_source.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "wallet_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "wallets": {
+            "description": "At most 20 wallets, largest balance first.",
+            "items": {
+              "$ref": "#/components/schemas/EarlyWalletDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "wallet_count",
+          "balance",
+          "links",
+          "includes_creator",
+          "wallets"
+        ],
+        "type": "object"
+      },
+      "EarlyWalletDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "balance": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "balance"
+        ],
+        "type": "object"
+      },
+      "EligibilityBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/EligibilityBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "banned": {
+            "type": "boolean"
+          },
+          "eligible_wallets": {
+            "items": {
+              "$ref": "#/components/schemas/EligibleWalletDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "eligible_wallets",
+          "banned",
+          "username"
+        ],
+        "type": "object"
+      },
+      "EligibleWalletDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "creator",
+              "holder"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "role"
+        ],
+        "type": "object"
+      },
+      "ErrorDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "location": {
+            "description": "Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id'",
+            "type": "string"
+          },
+          "message": {
+            "description": "Error message text",
+            "type": "string"
+          },
+          "value": {
+            "description": "The value at the given location"
+          }
+        },
+        "type": "object"
+      },
+      "ErrorModel": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/ErrorModel.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "detail": {
+            "description": "A human-readable explanation specific to this occurrence of the problem.",
+            "examples": [
+              "Property foo is required but is missing."
+            ],
+            "type": "string"
+          },
+          "errors": {
+            "description": "Optional list of individual error details",
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "instance": {
+            "description": "A URI reference that identifies the specific occurrence of the problem.",
+            "examples": [
+              "https://example.com/error-log/abc123"
+            ],
+            "format": "uri",
+            "type": "string"
+          },
+          "status": {
+            "description": "HTTP status code",
+            "examples": [
+              400
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "title": {
+            "description": "A short, human-readable summary of the problem type. This value should not change between occurrences of the error.",
+            "examples": [
+              "Bad Request"
+            ],
+            "type": "string"
+          },
+          "type": {
+            "default": "about:blank",
+            "description": "A URI reference to human-readable documentation for the error.",
+            "examples": [
+              "https://example.com/errors/example"
+            ],
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "EthUsdBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/EthUsdBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "attribution_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fetched_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "price": {
+            "description": "ETH/USD decimal string; null when disabled, missing or stale.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider_updated_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "price",
+          "provider_updated_at",
+          "fetched_at",
+          "source",
+          "attribution_url"
+        ],
+        "type": "object"
+      },
+      "FinalityFeedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deployment_id": {
+            "type": "string"
+          },
+          "finalized_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "safe_block": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chain_id",
+          "deployment_id",
+          "safe_block",
+          "finalized_block"
+        ],
+        "type": "object"
+      },
+      "ForumCommunitiesBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/ForumCommunitiesBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ForumCommunityDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "ForumCommunityDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "comment_count": {
+            "description": "Visible comments in the sort's window.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_comment_at": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "name",
+          "symbol",
+          "comment_count",
+          "last_comment_at"
+        ],
+        "type": "object"
+      },
+      "ForumPostDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/CommentAuthorDTO"
+          },
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "id": {
+            "description": "Decimal string.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Token launch name; user-controlled text.",
+            "type": "string"
+          },
+          "score": {
+            "description": "Sum of votes from voters who are not banned.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "symbol": {
+            "description": "Token launch symbol; user-controlled text.",
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "token",
+          "body",
+          "created_at",
+          "author",
+          "score",
+          "name",
+          "symbol"
+        ],
+        "type": "object"
+      },
+      "ForumPostsBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/ForumPostsBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ForumPostDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "GraduationFeedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "block_number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deployment_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pair": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "tx_hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_id",
+          "deployment_id",
+          "token",
+          "name",
+          "symbol",
+          "pair",
+          "tx_hash",
+          "block_number"
+        ],
+        "type": "object"
+      },
+      "HealthResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/HealthResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "HighlightsBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/HighlightsBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "as_of": {
+            "type": "string"
+          },
+          "finality": {
+            "type": "string"
+          },
+          "king_of_the_hill": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/KingDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          },
+          "trending": {
+            "items": {
+              "$ref": "#/components/schemas/TrendingDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "window_start": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "trending",
+          "king_of_the_hill",
+          "window_start",
+          "as_of",
+          "finality",
+          "snapshot"
+        ],
+        "type": "object"
+      },
+      "HolderDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "balance": {
+            "type": "string"
+          },
+          "first_acquired_block": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "address",
+          "balance",
+          "first_acquired_block"
+        ],
+        "type": "object"
+      },
+      "HoldersBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/HoldersBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HolderDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          }
+        },
+        "required": [
+          "snapshot",
+          "items"
+        ],
+        "type": "object"
+      },
+      "InboxBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/InboxBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InboxItemDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "unread_count": {
+            "description": "Unread notifications, at most 100.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "unread_count"
+        ],
+        "type": "object"
+      },
+      "InboxItemDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "block_time": {
+            "type": "string"
+          },
+          "eth_wei": {
+            "description": "Gross trade amount, or the ETH moved to the pool at graduation.",
+            "type": "string"
+          },
+          "id": {
+            "description": "\u003cblock\u003e-\u003ctx_index\u003e-\u003clog_index\u003e; also usable as a cursor and a read position.",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "graduation",
+              "large_trade"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "side_buy": {
+            "description": "large_trade only.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "source": {
+            "description": "large_trade only.",
+            "enum": [
+              "curve",
+              "dex"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "trader": {
+            "description": "large_trade only; null when the pool-swap sender is unknown.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tx_hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "token",
+          "name",
+          "symbol",
+          "block_time",
+          "tx_hash",
+          "eth_wei",
+          "side_buy",
+          "trader",
+          "source"
+        ],
+        "type": "object"
+      },
+      "InboxReadInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/InboxReadInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "through": {
+            "description": "Mark every notification up to and including this id as read.",
+            "maxLength": 64,
+            "type": "string"
+          }
+        },
+        "required": [
+          "through"
+        ],
+        "type": "object"
+      },
+      "KingDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "graduation_progress_bps": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "holder_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "launch_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "launch_time": {
+            "type": "string"
+          },
+          "market_cap_eth": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "remaining_eth": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "total_supply": {
+            "type": "string"
+          },
+          "volume_24h_eth": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "graduation_progress_bps",
+          "remaining_eth",
+          "address",
+          "name",
+          "symbol",
+          "phase",
+          "launch_time",
+          "launch_block",
+          "total_supply",
+          "market_cap_eth",
+          "volume_24h_eth",
+          "holder_count"
+        ],
+        "type": "object"
+      },
+      "LaunchEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "as_of_block_hash": {
+            "type": "string"
+          },
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deployment_id": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_id",
+          "deployment_id",
+          "token"
+        ],
+        "type": "object"
+      },
+      "LeaderboardBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/LeaderboardBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LeaderboardItemDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          }
+        },
+        "required": [
+          "snapshot",
+          "items"
+        ],
+        "type": "object"
+      },
+      "LeaderboardItemDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "rank": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "realized_pnl_wei": {
+            "type": "string"
+          },
+          "tokens_traded": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "username": {
+            "description": "Username published on this wallet, or null.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "rank",
+          "address",
+          "realized_pnl_wei",
+          "tokens_traded",
+          "username"
+        ],
+        "type": "object"
+      },
+      "LockerOwedDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "eth": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "account",
+          "eth",
+          "token"
+        ],
+        "type": "object"
+      },
+      "MetadataBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/MetadataBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "telegram_url": {
+            "type": "string"
+          },
+          "x_url": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "MetadataReadBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/MetadataReadBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "image_url": {
+            "type": "string"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "telegram_url": {
+            "type": "string"
+          },
+          "x_url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "type": "object"
+      },
+      "NewTokenFeedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "block_number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "creator": {
+            "type": "string"
+          },
+          "deployment_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "tx_hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_id",
+          "deployment_id",
+          "token",
+          "creator",
+          "name",
+          "symbol",
+          "tx_hash",
+          "block_number"
+        ],
+        "type": "object"
+      },
+      "PostCommentInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/PostCommentInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "body": {
+            "description": "Comment text, at most 500 code points after normalization.",
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "wallet": {
+            "description": "Linked wallet that posts; must be the token creator or a holder.",
+            "pattern": "^0x[0-9a-fA-F]{40}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body",
+          "wallet"
+        ],
+        "type": "object"
+      },
+      "ProfileActionDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "creator_fees": {
+            "type": "string"
+          },
+          "curve": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "refund": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "curve",
+          "name",
+          "symbol",
+          "phase",
+          "creator_fees",
+          "refund"
+        ],
+        "type": "object"
+      },
+      "ProfileBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/ProfileBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileActionDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          }
+        },
+        "required": [
+          "snapshot",
+          "items"
+        ],
+        "type": "object"
+      },
+      "ProtocolDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/ProtocolDTO.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "graduations_24h": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "graduations_all_time": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "launches_24h": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "launches_all_time": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          },
+          "trades_24h": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "trades_all_time": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "volume_24h_eth": {
+            "type": "string"
+          },
+          "volume_all_time_eth": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot",
+          "volume_24h_eth",
+          "volume_all_time_eth",
+          "launches_24h",
+          "launches_all_time",
+          "trades_24h",
+          "trades_all_time",
+          "graduations_24h",
+          "graduations_all_time",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "ProtocolDailyBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/ProtocolDailyBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProtocolDailyDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          }
+        },
+        "required": [
+          "snapshot",
+          "items"
+        ],
+        "type": "object"
+      },
+      "ProtocolDailyDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "day": {
+            "type": "string"
+          },
+          "graduations": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "launches": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "trades": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "volume_eth": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "day",
+          "volume_eth",
+          "launches",
+          "trades",
+          "graduations"
+        ],
+        "type": "object"
+      },
+      "PublicProfileDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/PublicProfileDTO.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "banned": {
+            "type": "boolean"
+          },
+          "next_username_change_at": {
+            "description": "Null when a username change is allowed now.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "public_wallets": {
+            "description": "Checksummed wallets the username is published on.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username_changed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "username",
+          "username_changed_at",
+          "next_username_change_at",
+          "public_wallets",
+          "banned"
+        ],
+        "type": "object"
+      },
+      "PutPublicProfileInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/PutPublicProfileInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "public_wallets": {
+            "description": "Linked wallets to publish the username on, at most 5.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "username": {
+            "description": "New username; omit to keep the current one.",
+            "maxLength": 64,
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_wallets"
+        ],
+        "type": "object"
+      },
+      "QuoteBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/QuoteBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "as_of_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "creator_fee": {
+            "type": "string"
+          },
+          "finality": {
+            "type": "string"
+          },
+          "graduates": {
+            "type": "boolean"
+          },
+          "informational": {
+            "type": "boolean"
+          },
+          "input": {
+            "type": "string"
+          },
+          "next_virtual_eth": {
+            "type": "string"
+          },
+          "next_virtual_token": {
+            "type": "string"
+          },
+          "output": {
+            "type": "string"
+          },
+          "protocol_fee": {
+            "type": "string"
+          },
+          "refund": {
+            "type": "string"
+          },
+          "reserve_source_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "reserve_source_hash": {
+            "type": "string"
+          },
+          "snipe_tax": {
+            "description": "Engine-2 anti-snipe tax taken from a buy at the indexed head's block time; 0 for engine 1, sells and after the window.",
+            "type": "string"
+          },
+          "tax_bps": {
+            "description": "Engine-2 anti-snipe rate in force at the indexed head's block time; 0 for engine 1 and after the window.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tax_ends_at": {
+            "description": "RFC 3339 time at which the anti-snipe tax reaches zero; empty when no tax is in force.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "input",
+          "output",
+          "protocol_fee",
+          "creator_fee",
+          "refund",
+          "graduates",
+          "next_virtual_eth",
+          "next_virtual_token",
+          "as_of_block",
+          "finality",
+          "reserve_source_block",
+          "reserve_source_hash",
+          "snipe_tax",
+          "tax_bps",
+          "tax_ends_at",
+          "informational"
+        ],
+        "type": "object"
+      },
+      "QuoteInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/QuoteInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "amount": {
+            "type": "string"
+          },
+          "side": {
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "side",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "RecentTradesBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/RecentTradesBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TradeFeedItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          }
+        },
+        "required": [
+          "snapshot",
+          "items"
+        ],
+        "type": "object"
+      },
+      "ReorgEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "as_of_block_hash": {
+            "type": "string"
+          },
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "common_ancestor": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deployment_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_id",
+          "deployment_id",
+          "common_ancestor"
+        ],
+        "type": "object"
+      },
+      "ReportCommentInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/ReportCommentInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "reason": {
+            "description": "One of spam, scam, abuse, other.",
+            "maxLength": 16,
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
+      "RevenueBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/RevenueBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          },
+          "sources": {
+            "$ref": "#/components/schemas/RevenueSourcesDTO"
+          },
+          "total": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot",
+          "total",
+          "sources"
+        ],
+        "type": "object"
+      },
+      "RevenueSourceDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "engine_1": {
+            "type": "string"
+          },
+          "engine_2": {
+            "type": "string"
+          },
+          "total": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "engine_1",
+          "engine_2",
+          "total"
+        ],
+        "type": "object"
+      },
+      "RevenueSourcesDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "graduation_remainder": {
+            "$ref": "#/components/schemas/RevenueSourceDTO"
+          },
+          "launch_fees": {
+            "$ref": "#/components/schemas/RevenueSourceDTO"
+          },
+          "lp_fees": {
+            "$ref": "#/components/schemas/RevenueSourceDTO"
+          },
+          "snipe_tax": {
+            "$ref": "#/components/schemas/RevenueSourceDTO"
+          },
+          "trade_fees": {
+            "$ref": "#/components/schemas/RevenueSourceDTO"
+          }
+        },
+        "required": [
+          "launch_fees",
+          "trade_fees",
+          "snipe_tax",
+          "graduation_remainder",
+          "lp_fees"
+        ],
+        "type": "object"
+      },
+      "RevisionBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/RevisionBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "image_url": {
+            "type": "string"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "type": "object"
+      },
+      "SnapshotDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "as_of_block_hash": {
+            "type": "string"
+          },
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "finality": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_id",
+          "as_of_block",
+          "as_of_block_hash",
+          "finality"
+        ],
+        "type": "object"
+      },
+      "TelegramLinkBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/TelegramLinkBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "url": {
+            "description": "Telegram deep link; open it and press Start to connect the chat.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "expires_at"
+        ],
+        "type": "object"
+      },
+      "TelegramSettingsDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/TelegramSettingsDTO.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "graduations": {
+            "description": "Send graduations of watched tokens.",
+            "type": "boolean"
+          },
+          "large_trades": {
+            "description": "Send trades of at least min_trade_wei on watched tokens.",
+            "type": "boolean"
+          },
+          "min_trade_wei": {
+            "description": "Decimal wei, 0.5 ETH to 10,000 ETH.",
+            "maxLength": 80,
+            "type": "string"
+          }
+        },
+        "required": [
+          "graduations",
+          "large_trades",
+          "min_trade_wei"
+        ],
+        "type": "object"
+      },
+      "TelegramStatusBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/TelegramStatusBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "graduations": {
+            "type": "boolean"
+          },
+          "large_trades": {
+            "type": "boolean"
+          },
+          "linked": {
+            "type": "boolean"
+          },
+          "linked_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "min_trade_wei": {
+            "description": "Decimal wei; the default 0.5 ETH when not linked.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "linked",
+          "linked_at",
+          "graduations",
+          "large_trades",
+          "min_trade_wei"
+        ],
+        "type": "object"
+      },
+      "TokenDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "holder_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "launch_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "launch_time": {
+            "type": "string"
+          },
+          "market_cap_eth": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "total_supply": {
+            "type": "string"
+          },
+          "volume_24h_eth": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "name",
+          "symbol",
+          "phase",
+          "launch_time",
+          "launch_block",
+          "total_supply",
+          "market_cap_eth",
+          "volume_24h_eth",
+          "holder_count"
+        ],
+        "type": "object"
+      },
+      "TokenDetailDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/TokenDetailDTO.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "ath_at": {
+            "type": "string"
+          },
+          "ath_price_eth": {
+            "type": "string"
+          },
+          "creator": {
+            "type": "string"
+          },
+          "curve": {
+            "type": "string"
+          },
+          "curve_tokens": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "engine_version": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "eth_reserve": {
+            "type": "string"
+          },
+          "fdv_eth": {
+            "type": "string"
+          },
+          "graduation_eth": {
+            "type": "string"
+          },
+          "graduation_progress_bps": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "holder_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "image_url": {
+            "type": "string"
+          },
+          "initial_virtual_eth": {
+            "type": "string"
+          },
+          "initial_virtual_token": {
+            "type": "string"
+          },
+          "launch_block": {
+            "description": "Block of the launch transaction; holders first acquiring in it were bundled with the launch.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "launch_time": {
+            "type": "string"
+          },
+          "liquidity_eth": {
+            "type": "string"
+          },
+          "lp_tokens": {
+            "type": "string"
+          },
+          "market_cap_eth": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pair": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "price_change_24h_bps": {
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "protocol_share_bps": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "protocol_treasury": {
+            "type": "string"
+          },
+          "real_curve_eth": {
+            "type": "string"
+          },
+          "reserve_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "reserve_hash": {
+            "type": "string"
+          },
+          "reserve_source": {
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          },
+          "spot_price_eth": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "telegram_url": {
+            "type": "string"
+          },
+          "token_reserve": {
+            "type": "string"
+          },
+          "total_supply": {
+            "type": "string"
+          },
+          "trade_fee_bps": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "v2": {
+            "$ref": "#/components/schemas/TokenV2DTO",
+            "description": "Engine-2 launch, pool and fee facts; null for engine 1."
+          },
+          "volume_24h_eth": {
+            "type": "string"
+          },
+          "weth": {
+            "type": "string"
+          },
+          "x_url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot",
+          "address",
+          "curve",
+          "pair",
+          "weth",
+          "creator",
+          "protocol_treasury",
+          "name",
+          "symbol",
+          "phase",
+          "engine_version",
+          "total_supply",
+          "initial_virtual_eth",
+          "initial_virtual_token",
+          "curve_tokens",
+          "lp_tokens",
+          "graduation_eth",
+          "trade_fee_bps",
+          "protocol_share_bps",
+          "reserve_source",
+          "eth_reserve",
+          "token_reserve",
+          "real_curve_eth",
+          "graduation_progress_bps",
+          "reserve_block",
+          "reserve_hash",
+          "description",
+          "image_url",
+          "x_url",
+          "telegram_url",
+          "spot_price_eth",
+          "market_cap_eth",
+          "fdv_eth",
+          "liquidity_eth",
+          "ath_price_eth",
+          "volume_24h_eth",
+          "ath_at",
+          "price_change_24h_bps",
+          "holder_count",
+          "launch_block",
+          "launch_time",
+          "v2"
+        ],
+        "type": "object"
+      },
+      "TokenEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "as_of_block_hash": {
+            "type": "string"
+          },
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deployment_id": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_id",
+          "deployment_id"
+        ],
+        "type": "object"
+      },
+      "TokenListBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/TokenListBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TokenDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          }
+        },
+        "required": [
+          "items",
+          "snapshot"
+        ],
+        "type": "object"
+      },
+      "TokenV2DTO": {
+        "additionalProperties": false,
+        "properties": {
+          "anti_snipe": {
+            "$ref": "#/components/schemas/AntiSnipeDTO"
+          },
+          "fee_recipient": {
+            "type": "string"
+          },
+          "locker_owed": {
+            "description": "What the LP fee locker owes each account, by account.",
+            "items": {
+              "$ref": "#/components/schemas/LockerOwedDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "lp_creator_share_bps": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pending_fee_recipient": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pool": {
+            "$ref": "#/components/schemas/V2PoolDTO",
+            "description": "The graduated Uniswap V4 pool; null before graduation."
+          }
+        },
+        "required": [
+          "anti_snipe",
+          "lp_creator_share_bps",
+          "pool",
+          "fee_recipient",
+          "pending_fee_recipient",
+          "locker_owed"
+        ],
+        "type": [
+          "object",
+          "null"
+        ]
+      },
+      "TradeBurstFeedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deployment_id": {
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BurstItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "launches": {
+            "description": "new_token events folded into this window.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "window_end": {
+            "type": "string"
+          },
+          "window_start": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_id",
+          "deployment_id",
+          "window_start",
+          "window_end",
+          "items"
+        ],
+        "type": "object"
+      },
+      "TradeDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "block_number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "eth_volume": {
+            "type": "string"
+          },
+          "execution_price": {
+            "type": "string"
+          },
+          "finality": {
+            "type": "string"
+          },
+          "log_index": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "side": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "spot_price": {
+            "type": "string"
+          },
+          "time": {
+            "type": "string"
+          },
+          "token_volume": {
+            "type": "string"
+          },
+          "trader": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "transaction_index": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "tx_hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "trader",
+          "side",
+          "execution_price",
+          "spot_price",
+          "eth_volume",
+          "token_volume",
+          "block_number",
+          "transaction_index",
+          "tx_hash",
+          "log_index",
+          "time",
+          "finality"
+        ],
+        "type": "object"
+      },
+      "TradeFeedItem": {
+        "additionalProperties": false,
+        "properties": {
+          "block_number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deployment_id": {
+            "type": "string"
+          },
+          "eth_volume": {
+            "type": "string"
+          },
+          "finality": {
+            "type": "string"
+          },
+          "log_index": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "side": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "time": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "token_volume": {
+            "type": "string"
+          },
+          "trader": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "transaction_index": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "tx_hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_id",
+          "deployment_id",
+          "token",
+          "name",
+          "symbol",
+          "source",
+          "trader",
+          "side",
+          "eth_volume",
+          "token_volume",
+          "block_number",
+          "transaction_index",
+          "tx_hash",
+          "log_index",
+          "time",
+          "finality"
+        ],
+        "type": "object"
+      },
+      "TradesBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/TradesBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TradeDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          }
+        },
+        "required": [
+          "snapshot",
+          "items"
+        ],
+        "type": "object"
+      },
+      "TrendingDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "distinct_buyers": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "holder_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "launch_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "launch_time": {
+            "type": "string"
+          },
+          "market_cap_eth": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "total_supply": {
+            "type": "string"
+          },
+          "volume_24h_eth": {
+            "type": "string"
+          },
+          "window_volume_eth": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "window_volume_eth",
+          "distinct_buyers",
+          "address",
+          "name",
+          "symbol",
+          "phase",
+          "launch_time",
+          "launch_block",
+          "total_supply",
+          "market_cap_eth",
+          "volume_24h_eth",
+          "holder_count"
+        ],
+        "type": "object"
+      },
+      "V2PoolDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "hook": {
+            "type": "string"
+          },
+          "pool_id": {
+            "type": "string"
+          },
+          "position_token_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pool_id",
+          "position_token_id",
+          "hook"
+        ],
+        "type": [
+          "object",
+          "null"
+        ]
+      },
+      "VoteBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/VoteBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "score": {
+            "description": "The comment's score after the vote.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "vote": {
+            "description": "The caller's vote after the request: 1, -1 or 0.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "score",
+          "vote"
+        ],
+        "type": "object"
+      },
+      "VoteCommentInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/VoteCommentInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "value": {
+            "description": "1 (up), -1 (down) or 0 (clear).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "type": "object"
+      },
+      "WalletCreatedBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/WalletCreatedBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WalletCreatedDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          }
+        },
+        "required": [
+          "snapshot",
+          "items"
+        ],
+        "type": "object"
+      },
+      "WalletCreatedDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "launch_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "market_cap_wei": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "name",
+          "symbol",
+          "phase",
+          "market_cap_wei",
+          "launch_block"
+        ],
+        "type": "object"
+      },
+      "WalletDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/WalletDTO.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "attribution_complete": {
+            "type": "boolean"
+          },
+          "created_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "first_block": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "held_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_block": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "portfolio_value_wei": {
+            "type": "string"
+          },
+          "realized_pnl_wei": {
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          },
+          "tokens_traded": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "unrealized_pnl_wei": {
+            "type": "string"
+          },
+          "username": {
+            "description": "Username published on this wallet, or null.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "snapshot",
+          "address",
+          "realized_pnl_wei",
+          "unrealized_pnl_wei",
+          "portfolio_value_wei",
+          "held_count",
+          "created_count",
+          "tokens_traded",
+          "first_block",
+          "last_block",
+          "attribution_complete",
+          "username"
+        ],
+        "type": "object"
+      },
+      "WalletPositionDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "average_cost_wad": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "balance": {
+            "type": "string"
+          },
+          "current_value_wei": {
+            "type": "string"
+          },
+          "last_block": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "realized_pnl_wei": {
+            "type": "string"
+          },
+          "remaining_cost_wei": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "trade_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "transferred_in": {
+            "type": "string"
+          },
+          "unrealized_pnl_wei": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "name",
+          "symbol",
+          "phase",
+          "balance",
+          "average_cost_wad",
+          "remaining_cost_wei",
+          "realized_pnl_wei",
+          "current_value_wei",
+          "unrealized_pnl_wei",
+          "transferred_in",
+          "trade_count",
+          "last_block"
+        ],
+        "type": "object"
+      },
+      "WalletPositionsBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/WalletPositionsBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WalletPositionDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          },
+          "truncated": {
+            "description": "Open mode only: true when the wallet has more open positions than the 500 returned.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "snapshot",
+          "items",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "WalletTradeDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "block_number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "eth_volume": {
+            "type": "string"
+          },
+          "execution_price": {
+            "type": "string"
+          },
+          "finality": {
+            "type": "string"
+          },
+          "log_index": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "side": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "spot_price": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "time": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "token_volume": {
+            "type": "string"
+          },
+          "trader": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "transaction_index": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "tx_hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "name",
+          "symbol",
+          "source",
+          "trader",
+          "side",
+          "execution_price",
+          "spot_price",
+          "eth_volume",
+          "token_volume",
+          "block_number",
+          "transaction_index",
+          "tx_hash",
+          "log_index",
+          "time",
+          "finality"
+        ],
+        "type": "object"
+      },
+      "WalletTradesBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/WalletTradesBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WalletTradeDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotDTO"
+          }
+        },
+        "required": [
+          "snapshot",
+          "items"
+        ],
+        "type": "object"
+      },
+      "WatchersBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/WatchersBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "watch_count": {
+            "description": "Number of signed-in users watching this token in this deployment.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "watch_count"
+        ],
+        "type": "object"
+      },
+      "WatchlistBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/WatchlistBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WatchlistEntryDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "WatchlistEntryDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "added_at": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "token": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TokenDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "address",
+          "added_at",
+          "token"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Launchpad API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/comments/{id}/report": {
+      "put": {
+        "operationId": "reportComment",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportCommentInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "comments"
+        ]
+      }
+    },
+    "/comments/{id}/vote": {
+      "put": {
+        "description": "Sets or clears the caller's vote. Needs a linked wallet that is the creator or a holder of the comment's token (docs/specs/2026-11-12-comment-votes-design.md).",
+        "operationId": "voteComment",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoteCommentInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoteBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "comments"
+        ]
+      }
+    },
+    "/events": {
+      "get": {
+        "operationId": "events",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Forward only token hints for this address, plus reorgs.",
+            "explode": false,
+            "in": "query",
+            "name": "token",
+            "schema": {
+              "description": "Forward only token hints for this address, plus reorgs.",
+              "pattern": "^0x[0-9a-fA-F]{40}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "description": "Each oneOf object in the array represents one possible Server Sent Events (SSE) message, serialized as UTF-8 text according to the SSE specification.",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "properties": {
+                          "data": {
+                            "$ref": "#/components/schemas/CommentEvent"
+                          },
+                          "event": {
+                            "const": "comment",
+                            "description": "The event name.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "The event ID.",
+                            "type": "integer"
+                          },
+                          "retry": {
+                            "description": "The retry time in milliseconds.",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "data",
+                          "event"
+                        ],
+                        "title": "Event comment",
+                        "type": "object"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "$ref": "#/components/schemas/FinalityFeedEvent"
+                          },
+                          "event": {
+                            "const": "finality",
+                            "description": "The event name.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "The event ID.",
+                            "type": "integer"
+                          },
+                          "retry": {
+                            "description": "The retry time in milliseconds.",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "data",
+                          "event"
+                        ],
+                        "title": "Event finality",
+                        "type": "object"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "$ref": "#/components/schemas/GraduationFeedEvent"
+                          },
+                          "event": {
+                            "const": "graduation",
+                            "description": "The event name.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "The event ID.",
+                            "type": "integer"
+                          },
+                          "retry": {
+                            "description": "The retry time in milliseconds.",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "data",
+                          "event"
+                        ],
+                        "title": "Event graduation",
+                        "type": "object"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "$ref": "#/components/schemas/LaunchEvent"
+                          },
+                          "event": {
+                            "const": "launch",
+                            "description": "The event name.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "The event ID.",
+                            "type": "integer"
+                          },
+                          "retry": {
+                            "description": "The retry time in milliseconds.",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "data",
+                          "event"
+                        ],
+                        "title": "Event launch",
+                        "type": "object"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "$ref": "#/components/schemas/NewTokenFeedEvent"
+                          },
+                          "event": {
+                            "const": "new_token",
+                            "description": "The event name.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "The event ID.",
+                            "type": "integer"
+                          },
+                          "retry": {
+                            "description": "The retry time in milliseconds.",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "data",
+                          "event"
+                        ],
+                        "title": "Event new_token",
+                        "type": "object"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "$ref": "#/components/schemas/ReorgEvent"
+                          },
+                          "event": {
+                            "const": "reorg",
+                            "description": "The event name.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "The event ID.",
+                            "type": "integer"
+                          },
+                          "retry": {
+                            "description": "The retry time in milliseconds.",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "data",
+                          "event"
+                        ],
+                        "title": "Event reorg",
+                        "type": "object"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "$ref": "#/components/schemas/TokenEvent"
+                          },
+                          "event": {
+                            "const": "token",
+                            "description": "The event name.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "The event ID.",
+                            "type": "integer"
+                          },
+                          "retry": {
+                            "description": "The retry time in milliseconds.",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "data",
+                          "event"
+                        ],
+                        "title": "Event token",
+                        "type": "object"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "$ref": "#/components/schemas/TradeFeedItem"
+                          },
+                          "event": {
+                            "const": "trade",
+                            "description": "The event name.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "The event ID.",
+                            "type": "integer"
+                          },
+                          "retry": {
+                            "description": "The retry time in milliseconds.",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "data",
+                          "event"
+                        ],
+                        "title": "Event trade",
+                        "type": "object"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "$ref": "#/components/schemas/TradeBurstFeedEvent"
+                          },
+                          "event": {
+                            "const": "trade_burst",
+                            "description": "The event name.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "The event ID.",
+                            "type": "integer"
+                          },
+                          "retry": {
+                            "description": "The retry time in milliseconds.",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "data",
+                          "event"
+                        ],
+                        "title": "Event trade_burst",
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "title": "Server Sent Events",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/forum/communities": {
+      "get": {
+        "operationId": "listForumCommunities",
+        "parameters": [
+          {
+            "description": "hot (default): visible comments in the last 24 hours; top: all time. Any other value is a 400 invalid_sort.",
+            "explode": false,
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "default": "hot",
+              "description": "hot (default): visible comments in the last 24 hours; top: all time. Any other value is a 400 invalid_sort.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Number of communities, 1-50; defaults to 20.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "description": "Number of communities, 1-50; defaults to 20.",
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForumCommunitiesBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "forum"
+        ]
+      }
+    },
+    "/forum/posts": {
+      "get": {
+        "operationId": "listForumPosts",
+        "parameters": [
+          {
+            "description": "new (default): newest first, paginated; best: posts from the last 7 days by score, one page. Any other value is a 400 invalid_sort.",
+            "explode": false,
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "default": "new",
+              "description": "new (default): newest first, paginated; best: posts from the last 7 days by score, one page. Any other value is a 400 invalid_sort.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only for sort=new.",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "Only for sort=new.",
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Number of posts, 1-50; defaults to 20.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "description": "Number of posts, 1-50; defaults to 20.",
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForumPostsBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "forum"
+        ]
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "healthz",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/leaderboard": {
+      "get": {
+        "operationId": "getLeaderboard",
+        "parameters": [
+          {
+            "description": "Ranking period: all (default, all-time realized PnL), 7d or 30d (realized PnL booked in the last 7 or 30 days). Any other value is a 400 invalid_window.",
+            "explode": false,
+            "in": "query",
+            "name": "window",
+            "schema": {
+              "description": "Ranking period: all (default, all-time realized PnL), 7d or 30d (realized PnL booked in the last 7 or 30 days). Any other value is a 400 invalid_window.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of wallets, 1-100. Only wallets with a positive realized PnL are ranked, so fewer may be returned.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "description": "Maximum number of wallets, 1-100. Only wallets with a positive realized PnL are ranked, so fewer may be returned.",
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaderboardBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/me/notifications": {
+      "get": {
+        "operationId": "listNotifications",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "next_cursor of the previous page.",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "next_cursor of the previous page.",
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Number of notifications, 1-50; defaults to 20.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "description": "Number of notifications, 1-50; defaults to 20.",
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/me/notifications/read": {
+      "put": {
+        "operationId": "markNotificationsRead",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboxReadInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/me/public-profile": {
+      "delete": {
+        "operationId": "deletePublicProfile",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "profile"
+        ]
+      },
+      "get": {
+        "operationId": "getPublicProfile",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProfileDTO"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "profile"
+        ]
+      },
+      "put": {
+        "operationId": "putPublicProfile",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutPublicProfileInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProfileDTO"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "profile"
+        ]
+      }
+    },
+    "/me/telegram": {
+      "delete": {
+        "operationId": "unlinkTelegram",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "telegram"
+        ]
+      },
+      "get": {
+        "operationId": "getTelegram",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramStatusBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "telegram"
+        ]
+      },
+      "put": {
+        "operationId": "updateTelegram",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelegramSettingsDTO"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramStatusBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "telegram"
+        ]
+      }
+    },
+    "/me/telegram/link": {
+      "post": {
+        "operationId": "createTelegramLink",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramLinkBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "telegram"
+        ]
+      }
+    },
+    "/me/watchlist": {
+      "get": {
+        "operationId": "listWatchlist",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchlistBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "watchlist"
+        ]
+      }
+    },
+    "/me/watchlist/{address}": {
+      "delete": {
+        "operationId": "removeWatchlistEntry",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "watchlist"
+        ]
+      },
+      "put": {
+        "operationId": "addWatchlistEntry",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "watchlist"
+        ]
+      }
+    },
+    "/profile": {
+      "get": {
+        "operationId": "getProfile",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "profile"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "readyz",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/reference/eth-usd": {
+      "get": {
+        "operationId": "getEthUsdReference",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EthUsdBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "reference"
+        ]
+      }
+    },
+    "/stats/protocol": {
+      "get": {
+        "operationId": "getProtocolStats",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProtocolDTO"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/stats/protocol/daily": {
+      "get": {
+        "operationId": "listProtocolDaily",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "maximum": 366,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProtocolDailyBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/stats/protocol/revenue": {
+      "get": {
+        "description": "ETH credited to the protocol, all-time, by source and engine (earned basis, wei).",
+        "operationId": "getProtocolRevenue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevenueBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/tokens": {
+      "get": {
+        "operationId": "listTokens",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "phase",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "age",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenListBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "tokens"
+        ]
+      }
+    },
+    "/tokens/highlights": {
+      "get": {
+        "operationId": "getTokenHighlights",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HighlightsBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "tokens"
+        ]
+      }
+    },
+    "/tokens/{address}/comments": {
+      "get": {
+        "operationId": "listTokenComments",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "pattern": "^0x[0-9a-fA-F]{40}$",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Number of comments, 1-50; defaults to 20.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "description": "Number of comments, 1-50; defaults to 20.",
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentListBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "comments"
+        ]
+      },
+      "post": {
+        "operationId": "postTokenComment",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "pattern": "^0x[0-9a-fA-F]{40}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostCommentInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentDTO"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "comments"
+        ]
+      }
+    },
+    "/tokens/{address}/comments/eligibility": {
+      "get": {
+        "operationId": "getCommentEligibility",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "pattern": "^0x[0-9a-fA-F]{40}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EligibilityBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "comments"
+        ]
+      }
+    },
+    "/tokens/{address}/watchers": {
+      "get": {
+        "operationId": "getTokenWatchers",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "pattern": "^0x[0-9a-fA-F]{40}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchersBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "watchlist"
+        ]
+      }
+    },
+    "/tokens/{token}": {
+      "get": {
+        "operationId": "getToken",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenDetailDTO"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "tokens"
+        ]
+      }
+    },
+    "/tokens/{token}/candles": {
+      "get": {
+        "operationId": "listCandles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "interval",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandleBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "market"
+        ]
+      }
+    },
+    "/tokens/{token}/early-buyers": {
+      "get": {
+        "description": "Wallets that received tokens from the curve within the early window after launch, grouped by same-transaction deliveries and token transfers between them.",
+        "operationId": "getEarlyBuyers",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EarlyBuyersBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "market"
+        ]
+      }
+    },
+    "/tokens/{token}/holders": {
+      "get": {
+        "operationId": "listHolders",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HoldersBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "market"
+        ]
+      }
+    },
+    "/tokens/{token}/image": {
+      "get": {
+        "operationId": "getTokenImage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-None-Match",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "contentMediaType": "application/octet-stream",
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "contentMediaType": "application/octet-stream",
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "contentMediaType": "application/octet-stream",
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Token image",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Length": {
+                "schema": {
+                  "format": "int64",
+                  "type": "integer"
+                }
+              },
+              "Content-Type": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Revision": {
+                "schema": {
+                  "format": "int64",
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified when If-None-Match matches; the response has no body.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Image cache policy.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Image content hash validator.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "description": "Image response security policy.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Revision": {
+                "description": "Image revision.",
+                "schema": {
+                  "format": "int64",
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "metadata"
+        ]
+      },
+      "put": {
+        "operationId": "replaceTokenImage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Content-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "image/jpeg": {
+              "schema": {
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "image/png": {
+              "schema": {
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "image/webp": {
+              "schema": {
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "metadata"
+        ]
+      }
+    },
+    "/tokens/{token}/metadata": {
+      "get": {
+        "operationId": "getTokenMetadata",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetadataReadBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "metadata"
+        ]
+      },
+      "put": {
+        "operationId": "replaceTokenMetadata",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "privy-id-token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MetadataBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "metadata"
+        ]
+      }
+    },
+    "/tokens/{token}/quote": {
+      "post": {
+        "operationId": "quoteCurve",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuoteBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "quotes"
+        ]
+      }
+    },
+    "/tokens/{token}/trades": {
+      "get": {
+        "operationId": "listTrades",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradesBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "market"
+        ]
+      }
+    },
+    "/trades/recent": {
+      "get": {
+        "operationId": "listRecentTrades",
+        "parameters": [
+          {
+            "description": "Number of trades, 1-100; defaults to 50.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "Number of trades, 1-100; defaults to 50.",
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecentTradesBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "market"
+        ]
+      }
+    },
+    "/transactions/{tx_hash}": {
+      "get": {
+        "operationId": "getCanonicalTransaction",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tx_hash",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalObservationBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "transactions"
+        ]
+      }
+    },
+    "/wallets/{address}": {
+      "get": {
+        "operationId": "getWallet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletDTO"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "wallets"
+        ]
+      }
+    },
+    "/wallets/{address}/created": {
+      "get": {
+        "operationId": "listWalletCreated",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size, 1-100.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "Page size, 1-100.",
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletCreatedBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "wallets"
+        ]
+      }
+    },
+    "/wallets/{address}/positions": {
+      "get": {
+        "operationId": "listWalletPositions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Closed mode only; supplying it with closed=false is rejected with 422.",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "Closed mode only; supplying it with closed=false is rejected with 422.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "List closed positions (balance 0) newest first, paginated. When false (default), all open positions are returned in one response ordered by current value, capped at 500 (see truncated).",
+            "explode": false,
+            "in": "query",
+            "name": "closed",
+            "schema": {
+              "description": "List closed positions (balance 0) newest first, paginated. When false (default), all open positions are returned in one response ordered by current value, capped at 500 (see truncated).",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Page size, 1-100. Applies to closed mode only; open mode returns one capped page.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "Page size, 1-100. Applies to closed mode only; open mode returns one capped page.",
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletPositionsBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "wallets"
+        ]
+      }
+    },
+    "/wallets/{address}/trades": {
+      "get": {
+        "operationId": "listWalletTrades",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size, 1-100.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "Page size, 1-100.",
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletTradesBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "wallets"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/v1"
+    }
+  ]
+}

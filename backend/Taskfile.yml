@@ -82,7 +82,7 @@ tasks:
       - go run ./cmd/check-deployments
 
   openapi-diff:
-    desc: Validate the committed deterministic OpenAPI contract.
+    desc: Validate the committed OpenAPI contract is current and compatible with the v1 baseline.
     cmds:
       - go run ./cmd/check-openapi
 
