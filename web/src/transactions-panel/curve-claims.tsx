@@ -5,7 +5,6 @@ import type { Abi, WalletClient } from "viem";
 import type { useAccount, usePublicClient } from "wagmi";
 import type { publicConfiguration } from "@/config/public";
 import type { WalletReadiness } from "@/wallet/readiness";
-import { classifyTransactionFailure, decodeTransactionError } from "@/transactions";
 import { Button } from "@/components/primitives";
 import {
   type Address,
@@ -14,6 +13,7 @@ import {
   usePersistedTransactionState,
   TransactionProgress,
 } from "./shared";
+import { runDirectWrite } from "./direct-write";
 
 /**
  * Creator-fee and refund claims on the bonding curve: the claimable balances, both claim
@@ -139,82 +139,55 @@ export function useCurveClaims({
     claimLockRef.current = true;
     setClaimBusy(true);
     const setClaimState = kind === "creator" ? setCreatorClaimState : setRefundClaimState;
-    let submittedHash: Address | undefined;
-    let failurePhase: "preflight" | "simulation" | "write" | "receipt" = "preflight";
+    const functionName = kind === "creator" ? "claimCreatorFees" : "claimRefund";
+    const claimAccount = account.address;
     try {
-      setClaimState({ status: "validating" });
-      const [walletAccounts, latestChainId] = await Promise.all([
-        walletClient.getAddresses(),
-        publicClient.getChainId(),
-      ]);
-      if (
-        latestChainId !== configuration.chainId ||
-        walletAccounts[0]?.toLowerCase() !== account.address.toLowerCase()
-      )
-        throw new Error("Wallet or network changed; review the claim again.");
-      if (kind === "creator" && engineVersion === 2) {
-        const amount = await publicClient.readContract({
-          address: safeCurveAddress,
-          abi: curveAbi,
-          functionName: "creatorFeesOwed",
-          args: [account.address],
-        });
-        if ((amount as bigint) === 0n) throw new Error("NothingToClaim");
-      } else if (kind === "creator") {
-        const [creator, amount] = await Promise.all([
-          publicClient.readContract({
-            address: safeCurveAddress,
-            abi: curveAbi,
-            functionName: "creator",
-          }),
-          publicClient.readContract({
-            address: safeCurveAddress,
-            abi: curveAbi,
-            functionName: "unclaimedCreatorFees",
-          }),
-        ]);
-        if (
-          String(creator).toLowerCase() !== account.address.toLowerCase() ||
-          (amount as bigint) === 0n
-        )
-          throw new Error("NothingToClaim");
-      } else {
-        const amount = await publicClient.readContract({
-          address: safeCurveAddress,
-          abi: curveAbi,
-          functionName: "pendingRefund",
-          args: [account.address],
-        });
-        if ((amount as bigint) === 0n) throw new Error("NothingToClaim");
-      }
-      const functionName = kind === "creator" ? "claimCreatorFees" : "claimRefund";
-      setClaimState({ status: "simulating" });
-      failurePhase = "simulation";
-      await publicClient.simulateContract({
-        address: safeCurveAddress,
-        abi: curveAbi,
-        functionName,
-        account: account.address,
-      } as never);
-      setClaimState({ status: "awaiting-signature" });
-      failurePhase = "write";
-      const hash = await walletClient.writeContract({
-        address: safeCurveAddress,
-        abi: curveAbi,
-        functionName,
-        account: account.address,
-      } as never);
-      submittedHash = hash as Address;
-      setClaimState({ status: "submitted", hash: submittedHash });
-      failurePhase = "receipt";
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") throw new Error("ReceiptReverted");
-      setClaimState({ status: "indexing", hash: submittedHash });
-    } catch (cause) {
-      setClaimState({
-        status: classifyTransactionFailure(cause, failurePhase),
-        hash: submittedHash,
-        error: decodeTransactionError(cause).message,
+      await runDirectWrite({
+        publicClient,
+        walletClient,
+        chainId: configuration.chainId,
+        account: claimAccount,
+        write: { address: safeCurveAddress, abi: curveAbi, functionName },
+        setState: setClaimState,
+        changedMessage: "Wallet or network changed; review the claim again.",
+        settled: "indexing",
+        preflight: async () => {
+          if (kind === "creator" && engineVersion === 2) {
+            const amount = await publicClient.readContract({
+              address: safeCurveAddress,
+              abi: curveAbi,
+              functionName: "creatorFeesOwed",
+              args: [claimAccount],
+            });
+            if ((amount as bigint) === 0n) throw new Error("NothingToClaim");
+          } else if (kind === "creator") {
+            const [creator, amount] = await Promise.all([
+              publicClient.readContract({
+                address: safeCurveAddress,
+                abi: curveAbi,
+                functionName: "creator",
+              }),
+              publicClient.readContract({
+                address: safeCurveAddress,
+                abi: curveAbi,
+                functionName: "unclaimedCreatorFees",
+              }),
+            ]);
+            if (
+              String(creator).toLowerCase() !== claimAccount.toLowerCase() ||
+              (amount as bigint) === 0n
+            )
+              throw new Error("NothingToClaim");
+          } else {
+            const amount = await publicClient.readContract({
+              address: safeCurveAddress,
+              abi: curveAbi,
+              functionName: "pendingRefund",
+              args: [claimAccount],
+            });
+            if ((amount as bigint) === 0n) throw new Error("NothingToClaim");
+          }
+        },
       });
     } finally {
       claimLockRef.current = false;

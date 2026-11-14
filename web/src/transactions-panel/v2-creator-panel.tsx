@@ -8,9 +8,9 @@ import { recipientActions, validateProposedRecipient } from "@/fee-recipient";
 import { browserAbis } from "@/contracts/generated";
 import { publicConfiguration } from "@/config/public";
 import { useWalletReadiness } from "@/wallet/readiness";
-import { classifyTransactionFailure, decodeTransactionError } from "@/transactions";
 import { Button, Input } from "@/components/primitives";
 import { type Address, eth, usePersistedTransactionState, TransactionProgress } from "./shared";
+import { type DirectWrite, runDirectWrite } from "./direct-write";
 
 /**
  * Engine-2 creator surface (Plan v2-C Task 6, spec §5.3): the creator (identity) and the fee
@@ -149,53 +149,26 @@ export function V2CreatorPanel({
     ready &&
     !outcomeUnknown,
   );
-  const run = async (
-    write: { address: Address; abi: Abi; functionName: string; args?: readonly unknown[] },
-    checkSimulation?: (result: unknown) => void,
-  ) => {
+  const run = async (write: DirectWrite, checkSimulation?: (result: unknown) => void) => {
     if (lockRef.current || !canSign) return;
     lockRef.current = true;
     setBusy(true);
-    let submittedHash: Address | undefined;
-    let failurePhase: "preflight" | "simulation" | "write" | "receipt" = "preflight";
     try {
-      setState({ status: "validating" });
-      const [walletAccounts, latestChainId] = await Promise.all([
-        walletClient!.getAddresses(),
-        publicClient!.getChainId(),
-      ]);
-      if (
-        latestChainId !== configuration.chainId ||
-        walletAccounts[0]?.toLowerCase() !== account.address!.toLowerCase()
-      )
-        throw new Error("Wallet or network changed; review the action again.");
-      setState({ status: "simulating" });
-      failurePhase = "simulation";
-      const { result } = await publicClient!.simulateContract({
-        ...write,
-        account: account.address,
-      } as never);
-      checkSimulation?.(result);
-      setState({ status: "awaiting-signature" });
-      failurePhase = "write";
-      const hash = (await walletClient!.writeContract({
-        ...write,
-        account: account.address,
-      } as never)) as Address;
-      submittedHash = hash;
-      setState({ status: "submitted", hash });
-      failurePhase = "receipt";
-      const receipt = await publicClient!.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") throw new Error("ReceiptReverted");
-      setState({ status: "mined", hash });
-      setProposal("");
-      setRefresh((value) => value + 1);
-    } catch (cause) {
-      setState({
-        status: classifyTransactionFailure(cause, failurePhase),
-        hash: submittedHash,
-        error: decodeTransactionError(cause).message,
+      const mined = await runDirectWrite({
+        publicClient: publicClient!,
+        walletClient: walletClient!,
+        chainId: configuration.chainId,
+        account: account.address!,
+        write,
+        setState,
+        changedMessage: "Wallet or network changed; review the action again.",
+        settled: "mined",
+        checkSimulation,
       });
+      if (mined) {
+        setProposal("");
+        setRefresh((value) => value + 1);
+      }
     } finally {
       lockRef.current = false;
       setBusy(false);
