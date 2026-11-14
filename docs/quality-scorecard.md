@@ -15,7 +15,7 @@ Overall is the unweighted mean of the categories, rounded to one decimal.
 | 1 | Documentation and process | 9.0 | 9.0 | 27+ pre-flight specs, runbooks, audit folder, release checklist, single-source `CLAUDE.md`. |
 | 2 | Backend architecture | 8.5 | 8.5 | stdlib-only `internal/curve` / `internal/config` (depguard), `*big.Int` / `NUMERIC(78,0)`, sqlc, read snapshots; `adapter.go` split (#55). |
 | 3 | Indexer and data correctness | 8.5 | 8.5 | Reorg handling, byte-identical curve vectors in CI, dirty-mark dedupe (#54), batched stats recompute (#56). |
-| 4 | Tests and verification | 8.5 | 8.5 | 155 Go test files, testcontainers integration, 36/36 contract tests, 528 vitest, Anvil e2e (22 + 1). No rendered React hook tests, no load tests. |
+| 4 | Tests and verification | 8.5 | 9.0 | 155 Go test files, testcontainers integration, 36/36 contract tests, Anvil e2e (22 + 1). #71: rendered `useReviewedWrite` / `useReviewedTrade` tests with a mocked wallet (12 tests, 85 % of `reviewed-trade.tsx`, a mutation of the requote check or the execution lock fails them), 555 vitest, v8 coverage published in the web job summary. Public read API load test with recorded results: `cmd/loadprobe` (#68, `docs/specs/2026-11-14-performance-targets.md`). |
 | 5 | Smart contracts | 7.5 | 8.0 | Checked arithmetic, Slither, fork tests, internal audit docs. #68: deep property campaign with a fixed seed, 11 fuzz tests × 10,000 runs and 10 invariants × 1,000 runs × 200 calls, all pass. No external audit yet. |
 | 6 | Application security | 7.5 | 8.5 | Re-read-and-compare before every signature, exact approvals, chain/account re-check, no secrets in URLs. #68: focused review of Privy verification, wallet ownership and the API boundary, no high/medium findings, one low fixed (`Vary: Origin`), three accepted in writing; rate limits tabulated with tests. Open: Privy 3 upgrade blocked upstream. |
 | 7 | CI/CD and infrastructure | 7.5 | 8.5 | Pinned tools, 5 workflows, branch protection, Compose + Caddy. Postgres backup/restore exercised by `deploy/check.ps1` in CI; `promtool test rules` and `amtool check-config` in CI. #67: Caddy balances over `--scale api=N` replicas (two-replica distribution and failover tested), scale-out and CDN runbook. Open: no CDN in front yet. |
@@ -38,9 +38,10 @@ named in it.
 3. **Indexer and data correctness (8.5 → 9):** a reorg-depth soak test (deep reorgs on Anvil,
    indexer output compared with a fresh re-index); a reconciliation job comparing indexed state with
    chain reads, alerting on drift.
-4. **Tests and verification (8.5 → 9):** rendered tests for the transaction hooks
-   (`useReviewedWrite`, `useReviewedTrade`) with a mocked wallet; a load test of the public read API
-   with recorded results; coverage numbers published in CI.
+4. **Tests and verification (9.0 → 9.5):** a coverage floor enforced in CI for the transaction and
+   API client modules; the load probe run against a test deployment. Already met: rendered
+   transaction-hook tests with a mocked wallet and coverage in CI (#71), a recorded load test of the
+   public read API (`cmd/loadprobe`, #68).
 5. **Smart contracts (8.0 → 9):** an external audit with every finding fixed or accepted in
    writing. Already met: invariant/fuzz suites for curve math and graduation with recorded run
    parameters (`docs/audits/2026-11-14-deep-property-campaign.md`, `[profile.deep]`, #68).
@@ -79,3 +80,4 @@ named in it.
 | 2026-11-14 | 8.2 | CI/CD 7.5 → 8.5 | #67 scale-out path; backup/restore and alerting checks already in CI were missing from the evidence |
 | 2026-11-14 | 8.4 | Smart contracts 7.5 → 8.0, Application security 7.5 → 8.5, Performance 7.5 → 8.0 | #68: deep property campaign, auth/API security review, performance targets and baseline |
 | 2026-11-14 | 8.5 | Maintainability 8.0 → 9.0 | #69: web modules under 400 lines, one direct-write flow, ESLint `max-lines` in CI |
+| 2026-11-14 | 8.5 | Tests and verification 8.5 → 9.0 | #71: rendered transaction-hook tests and CI coverage; load-test results already recorded in #68 |
