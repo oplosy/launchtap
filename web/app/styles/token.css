@@ -713,6 +713,11 @@
 .token-unavailable .ui-button {
   margin-top: 8px;
 }
+/* The loaded token page is always taller than the viewport; reserving that height while loading
+   keeps the footer below the fold, so swapping in the real page shifts nothing in view (CLS). */
+.token-page[aria-busy="true"] {
+  min-height: 100dvh;
+}
 .token-skeleton {
   justify-items: center;
 }
