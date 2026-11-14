@@ -25,8 +25,9 @@
 - **Related files:** `backend/internal/config/config.go`, `deploy/backend.env.example`,
   `contracts/deployments/`, `backend/deployments/testdata/`, `web/src/contracts/`
 - **Resume (next step):**
-  1. Provision a CoinGecko commercial API key as the backend secret `COINGECKO_API_KEY` and set
-     `ETH_USD_SOURCE=coingecko` in the deployment environment.
+  1. Owner decision 2026-11-14: use CoinGecko's free Demo key. Create it, put it in
+     `BACKEND_ENV_FILE` as `COINGECKO_API_KEY`, and set `ETH_USD_SOURCE=coingecko` and
+     `COINGECKO_API_PLAN=demo` (`docs/specs/2026-11-14-product-scope-decisions.md`).
   2. Identifiers verified 2026-11-06: Dexscreener chain `robinhood` and GeckoTerminal network
      `robinhood`. Both index Robinhood Chain **mainnet** only (sample pairs/pools have code on
      `rpc.mainnet.chain.robinhood.com` and none on testnet), so they must not go into
@@ -126,55 +127,21 @@
   deployment addresses. The monitoring owner and the real alert destination
   (`ALERTMANAGER_WEBHOOK_URL_FILE`, see the runbook "Monitoring" section) are also still unassigned.
 
-### P0-C5 forum deferral: ticker tape
-
-- **Date:** 2026-11-10
-- **Reason:** scope decision (made while the owner was away; spec
-  `docs/specs/2026-11-10-p0c5-forum-memestock-design.md` non-goals)
-- **Where it stopped:** the forum shipped as read views over token comments; votes and the
-  vote-ranked "Best" tab shipped on 2026-11-12 (`docs/specs/2026-11-12-comment-votes-design.md`).
-  One reference-screen piece is left out: the scrolling stock ticker tape. It needs a
-  third-party equities quote feed (provider choice, licence for redistribution, an API secret, a
-  new external dependency). Owner input.
-- **Related files:** `web/app/forum/page.tsx`, `web/src/forum/forum-view.tsx`.
-- **Resume (next step):** owner picks an equities data provider (or drops the tape).
-- **Pitfalls / notes:** the tape must stay a client-side widget with its own failure state so a
-  provider outage never blocks the forum.
-
 ### Telegram alerts: bot and process setup
 
-- **Date:** 2026-11-12
-- **Reason:** scope decision (owner input: a bot account and a secret)
+- **Date:** 2026-11-12 (updated 2026-11-14)
+- **Reason:** owner input (a bot account and its token)
 - **Where it stopped:** the feature is built and tested
-  (`docs/specs/2026-11-12-telegram-alerts-design.md`): link codes, settings and unlink on the
-  API, the `cmd/telegram` worker, the "Telegram alerts" card on `/notifications`. It is off
-  everywhere because no bot exists yet, and Compose does not start `cmd/telegram`.
-- **Related files:** `backend/cmd/telegram/main.go`, `deploy/README.md`, `deploy/compose.yaml`,
-  `deploy/backend.env.example`.
-- **Resume (next step):** owner creates the bot with BotFather; put `TELEGRAM_BOT_TOKEN` in
-  `BACKEND_ENV_FILE`, set `TELEGRAM_BOT_USERNAME` and `TELEGRAM_WEB_ORIGIN`, then add a
-  `telegram` service (same backend image, `telegram` binary, one replica) to Compose and
-  `deploy/check.ps1`.
-- **Pitfalls / notes:** run exactly one worker per deployment (an advisory lock refuses a second
-  one); the bot was never exercised against the real Bot API, only a fake server.
-
-### Early-buyer clusters Level 2: archive RPC and exclusion list
-
-- **Date:** 2026-11-12
-- **Reason:** scope decision (owner input: a paid data source and a secret)
-- **Where it stopped:** built off by default (`docs/specs/2026-11-12-funding-source-clusters-design.md`):
-  `cmd/funding`, `wallet_funding`, `funding_excluded_funders`, the `funding_source` link and the
-  web coverage line. Tested against Anvil only; the official mainnet RPC has no historical state
-  and no tracing, so nothing runs in production yet.
-- **Related files:** `backend/internal/funding/`, `backend/cmd/funding/`,
-  `backend/internal/earlybuyer/group.go`, migration `00029_wallet_funding.sql`.
-- **Resume (next step):** owner picks an archive + trace provider for Robinhood Chain, sets
-  `FUNDING_RPC_URL`, runs `cmd/funding` once against it and checks a few results on an explorer;
-  then fills `funding_excluded_funders` (canonical bridge's aliased L1 sender, known exchanges).
-- **Pitfalls / notes:** the exclusion list is reviewed operator data, not code guesses; the
-  provider must support `debug_traceBlockByNumber` with the callTracer or every wallet funded by
-  a contract call ends as `unknown`.
-
+  (`docs/specs/2026-11-12-telegram-alerts-design.md`), and the worker is an opt-in Compose
+  service (`docker compose --profile telegram up -d`, image binary `/app/telegram`,
+  `TELEGRAM_WEB_ORIGIN` derived from `WEB_DOMAIN`). It stays off until the bot exists.
+- **Related files:** `deploy/compose.yaml`, `deploy/README.md`, `deploy/backend.env.example`,
+  `backend/cmd/telegram/main.go`.
+- **Resume (next step):** owner creates the bot with BotFather and puts `TELEGRAM_BOT_TOKEN` and
+  `TELEGRAM_BOT_USERNAME` in `BACKEND_ENV_FILE`; then start the profile and send `/start` through
+  the link on `/notifications` once to confirm delivery against the real Bot API.
+- **Pitfalls / notes:** exactly one worker per deployment (an advisory lock refuses a second);
+  the bot was only exercised against a fake server so far.
 ### <short title>
 - **Date:** YYYY-MM-DD
 - **Reason:** time | limit (~__%) | scope decision
@@ -187,6 +154,13 @@
 ---
 
 ## Done
+
+### Product scope decisions: ticker tape and clusters Level 2
+
+- **Date:** 2026-11-14
+- **What closed:** the owner dropped the forum ticker tape and early-buyer clusters Level 2 from
+  scope (`docs/specs/2026-11-14-product-scope-decisions.md`). Level 1 clusters stay live; the
+  Level 2 code stays built and switched off.
 
 ### Telegram alerts
 
