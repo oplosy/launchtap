@@ -16,6 +16,8 @@ import (
 	"github.com/Contictus/launchtap/backend/internal/config"
 	"github.com/Contictus/launchtap/backend/internal/indexer"
 	"github.com/Contictus/launchtap/backend/internal/metrics"
+	"github.com/Contictus/launchtap/backend/internal/reconcile"
+	"github.com/Contictus/launchtap/backend/internal/redact"
 	"github.com/Contictus/launchtap/backend/internal/stats"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/Contictus/launchtap/backend/internal/swapbackfill"
@@ -198,9 +200,30 @@ func run() error {
 		defer close(senderBackfillDone)
 		_ = senderBackfill.Run(ctx)
 	}()
+	// Compares sampled projections with chain reads at the observed block and reports drift
+	// (docs/specs/2026-11-14-state-reconciliation-preflight.md). Read-only; never stops ingest.
+	reconciler := reconcile.Worker{
+		Store: storepostgres.ReconcileSource{Pool: pool, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID},
+		Chain: chain.StateReader{Client: source},
+		OnResult: func(result reconcile.Result) {
+			indexerMetrics.Reconciled(result)
+			for _, mismatch := range result.Mismatches {
+				slog.Error("indexed state differs from chain", "block", result.Block, "check", mismatch.Check, "token", mismatch.Token.Hex(), "subject", mismatch.Subject.Hex(), "indexed", mismatch.Indexed, "chain", mismatch.Chain)
+			}
+		},
+		OnError: func(err error) {
+			slog.Warn("state reconciliation pass failed; retrying next interval", "error", redact.Error(err, c.RPCURL, c.DatabaseURL))
+		},
+	}
+	reconcilerDone := make(chan struct{})
+	go func() {
+		defer close(reconcilerDone)
+		_ = reconciler.Run(ctx)
+	}()
 	defer func() {
 		stop()
 		<-senderBackfillDone
+		<-reconcilerDone
 	}()
 	aggregationErrors := make(chan error, 2)
 	for _, worker := range []stats.Worker{aggregation, positions} {

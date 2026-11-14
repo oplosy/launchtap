@@ -7,6 +7,7 @@ import (
 
 	"github.com/Contictus/launchtap/backend/internal/indexer"
 	"github.com/Contictus/launchtap/backend/internal/ledger"
+	"github.com/Contictus/launchtap/backend/internal/reconcile"
 )
 
 func TestIndexerMetricsMatchHealthSnapshot(t *testing.T) {
@@ -133,5 +134,40 @@ func TestSenderBackfillMetricsRegistered(t *testing.T) {
 	}
 	if got := seriesValue(t, reg, "launchpad_indexer_sender_backfill_pending", map[string]string{}); got != 3 {
 		t.Errorf("launchpad_indexer_sender_backfill_pending = %v, want the latest count 3", got)
+	}
+}
+
+func TestReconciliationMetrics(t *testing.T) {
+	t.Parallel()
+
+	reg := NewRegistry(ComponentIndexer)
+	m := NewIndexer(reg, new(indexer.HealthTracker).Snapshot)
+	m.Reconciled(reconcile.Result{Outcome: reconcile.OutcomeDrift, Checks: 9, Mismatches: make([]reconcile.Mismatch, 2)})
+	// A discarded or failed pass keeps the last completed comparison's gauges.
+	m.Reconciled(reconcile.Result{Outcome: reconcile.OutcomeReorg})
+	m.Reconciled(reconcile.Result{Outcome: reconcile.OutcomeError})
+
+	checks := []struct {
+		name   string
+		labels map[string]string
+		want   float64
+	}{
+		{"launchpad_indexer_reconciliation_runs_total", map[string]string{"outcome": "drift"}, 1},
+		{"launchpad_indexer_reconciliation_runs_total", map[string]string{"outcome": "reorg"}, 1},
+		{"launchpad_indexer_reconciliation_runs_total", map[string]string{"outcome": "error"}, 1},
+		{"launchpad_indexer_reconciliation_mismatches", map[string]string{}, 2},
+		{"launchpad_indexer_reconciliation_checks", map[string]string{}, 9},
+	}
+	for _, check := range checks {
+		if got := seriesValue(t, reg, check.name, check.labels); got != check.want {
+			t.Errorf("%s%v = %v, want %v", check.name, check.labels, got, check.want)
+		}
+	}
+	if got := seriesValue(t, reg, "launchpad_indexer_reconciliation_last_success_timestamp_seconds", map[string]string{}); got < float64(time.Now().Add(-time.Minute).Unix()) {
+		t.Errorf("last success timestamp = %v, want about now", got)
+	}
+	m.Reconciled(reconcile.Result{Outcome: reconcile.OutcomeOK, Checks: 9})
+	if got := seriesValue(t, reg, "launchpad_indexer_reconciliation_mismatches", map[string]string{}); got != 0 {
+		t.Errorf("mismatches after a clean pass = %v, want 0", got)
 	}
 }

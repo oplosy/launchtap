@@ -4,20 +4,25 @@ import (
 	"time"
 
 	"github.com/Contictus/launchtap/backend/internal/indexer"
+	"github.com/Contictus/launchtap/backend/internal/reconcile"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Indexer holds the indexer process's instruments. Gauges are read from the
 // health snapshot at scrape time; counters are fed by hooks.
 type Indexer struct {
-	rpc          *prometheus.CounterVec
-	recomputed   prometheus.Counter
-	notification *prometheus.CounterVec
-	positionFail prometheus.Counter
-	senderMiss   prometheus.Counter
-	backfilled   prometheus.Counter
-	backfillFail prometheus.Counter
-	backfillWait prometheus.Gauge
+	rpc           *prometheus.CounterVec
+	recomputed    prometheus.Counter
+	notification  *prometheus.CounterVec
+	positionFail  prometheus.Counter
+	senderMiss    prometheus.Counter
+	backfilled    prometheus.Counter
+	backfillFail  prometheus.Counter
+	backfillWait  prometheus.Gauge
+	reconcileRun  *prometheus.CounterVec
+	reconcileDiff prometheus.Gauge
+	reconcileSeen prometheus.Gauge
+	reconcileLast prometheus.Gauge
 }
 
 var (
@@ -62,8 +67,25 @@ func NewIndexer(reg prometheus.Registerer, snapshot func() indexer.Health) *Inde
 			Name: "launchpad_indexer_sender_backfill_pending",
 			Help: "Pool swaps still without a sender (tx_from NULL) at or below the safe head, counted after each automatic backfill pass.",
 		}),
+		reconcileRun: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "launchpad_indexer_reconciliation_runs_total",
+			Help: "Indexed-state reconciliation passes by outcome (ok, drift, reorg, idle, error).",
+		}, []string{"outcome"}),
+		reconcileDiff: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "launchpad_indexer_reconciliation_mismatches",
+			Help: "Indexed values that differed from the chain in the last completed reconciliation pass.",
+		}),
+		reconcileSeen: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "launchpad_indexer_reconciliation_checks",
+			Help: "Values compared with the chain in the last completed reconciliation pass.",
+		}),
+		reconcileLast: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "launchpad_indexer_reconciliation_last_success_timestamp_seconds",
+			Help: "Unix time of the last reconciliation pass that completed its comparison (ok, drift or idle).",
+		}),
 	}
-	reg.MustRegister(m.rpc, m.recomputed, m.notification, m.positionFail, m.senderMiss, m.backfilled, m.backfillFail, m.backfillWait)
+	reg.MustRegister(m.rpc, m.recomputed, m.notification, m.positionFail, m.senderMiss, m.backfilled, m.backfillFail, m.backfillWait,
+		m.reconcileRun, m.reconcileDiff, m.reconcileSeen, m.reconcileLast)
 	reg.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "launchpad_aggregation_position_dirty_backlog",
 		Help: "Pending wallet position recomputations (position_dirty rows for the chain).",
@@ -146,6 +168,20 @@ func (m *Indexer) SenderBackfillFailed() {
 // SenderBackfillPending records the NULL-sender swaps at or below the safe head after a pass.
 func (m *Indexer) SenderBackfillPending(count int64) {
 	m.backfillWait.Set(float64(count))
+}
+
+// Reconciled records one reconciliation pass. Only a completed comparison updates the mismatch
+// and check gauges; a discarded (reorg) or failed pass leaves the previous values in place.
+func (m *Indexer) Reconciled(result reconcile.Result) {
+	m.reconcileRun.WithLabelValues(string(result.Outcome)).Inc()
+	switch result.Outcome {
+	case reconcile.OutcomeOK, reconcile.OutcomeDrift:
+		m.reconcileDiff.Set(float64(len(result.Mismatches)))
+		m.reconcileSeen.Set(float64(result.Checks))
+		m.reconcileLast.SetToCurrentTime()
+	case reconcile.OutcomeIdle:
+		m.reconcileLast.SetToCurrentTime()
+	}
 }
 
 // Notified counts one NOTIFY outcome. Unknown channels are ignored.

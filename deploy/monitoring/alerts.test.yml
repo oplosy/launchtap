@@ -367,3 +367,50 @@ tests:
       - eval_time: 30m
         alertname: APIReadLatencyHigh
         exp_alerts: []
+
+  # IndexerStateDrift
+  - name: IndexerStateDrift fires after two passes with mismatches
+    interval: 1m
+    input_series:
+      - series: 'launchpad_indexer_reconciliation_mismatches{job="indexer"}'
+        values: "0x5 3x40"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: IndexerStateDrift
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: IndexerStateDrift
+        exp_alerts:
+          - exp_labels: {severity: page, job: indexer}
+            exp_annotations: {summary: "indexed state differs from the chain in 3 reconciled values"}
+  - name: IndexerStateDrift quiet after one racing pass
+    interval: 1m
+    input_series:
+      - series: 'launchpad_indexer_reconciliation_mismatches{job="indexer"}'
+        values: "0x5 1x9 0x30"
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: IndexerStateDrift
+        exp_alerts: []
+
+  # IndexerReconciliationStale
+  - name: IndexerReconciliationStale fires when passes stop completing
+    interval: 1m
+    input_series:
+      - series: 'launchpad_indexer_reconciliation_last_success_timestamp_seconds{job="indexer"}'
+        values: "60x100"
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: IndexerReconciliationStale
+        exp_alerts:
+          - exp_labels: {severity: ticket, job: indexer}
+            exp_annotations: {summary: "no indexed-state reconciliation pass has completed for an hour"}
+  - name: IndexerReconciliationStale quiet while passes complete every 10 minutes
+    interval: 10m
+    input_series:
+      - series: 'launchpad_indexer_reconciliation_last_success_timestamp_seconds{job="indexer"}'
+        values: "0+600x12"
+    alert_rule_test:
+      - eval_time: 110m
+        alertname: IndexerReconciliationStale
+        exp_alerts: []

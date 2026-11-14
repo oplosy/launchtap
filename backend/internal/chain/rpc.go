@@ -230,6 +230,18 @@ func (c *Client) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]
 	return result, err
 }
 
+// CallContractAt runs eth_call against the state at block number.
+func (c *Client) CallContractAt(ctx context.Context, message ethereum.CallMsg, block uint64) ([]byte, error) {
+	var result []byte
+	number := new(big.Int).SetUint64(block)
+	err := c.retry(ctx, "eth_call", false, func(callContext context.Context) error {
+		var callErr error
+		result, callErr = c.eth.CallContract(callContext, message, number)
+		return callErr
+	})
+	return result, err
+}
+
 func (c *Client) CallContract(ctx context.Context, message ethereum.CallMsg) ([]byte, error) {
 	var result []byte
 	err := c.retry(ctx, "eth_call", false, func(callContext context.Context) error {

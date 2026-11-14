@@ -97,3 +97,20 @@ groups:
         labels: {severity: ticket}
         annotations:
           summary: "p95 API read latency is above the 250 ms target"
+
+      # Indexed-state reconciliation (docs/specs/2026-11-14-state-reconciliation-preflight.md):
+      # a pass every 10 minutes compares sampled projections with chain reads at the observed
+      # block. One pass can race a block the indexer had not committed; two in a row cannot.
+      - alert: IndexerStateDrift
+        expr: launchpad_indexer_reconciliation_mismatches > 0
+        for: 25m
+        labels: {severity: page}
+        annotations:
+          summary: "indexed state differs from the chain in {{ $value }} reconciled values"
+
+      - alert: IndexerReconciliationStale
+        expr: time() - launchpad_indexer_reconciliation_last_success_timestamp_seconds > 3600
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: "no indexed-state reconciliation pass has completed for an hour"

@@ -381,6 +381,11 @@ func TestAnvilV2LifecycleAndReorg(t *testing.T) {
 		t.Fatalf("fresh index differs from the reorg-recovered one\nrecovered=%v\nfresh=%v", incremental, replayed)
 	}
 
+	// The running reconciliation pass agrees with the chain for the graduated token.
+	if result := assertReconciled(t, ctx, pool, source, chainID, deploymentID); result.Tokens == 0 {
+		t.Fatal("reconciliation sampled no token")
+	}
+
 	// The public API serves the same facts.
 	tokens := storepostgres.TokenReader{Pool: pool, DeploymentID: deploymentID}
 	server := apiserver.New(apiserver.DefaultConfig(), apiserver.ReadyFunc(func(context.Context) error { return nil }), nil)
