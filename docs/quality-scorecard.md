@@ -14,7 +14,7 @@ Overall is the unweighted mean of the categories, rounded to one decimal.
 |---|----------|--------------------:|--------:|--------------------------------|
 | 1 | Documentation and process | 9.0 | 9.0 | 27+ pre-flight specs, runbooks, audit folder, release checklist, single-source `CLAUDE.md`. |
 | 2 | Backend architecture | 8.5 | 9.0 | stdlib-only `internal/curve` / `internal/config` (depguard), `*big.Int` / `NUMERIC(78,0)`, sqlc, read snapshots; `adapter.go` split (#55). #70: no hand-written Go file over ~600 lines (`config.go`, `curve/math.go` split). #72: documented `/v1` contract (`docs/api/README.md`) with a frozen baseline; `check-openapi` fails CI on a breaking change or a major-version drift, with mutation tests. |
-| 3 | Indexer and data correctness | 8.5 | 8.5 | Reorg handling, byte-identical curve vectors in CI, dirty-mark dedupe (#54), batched stats recompute (#56). |
+| 3 | Indexer and data correctness | 8.5 | 9.0 | Reorg handling, byte-identical curve vectors in CI, dirty-mark dedupe (#54), batched stats recompute (#56). #73: deep-reorg soak on Anvil (depths 1–100, fixed seed), indexer output compared with a fresh re-index each round. #74: reconciliation worker compares indexed phase, curve reserves and holder balances with `eth_call` reads at the observed block every 10 min; `IndexerStateDrift` / `IndexerReconciliationStale` alerts (promtool-tested); an injected balance drift is detected in the Anvil gate. |
 | 4 | Tests and verification | 8.5 | 9.0 | 155 Go test files, testcontainers integration, 36/36 contract tests, Anvil e2e (22 + 1). #71: rendered `useReviewedWrite` / `useReviewedTrade` tests with a mocked wallet (12 tests, 85 % of `reviewed-trade.tsx`, a mutation of the requote check or the execution lock fails them), 555 vitest, v8 coverage published in the web job summary. Public read API load test with recorded results: `cmd/loadprobe` (#68, `docs/specs/2026-11-14-performance-targets.md`). |
 | 5 | Smart contracts | 7.5 | 8.0 | Checked arithmetic, Slither, fork tests, internal audit docs. #68: deep property campaign with a fixed seed, 11 fuzz tests × 10,000 runs and 10 invariants × 1,000 runs × 200 calls, all pass. No external audit yet. |
 | 6 | Application security | 7.5 | 8.5 | Re-read-and-compare before every signature, exact approvals, chain/account re-check, no secrets in URLs. #68: focused review of Privy verification, wallet ownership and the API boundary, no high/medium findings, one low fixed (`Vary: Origin`), three accepted in writing; rate limits tabulated with tests. Open: Privy 3 upgrade blocked upstream. |
@@ -23,7 +23,7 @@ Overall is the unweighted mean of the categories, rounded to one decimal.
 | 9 | Maintainability (spaghetti code) | 7.0 | 9.0 | One reviewed-write pipeline for the curve, V2, V4 and launch panels (#59, #60); `token-detail` 950 → 185, `wallet-view` 669 → 201 lines (#60). #69: 8 web modules split below 400 lines of code, the direct (non-reviewed) writes share one `runDirectWrite` flow, and ESLint `max-lines` (400, blank and comment lines excluded; tests and generated code exempt) fails CI on a larger file. |
 | 10 | UX and interface | 7.0 | 8.5 | Review `docs/audits/2026-11-13-ux-review.md`: 13 issues fixed, then all 8 open product items closed (#62–#65). The fixes: image and description at launch, subscript-zero prices, 2 % default slippage, a trade card without inner scroll, creator-only sections, sparse chart, compact hero, no metadata 404. Lighthouse 2026-11-14 on dev: accessibility, best practices and SEO are 100 on home, token and create, desktop and mobile; no console errors. Token page cold-load CLS 0.136 → 0.0065 (the loading page reserves the viewport height). Open: no signed-in pass recorded yet. |
 | 11 | Product completeness (vs pons.family) | 6.5 | 8.0 | Launch, curve, graduation, swaps, forum, analytics and docs ship. #66: ticker tape and clusters Level 2 removed by scope decision (`docs/specs/2026-11-14-product-scope-decisions.md`), the Telegram worker deployable as an opt-in Compose profile, the ETH/USD feed runs on the free CoinGecko Demo plan. Open: Telegram and USD not live yet (bot token and Demo key pending), CoinGecko market links wait on the mainnet manifest. |
-|   | **Overall** | **7.7** | **8.5** | |
+|   | **Overall** | **7.7** | **8.6** | |
 
 ## Path to 9
 
@@ -36,9 +36,10 @@ named in it.
 2. **Backend architecture (9.0 → 9.5):** keep the contract gate and file-size limit without
    exemptions. Already met: documented public API contract with versioning and a compatibility
    test (#72); no file over ~600 lines outside generated code (#70).
-3. **Indexer and data correctness (8.5 → 9):** a reorg-depth soak test (deep reorgs on Anvil,
-   indexer output compared with a fresh re-index); a reconciliation job comparing indexed state with
-   chain reads, alerting on drift.
+3. **Indexer and data correctness (9.0 → 9.5):** reconcile every token over a rotating sample and
+   graduated pool reserves too; the reconciliation run on a test deployment against a live chain,
+   recorded. Already met: deep-reorg soak compared with a fresh re-index (#73), reconciliation job
+   with drift alerts (#74).
 4. **Tests and verification (9.0 → 9.5):** a coverage floor enforced in CI for the transaction and
    API client modules; the load probe run against a test deployment. Already met: rendered
    transaction-hook tests with a mocked wallet and coverage in CI (#71), a recorded load test of the
@@ -83,3 +84,4 @@ named in it.
 | 2026-11-14 | 8.5 | Maintainability 8.0 → 9.0 | #69: web modules under 400 lines, one direct-write flow, ESLint `max-lines` in CI |
 | 2026-11-14 | 8.5 | Tests and verification 8.5 → 9.0 | #71: rendered transaction-hook tests and CI coverage; load-test results already recorded in #68 |
 | 2026-11-14 | 8.5 | Backend architecture 8.5 → 9.0 | #70 file-size splits, #72 public API contract gate (mean 8.55) |
+| 2026-11-14 | 8.6 | Indexer and data correctness 8.5 → 9.0 | #73 deep-reorg soak, #74 state reconciliation with drift alerts |
