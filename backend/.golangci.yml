@@ -51,6 +51,13 @@ linters:
             - "**/internal/pricefeed/**/*.go"
           allow:
             - $gostd
+        apicompat-stdlib-only:
+          list-mode: strict
+          files:
+            - "**/internal/apicompat/*.go"
+            - "**/internal/apicompat/**/*.go"
+          allow:
+            - $gostd
         chain-boundary:
           list-mode: strict
           files:
