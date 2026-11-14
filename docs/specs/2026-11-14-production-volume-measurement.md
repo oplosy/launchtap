@@ -200,3 +200,37 @@ the next item to fix.
   rank-keyed rows bring every switch to 0.00.
 - **Token chart type switch, INP 206 ms:** the switch rebuilt the chart before the click's next
   paint; as a transition it runs after it (20 ms).
+
+## Third run: wallet trade pages
+
+`ListWalletTrades` read the busiest wallet's whole history (2,481 curve trades and 608 swaps)
+through the `market_trades` view, then sorted it, for every 50-row page: the same shape as the
+token trade pages fixed in the first run. Decision: reuse that fix, not a new one.
+
+- **Decision:** `WalletTradePageFloor` reads each base table by trader, newest first, and returns
+  the key of the page-size-th row; `ListWalletTradesFrom` reads the view between the cursor and
+  that floor. Short or empty results fall back to the unbounded query, so pages stay identical
+  when the view drops a base row (a swap without its Sync, a V4 swap without its graduation).
+  **Rationale:** one tested technique for both trade lists; no new table or projection to keep
+  consistent through reorgs.
+- **Decision:** add `v4_swaps (chain_id, tx_from, block_number DESC, transaction_index DESC,
+log_index DESC)` (migration 00033). **Rationale:** curve trades and V2 swaps already had this
+  index; without it the V4 branch scans every V4 swap of the chain once engine-2 tokens trade.
+- **Tests:** `TestWalletTradePagesMatchTheView` pages one wallet's history at 11 page sizes against
+  the view, with another wallet's trades interleaved and two unsynced swaps;
+  `TestPositionLegsIncludeV4Swaps` checks the bounded read returns the V4 swaps of the v2 fixture.
+
+The floor query takes 0.25 ms for the busiest wallet (the unbounded read took 22 ms).
+
+### API latency (loadprobe, 16 workers, 60 s)
+
+| Route                        |      p50 |      p95 |      p99 | p95 before |
+| ---------------------------- | -------: | -------: | -------: | ---------: |
+| /wallets/{busiest}/trades    | 12.66 ms | 18.30 ms | 23.88 ms |   62.54 ms |
+| /wallets/{busiest}/positions | 29.44 ms | 37.42 ms | 51.36 ms |   41.60 ms |
+| /wallets/{busiest}           | 22.93 ms | 30.23 ms | 40.38 ms |   33.92 ms |
+
+Every other route stays at p95 ≤ 20 ms and p99 ≤ 26 ms. 70,214 requests (about 1,170/s, up from
+900/s), 0 errors. The weighted mean over 320k statements is 0.43 ms (was 0.89 ms).
+`ListWalletTrades` no longer appears among statements over 1 ms. `ListWalletOpenPositions`
+(15.59 ms mean) is now the slowest request-path statement, at the 15 ms target.

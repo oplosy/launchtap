@@ -240,6 +240,9 @@ func TestEngineV2LedgerDownRefusesV2Rows(t *testing.T) {
 	// The V4 swap sender index rolls back first; the v2 projections migration holds no projection
 	// rows here, so it rolls back next.
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the V4 swap sender order index: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
 		t.Fatalf("roll back the leaderboard windows: %v", err)
 	}
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {

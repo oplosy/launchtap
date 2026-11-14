@@ -341,6 +341,10 @@ type Querier interface {
 	// value, so the reader asks for MaxOpenPositions+1 rows and reports truncation.
 	ListWalletOpenPositions(ctx context.Context, arg ListWalletOpenPositionsParams) ([]ListWalletOpenPositionsRow, error)
 	ListWalletTrades(ctx context.Context, arg ListWalletTradesParams) ([]ListWalletTradesRow, error)
+	// ListWalletTrades bounded below by WalletTradePageFloor: the bound becomes an index condition in
+	// every branch of the view, so a page reads about page_size rows per source instead of the
+	// wallet's whole history.
+	ListWalletTradesFrom(ctx context.Context, arg ListWalletTradesFromParams) ([]ListWalletTradesFromRow, error)
 	// Early wallets of any token (same rule as ListEarlyCurveDeliveries) with no funding row yet,
 	// whose first early delivery is at or below the finalized head, oldest first. skip holds wallets
 	// the worker is backing off.
@@ -487,6 +491,12 @@ type Querier interface {
 	VoteRateState(ctx context.Context, arg VoteRateStateParams) (VoteRateStateRow, error)
 	// R5: attribution is chain-wide. Backed by the partial index pool_swaps_tx_from_null_idx.
 	WalletAttributionComplete(ctx context.Context, chainID int64) (bool, error)
+	// The key of the page_size-th newest event before the cursor across the wallet's base-table rows
+	// (curve trades by trader, V2 and V4 swaps by transaction sender), each read newest first from its
+	// own index. No row means fewer events than one page. The market_trades view keeps a subset of
+	// these rows (a swap needs its Sync, a V4 swap its graduation), so the view's page lies at or
+	// above this key unless the view dropped one of them. Mirrors MarketTradePageFloor.
+	WalletTradePageFloor(ctx context.Context, arg WalletTradePageFloorParams) (WalletTradePageFloorRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

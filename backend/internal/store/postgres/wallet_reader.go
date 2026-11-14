@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 
@@ -232,7 +233,7 @@ func (r WalletReader) ListTrades(ctx context.Context, q wallet.TradesQuery) (wal
 			args.AfterTransactionIndex = pgtype.Int4{Int32: int32(txIndex), Valid: true}
 			args.AfterLogIndex = pgtype.Int4{Int32: int32(logIndex), Valid: true}
 		}
-		rows, err := a.queries.ListWalletTrades(ctx, args)
+		rows, err := a.listWalletTrades(ctx, args)
 		if err != nil {
 			return err
 		}
@@ -385,4 +386,42 @@ func (r WalletReader) Leaderboard(ctx context.Context, chainID int64, window wal
 		return nil
 	})
 	return out, err
+}
+
+// listWalletTrades is ListWalletTrades read through WalletTradePageFloor: the floor bounds the
+// view read so each source reads about one page instead of the wallet's whole history. It falls
+// back to the unbounded query when the wallet has less than a page before the cursor, or when the
+// view dropped base rows (a swap without its Sync, a V4 swap without its graduation) so the
+// bounded page came up short. Mirrors listMarketTrades.
+func (a *Adapter) listWalletTrades(ctx context.Context, args sqlc.ListWalletTradesParams) ([]sqlc.ListWalletTradesRow, error) {
+	before := sqlc.WalletTradePageFloorParams{
+		ChainID: args.ChainID, Wallet: args.Wallet, PageSize: args.PageSize,
+		BeforeBlock: math.MaxInt64, BeforeTransactionIndex: math.MaxInt32, BeforeLogIndex: math.MaxInt32,
+	}
+	if args.AfterBlock.Valid {
+		before.BeforeBlock, before.BeforeTransactionIndex, before.BeforeLogIndex = args.AfterBlock.Int64, args.AfterTransactionIndex.Int32, args.AfterLogIndex.Int32
+	}
+	floor, err := a.queries.WalletTradePageFloor(ctx, before)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return a.queries.ListWalletTrades(ctx, args)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find wallet trade page floor: %w", err)
+	}
+	bounded, err := a.queries.ListWalletTradesFrom(ctx, sqlc.ListWalletTradesFromParams{
+		ChainID: args.ChainID, Wallet: args.Wallet, PageSize: args.PageSize,
+		BeforeBlock: before.BeforeBlock, BeforeTransactionIndex: before.BeforeTransactionIndex, BeforeLogIndex: before.BeforeLogIndex,
+		FloorBlock: floor.BlockNumber, FloorTransactionIndex: floor.TransactionIndex, FloorLogIndex: floor.LogIndex,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(bounded) < int(args.PageSize) {
+		return a.queries.ListWalletTrades(ctx, args)
+	}
+	rows := make([]sqlc.ListWalletTradesRow, len(bounded))
+	for i, row := range bounded {
+		rows[i] = sqlc.ListWalletTradesRow(row)
+	}
+	return rows, nil
 }

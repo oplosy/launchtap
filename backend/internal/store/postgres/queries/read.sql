@@ -703,6 +703,60 @@ WHERE m.chain_id = sqlc.arg(chain_id)
 ORDER BY m.block_number DESC, m.transaction_index DESC, m.log_index DESC
 LIMIT sqlc.arg(page_size)::integer;
 
+-- name: WalletTradePageFloor :one
+-- The key of the page_size-th newest event before the cursor across the wallet's base-table rows
+-- (curve trades by trader, V2 and V4 swaps by transaction sender), each read newest first from its
+-- own index. No row means fewer events than one page. The market_trades view keeps a subset of
+-- these rows (a swap needs its Sync, a V4 swap its graduation), so the view's page lies at or
+-- above this key unless the view dropped one of them. Mirrors MarketTradePageFloor.
+SELECT candidate.block_number, candidate.transaction_index, candidate.log_index
+FROM (
+    (SELECT trade.block_number, trade.transaction_index, trade.log_index
+     FROM trades AS trade
+     WHERE trade.chain_id = sqlc.arg(chain_id) AND trade.trader = sqlc.arg(wallet)::bytea
+       AND (trade.block_number, trade.transaction_index, trade.log_index) <
+           (sqlc.arg(before_block)::bigint, sqlc.arg(before_transaction_index)::integer, sqlc.arg(before_log_index)::integer)
+     ORDER BY trade.block_number DESC, trade.transaction_index DESC, trade.log_index DESC
+     LIMIT sqlc.arg(page_size)::integer)
+    UNION ALL
+    (SELECT swap.block_number, swap.transaction_index, swap.log_index
+     FROM pool_swaps AS swap
+     WHERE swap.chain_id = sqlc.arg(chain_id) AND swap.tx_from = sqlc.arg(wallet)::bytea
+       AND (swap.block_number, swap.transaction_index, swap.log_index) <
+           (sqlc.arg(before_block)::bigint, sqlc.arg(before_transaction_index)::integer, sqlc.arg(before_log_index)::integer)
+     ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+     LIMIT sqlc.arg(page_size)::integer)
+    UNION ALL
+    (SELECT swap.block_number, swap.transaction_index, swap.log_index
+     FROM v4_swaps AS swap
+     WHERE swap.chain_id = sqlc.arg(chain_id) AND swap.tx_from = sqlc.arg(wallet)::bytea
+       AND (swap.block_number, swap.transaction_index, swap.log_index) <
+           (sqlc.arg(before_block)::bigint, sqlc.arg(before_transaction_index)::integer, sqlc.arg(before_log_index)::integer)
+     ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+     LIMIT sqlc.arg(page_size)::integer)
+) AS candidate
+ORDER BY candidate.block_number DESC, candidate.transaction_index DESC, candidate.log_index DESC
+OFFSET sqlc.arg(page_size)::integer - 1
+LIMIT 1;
+
+-- name: ListWalletTradesFrom :many
+-- ListWalletTrades bounded below by WalletTradePageFloor: the bound becomes an index condition in
+-- every branch of the view, so a page reads about page_size rows per source instead of the
+-- wallet's whole history.
+SELECT m.token_address, t.name, t.symbol, m.source, m.side_buy, m.execution_price_wad, m.spot_price_wad,
+       m.gross_eth_volume, m.token_volume, m.block_number, m.transaction_index,
+       m.tx_hash, m.log_index, m.block_time, m.finality
+FROM market_trades AS m
+JOIN tokens AS t ON t.chain_id = m.chain_id AND t.token_address = m.token_address
+WHERE m.chain_id = sqlc.arg(chain_id)
+  AND m.trader = sqlc.arg(wallet)::bytea
+  AND (m.block_number, m.transaction_index, m.log_index) <
+      (sqlc.arg(before_block)::bigint, sqlc.arg(before_transaction_index)::integer, sqlc.arg(before_log_index)::integer)
+  AND (m.block_number, m.transaction_index, m.log_index) >=
+      (sqlc.arg(floor_block)::bigint, sqlc.arg(floor_transaction_index)::integer, sqlc.arg(floor_log_index)::integer)
+ORDER BY m.block_number DESC, m.transaction_index DESC, m.log_index DESC
+LIMIT sqlc.arg(page_size)::integer;
+
 -- name: ListWalletCreated :many
 SELECT t.token_address, t.name, t.symbol, t.phase, t.launch_block_number,
        COALESCE(s.market_cap_eth_wad, 0::numeric) AS market_cap_eth_wad

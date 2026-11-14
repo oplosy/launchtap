@@ -2716,6 +2716,101 @@ func (q *Queries) ListWalletTrades(ctx context.Context, arg ListWalletTradesPara
 	return items, nil
 }
 
+const listWalletTradesFrom = `-- name: ListWalletTradesFrom :many
+SELECT m.token_address, t.name, t.symbol, m.source, m.side_buy, m.execution_price_wad, m.spot_price_wad,
+       m.gross_eth_volume, m.token_volume, m.block_number, m.transaction_index,
+       m.tx_hash, m.log_index, m.block_time, m.finality
+FROM market_trades AS m
+JOIN tokens AS t ON t.chain_id = m.chain_id AND t.token_address = m.token_address
+WHERE m.chain_id = $1
+  AND m.trader = $2::bytea
+  AND (m.block_number, m.transaction_index, m.log_index) <
+      ($3::bigint, $4::integer, $5::integer)
+  AND (m.block_number, m.transaction_index, m.log_index) >=
+      ($6::bigint, $7::integer, $8::integer)
+ORDER BY m.block_number DESC, m.transaction_index DESC, m.log_index DESC
+LIMIT $9::integer
+`
+
+type ListWalletTradesFromParams struct {
+	ChainID                int64
+	Wallet                 []byte
+	BeforeBlock            int64
+	BeforeTransactionIndex int32
+	BeforeLogIndex         int32
+	FloorBlock             int64
+	FloorTransactionIndex  int32
+	FloorLogIndex          int32
+	PageSize               int32
+}
+
+type ListWalletTradesFromRow struct {
+	TokenAddress      Address
+	Name              string
+	Symbol            string
+	Source            string
+	SideBuy           bool
+	ExecutionPriceWad pgtype.Numeric
+	SpotPriceWad      pgtype.Numeric
+	GrossEthVolume    Uint256
+	TokenVolume       Uint256
+	BlockNumber       int64
+	TransactionIndex  int32
+	TxHash            Hash
+	LogIndex          int32
+	BlockTime         pgtype.Timestamptz
+	Finality          string
+}
+
+// ListWalletTrades bounded below by WalletTradePageFloor: the bound becomes an index condition in
+// every branch of the view, so a page reads about page_size rows per source instead of the
+// wallet's whole history.
+func (q *Queries) ListWalletTradesFrom(ctx context.Context, arg ListWalletTradesFromParams) ([]ListWalletTradesFromRow, error) {
+	rows, err := q.db.Query(ctx, listWalletTradesFrom,
+		arg.ChainID,
+		arg.Wallet,
+		arg.BeforeBlock,
+		arg.BeforeTransactionIndex,
+		arg.BeforeLogIndex,
+		arg.FloorBlock,
+		arg.FloorTransactionIndex,
+		arg.FloorLogIndex,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListWalletTradesFromRow{}
+	for rows.Next() {
+		var i ListWalletTradesFromRow
+		if err := rows.Scan(
+			&i.TokenAddress,
+			&i.Name,
+			&i.Symbol,
+			&i.Source,
+			&i.SideBuy,
+			&i.ExecutionPriceWad,
+			&i.SpotPriceWad,
+			&i.GrossEthVolume,
+			&i.TokenVolume,
+			&i.BlockNumber,
+			&i.TransactionIndex,
+			&i.TxHash,
+			&i.LogIndex,
+			&i.BlockTime,
+			&i.Finality,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const marketTradePageFloor = `-- name: MarketTradePageFloor :one
 SELECT candidate.block_number, candidate.transaction_index, candidate.log_index
 FROM (
@@ -2821,4 +2916,70 @@ func (q *Queries) WalletAttributionComplete(ctx context.Context, chainID int64) 
 	var complete bool
 	err := row.Scan(&complete)
 	return complete, err
+}
+
+const walletTradePageFloor = `-- name: WalletTradePageFloor :one
+SELECT candidate.block_number, candidate.transaction_index, candidate.log_index
+FROM (
+    (SELECT trade.block_number, trade.transaction_index, trade.log_index
+     FROM trades AS trade
+     WHERE trade.chain_id = $1 AND trade.trader = $2::bytea
+       AND (trade.block_number, trade.transaction_index, trade.log_index) <
+           ($3::bigint, $4::integer, $5::integer)
+     ORDER BY trade.block_number DESC, trade.transaction_index DESC, trade.log_index DESC
+     LIMIT $6::integer)
+    UNION ALL
+    (SELECT swap.block_number, swap.transaction_index, swap.log_index
+     FROM pool_swaps AS swap
+     WHERE swap.chain_id = $1 AND swap.tx_from = $2::bytea
+       AND (swap.block_number, swap.transaction_index, swap.log_index) <
+           ($3::bigint, $4::integer, $5::integer)
+     ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+     LIMIT $6::integer)
+    UNION ALL
+    (SELECT swap.block_number, swap.transaction_index, swap.log_index
+     FROM v4_swaps AS swap
+     WHERE swap.chain_id = $1 AND swap.tx_from = $2::bytea
+       AND (swap.block_number, swap.transaction_index, swap.log_index) <
+           ($3::bigint, $4::integer, $5::integer)
+     ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+     LIMIT $6::integer)
+) AS candidate
+ORDER BY candidate.block_number DESC, candidate.transaction_index DESC, candidate.log_index DESC
+OFFSET $6::integer - 1
+LIMIT 1
+`
+
+type WalletTradePageFloorParams struct {
+	ChainID                int64
+	Wallet                 []byte
+	BeforeBlock            int64
+	BeforeTransactionIndex int32
+	BeforeLogIndex         int32
+	PageSize               int32
+}
+
+type WalletTradePageFloorRow struct {
+	BlockNumber      int64
+	TransactionIndex int32
+	LogIndex         int32
+}
+
+// The key of the page_size-th newest event before the cursor across the wallet's base-table rows
+// (curve trades by trader, V2 and V4 swaps by transaction sender), each read newest first from its
+// own index. No row means fewer events than one page. The market_trades view keeps a subset of
+// these rows (a swap needs its Sync, a V4 swap its graduation), so the view's page lies at or
+// above this key unless the view dropped one of them. Mirrors MarketTradePageFloor.
+func (q *Queries) WalletTradePageFloor(ctx context.Context, arg WalletTradePageFloorParams) (WalletTradePageFloorRow, error) {
+	row := q.db.QueryRow(ctx, walletTradePageFloor,
+		arg.ChainID,
+		arg.Wallet,
+		arg.BeforeBlock,
+		arg.BeforeTransactionIndex,
+		arg.BeforeLogIndex,
+		arg.PageSize,
+	)
+	var i WalletTradePageFloorRow
+	err := row.Scan(&i.BlockNumber, &i.TransactionIndex, &i.LogIndex)
+	return i, err
 }
