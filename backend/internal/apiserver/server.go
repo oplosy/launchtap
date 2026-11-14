@@ -303,7 +303,11 @@ func (w *statusWriter) Flush() {
 	}
 }
 func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// cors sets CORS headers for an allowed origin. Every response varies by Origin, allowed or not,
+// so a shared cache (CDN) never serves a response without CORS headers to an allowed origin.
 func cors(w http.ResponseWriter, origins []string, r *http.Request) bool {
+	w.Header().Add("Vary", "Origin")
 	origin := r.Header.Get("Origin")
 	if origin == "" {
 		return true
@@ -311,7 +315,6 @@ func cors(w http.ResponseWriter, origins []string, r *http.Request) bool {
 	for _, allowed := range origins {
 		if allowed == origin && allowed != "*" {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization,Content-Type,privy-id-token,If-Match,If-None-Match")
 			w.Header().Set("Access-Control-Expose-Headers", "ETag, X-Revision, Retry-After")

@@ -103,3 +103,15 @@ number_underscore = "thousands"
 runs = 256
 depth = 100
 fail_on_revert = true
+
+# Deep property campaign: the same suites as the default profile with far more inputs and a fixed
+# seed so a run can be reproduced exactly. Not part of CI (minutes, not seconds); results are
+# recorded in docs/audits/. Run: FOUNDRY_PROFILE=deep forge test --match-test "invariant_|testFuzz"
+[profile.deep.fuzz]
+runs = 10000
+seed = "0x6c61756e6368706164"
+
+[profile.deep.invariant]
+runs = 1000
+depth = 200
+fail_on_revert = true

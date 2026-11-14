@@ -70,6 +70,15 @@ func TestServerBoundaries(t *testing.T) {
 	if deniedReadW.Header().Get("Access-Control-Allow-Origin") != "" || deniedReadW.Header().Get("Access-Control-Expose-Headers") != "" {
 		t.Fatalf("disallowed origin received CORS read headers: %v", deniedReadW.Header())
 	}
+	// A shared cache must key on Origin for every response, or a response cached for a request
+	// without CORS headers is served to an allowed origin.
+	noOrigin := httptest.NewRecorder()
+	s.Handler.ServeHTTP(noOrigin, httptest.NewRequest(http.MethodGet, "/v1/healthz", nil))
+	for name, h := range map[string]http.Header{"no origin": noOrigin.Header(), "denied origin": deniedReadW.Header()} {
+		if got := h.Values("Vary"); len(got) != 1 || got[0] != "Origin" {
+			t.Fatalf("%s: Vary=%v, want exactly Origin", name, got)
+		}
+	}
 }
 
 func TestReadinessFailureIsProblem(t *testing.T) {

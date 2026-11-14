@@ -207,6 +207,39 @@ func TestMetadataAuthenticationAuthorizationAndValidationProblems(t *testing.T) 
 	}
 }
 
+// identityVerifier treats the identity token as the Privy DID so one test can act as several users.
+type identityVerifier struct{}
+
+func (identityVerifier) Verify(_ context.Context, _ string, identity string) (privyauth.Principal, error) {
+	return privyauth.Principal{PrivyDID: identity}, nil
+}
+
+func TestMetadataWritesAreRateLimitedPerPrivyDID(t *testing.T) {
+	server := New(DefaultConfig(), ReadyFunc(func(context.Context) error { return nil }), nil)
+	server.RegisterMetadataRoutes(MetadataRoutes{
+		Store: &fakeMetadataStore{}, Verifier: identityVerifier{}, ChainID: 1, Limiter: NewSubjectLimiter(1, time.Minute),
+	})
+	write := func(did string) int {
+		request := httptest.NewRequest(http.MethodPut, "/v1/tokens/0x00000000000000000000000000000000000000bb/metadata", strings.NewReader(`{}`))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Authorization", "Bearer access")
+		request.Header.Set("privy-id-token", did)
+		request.Header.Set("If-Match", "0")
+		response := httptest.NewRecorder()
+		server.Handler.ServeHTTP(response, request)
+		return response.Code
+	}
+	if got := write("did:privy:a"); got != http.StatusOK {
+		t.Fatalf("first write status=%d", got)
+	}
+	if got := write("did:privy:a"); got != http.StatusTooManyRequests {
+		t.Fatalf("second write by the same DID status=%d, want 429", got)
+	}
+	if got := write("did:privy:b"); got != http.StatusOK {
+		t.Fatalf("another DID status=%d, want its own budget", got)
+	}
+}
+
 func TestMetadataMissingCredentialsAreRejected(t *testing.T) {
 	server := New(DefaultConfig(), ReadyFunc(func(context.Context) error { return nil }), nil)
 	server.RegisterMetadataRoutes(MetadataRoutes{Store: &fakeMetadataStore{}, Verifier: fakeVerifier{}, ChainID: 1})
