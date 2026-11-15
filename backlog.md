@@ -15,6 +15,33 @@
 
 ## Active
 
+### Full security-audit run-4 (in progress)
+
+- **Date:** 2026-11-15
+- **Reason:** usage limit
+- **Where it stopped:** Standard-profile security-audit of commit 92727e6, run directory
+  `~/security-audit-skill/launchpad/run-4` (outside the repo). Ledger: 96 units, PASS. 37
+  candidates in `candidates.json`. Wave 11 hunter `h43-v2-pool-admission` (engine-2 V4 pool
+  admission: `discovery_v2.go` registerPool/fetchPools, `step.go:255-256`) was launched; its
+  result may be lost if the session ends. Verifier prompts are generated in `vprompts/`
+  (`verifier-ids.json`, 37 entries) but no verifier has run yet.
+- **Related files:** run-4 scripts `extract.cjs`, `consolidate.cjs`, `promote.cjs`,
+  `build-critic-input.cjs`, `critic-apply-w11.cjs`, `fix-blocks-w11.cjs`, `wave11-prompts.cjs`,
+  `verifier-prompts.cjs`; `docs/audits/` for the final record.
+- **Resume (next step):**
+  1. If h43's result is missing, relaunch it (haiku, high) from `prompts/h43-v2-pool-admission.md`
+     (unit is `in_progress`, wave 11). Then promote any artifact, `node extract.cjs <id>=h43-v2-pool-admission`,
+     `node consolidate.cjs h43-v2-pool-admission`, `node build-critic-input.cjs`, validate the ledger.
+  2. Run the wave-11 post-wave critic, then a final-clean whole-run critic. If they only find
+     single narrow units, record them `deferred` and state partial coverage in the report.
+  3. `rm -rf vprompts && node verifier-prompts.cjs`, then one fresh verifier (haiku, high) per
+     candidate; promote `result.txt`, merge decisions into the ledger.
+  4. `findings.json` + `validate-findings.cjs`, record verification, REPORT.md /
+     FINDINGS-DETAIL.md / NEEDS-VALIDATION.md, then fix confirmed items on a `task/<slug>` PR and
+     re-score Application security and Smart contracts in `docs/quality-scorecard.md`.
+- **Pitfalls / notes:** Target code runs only in Docker (`--network none`). Validators run in
+  `node:22` Docker (Windows lacks O_NOFOLLOW). Start Docker Desktop first if `docker info` fails.
+
 ### P0-A external inputs: CoinGecko key and market-link identifiers
 
 - **Date:** 2026-11-05
