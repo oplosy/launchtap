@@ -32,7 +32,7 @@
      with no missing units (`critic-wave11.json`, `critic-final3.json`).
   2. Phase 3 in progress. Verifier results are saved in `vresults/<vid>.json` via
      `sh vproc.sh <agentId> <vid>` (promotes `result.txt`, extracts the decision). Done: v02
-     rejected, v04 nv, v05 rejected, v06 nv, v07 nv, v08 nv. v01 and v03 were launched (map in
+     rejected, v04 nv, v05 rejected, v03 CONFIRMED medium (indexer health LastError leaks RPC_URL key), v06 nv, v07 nv, v08 nv. v01 was launched (map in
      `verifier-agents.txt`); relaunch any without a `vresults` file. Not started: v09-v37. Do
      NOT regenerate `vprompts` (ids are fixed in `verifier-ids.json`).
   3. Launch one fresh verifier (haiku, high) per remaining vid with the prompt "Read your full
