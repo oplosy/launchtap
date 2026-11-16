@@ -45,8 +45,25 @@
 - **Related files:** `AUDIT_REPORT_TR.md` (untracked, sections 3 and 8), `backend/internal/position/`,
   `backend/internal/store/postgres/migrations/`, `backend/internal/store/postgres/queries/`.
 - **Resume (next step):**
-  1. Validate HIGH-13 (missing ledger indexes; measure with `EXPLAIN` on a seeded database) and
-     HIGH-14 (per-leg inserts in `PositionSource`, unbounded revenue and transfer reads).
+  1. HIGH-13/14, validated 2026-11-16 with `EXPLAIN (ANALYZE)` on a seeded Postgres 18.6
+     (1M transfers over 5,000 tokens; 50,000 1m candles per token). Fix, in this order:
+     a. `trades`-wide revenue scan: `GET /v1/stats/protocol/revenue` (public, no cache header)
+        aggregates every trade, graduation and LP collection per request. Serve it from
+        `protocol_stats`-style incremental totals or cache it.
+     b. ATH in `RecomputeTokensStats` sorts every 1m candle of the token (59 ms per token at
+        50,000 candles, run on every stats recompute). Add a `(chain_id, token_address,
+        high_price_wad DESC, bucket_start_time) WHERE interval = '1m'` index.
+     c. `PositionSource.insertRealizedLegs` sends one INSERT per realized leg inside the locked
+        transaction; batch it (`unnest` or `COPY`).
+     d. Reorg queries on `transfers` by block use Postgres 18 skip scan over
+        `transfers_token_rebuild_idx`: one index search per token (5,001 searches, 18-44 ms each at
+        5,000 tokens), linear in token count, not a sequential scan. A `(chain_id, block_number)`
+        index makes it constant; low priority (reorgs are rare).
+     e. Smaller tables (`fee_recipient_*`, `lp_fee_*`, `refund_*`, `creator_fee_claims`) have only
+        their primary key; per-token lookups scan the table. Add `(chain_id, token_address, ...)`
+        indexes when they grow; `pool_syncs` latest-sync lookup runs once per graduation (fine).
+     Rejected: the inbox claim (`ListInboxEvents` already bounds `block_time` to 30 days) and
+     `ListTokenTransfersTouching` as a defect (bounded by the early-buyer window's wallets).
   2. Validate MED-01..MED-08 and MED-10..MED-13 (MED-09 and MED-14 are done; MED-15 is the known
      Privy 3 item).
   3. `wallet_funding` rows already written `unknown` by the old same-block rule are not
