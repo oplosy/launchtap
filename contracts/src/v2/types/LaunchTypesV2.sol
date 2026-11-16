@@ -10,6 +10,10 @@ library LaunchTypesV2 {
     /// @dev Hard caps no configuration can exceed without a new factory (spec §3.1).
     uint16 internal constant MAX_ANTI_SNIPE_START_BPS = 9000;
     uint32 internal constant MAX_ANTI_SNIPE_DURATION_SECONDS = 300;
+    /// @dev Trade fee and launch fee ceilings (owner decision L-1,
+    /// docs/specs/2026-11-16-owner-decisions-preflight.md).
+    uint16 internal constant MAX_TRADE_FEE_BPS = 500;
+    uint256 internal constant MAX_LAUNCH_FEE = 0.05 ether;
 
     struct AntiSnipeProfile {
         uint16 startBps;

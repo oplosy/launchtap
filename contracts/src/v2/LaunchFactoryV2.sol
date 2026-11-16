@@ -433,8 +433,16 @@ contract LaunchFactoryV2 is LaunchFactoryV2Storage, ReentrancyGuard, ILaunchFact
         if (defaults.lpCreatorShareBps > BPS_DENOMINATOR) {
             revert IBondingCurveV2.InvalidLpCreatorShareBps(defaults.lpCreatorShareBps);
         }
+        LaunchTypes.CurveParameters memory parameters = defaults.parameters;
+        if (parameters.tradeFeeBps > LaunchTypesV2.MAX_TRADE_FEE_BPS) {
+            revert IBondingCurveV2.TradeFeeAboveCap(parameters.tradeFeeBps);
+        }
+        if (defaults.launchFee > LaunchTypesV2.MAX_LAUNCH_FEE) {
+            revert LaunchFeeAboveCap(defaults.launchFee);
+        }
+        GraduationMath.validatePriceContinuity(parameters);
         // forge-lint: disable-next-line(unused-return)
-        GraduationMath.sqrtPriceX96(defaults.parameters.graduationEth, defaults.parameters.lpTokens);
+        GraduationMath.sqrtPriceX96(parameters.graduationEth, parameters.lpTokens);
 
         _futureParameters = defaults.parameters;
         _futureAntiSnipe = antiSnipe;
