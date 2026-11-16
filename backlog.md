@@ -36,20 +36,24 @@
 ### AUDIT_REPORT_TR follow-ups after the P0 pass
 
 - **Date:** 2026-11-16
-- **Reason:** scope decision (P0 pass landed on `task/audit-p0-fixes`; the rest is P1/P2)
-- **Where it stopped:** fixed and tested: CRIT-01, MED-09, CRIT-02, HIGH-01, HIGH-02 (feed,
-  trending, sweeper, attribution), HIGH-03, MED-14, HIGH-09, HIGH-10 (curve fees). Verified in
-  code, not fixed: HIGH-04 (`ratelimit.go` `clear(l.buckets)`), HIGH-05 (`engine.go:279` retries
-  only `ErrRPCUnhealthy`), HIGH-07 (`projections.sql` unclamped `price_change_24h_bps::BIGINT`).
-- **Related files:** `AUDIT_REPORT_TR.md` (untracked, sections 3 and 8), `backend/internal/indexer/`,
-  `backend/internal/apiserver/ratelimit.go`, `backend/internal/store/postgres/queries/`.
+- **Reason:** scope decision (P0 pass on `task/audit-p0-fixes`, P1 pass on `task/audit-p1-fixes`)
+- **Where it stopped:** fixed and tested: CRIT-01, MED-09, CRIT-02, HIGH-01, HIGH-02, HIGH-03,
+  MED-14, HIGH-09, HIGH-10 (P0 pass); HIGH-07 (saturated price change), HIGH-05 (mid-step reorg
+  retried), HIGH-06 (deadlocked indexer transaction retried), HIGH-04 (rate-limit LRU eviction),
+  HIGH-11 (same-block funding) (P1 pass). Confirmed, waiting on an owner decision: HIGH-08
+  (zero-cost transfers in let a buy, transfer, sell loop inflate leaderboard realized PnL; zero
+  cost is locked in `docs/specs/2026-11-06-p0c1-wallet-page-pnl-design.md`).
+- **Related files:** `AUDIT_REPORT_TR.md` (untracked, sections 3 and 8), `backend/internal/position/`,
+  `backend/internal/store/postgres/migrations/`, `backend/internal/store/postgres/queries/`.
 - **Resume (next step):**
-  1. HIGH-07: clamp the SQL to ±(2^53-1) like `stats.ComputeTokenStats`, with an integration test.
-  2. HIGH-05: make mid-step `ErrCanonicalMismatch` retryable in `Engine.Run`; test a reorg between
-     header batches.
-  3. HIGH-04: evict oldest buckets instead of `clear`.
-  4. Then validate the unverified ones (HIGH-06 deadlock, HIGH-08 PnL via transfers, HIGH-11
-     same-block funding, HIGH-13/14 indexes and N+1, MED-*) before fixing.
+  1. HIGH-08: get the owner's choice (e.g. leave positions with transfers in off the leaderboard,
+     or carry the sender's cost basis), then implement with a test.
+  2. Validate HIGH-13 (missing ledger indexes; measure with `EXPLAIN` on a seeded database) and
+     HIGH-14 (per-leg inserts in `PositionSource`, unbounded revenue and transfer reads).
+  3. Validate MED-01..MED-08 and MED-10..MED-13 (MED-09 and MED-14 are done; MED-15 is the known
+     Privy 3 item).
+  4. `wallet_funding` rows already written `unknown` by the old same-block rule are not
+     re-resolved (`ON CONFLICT DO NOTHING`); re-resolving them is a data change, ask first.
 - **Pitfalls / notes:** Deliberately left: HIGH-12 (V4 `eth_reserve` falls back to initial
   virtual reserves; the web already hides reserves when liquidity is not indexed, so fixing it
   is a public API change to nullable fields) and the SSE graduation `pair` of engine-2 tokens
