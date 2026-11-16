@@ -40,8 +40,10 @@ const (
 	maxReorgSearchDepth     uint64 = 100000
 	// headerBatchSize stays within common provider JSON-RPC batch limits.
 	headerBatchSize = 100
-	// Transient RPC failures are retried in-process with capped exponential backoff; a long
-	// outage still exits so the orchestrator restarts the process and alerts.
+	// Transient RPC failures and canonical mismatches (a reorg landing mid-step, before
+	// anything committed) are retried in-process with capped exponential backoff; a long
+	// outage or a provider that never settles still exits so the orchestrator restarts the
+	// process and alerts.
 	maxRPCRetryDelay          = 30 * time.Second
 	maxConsecutiveRPCFailures = 20
 )
@@ -276,7 +278,7 @@ func (e *Engine) Run(ctx context.Context) error {
 	for {
 		advanced, err := e.Step(ctx)
 		if err != nil {
-			if !errors.Is(err, ErrRPCUnhealthy) || ctx.Err() != nil {
+			if !retryableStepError(err) || ctx.Err() != nil {
 				return err
 			}
 			failures++
@@ -296,6 +298,13 @@ func (e *Engine) Run(ctx context.Context) error {
 			return err
 		}
 	}
+}
+
+// retryableStepError reports a step failure that left no partial write and resolves on a
+// later step: an unhealthy RPC, or a canonical mismatch from a reorg that landed between the
+// step's reads. The next step re-reads the saved blocks and recovers the reorg if it holds.
+func retryableStepError(err error) bool {
+	return errors.Is(err, ErrRPCUnhealthy) || errors.Is(err, ErrCanonicalMismatch)
 }
 
 func sleep(ctx context.Context, delay time.Duration) error {

@@ -59,11 +59,11 @@ func (e *Engine) recoverReorg(ctx context.Context, state State, tip ledger.Index
 		}
 		hash := header.Hash()
 		if len(candidates) == 0 && hash != tip.BlockHash {
-			return fmt.Errorf("RPC reorg candidate at detected tip %d changed: expected %s, got %s", tip.BlockNumber, tip.BlockHash, hash)
+			return fmt.Errorf("%w: RPC reorg candidate at detected tip %d changed: expected %s, got %s", ErrCanonicalMismatch, tip.BlockNumber, tip.BlockHash, hash)
 		}
 		if previous != nil {
 			if previous.Number.Int64() != block.BlockNumber+1 || previous.ParentHash != hash {
-				return fmt.Errorf("RPC reorg candidate chain is discontinuous between blocks %d and %d", previous.Number.Int64(), block.BlockNumber)
+				return fmt.Errorf("%w: RPC reorg candidate chain is discontinuous between blocks %d and %d", ErrCanonicalMismatch, previous.Number.Int64(), block.BlockNumber)
 			}
 		}
 		candidates = append(candidates, hash)
@@ -104,7 +104,7 @@ func (e *Engine) recoverReorg(ctx context.Context, state State, tip ledger.Index
 			return fmt.Errorf("invalid rechecked reorg tip at %d: %w", tip.BlockNumber, err)
 		}
 		if recheckedTip.BlockNumber != tip.BlockNumber || recheckedTip.BlockHash != tip.BlockHash {
-			return fmt.Errorf("RPC reorg tip changed before recovery write at %d: expected %s, got %s", tip.BlockNumber, tip.BlockHash, recheckedTip.BlockHash)
+			return fmt.Errorf("%w: RPC reorg tip changed before recovery write at %d: expected %s, got %s", ErrCanonicalMismatch, tip.BlockNumber, tip.BlockHash, recheckedTip.BlockHash)
 		}
 		reorgID, err = recovery.RecordReorg(ctx, ReorgRecord{ChainID: e.settings.ChainID, DeploymentID: e.settings.DeploymentID, DetectedTipNumber: tip.BlockNumber, DetectedTipHash: tip.BlockHash, CommonAncestorNumber: ancestor.BlockNumber, CommonAncestorHash: ancestor.BlockHash, Depth: depth, DetectedAt: time.Now().UTC()})
 		return err
