@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { parseDecimal } from "@/amounts";
 import type { Abi, TransactionReceipt } from "viem";
-import { launchRulesV2 } from "@/launch-v2";
+import { launchProfileV2, requoteLaunch } from "@/launch-v2";
 import { browserAbis, type ReviewedDeployment } from "@/contracts/generated";
 import { addressExplorerUrl } from "@/wallet/explorer";
 import { WalletConnectButton } from "@/wallet/connection-context";
@@ -72,7 +72,8 @@ function LaunchPanelReady() {
   // its launch reverts on its own pause, so the engine-enabled read is v1 only.
   const engineVersion = deployment.engineVersion;
   const factoryAbi = (engineVersion === 2 ? browserAbis.factoryV2 : browserAbis.factory) as Abi;
-  const [v2Rules, setV2Rules] = useState<ReturnType<typeof launchRulesV2> | null>(null);
+  const [v2Profile, setV2Profile] = useState<ReturnType<typeof launchProfileV2> | null>(null);
+  const v2Rules = v2Profile?.rules ?? null;
   const factoryExplorer = deployment.factory
     ? addressExplorerUrl(configuration, deployment.factory as Address)
     : null;
@@ -105,8 +106,7 @@ function LaunchPanelReady() {
       .then(([fee, defaults, paused, trading, enabled]) => {
         setLaunchFee(fee as bigint);
         // Plan v2-C D8: the exact profile the next launch snapshots; a failed read blocks launch.
-        if (engineVersion === 2)
-          setV2Rules(launchRulesV2(defaults as Parameters<typeof launchRulesV2>[0]));
+        if (engineVersion === 2) setV2Profile(launchProfileV2(defaults));
         setDefaultsRead(true);
         setLaunchesPaused(Boolean(paused));
         setTradingPaused(Boolean(trading));
@@ -205,15 +205,14 @@ function LaunchPanelReady() {
       receipt = await run.sign(reviewed, {
         abi: factoryAbi,
         // After simulation and right before signing: a pause or a fee change stops the launch.
+        // The launch snapshots the factory's current defaults, so the reviewed profile must hold.
         requote: async () => {
-          const [fee, paused, enabled] = await Promise.all([
-            readFactory("launchFee") as Promise<bigint>,
-            readFactory("launchesPaused"),
-            readEngineEnabled(),
-          ]);
-          if (paused) throw new Error("LaunchesPaused");
-          if (!enabled) throw new Error("EngineDisabled");
-          return { intent: { ...reviewed, value: calculateLaunchValue(fee, reviewedBuy) } };
+          const latest = await requoteLaunch(readFactory, engineVersion, v2Profile?.key);
+          if (latest.changed) {
+            setV2Profile(latest.profile);
+            throw new Error("LaunchProfileChanged");
+          }
+          return { intent: { ...reviewed, value: calculateLaunchValue(latest.fee, reviewedBuy) } };
         },
       });
     });

@@ -196,6 +196,8 @@ export const contractMessages: Readonly<Record<string, string>> = {
   TradingPaused: "Buying is paused by the reviewed deployment. Selling remains available.",
   LaunchesPaused: "Launching is paused by the reviewed deployment.",
   LaunchValueMismatch: "The launch value changed. Refresh the factory fee and try again.",
+  LaunchProfileChanged:
+    "The factory's launch profile changed. Review the updated tax and fee split before launching.",
   DeveloperBuyCapExceeded:
     "The developer buy exceeds the contract cap. Reduce the amount and retry.",
   UnknownEngine: "This launch engine is not supported by the reviewed factory.",

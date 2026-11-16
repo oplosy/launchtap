@@ -61,11 +61,14 @@
 - **Related files:** `contracts/src/v2/BondingCurveV2.sol` (`_mintPosition`), `deploy/Caddyfile`,
   `deploy/compose.yaml`, `backend/internal/chain/discovery.go`, `web/src/transactions-panel/`.
 - **Resume (next step):**
-  1. ~~V2 graduation ETH-delta underflow~~: confirmed and fixed on `task/audit-p0-fixes`
-     (`docs/specs/2026-11-16-v2-graduation-sweep-preflight.md`). Close both leads once merged.
-  2. Web leads with a vitest plan (stale async prepare, sell submission guard, launch attach
-     snapshot, launch profile rebind): write the scratch tests from the plans and fix what fails.
-  3. Owner facts: Caddy XFF append at the pinned image, effective rate-limit env and edge
+  1. Done: the V2 graduation ETH-delta underflow (both leads) was confirmed and fixed in #82
+     (`docs/specs/2026-11-16-v2-graduation-sweep-preflight.md`). The four web leads are fixed on
+     `task/run4-web-leads`: a review prepared before a side, amount or slippage change no longer
+     reopens (generation check in all three trade panels); a curve sell no longer skips the
+     unresolved-submission guard; launch details are kept per token (a vitest run on the old code
+     saved the edited and the later launch's description); the sign-time launch requote re-reads
+     `futureDefaults` and refuses a changed profile.
+  2. Owner facts: Caddy XFF append at the pinned image, effective rate-limit env and edge
      limits, Privy one-DID-per-wallet policy, RPC provider eth_getLogs limits.
 - **Pitfalls / notes:** Do not send live traffic to validate; the plans are configuration-only.
 
@@ -197,7 +200,6 @@
 - **Resume (next step):** Before 2027-02-01, re-run the trial install from that document with
   the then-current Privy release. Upgrade only once `npm audit --omit=dev` on the trial tree no
   longer reports the two highs; otherwise renew the allowlist entries with a fresh impact review.
-  Decide with the owner whether to enable Dependabot or Renovate for version-update PRs.
 - **Pitfalls / notes:** This touches wallet authentication; treat it as high-risk. Do not
   extend the allowlist dates without a fresh impact review.
 
