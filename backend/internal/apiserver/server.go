@@ -272,8 +272,9 @@ func middleware(mux *http.ServeMux, cfg Config, limiter *RateLimiter, logger *sl
 			defer cancel()
 		} else {
 			// net/http's server-wide WriteTimeout is an absolute request deadline.
-			// Disable it for this long-lived stream; heartbeat writes still detect
-			// dead clients and shutdown cancels the request context.
+			// Disable it for this long-lived stream; huma's sse.Sender sets a fresh
+			// per-message write deadline (sse.WriteTimeout) through statusWriter.Unwrap,
+			// so a reader that stalls is still cut off, and shutdown cancels the context.
 			_ = http.NewResponseController(rw).SetWriteDeadline(time.Time{})
 		}
 		ctx = context.WithValue(ctx, authHeadersKey, AuthHeaders{Authorization: r.Header.Get("Authorization"), IdentityToken: r.Header.Get("privy-id-token")})

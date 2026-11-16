@@ -1,4 +1,5 @@
 import { parseDecimal } from "@/amounts";
+import { safeHttps, safeSocialLink } from "@/token/image-file";
 
 export type TransactionStatus =
   | "disconnected"
@@ -124,18 +125,14 @@ export function validateLaunchInput(input: LaunchValidation): LaunchValidationEr
   if (!symbol) errors.symbol = "Enter a token symbol.";
   else if (!/^[A-Za-z0-9]{1,16}$/.test(symbol))
     errors.symbol = "Use 1–16 letters or numbers for the symbol.";
-  for (const [key, value] of [
-    ["imageUrl", input.imageUrl],
-    ["xUrl", input.xUrl],
-    ["telegramUrl", input.telegramUrl],
-  ] as const) {
-    if (!value?.trim()) continue;
-    try {
-      if (new URL(value).protocol !== "https:") throw new Error();
-    } catch {
-      errors[key] = "Use a valid HTTPS URL.";
-    }
-  }
+  // Same rules as the API's validateMetadata, checked before the launch transaction so a
+  // creator does not pay gas and then have the metadata save refused.
+  if (input.imageUrl?.trim() && !safeHttps(input.imageUrl.trim()))
+    errors.imageUrl = "Use a valid HTTPS URL.";
+  if (input.xUrl?.trim() && !safeSocialLink("x", input.xUrl.trim()))
+    errors.xUrl = "Use an HTTPS link to x.com or twitter.com.";
+  if (input.telegramUrl?.trim() && !safeSocialLink("telegram", input.telegramUrl.trim()))
+    errors.telegramUrl = "Use an HTTPS link to t.me or telegram.me.";
   if (input.developerBuyGross < 0n) errors.developerBuyGross = "Amount cannot be negative.";
   return errors;
 }

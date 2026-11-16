@@ -45,6 +45,28 @@ describe("task 6 transaction math and safety", () => {
         developerBuyGross: 0n,
       }),
     ).toEqual({});
+    // Mirrors the API's validateMetadata so a launch never pays gas for links it will refuse.
+    expect(
+      validateLaunchInput({
+        name: "Token",
+        symbol: "TOK",
+        xUrl: "https://x.com.drainer.example/u",
+        telegramUrl: "https://user:pass@t.me/u",
+        developerBuyGross: 0n,
+      }),
+    ).toMatchObject({
+      xUrl: "Use an HTTPS link to x.com or twitter.com.",
+      telegramUrl: "Use an HTTPS link to t.me or telegram.me.",
+    });
+    expect(
+      validateLaunchInput({
+        name: "Token",
+        symbol: "TOK",
+        xUrl: " https://Twitter.com/u ",
+        telegramUrl: "https://t.me/u",
+        developerBuyGross: 0n,
+      }),
+    ).toEqual({});
   });
 
   it("rounds minimum output down at boundaries", () => {

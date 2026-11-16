@@ -14,7 +14,7 @@ import {
   acceptableImageFile,
   descriptionTooLong,
   hasValidImageSignature,
-  safeHttps,
+  safeSocialLink,
 } from "./image-file";
 
 type Props = {
@@ -175,9 +175,13 @@ export function MetadataEditor({ token, onConflict }: Props) {
       setError("Review the refreshed metadata before resubmitting.");
       return;
     }
-    if (descriptionTooLong(description) || !safeHttps(xUrl) || !safeHttps(telegramUrl)) {
+    if (
+      descriptionTooLong(description) ||
+      !safeSocialLink("x", xUrl) ||
+      !safeSocialLink("telegram", telegramUrl)
+    ) {
       setError(
-        "Description must be at most 2,000 bytes and links must be HTTPS URLs up to 2,048 bytes.",
+        "Description must be at most 2,000 bytes, the X link must point at x.com or twitter.com, and the Telegram link at t.me or telegram.me.",
       );
       return;
     }

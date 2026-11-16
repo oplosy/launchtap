@@ -442,6 +442,18 @@ test("token page offers Share on X and Copy link", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Copy link" })).toBeVisible();
 });
 
+test("creator social links only open on their own hosts", async ({ page }) => {
+  await installFixture(page, { x_url: "https://drainer.example/x" });
+  await page.goto(`/token/${tokenAddress}?fixture=populated`);
+  const links = page.locator(".token-links");
+  await expect(links.getByRole("link", { name: "Telegram" })).toHaveAttribute(
+    "href",
+    "https://t.me/fixture",
+  );
+  await expect(links.getByRole("link", { name: "X profile" })).toHaveCount(0);
+  await expect(links.getByLabel("Link unavailable").first()).toHaveText("X profile");
+});
+
 test("a graduated v2 token shows its pool facts and no fake liquidity", async ({ page }) => {
   const recipient = "0x00000000000000000000000000000000000000a1";
   const poolId = `0x${"ab".repeat(32)}`;
