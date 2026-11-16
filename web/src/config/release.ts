@@ -2,7 +2,10 @@ import { publicConfiguration } from "./public";
 
 export type ReleaseValidation = { ok: boolean; errors: string[] };
 
-const forbiddenProductionValue = /task6|e2e|anvil|localhost|127\.0\.0\.1|test|mock|fixture/i;
+// A fixture word must start a token ("testnet", "e2e-rpc"), so random IDs that merely contain
+// the letters ("cmabe2e9", "latest") are not rejected. Mirrors scripts/validate-release.mjs.
+const forbiddenProductionValue =
+  /(?:^|[^a-z0-9])(?:task6|e2e|anvil|localhost|test|mock|fixture)|127\.0\.0\.1/i;
 
 export function validateReleaseEnvironment(
   env: Record<string, string | undefined>,
