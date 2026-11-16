@@ -110,9 +110,9 @@ func (d *Discoverer) Discover(ctx context.Context, from, to uint64, known Emitte
 		newByBlock[log.BlockNumber] = blockSet
 	}
 
-	// Curve events have protocol-unique signatures, so one topic-only query covers every known
-	// and newly launched curve instead of one address-batched query per 500 curves. Logs from
-	// other contracts that reuse these signatures are not ours and are dropped.
+	// One topic-only query covers every known and newly launched curve instead of one
+	// address-batched query per 500 curves. Any contract can reuse these signatures: their logs
+	// are dropped, and a flood of them makes fetchByTopics fall back to address batches.
 	// The factory logs above name the new emitters; every query below is independent of the
 	// others, so they may run concurrently (WithLogConcurrency).
 	jobs := []logJob{func(ctx context.Context) ([]types.Log, error) {
@@ -207,13 +207,26 @@ func (d *Discoverer) fetch(ctx context.Context, from, to uint64, addresses []com
 
 // fetchByTopics queries a range by event signature only and keeps logs from allowed emitters.
 // A log with a signature outside the requested set is still a provider fault and fails closed.
+//
+// Any contract can emit these signatures, so a topic-only query is only a fast path: a range
+// flooded with impostor logs can exceed the provider's result or size limit even for one block.
+// Any failure of that single attempt therefore falls back to the address-batched query of the
+// allowed emitters, which impostors cannot inflate and which splits ranges on capacity errors.
 func (d *Discoverer) fetchByTopics(ctx context.Context, from, to uint64, topics []common.Hash, allowed AddressSet) ([]types.Log, error) {
 	if len(allowed) == 0 || len(topics) == 0 {
 		return nil, nil
 	}
-	logs, err := d.fetchRange(ctx, from, to, nil, topics)
+	query := ethereum.FilterQuery{FromBlock: new(big.Int).SetUint64(from), ToBlock: new(big.Int).SetUint64(to), Topics: [][]common.Hash{topics}}
+	logs, err := d.filterLogs(ctx, query)
 	if err != nil {
-		return nil, err
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		batched, batchErr := d.fetch(ctx, from, to, setAddresses(allowed), topics)
+		if batchErr != nil {
+			return nil, errors.Join(batchErr, fmt.Errorf("topic-only query: %w", err))
+		}
+		return batched, nil
 	}
 	allowedTopics := make(map[common.Hash]struct{}, len(topics))
 	for _, topic := range topics {

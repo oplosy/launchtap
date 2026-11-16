@@ -25,12 +25,18 @@ type fixtureLogSource struct {
 	singleBlockCapacity bool
 	calls               int
 	rogue               *types.Log
+	// failTopicOnly fails every query without an address filter, as a provider does when
+	// impostor logs push a topic-only result over its limit.
+	failTopicOnly bool
 }
 
 func (s *fixtureLogSource) FilterLogs(_ context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
 	s.calls++
 	from, to := query.FromBlock.Uint64(), query.ToBlock.Uint64()
 	if s.shrink && (to > from || s.singleBlockCapacity) {
+		return nil, capacityError{}
+	}
+	if s.failTopicOnly && len(query.Addresses) == 0 {
 		return nil, capacityError{}
 	}
 	addresses := NewAddressSet(query.Addresses...)
@@ -275,5 +281,67 @@ func TestDiscovererRejectsLaunchPairBeforeReturningCanonicalEvents(t *testing.T)
 	}
 	if len(result.Logs) != 0 || len(result.Launches) != 0 {
 		t.Fatalf("failed discovery returned canonical events: logs=%d launches=%d", len(result.Logs), len(result.Launches))
+	}
+}
+
+// An impostor contract can emit curve signatures until a topic-only query exceeds the provider's
+// limit even for one block; discovery must then fall back to address batches instead of stopping.
+func TestDiscovererFallsBackToAddressBatchesWhenTopicQueryFails(t *testing.T) {
+	t.Parallel()
+	_, fixtures, allEmitters := loadFixtureLogs(t)
+	decoder, _ := NewDecoder(1)
+	var trade types.Log
+	for _, log := range fixtures {
+		decoded, err := decoder.Decode(log, allEmitters)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := decoded.Value.(Trade); ok {
+			trade = log
+			break
+		}
+	}
+	if trade.Address == (common.Address{}) {
+		t.Fatal("Trade fixture missing")
+	}
+	trade.BlockNumber, trade.Index = 10, 1
+	impostor := trade
+	impostor.Address, impostor.Index = common.HexToAddress("0xbad"), 2
+	known := emptyEmitters(allEmitters.Factory)
+	known.Curves[trade.Address] = struct{}{}
+	source := &recordingLogSource{fixtureLogSource: fixtureLogSource{logs: []types.Log{trade, impostor}, failTopicOnly: true}}
+	discoverer, err := NewDiscoverer(source, decoder, allEmitters.Factory, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := discoverer.Discover(context.Background(), 10, 10, known)
+	if err != nil {
+		t.Fatalf("Discover() error = %v, want the address-batched fallback to succeed", err)
+	}
+	if len(result.Logs) != 1 || result.Logs[0].Address != trade.Address {
+		t.Fatalf("logs = %+v, want only the known curve's trade", result.Logs)
+	}
+	batched := false
+	for _, query := range source.queries {
+		if len(query.Topics) > 0 && slices.Contains(query.Topics[0], trade.Topics[0]) && slices.Contains(query.Addresses, trade.Address) {
+			batched = true
+		}
+	}
+	if !batched {
+		t.Fatal("no address-batched curve query after the topic-only query failed")
+	}
+}
+
+func TestDiscovererReportsBothErrorsWhenCurveFallbackFails(t *testing.T) {
+	t.Parallel()
+	_, _, allEmitters := loadFixtureLogs(t)
+	decoder, _ := NewDecoder(1)
+	known := emptyEmitters(allEmitters.Factory)
+	known.Curves[common.HexToAddress("0xc0ffee")] = struct{}{}
+	// Every query fails with a capacity error down to one block, the fallback included.
+	discoverer, _ := NewDiscoverer(&fixtureLogSource{shrink: true, singleBlockCapacity: true}, decoder, allEmitters.Factory, 1)
+	_, err := discoverer.fetchByTopics(context.Background(), 10, 10, decoder.Topics(EmitterCurve), known.Curves)
+	if !errors.Is(err, ErrRPCCapacity) {
+		t.Fatalf("error = %v, want ErrRPCCapacity from the fallback", err)
 	}
 }
