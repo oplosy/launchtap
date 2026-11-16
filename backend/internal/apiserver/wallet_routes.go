@@ -160,7 +160,7 @@ func (r WalletRoutes) Register(api huma.API) {
 
 func walletAddress(value string) (common.Address, error) {
 	if !common.IsHexAddress(value) {
-		return common.Address{}, huma.Error422UnprocessableEntity("invalid wallet address")
+		return common.Address{}, apiProblem(http.StatusUnprocessableEntity, "invalid_address", "invalid wallet address")
 	}
 	return common.HexToAddress(value), nil
 }

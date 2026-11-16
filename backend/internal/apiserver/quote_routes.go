@@ -51,15 +51,15 @@ func (r QuoteRoutes) handle(ctx context.Context, in *quoteInput) (*quoteOutput, 
 		return nil, huma.Error503ServiceUnavailable("quote provider unavailable")
 	}
 	if !common.IsHexAddress(in.Token) {
-		return nil, huma.Error400BadRequest("invalid token address")
+		return nil, apiProblem(http.StatusBadRequest, "invalid_address", "invalid token address")
 	}
 	amount, err := parseCanonicalUint256(in.Body.Amount)
 	if err != nil {
-		return nil, huma.Error400BadRequest("amount must be a canonical uint256")
+		return nil, apiProblem(http.StatusBadRequest, "invalid_amount", "amount must be a canonical uint256")
 	}
 	side := in.Body.Side
 	if side != "buy" && side != "sell" {
-		return nil, huma.Error400BadRequest("side must be buy or sell")
+		return nil, apiProblem(http.StatusBadRequest, "invalid_side", "side must be buy or sell")
 	}
 	q, err := r.Provider.Quote(ctx, common.HexToAddress(in.Token), side == "buy", amount)
 	if err != nil {

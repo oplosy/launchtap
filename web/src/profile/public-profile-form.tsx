@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiClient, type AuthHeaders, type PublicProfileResponse } from "@/api/client";
 import { ApiProblem } from "@/api/problems";
-import { problemMessage } from "@/comments/comment-model";
 import { Badge, Button, Input } from "@/components/primitives";
+import { describeError } from "@/errors/describe";
 import { shortAddress } from "@/token/address";
 import {
   MAX_PUBLIC_WALLETS,
@@ -14,7 +14,7 @@ import {
 } from "./public-profile-model";
 
 function errorMessage(error: unknown) {
-  return problemMessage(error instanceof ApiProblem ? error.apiCode || undefined : undefined);
+  return describeError(error, { context: "profile" }).message;
 }
 
 /**

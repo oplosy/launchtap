@@ -1,4 +1,4 @@
-import { mapProblem } from "./problems";
+import { mapProblem, networkProblem } from "./problems";
 import type { AuthHeaders } from "./response-types";
 
 /** Sends API requests: base URL, auth headers, sensitive-query guard and problem mapping. */
@@ -38,7 +38,15 @@ export class ApiTransport {
     headers.set("Accept", accept);
     if (auth?.accessToken) headers.set("Authorization", `Bearer ${auth.accessToken}`);
     if (auth?.identityToken) headers.set("privy-id-token", auth.identityToken);
-    const response = await this.fetchImpl(url, { ...init, headers });
+    let response: Response;
+    try {
+      response = await this.fetchImpl(url, { ...init, headers });
+    } catch (cause) {
+      // An abort is the caller's decision, not a failure to report.
+      if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
+      if (init.signal?.aborted) throw cause;
+      throw networkProblem();
+    }
     if (!response.ok) {
       let body: unknown;
       try {
@@ -46,7 +54,7 @@ export class ApiTransport {
       } catch {
         body = undefined;
       }
-      throw mapProblem(response.status, body);
+      throw mapProblem(response.status, body, response.headers?.get("X-Request-ID") ?? null);
     }
     return response;
   }

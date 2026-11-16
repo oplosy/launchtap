@@ -211,7 +211,7 @@ func (r PublicRoutes) Register(api huma.API) {
 }
 func address(value string) (common.Address, error) {
 	if !common.IsHexAddress(value) {
-		return common.Address{}, huma.Error400BadRequest("invalid token address")
+		return common.Address{}, apiProblem(http.StatusBadRequest, "invalid_address", "invalid token address")
 	}
 	return common.HexToAddress(value), nil
 }
@@ -234,10 +234,10 @@ func mapReadError(ctx context.Context, err error) error {
 	return apiRequestProblem(ctx, http.StatusInternalServerError, "internal_error", "Request failed")
 }
 func apiProblem(status int, code, detail string) error {
-	return &huma.ErrorModel{Type: "urn:launchpad:problem:" + code, Title: http.StatusText(status), Status: status, Detail: detail}
+	return &huma.ErrorModel{Type: problemTypePrefix + code, Title: http.StatusText(status), Status: status, Detail: detail}
 }
 func apiRequestProblem(ctx context.Context, status int, code, detail string) error {
-	err := &huma.ErrorModel{Type: "urn:launchpad:problem:" + code, Title: http.StatusText(status), Status: status, Detail: detail}
+	err := &huma.ErrorModel{Type: problemTypePrefix + code, Title: http.StatusText(status), Status: status, Detail: detail}
 	if id := RequestID(ctx); id != "" {
 		err.Instance = "urn:launchpad:request:" + id
 	}

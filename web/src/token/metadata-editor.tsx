@@ -9,6 +9,7 @@ import { ApiClient, resolveApiAssetUrl } from "@/api/client";
 import { ApiProblem } from "@/api/problems";
 import { publicConfiguration } from "@/config/public";
 import { Button, ErrorState, Input, SafeImage } from "@/components/primitives";
+import { describeError, UserFacingError } from "@/errors/describe";
 import { useWalletReadiness } from "@/wallet/readiness";
 import {
   acceptableImageFile,
@@ -196,7 +197,7 @@ export function MetadataEditor({ token, onConflict }: Props) {
     setSaving(true);
     try {
       const accessToken = await getAccessToken();
-      if (!accessToken) throw new Error("Sign in again to refresh the access token.");
+      if (!accessToken) throw new UserFacingError("Sign in again to refresh the access token.");
       const client = new ApiClient({ baseUrl: configuration.apiBaseUrl });
       const auth = { accessToken, identityToken };
       const metadataResult = await client.updateTokenMetadata(
@@ -216,7 +217,14 @@ export function MetadataEditor({ token, onConflict }: Props) {
     } catch (cause) {
       if (cause instanceof ApiProblem && cause.code === "revision_conflict") {
         const client = new ApiClient({ baseUrl: configuration.apiBaseUrl });
-        const refreshed = await recoverMetadataConflict(client, token.address, onConflict);
+        let refreshed: Awaited<ReturnType<typeof recoverMetadataConflict>>;
+        try {
+          refreshed = await recoverMetadataConflict(client, token.address, onConflict);
+        } catch (reloadCause) {
+          // The save was refused and the latest version could not be loaded either.
+          setError(describeError(reloadCause, { context: "metadata" }).message);
+          return;
+        }
         setDescription(refreshed.description);
         setXUrl(refreshed.xUrl);
         setTelegramUrl(refreshed.telegramUrl);
@@ -232,7 +240,7 @@ export function MetadataEditor({ token, onConflict }: Props) {
         setNotice(
           "This token changed in another session. The latest token, metadata, and image revision were loaded; review them before resubmitting.",
         );
-      } else setError(cause instanceof Error ? cause.message : "The metadata update was rejected.");
+      } else setError(describeError(cause, { context: "metadata" }).message);
     } finally {
       setSaving(false);
     }

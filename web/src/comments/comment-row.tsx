@@ -3,25 +3,19 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ApiClient, type ReportReason } from "@/api/client";
-import { ApiProblem } from "@/api/problems";
 import { Badge } from "@/components/primitives";
 import { shortAddress } from "@/token/address";
 import { WatchlistAuthContext } from "@/watchlist/use-watchlist";
+import { describeError } from "@/errors/describe";
 import {
   authorLabel,
   nextVote,
-  problemMessage,
   scoreLabel,
-  voteProblemMessage,
   type CommentItem,
   type VoteValue,
 } from "./comment-model";
 
 const REPORT_REASONS: ReportReason[] = ["spam", "scam", "abuse", "other"];
-
-export function errorCode(error: unknown) {
-  return error instanceof ApiProblem ? error.apiCode || undefined : undefined;
-}
 
 function formatTime(iso: string) {
   const date = new Date(iso);
@@ -54,7 +48,7 @@ export function CommentRow({
       setReported(true);
       setMessage(null);
     } catch (error) {
-      setMessage(problemMessage(errorCode(error)));
+      setMessage(describeError(error, { context: "report" }).message);
     }
   };
   return (
@@ -137,7 +131,7 @@ function VoteControl({
       setVote(result.vote === 1 || result.vote === -1 ? result.vote : 0);
       onMessage(null);
     } catch (error) {
-      onMessage(voteProblemMessage(errorCode(error)));
+      onMessage(describeError(error, { context: "vote" }).message);
     } finally {
       setBusy(false);
     }

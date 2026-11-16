@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiClient, type AuthHeaders, type TelegramStatus } from "@/api/client";
 import { ApiProblem } from "@/api/problems";
 import { Button } from "@/components/primitives";
+import { describeError } from "@/errors/describe";
 import {
   isTelegramLink,
   telegramProblemMessage,
@@ -76,7 +77,7 @@ export function TelegramCard({
         await action(new ApiClient({ baseUrl }), await auth());
       } catch (error) {
         setMessage({
-          text: telegramProblemMessage(error instanceof ApiProblem ? error.apiCode : undefined),
+          text: describeError(error, { context: "telegram" }).message,
           error: true,
         });
         if (error instanceof ApiProblem && error.apiCode === "telegram_not_linked") load();

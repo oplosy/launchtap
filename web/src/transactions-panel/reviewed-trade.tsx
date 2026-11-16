@@ -7,12 +7,12 @@ import { parseDecimal } from "@/amounts";
 import { publicConfiguration } from "@/config/public";
 import { TradeUsdHint } from "@/market/usd-line";
 import { Button, Input } from "@/components/primitives";
+import { describeError, UserFacingError } from "@/errors/describe";
 import { useWalletReadiness } from "@/wallet/readiness";
 import { WalletConnectButton } from "@/wallet/connection-context";
 import type { PersistedTransactionAction } from "@/transaction-storage";
 import {
   classifyTransactionFailure,
-  decodeTransactionError,
   parseSlippageBps,
   sameReviewedWriteIntent,
   type ReviewedWriteIntent,
@@ -141,7 +141,7 @@ export function useReviewedWrite(
       currentChainId !== configuration.chainId ||
       walletAccounts[0]?.toLowerCase() !== account.address?.toLowerCase()
     )
-      throw new Error("Wallet or network changed. Review again after reconnecting.");
+      throw new UserFacingError("Wallet or network changed. Review again after reconnecting.");
   };
 
   const walletStillReviewed = async (reviewed: ReviewedWriteIntent) => {
@@ -254,7 +254,9 @@ export function useReviewedWrite(
       const failure = {
         status: classifyTransactionFailure(cause, phase),
         hash: submittedHash ?? fallbackHash,
-        error: decodeTransactionError(cause).message,
+        // Only a failure while waiting for the receipt leaves the outcome unknown; an earlier
+        // approval's hash does not make a later pre-signature failure ambiguous.
+        error: describeError(cause, { submitted: (phase as FailurePhase) === "receipt" }).message,
       } satisfies TransactionState;
       if (approving && approval) approval.setState(failure);
       else setState(failure);
