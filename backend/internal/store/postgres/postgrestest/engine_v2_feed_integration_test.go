@@ -15,9 +15,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// TestEngineV2SwapsReachFeedTrendingAndAttribution pins that V4 swaps of a graduated engine-2
-// token show up in the reads that union base tables directly instead of using market_trades.
-func TestEngineV2SwapsReachFeedTrendingAndAttribution(t *testing.T) {
+// TestEngineV2ReadsCoverV4SwapsAndFeeRecipients pins that V4 swaps of a graduated engine-2
+// token show up in the reads that union base tables directly instead of using market_trades,
+// that the PoolManager and locker never get a position, and that profile curve claims follow the
+// engine-2 per-account fee balance.
+func TestEngineV2ReadsCoverV4SwapsAndFeeRecipients(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
@@ -93,6 +95,56 @@ func TestEngineV2SwapsReachFeedTrendingAndAttribution(t *testing.T) {
 	}
 	if managers != 1 || excludedQueued != 0 {
 		t.Fatalf("pool managers = %d, queued PoolManager/locker positions = %d; want 1 and 0", managers, excludedQueued)
+	}
+
+	// Profile curve claims follow the per-account engine-2 balance (the fee recipient can change),
+	// not "creator gets every trade fee less every claim". The fixture claims everything, so
+	// leave the accepted (non-creator) recipient something owed.
+	if _, err := database.DB.ExecContext(ctx, `UPDATE creator_fee_balances AS balance SET curve_eth_owed = 7
+		FROM tokens AS token WHERE balance.chain_id=$1 AND token.chain_id=balance.chain_id
+		AND token.token_address=balance.token_address AND balance.account <> token.creator
+		AND balance.account <> token.protocol_treasury`, chainID); err != nil {
+		t.Fatalf("seed recipient balance: %v", err)
+	}
+	balances, err :=database.DB.QueryContext(ctx, "SELECT account, curve_eth_owed::text FROM creator_fee_balances WHERE chain_id=$1", chainID)
+	if err != nil {
+		t.Fatalf("read creator fee balances: %v", err)
+	}
+	owed := map[string]string{}
+	for balances.Next() {
+		var account []byte
+		var amount string
+		if err := balances.Scan(&account, &amount); err != nil {
+			t.Fatalf("scan balance: %v", err)
+		}
+		owed[string(account)] = amount
+	}
+	if err := balances.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var positive int
+	for account, want := range owed {
+		rows, err := queries.ListProfileActions(ctx, sqlc.ListProfileActionsParams{ChainID: chainID, Wallets: [][]byte{[]byte(account)}})
+		if err != nil {
+			t.Fatalf("profile actions: %v", err)
+		}
+		got := "0"
+		if len(rows) == 1 {
+			value, err := rows[0].CreatorFeeAmount.Value()
+			if err != nil {
+				t.Fatal(err)
+			}
+			got = value.(string)
+		}
+		if want != "0" {
+			positive++
+		}
+		if len(rows) > 1 || got != want {
+			t.Fatalf("profile creator fee for %x = %s (%d rows), want curve balance %s", account, got, len(rows), want)
+		}
+	}
+	if len(owed) < 2 || positive == 0 {
+		t.Fatalf("creator fee balances = %v, want the creator and the accepted recipient with something owed", owed)
 	}
 
 	if complete, err := queries.WalletAttributionComplete(ctx, chainID); err != nil || !complete {

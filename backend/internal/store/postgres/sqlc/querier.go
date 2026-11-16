@@ -289,6 +289,11 @@ type Querier interface {
 	// The precomputed ranking of ListLeaderboardWindow (docs/specs/2026-11-14-windowed-leaderboard-preflight.md),
 	// usernames joined at read time.
 	ListPrecomputedLeaderboardWindow(ctx context.Context, arg ListPrecomputedLeaderboardWindowParams) ([]ListPrecomputedLeaderboardWindowRow, error)
+	// Curve claims the signed-in wallets can make. Engine 1: the creator is owed every trade's
+	// creator fee less its claims. Engine 2: the fee recipient can change (FeeRecipientAccepted), so
+	// read each account's curve balance (creator_fee_balances.curve_eth_owed, mirroring the curve's
+	// creatorFeesOwed). LpFeeLocker fees are claimed from the locker, not the curve, so they are not
+	// a curve action here.
 	ListProfileActions(ctx context.Context, arg ListProfileActionsParams) ([]ListProfileActionsRow, error)
 	ListProtocolDaily(ctx context.Context, arg ListProtocolDailyParams) ([]ListProtocolDailyRow, error)
 	// ETH the contracts credit to the protocol, per engine, earned basis
