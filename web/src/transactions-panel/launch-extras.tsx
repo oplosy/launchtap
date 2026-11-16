@@ -6,6 +6,7 @@ import type { Address } from "viem";
 import { ApiClient } from "@/api/client";
 import { publicConfiguration } from "@/config/public";
 import { Button } from "@/components/primitives";
+import { describeError } from "@/errors/describe";
 import { WatchlistAuthContext } from "@/watchlist/use-watchlist";
 import {
   acceptableImageFile,
@@ -97,7 +98,10 @@ export function useLaunchExtras(links: { xUrl: string; telegramUrl: string }) {
       setAttach({ status: "done", token });
     } catch (cause) {
       const step = cause instanceof AttachError ? cause.step : from;
-      const message = cause instanceof Error ? cause.message : "Saving the details failed.";
+      const message =
+        cause instanceof AttachError
+          ? cause.message
+          : describeError(cause, { context: "launch-details" }).message;
       setAttach({ status: "failed", token, step, message });
     }
   };

@@ -1,6 +1,7 @@
 import { parseEventLogs, type Abi, type Address, type TransactionReceipt } from "viem";
 import type { ApiClient, AuthHeaders } from "@/api/client";
 import { ApiProblem } from "@/api/problems";
+import { apiMessages, apiReferenceCodes, contextMessages } from "@/errors/catalog";
 
 /**
  * Off-chain details a creator attaches at launch. They are written after the launch receipt
@@ -57,12 +58,18 @@ export class AttachError extends Error {
 }
 
 function attachMessage(step: AttachStep, cause: unknown) {
-  if (cause instanceof ApiProblem && cause.apiCode === "creator_required")
-    return "The signed-in account does not own the launching wallet, so the server refused the details.";
-  if (cause instanceof ApiProblem && cause.code === "authentication_required")
-    return "Sign in again, then retry.";
-  if (cause instanceof ApiProblem && cause.code === "rate_limited")
-    return "Too many writes in a minute. Wait a moment, then retry.";
+  if (cause instanceof ApiProblem) {
+    const words = contextMessages["launch-details"];
+    const contextual =
+      words[cause.apiCode] ??
+      (cause.code === "authentication_required" ? words.authentication_failed : undefined);
+    if (contextual) return contextual;
+    // A refusal that names what to fix (image, links, network) says so; a 404 while waiting
+    // for the indexer is the step's own message below.
+    const specific =
+      apiMessages[cause.apiCode] && !apiReferenceCodes.has(cause.apiCode) && cause.status !== 404;
+    if (specific) return `${cause.message} Retry, or set the details from the token page.`;
+  }
   if (step === "index") return "The new token is not indexed yet. Retry in a moment.";
   if (step === "image") return "The image upload failed. Retry, or set it from the token page.";
   return "Saving the details failed. Retry, or set them from the token page.";

@@ -34,6 +34,20 @@ Clients must ignore unknown properties, unknown enum values and unknown SSE even
 
 Descriptions, examples, tags and `readOnly` flags are never breaking.
 
+## Errors
+
+Every error is an RFC 9457 problem (`application/problem+json`). Its `type` is
+`urn:launchpad:problem:<code>`, where `<code>` is stable and is what clients branch on; `title` and
+`detail` are for developers and may change. Errors without a route-specific code carry a code for
+their status (`invalid_request` for 422, `rate_limited` for 429, `internal_error` for 500, …; see
+`problemCodeForStatus` in `backend/internal/apiserver/problem_codes.go`). Every response carries
+`X-Request-ID`, exposed to browsers through CORS, so a user can quote it to support.
+
+Removing a code or changing what it means is breaking; adding a code is not, and clients must show
+a generic message for a code they do not know. The web client words every code in
+`web/src/errors/catalog.ts`; `catalog.test.ts` fails when the backend sends a code it has no
+sentence for. Decision record: `docs/specs/2026-11-16-user-error-messages-preflight.md`.
+
 ## Making a change
 
 All commands run in `backend/`.

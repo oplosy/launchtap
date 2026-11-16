@@ -1,4 +1,5 @@
 import { formatBaseUnits, parseDecimal } from "@/amounts";
+import { apiFallbackMessage, apiMessages, contextMessages } from "@/errors/catalog";
 
 // Mirrors internal/telegram MinTradeWei and MaxTradeWei (0.5 ETH and 10,000 ETH).
 const MIN_TRADE_WEI = 500_000_000_000_000_000n;
@@ -31,13 +32,8 @@ export function isTelegramLink(url: string): boolean {
   }
 }
 
+/** The Telegram-context sentence for an API problem code (errors/catalog.ts). */
 export function telegramProblemMessage(code: string | undefined): string {
-  switch (code) {
-    case "telegram_not_linked":
-      return "Telegram is not connected any more. Connect it again.";
-    case "invalid_threshold":
-      return "Enter a trade size from 0.5 to 10,000 ETH.";
-    default:
-      return "Your Telegram settings could not be saved. Try again shortly.";
-  }
+  const fallback = contextMessages.telegram.fallback ?? apiFallbackMessage;
+  return (code && (contextMessages.telegram[code] ?? apiMessages[code])) || fallback;
 }

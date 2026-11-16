@@ -14,7 +14,8 @@ import {
 } from "./comment-rules";
 import { appendPage, mergeFirstPage, problemMessage, type CommentItem } from "./comment-model";
 
-import { CommentRow, errorCode, type AuthValue, type ClientRef } from "./comment-row";
+import { describeError } from "@/errors/describe";
+import { CommentRow, type AuthValue, type ClientRef } from "./comment-row";
 /** Window over which live `comment` hints collapse into one first-page refetch. */
 export const COMMENT_REFETCH_COALESCE_MS = 500;
 const PAGE_SIZE = 20;
@@ -67,7 +68,8 @@ export function CommentPanel({
     const controller = new AbortController();
     loadFirstPage(false, controller.signal)
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) setListError(problemMessage(errorCode(error)));
+        if (!controller.signal.aborted)
+          setListError(describeError(error, { context: "comment" }).message);
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -104,7 +106,7 @@ export function CommentPanel({
       setItems((current) => appendPage(current, page.items ?? []));
       setNextCursor(page.next_cursor ?? null);
     } catch (error) {
-      setListError(problemMessage(errorCode(error)));
+      setListError(describeError(error, { context: "comment" }).message);
     } finally {
       setLoadingMore(false);
     }
@@ -203,7 +205,10 @@ function CommentComposer({
         setWallet(data.eligible_wallets?.[0]?.address ?? "");
       } catch (err) {
         if (!controller.signal.aborted)
-          setEligibility({ state: "error", message: problemMessage(errorCode(err)) });
+          setEligibility({
+            state: "error",
+            message: describeError(err, { context: "comment" }).message,
+          });
       }
     })();
     return () => controller.abort();
@@ -263,7 +268,7 @@ function CommentComposer({
       setText("");
       onPosted(posted);
     } catch (err) {
-      setError(problemMessage(errorCode(err)));
+      setError(describeError(err, { context: "comment" }).message);
     } finally {
       setPosting(false);
     }

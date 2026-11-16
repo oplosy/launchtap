@@ -79,7 +79,13 @@ export function TransactionProgress({
         {statusLabel(state.status)}
       </Badge>
       {state.hash ? <span className="mono">{state.hash}</span> : null}
-      {state.error ? <ErrorCopy error={new Error(state.error)} /> : null}
+      {/* state.error is already a catalog sentence (describeError); decoding it again would
+          turn app-written messages into the generic fallback. */}
+      {state.error ? (
+        <p className="transaction-error" role="alert">
+          {state.error}
+        </p>
+      ) : null}
       {refreshNotice && state.canonicalRefreshUnavailable ? (
         <span className="transaction-error" role="alert">
           Canonical status refresh unavailable. Showing the last known status.

@@ -113,7 +113,7 @@ func New(cfg Config, ready Readiness, logger *slog.Logger) *Server {
 	})
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		if ready == nil || ready.Ready(r.Context()) != nil {
-			problem(w, http.StatusServiceUnavailable, "service not ready", RequestID(r.Context()))
+			problem(w, http.StatusServiceUnavailable, "not_ready", "service not ready", RequestID(r.Context()))
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -236,7 +236,7 @@ func middleware(mux *http.ServeMux, cfg Config, limiter *RateLimiter, logger *sl
 		ctx = context.WithValue(ctx, clientKeyContextKey, clientKey)
 		defer func() {
 			if v := recover(); v != nil {
-				problem(rw, http.StatusInternalServerError, "internal server error", id)
+				problem(rw, http.StatusInternalServerError, "internal_error", "internal server error", id)
 				logger.Error("panic recovered", "request_id", id)
 			}
 			metrics.ObserveRequest(route, r.Method, status, time.Since(started))
@@ -248,7 +248,7 @@ func middleware(mux *http.ServeMux, cfg Config, limiter *RateLimiter, logger *sl
 		if r.Method == http.MethodOptions {
 			route = routePreflight
 			if !cors(rw, cfg.AllowedOrigins, r) {
-				problem(rw, http.StatusForbidden, "origin not allowed", id)
+				problem(rw, http.StatusForbidden, "origin_not_allowed", "origin not allowed", id)
 				return
 			}
 			rw.WriteHeader(http.StatusNoContent)
@@ -259,7 +259,7 @@ func middleware(mux *http.ServeMux, cfg Config, limiter *RateLimiter, logger *sl
 			if allowed, wait := limiter.Allow(clientKey, time.Now()); !allowed {
 				route = routeRateLimited
 				rw.Header().Set("Retry-After", strconv.Itoa(max(1, int(wait.Round(time.Second)/time.Second))))
-				problem(rw, http.StatusTooManyRequests, "rate limit exceeded", id)
+				problem(rw, http.StatusTooManyRequests, "rate_limited", "rate limit exceeded", id)
 				return
 			}
 		}
@@ -318,15 +318,19 @@ func cors(w http.ResponseWriter, origins []string, r *http.Request) bool {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization,Content-Type,privy-id-token,If-Match,If-None-Match")
-			w.Header().Set("Access-Control-Expose-Headers", "ETag, X-Revision, Retry-After")
+			// X-Request-ID lets the web app show a reference a user can quote to support.
+			w.Header().Set("Access-Control-Expose-Headers", "ETag, X-Revision, Retry-After, X-Request-ID")
 			return true
 		}
 	}
 	return false
 }
-func problem(w http.ResponseWriter, status int, detail, requestID string) {
+
+// problem writes a problem response from the middleware, outside huma. code is the stable problem
+// code clients key on (docs/specs/2026-11-16-user-error-messages-preflight.md).
+func problem(w http.ResponseWriter, status int, code, detail, requestID string) {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.Header().Set("X-Request-ID", requestID)
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{"type": "about:blank", "title": http.StatusText(status), "status": status, "detail": detail, "request_id": requestID})
+	_ = json.NewEncoder(w).Encode(map[string]any{"type": problemTypePrefix + code, "title": http.StatusText(status), "status": status, "detail": detail, "request_id": requestID})
 }

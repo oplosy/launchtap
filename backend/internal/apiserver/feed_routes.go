@@ -170,7 +170,7 @@ func (r FeedRoutes) recent(ctx context.Context, in *recentTradesInput) (*recentT
 		limit = defaultRecentTrades
 	}
 	if limit < 1 || limit > maxRecentTrades {
-		return nil, huma.Error422UnprocessableEntity("limit must be between 1 and 100")
+		return nil, apiProblem(http.StatusUnprocessableEntity, "invalid_limit", "limit must be between 1 and 100")
 	}
 	page, err := r.Reader.RecentTradesSnapshot(ctx, r.ChainID, limit)
 	if err != nil {

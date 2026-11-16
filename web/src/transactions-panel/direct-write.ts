@@ -1,9 +1,6 @@
 import type { Abi } from "viem";
-import {
-  classifyTransactionFailure,
-  decodeTransactionError,
-  type TransactionState,
-} from "@/transactions";
+import { describeError, UserFacingError } from "@/errors/describe";
+import { classifyTransactionFailure, type TransactionState } from "@/transactions";
 import type { Address } from "./shared";
 
 /** A single contract call with no review step: claims and creator-role actions. */
@@ -67,7 +64,7 @@ export async function runDirectWrite({
       publicClient.getChainId(),
     ]);
     if (latestChainId !== chainId || walletAccounts[0]?.toLowerCase() !== account.toLowerCase())
-      throw new Error(changedMessage);
+      throw new UserFacingError(changedMessage);
     await preflight?.();
     setState({ status: "simulating" });
     phase = "simulation";
@@ -88,7 +85,7 @@ export async function runDirectWrite({
     setState({
       status: classifyTransactionFailure(cause, phase),
       hash: submittedHash,
-      error: decodeTransactionError(cause).message,
+      error: describeError(cause, { submitted: Boolean(submittedHash) }).message,
     });
     return false;
   }

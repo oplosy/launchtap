@@ -58,7 +58,7 @@ func (r TokenRoutes) list(ctx context.Context, in *tokenListInput) (*tokenListOu
 		limit = 20
 	}
 	if limit < 1 || limit > 100 {
-		return nil, huma.Error400BadRequest("limit must be between 1 and 100")
+		return nil, apiProblem(http.StatusBadRequest, "invalid_limit", "limit must be between 1 and 100")
 	}
 	if in.Phase == "" {
 		in.Phase = "curve"

@@ -1,4 +1,5 @@
 import type { components } from "@/api/generated";
+import { apiFallbackMessage, apiMessages, contextMessages } from "@/errors/catalog";
 import { walletPath } from "@/portfolio/wallet-model";
 import { shortAddress } from "@/token/address";
 
@@ -60,28 +61,10 @@ export function authorLabel(author: CommentItem["author"]): {
   return { primary, walletHref: wallet ? walletPath(wallet) : null };
 }
 
-const PROBLEM_MESSAGES: Record<string, string> = {
-  authentication_failed: "Sign in again to continue.",
-  wallet_not_linked: "That wallet is not linked to your account.",
-  not_holder: "Only holders and the creator of this token can comment.",
-  banned: "Your account cannot post or report comments.",
-  token_not_found: "This token is no longer available.",
-  comment_not_found: "That comment is no longer available.",
-  invalid_comment: "This comment breaks a posting rule.",
-  invalid_cursor: "The comment list changed. Refresh to continue.",
-  invalid_limit: "The comment list request was invalid.",
-  invalid_report: "Choose a report reason.",
-  own_comment: "You cannot report your own comment.",
-  rate_limited: "You are posting too fast. Try again shortly.",
-  username_taken: "That username is taken.",
-  invalid_username: "Usernames are 3-20 characters of a-z, 0-9 and _.",
-  username_reserved: "That username is reserved.",
-  too_many_public_wallets: "You can publish at most 5 wallets.",
-};
-
-/** One sentence for each API problem code the comment and profile routes return. */
+/** The comment-context sentence for an API problem code (errors/catalog.ts). */
 export function problemMessage(code: string | undefined): string {
-  return (code && PROBLEM_MESSAGES[code]) || "Something went wrong. Try again.";
+  const words = contextMessages.comment;
+  return (code && (words[code] ?? apiMessages[code])) || words.fallback || apiFallbackMessage;
 }
 
 /** Vote values: 1 up, -1 down, 0 none (docs/specs/2026-11-12-comment-votes-design.md). */
@@ -96,14 +79,7 @@ export function scoreLabel(score: number): string {
   return `${score} ${score === 1 ? "point" : "points"}`;
 }
 
-const VOTE_PROBLEM_MESSAGES: Record<string, string> = {
-  not_holder: "Hold this token to vote on its comments.",
-  own_comment: "You cannot vote on your own comment.",
-  rate_limited: "You are voting too fast. Try again shortly.",
-  invalid_vote: "Choose up or down.",
-};
-
 /** Vote refusals in vote terms; other codes read as in problemMessage. */
 export function voteProblemMessage(code: string | undefined): string {
-  return (code && VOTE_PROBLEM_MESSAGES[code]) || problemMessage(code);
+  return (code && contextMessages.vote[code]) || problemMessage(code);
 }
