@@ -25,16 +25,36 @@
 - **Related files:** `contracts/src/v2/BondingCurveV2.sol` (`_mintPosition`), `deploy/Caddyfile`,
   `deploy/compose.yaml`, `backend/internal/chain/discovery.go`, `web/src/transactions-panel/`.
 - **Resume (next step):**
-  1. Highest value, locally actionable: Foundry test for the V2 graduation ETH-delta underflow
-     (`contracts/src/v2:graduation-mint-eth-delta`, `v2-bonding-curve/graduation-positionmanager-stray-eth-sweep`):
-     `vm.deal(address(positionManager), S)` before the graduating buy, S above and below the
-     settled ETH. If it reverts, measure ETH spent from the PositionManager delta, not the
-     curve balance (high-risk contract change: pre-flight + review).
+  1. ~~V2 graduation ETH-delta underflow~~: confirmed and fixed on `task/audit-p0-fixes`
+     (`docs/specs/2026-11-16-v2-graduation-sweep-preflight.md`). Close both leads once merged.
   2. Web leads with a vitest plan (stale async prepare, sell submission guard, launch attach
      snapshot, launch profile rebind): write the scratch tests from the plans and fix what fails.
   3. Owner facts: Caddy XFF append at the pinned image, effective rate-limit env and edge
      limits, Privy one-DID-per-wallet policy, RPC provider eth_getLogs limits.
 - **Pitfalls / notes:** Do not send live traffic to validate; the plans are configuration-only.
+
+### AUDIT_REPORT_TR follow-ups after the P0 pass
+
+- **Date:** 2026-11-16
+- **Reason:** scope decision (P0 pass landed on `task/audit-p0-fixes`; the rest is P1/P2)
+- **Where it stopped:** fixed and tested: CRIT-01, MED-09, CRIT-02, HIGH-01, HIGH-02 (feed,
+  trending, sweeper, attribution), HIGH-03, MED-14, HIGH-09, HIGH-10 (curve fees). Verified in
+  code, not fixed: HIGH-04 (`ratelimit.go` `clear(l.buckets)`), HIGH-05 (`engine.go:279` retries
+  only `ErrRPCUnhealthy`), HIGH-07 (`projections.sql` unclamped `price_change_24h_bps::BIGINT`).
+- **Related files:** `AUDIT_REPORT_TR.md` (untracked, sections 3 and 8), `backend/internal/indexer/`,
+  `backend/internal/apiserver/ratelimit.go`, `backend/internal/store/postgres/queries/`.
+- **Resume (next step):**
+  1. HIGH-07: clamp the SQL to ±(2^53-1) like `stats.ComputeTokenStats`, with an integration test.
+  2. HIGH-05: make mid-step `ErrCanonicalMismatch` retryable in `Engine.Run`; test a reorg between
+     header batches.
+  3. HIGH-04: evict oldest buckets instead of `clear`.
+  4. Then validate the unverified ones (HIGH-06 deadlock, HIGH-08 PnL via transfers, HIGH-11
+     same-block funding, HIGH-13/14 indexes and N+1, MED-*) before fixing.
+- **Pitfalls / notes:** Deliberately left: HIGH-12 (V4 `eth_reserve` falls back to initial
+  virtual reserves; the web already hides reserves when liquidity is not indexed, so fixing it
+  is a public API change to nullable fields) and the SSE graduation `pair` of engine-2 tokens
+  (zero address; same API-shape decision). The report's HIGH-01 fix (drop SWEEP) is wrong; see the
+  spec above.
 
 ### P0-A external inputs: CoinGecko key and market-link identifiers
 
