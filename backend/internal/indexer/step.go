@@ -191,7 +191,9 @@ func (e *Engine) verifySavedBlocks(ctx context.Context, state State) (recovered 
 }
 
 // readChunk reads the next chunk's headers up to latest and links each to its parent. A
-// broken link starts reorg recovery and reports recovered.
+// broken link to the saved Observed block starts reorg recovery and reports recovered; a
+// broken link inside the chunk (headers read across a reorg, nothing saved yet) is a
+// canonical mismatch the next step re-reads.
 func (e *Engine) readChunk(ctx context.Context, state State, latest ledger.IndexedBlock) (chunk stepChunk, recovered bool, err error) {
 	from := e.settings.StartBlock
 	if state.Observed != nil {
@@ -222,6 +224,9 @@ func (e *Engine) readChunk(ctx context.Context, state State, latest ledger.Index
 			return stepChunk{}, false, errors.New("RPC header number differs from requested number")
 		}
 		if previous != nil && block.ParentHash != previous.BlockHash {
+			if number > from {
+				return stepChunk{}, false, fmt.Errorf("%w: chunk header %d does not link to unsaved block %d", ErrCanonicalMismatch, number, previous.BlockNumber)
+			}
 			if state.Safe != nil && previous.BlockNumber <= state.Safe.BlockNumber {
 				return stepChunk{}, false, ErrSafeViolation
 			}

@@ -258,11 +258,13 @@ type Querier interface {
 	// chain's V4 PoolManager are never ranked. The factory is never marked dirty, so it never has
 	// totals.
 	// Only wallets with a positive realized PnL rank; fewer than page_size rows is normal. Ties are
-	// broken by wallet address, so the order is deterministic.
+	// broken by wallet address, so the order is deterministic. The ranked PnL leaves out positions
+	// that received tokens by transfer (zero cost basis, AUDIT_REPORT_TR HIGH-08).
 	ListLeaderboard(ctx context.Context, arg ListLeaderboardParams) ([]ListLeaderboardRow, error)
 	// Rolling-window variant of ListLeaderboard: sums the realized PnL of legs whose block time is
-	// within window_days of the transaction's clock (now()). Same exclusions, positive-only rule and
-	// tie-break. tokens_traded counts distinct tokens with a realized leg in the window.
+	// within window_days of the transaction's clock (now()). Same exclusions (including positions
+	// that received tokens by transfer), positive-only rule and tie-break. tokens_traded counts
+	// distinct tokens with a realized leg in the window.
 	ListLeaderboardWindow(ctx context.Context, arg ListLeaderboardWindowParams) ([]ListLeaderboardWindowRow, error)
 	ListLockerOwed(ctx context.Context, arg ListLockerOwedParams) ([]ListLockerOwedRow, error)
 	ListMarketTrades(ctx context.Context, arg ListMarketTradesParams) ([]ListMarketTradesRow, error)

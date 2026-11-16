@@ -468,6 +468,8 @@ VALUES (sqlc.arg(chain_id), sqlc.arg(wallet), sqlc.arg(token_address), sqlc.arg(
 -- name: RecomputeWalletTotals :exec
 WITH aggregate AS (
     SELECT p.chain_id, p.wallet, sum(p.realized_pnl) AS realized_pnl,
+        -- The leaderboard skips positions that received tokens by transfer (zero cost basis).
+        COALESCE(sum(p.realized_pnl) FILTER (WHERE p.transferred_in = 0), 0) AS leaderboard_realized_pnl,
         count(*) FILTER (WHERE p.trade_count > 0) AS tokens_traded,
         count(*) FILTER (WHERE p.balance > 0) AS held_count,
         min(p.first_block_number) AS first_block_number,
@@ -480,10 +482,10 @@ WITH aggregate AS (
     WHERE totals.chain_id = sqlc.arg(chain_id)::bigint AND totals.wallet = sqlc.arg(wallet)::bytea
       AND NOT EXISTS (SELECT 1 FROM aggregate)
 )
-INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
-SELECT chain_id, wallet, realized_pnl, tokens_traded, held_count, first_block_number, last_block_number FROM aggregate
+INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, leaderboard_realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
+SELECT chain_id, wallet, realized_pnl, leaderboard_realized_pnl, tokens_traded, held_count, first_block_number, last_block_number FROM aggregate
 ON CONFLICT (chain_id, wallet) DO UPDATE SET
-    realized_pnl = EXCLUDED.realized_pnl, tokens_traded = EXCLUDED.tokens_traded, held_count = EXCLUDED.held_count,
+    realized_pnl = EXCLUDED.realized_pnl, leaderboard_realized_pnl = EXCLUDED.leaderboard_realized_pnl, tokens_traded = EXCLUDED.tokens_traded, held_count = EXCLUDED.held_count,
     first_block_number = EXCLUDED.first_block_number, last_block_number = EXCLUDED.last_block_number;
 
 -- name: RecomputeTokensStats :exec
@@ -609,9 +611,13 @@ SELECT chain_id, token_address,
    ELSE launch_block_time
  END,
  volume_24h,
+ -- Saturates at the JS-safe range (token_stats_price_change_24h_bps_js_safe_range) instead of
+ -- failing: a dust baseline can make the change unbounded, and an error would fail this token's
+ -- recompute forever. Mirrors stats.ComputeTokenStats.
  CASE
    WHEN baseline_price > 0 AND latest_price IS NOT NULL
-     THEN trunc((latest_price - baseline_price) * 10000 / baseline_price)::BIGINT
+     THEN LEAST(9007199254740991, GREATEST(-9007199254740991,
+            trunc((latest_price - baseline_price) * 10000 / baseline_price)))::BIGINT
    ELSE 0
  END,
  holder_count,
@@ -895,6 +901,11 @@ FROM (
         FROM wallet_realized_legs AS l
         WHERE l.chain_id = sqlc.arg(chain_id)
           AND l.block_time >= now() - make_interval(days => sqlc.arg(window_days)::integer)
+          AND NOT EXISTS (
+              SELECT 1 FROM wallet_positions AS p
+              WHERE p.chain_id = l.chain_id AND p.wallet = l.wallet AND p.token_address = l.token_address
+                AND p.transferred_in > 0
+          )
         GROUP BY l.wallet
     ) AS w
     WHERE w.realized_pnl > 0

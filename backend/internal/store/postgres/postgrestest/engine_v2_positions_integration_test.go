@@ -179,8 +179,8 @@ func TestLeaderboardExcludesV4Infrastructure(t *testing.T) {
 	trader := common.HexToAddress("0x00000000000000000000000000000000000000d9")
 	for _, wallet := range []common.Address{v2FixturePoolManager, v2FixtureLocker, trader} {
 		if _, err := database.DB.ExecContext(ctx, `
-			INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
-			VALUES ($1, $2, 5, 1, 0, 9, 9)`, chainID, wallet[:]); err != nil {
+			INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, leaderboard_realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
+			VALUES ($1, $2, 5, 5, 1, 0, 9, 9)`, chainID, wallet[:]); err != nil {
 			t.Fatalf("seed totals: %v", err)
 		}
 		if _, err := database.DB.ExecContext(ctx, `

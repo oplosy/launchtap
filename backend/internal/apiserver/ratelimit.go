@@ -5,6 +5,7 @@ import (
 	"math"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,9 @@ const (
 	clientKeyContextKey  ctxKey = "client_key"
 	maxRateLimiterKeys          = 100_000
 	rateLimiterIdleAfter        = 10 * time.Minute
+	// rateLimiterEvictBatch is how many least-recently-seen keys a full limiter drops at once,
+	// so a key flood pays the eviction sort once per batch instead of once per request.
+	rateLimiterEvictBatch = maxRateLimiterKeys / 10
 )
 
 // ClientKey returns the rate-limit identity resolved by the middleware for this request.
@@ -114,17 +118,32 @@ func (l *RateLimiter) Allow(key string, now time.Time) (bool, time.Duration) {
 	return true, 0
 }
 
+// evictIdle makes room for a new key without resetting a throttled client. It drops idle keys
+// and keys whose bucket has refilled to burst (forgetting them changes nothing), then, if a key
+// flood still fills the map, the least recently seen keys. A client that is being throttled
+// right now is seen most recently, so it keeps its empty bucket.
 func (l *RateLimiter) evictIdle(now time.Time) {
 	for key, bucket := range l.buckets {
-		if now.Sub(bucket.seen) >= rateLimiterIdleAfter {
+		refilled := bucket.tokens + math.Max(0, now.Sub(bucket.seen).Seconds())*l.rate
+		if now.Sub(bucket.seen) >= rateLimiterIdleAfter || refilled >= l.burst {
 			delete(l.buckets, key)
 		}
 	}
 	if len(l.buckets) < maxRateLimiterKeys {
 		return
 	}
-	// Under a key-flooding attack, forget everyone rather than grow without bound.
-	clear(l.buckets)
+	type seenKey struct {
+		key  string
+		seen time.Time
+	}
+	keys := make([]seenKey, 0, len(l.buckets))
+	for key, bucket := range l.buckets {
+		keys = append(keys, seenKey{key, bucket.seen})
+	}
+	slices.SortFunc(keys, func(a, b seenKey) int { return a.seen.Compare(b.seen) })
+	for _, oldest := range keys[:min(rateLimiterEvictBatch, len(keys))] {
+		delete(l.buckets, oldest.key)
+	}
 }
 
 // StreamLimiter caps concurrent long-lived streams per client so one client cannot exhaust

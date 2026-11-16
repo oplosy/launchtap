@@ -96,17 +96,30 @@ func Resolve(ctx context.Context, chain Chain, wallet common.Address, head uint6
 		return Result{}, fmt.Errorf("read balance: %w", err)
 	}
 	if !funded {
-		if sent {
-			out.Status = StatusUnknown
-		} else {
+		if !sent {
 			out.Status = StatusUnfunded
+			return out, nil
 		}
+		// Empty before its first send: the wallet was funded earlier in that same block (a
+		// sniper funded and buying in one block or bundle), or its send was sponsored. A
+		// sponsored send has no funding block, so Block stays unset.
+		sameBlock, err := fundedIn(ctx, chain, wallet, upper+1, out)
+		if err != nil || sameBlock.Status == StatusFunded {
+			return sameBlock, err
+		}
+		out.Status = StatusUnknown
 		return out, nil
 	}
 	block, err := firstBlock(ctx, upper, positive)
 	if err != nil {
 		return Result{}, fmt.Errorf("search first balance: %w", err)
 	}
+	return fundedIn(ctx, chain, wallet, block, out)
+}
+
+// fundedIn attributes the wallet's first incoming value transfer in block, or reports
+// StatusUnknown at block when the RPC shows none.
+func fundedIn(ctx context.Context, chain Chain, wallet common.Address, block uint64, out Result) (Result, error) {
 	out.Block = block
 	traced, err := chain.TracedTransfers(ctx, block)
 	if err != nil {

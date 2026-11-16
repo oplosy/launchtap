@@ -20,6 +20,11 @@ var ErrCanonicalMismatch = errors.New("canonical chain mismatch")
 var ErrSafeViolation = errors.New("canonical mismatch at or below safe head")
 var ErrRPCUnhealthy = errors.New("indexer RPC unavailable")
 
+// ErrStoreConflict marks a store transaction the database rolled back because it lost a
+// deadlock or serialization conflict with a concurrent writer (for example the stats worker
+// during reorg recovery). Nothing committed, so the step is retried.
+var ErrStoreConflict = errors.New("indexer store transaction conflict")
+
 // ForeignDeploymentError stops an indexer whose chain already holds state for another
 // deployment. The ledger and its reorg deletes are chain-scoped, so two deployments on one
 // chain in one database would delete each other's rows (one deployment per chain, pre-flight
@@ -40,8 +45,10 @@ const (
 	maxReorgSearchDepth     uint64 = 100000
 	// headerBatchSize stays within common provider JSON-RPC batch limits.
 	headerBatchSize = 100
-	// Transient RPC failures are retried in-process with capped exponential backoff; a long
-	// outage still exits so the orchestrator restarts the process and alerts.
+	// Transient RPC failures, canonical mismatches (a reorg landing mid-step, before anything
+	// committed) and store conflicts (a rolled-back deadlock victim) are retried in-process with capped exponential backoff; a long
+	// outage or a provider that never settles still exits so the orchestrator restarts the
+	// process and alerts.
 	maxRPCRetryDelay          = 30 * time.Second
 	maxConsecutiveRPCFailures = 20
 )
@@ -276,7 +283,7 @@ func (e *Engine) Run(ctx context.Context) error {
 	for {
 		advanced, err := e.Step(ctx)
 		if err != nil {
-			if !errors.Is(err, ErrRPCUnhealthy) || ctx.Err() != nil {
+			if !retryableStepError(err) || ctx.Err() != nil {
 				return err
 			}
 			failures++
@@ -296,6 +303,14 @@ func (e *Engine) Run(ctx context.Context) error {
 			return err
 		}
 	}
+}
+
+// retryableStepError reports a step failure that left no partial write and resolves on a
+// later step: an unhealthy RPC, a canonical mismatch from a reorg that landed between the
+// step's reads (the next step re-reads the saved blocks and recovers the reorg if it holds),
+// or a store transaction rolled back by a deadlock or serialization conflict.
+func retryableStepError(err error) bool {
+	return errors.Is(err, ErrRPCUnhealthy) || errors.Is(err, ErrCanonicalMismatch) || errors.Is(err, ErrStoreConflict)
 }
 
 func sleep(ctx context.Context, delay time.Duration) error {

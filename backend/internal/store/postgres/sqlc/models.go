@@ -855,13 +855,14 @@ type WalletRealizedLeg struct {
 }
 
 type WalletTotal struct {
-	ChainID          int64
-	Wallet           Address
-	RealizedPnl      pgtype.Numeric
-	TokensTraded     int64
-	HeldCount        int64
-	FirstBlockNumber int64
-	LastBlockNumber  int64
+	ChainID                int64
+	Wallet                 Address
+	RealizedPnl            pgtype.Numeric
+	TokensTraded           int64
+	HeldCount              int64
+	FirstBlockNumber       int64
+	LastBlockNumber        int64
+	LeaderboardRealizedPnl pgtype.Numeric
 }
 
 type WatchlistEntry struct {

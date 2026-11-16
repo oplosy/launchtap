@@ -67,8 +67,9 @@ func (f walletReaderFixture) position(wallet, token byte, balance, cost, realize
 }
 
 func (f walletReaderFixture) totals(wallet byte, realized, tokensTraded, held int64) {
-	f.ledger.exec(`INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
-		VALUES ($1, $2, $3, $4, $5, 10, 12)`, walletChainID, addressBytes(wallet), realized, tokensTraded, held)
+	// No fixture position received tokens by transfer, so the ranked PnL equals the realized PnL.
+	f.ledger.exec(`INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, leaderboard_realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
+		VALUES ($1, $2, $3, $3, $4, $5, 10, 12)`, walletChainID, addressBytes(wallet), realized, tokensTraded, held)
 }
 
 // seedWallets gives W three open positions and W2 three closed ones.
@@ -384,8 +385,8 @@ func TestLeaderboardRanksAndExcludesProtocol(t *testing.T) {
 	f.totals(0x31, 9999, 1, 0)
 	f.totals(0x41, 8888, 1, 0)
 	f.totals(0x42, 8887, 1, 0)
-	f.ledger.exec(`INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
-		VALUES ($1, decode(repeat('00', 20), 'hex'), 7777, 1, 0, 10, 12)`, walletChainID)
+	f.ledger.exec(`INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, leaderboard_realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
+		VALUES ($1, decode(repeat('00', 20), 'hex'), 7777, 7777, 1, 0, 10, 12)`, walletChainID)
 
 	page, err := f.reader.Leaderboard(ctx, walletChainID, wallet.WindowAll, 100)
 	if err != nil {

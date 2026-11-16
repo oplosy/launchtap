@@ -1014,18 +1014,18 @@ func (q *Queries) ListLaunchesAfter(ctx context.Context, arg ListLaunchesAfterPa
 }
 
 const listLeaderboard = `-- name: ListLeaderboard :many
-SELECT w.wallet, w.realized_pnl, w.tokens_traded, pu.username
+SELECT w.wallet, w.leaderboard_realized_pnl AS realized_pnl, w.tokens_traded, pu.username
 FROM wallet_totals AS w
 LEFT JOIN public_wallet_usernames AS pu
   ON pu.chain_id = w.chain_id AND pu.deployment_id = $1::text AND pu.wallet = w.wallet
 WHERE w.chain_id = $2
-  AND w.realized_pnl > 0
+  AND w.leaderboard_realized_pnl > 0
   AND w.wallet <> decode(repeat('00', 20), 'hex')
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.curve_address = w.wallet)
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.lp_pair = w.wallet)
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.locker = w.wallet)
   AND NOT EXISTS (SELECT 1 FROM v4_pool_managers AS m WHERE m.chain_id = w.chain_id AND m.pool_manager = w.wallet)
-ORDER BY w.realized_pnl DESC, w.wallet
+ORDER BY w.leaderboard_realized_pnl DESC, w.wallet
 LIMIT $3::integer
 `
 
@@ -1046,7 +1046,8 @@ type ListLeaderboardRow struct {
 // chain's V4 PoolManager are never ranked. The factory is never marked dirty, so it never has
 // totals.
 // Only wallets with a positive realized PnL rank; fewer than page_size rows is normal. Ties are
-// broken by wallet address, so the order is deterministic.
+// broken by wallet address, so the order is deterministic. The ranked PnL leaves out positions
+// that received tokens by transfer (zero cost basis, AUDIT_REPORT_TR HIGH-08).
 func (q *Queries) ListLeaderboard(ctx context.Context, arg ListLeaderboardParams) ([]ListLeaderboardRow, error) {
 	rows, err := q.db.Query(ctx, listLeaderboard, arg.DeploymentID, arg.ChainID, arg.PageSize)
 	if err != nil {
@@ -1078,6 +1079,11 @@ WITH windowed AS (
     FROM wallet_realized_legs AS l
     WHERE l.chain_id = $1
       AND l.block_time >= now() - make_interval(days => $4::integer)
+      AND NOT EXISTS (
+          SELECT 1 FROM wallet_positions AS p
+          WHERE p.chain_id = l.chain_id AND p.wallet = l.wallet AND p.token_address = l.token_address
+            AND p.transferred_in > 0
+      )
     GROUP BY l.wallet
 )
 SELECT w.wallet::bytea AS wallet, w.realized_pnl::numeric AS realized_pnl,
@@ -1110,8 +1116,9 @@ type ListLeaderboardWindowRow struct {
 }
 
 // Rolling-window variant of ListLeaderboard: sums the realized PnL of legs whose block time is
-// within window_days of the transaction's clock (now()). Same exclusions, positive-only rule and
-// tie-break. tokens_traded counts distinct tokens with a realized leg in the window.
+// within window_days of the transaction's clock (now()). Same exclusions (including positions
+// that received tokens by transfer), positive-only rule and tie-break. tokens_traded counts
+// distinct tokens with a realized leg in the window.
 func (q *Queries) ListLeaderboardWindow(ctx context.Context, arg ListLeaderboardWindowParams) ([]ListLeaderboardWindowRow, error) {
 	rows, err := q.db.Query(ctx, listLeaderboardWindow,
 		arg.ChainID,

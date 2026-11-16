@@ -11,6 +11,7 @@ import (
 	"github.com/Contictus/launchtap/backend/internal/store/postgres/sqlc"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -39,16 +40,28 @@ func (s IndexerStore) Transaction(ctx context.Context, fn func(context.Context, 
 		if err := s.Owner.WithinTx(transactionContext, func(ctx context.Context, a *Adapter) error {
 			return fn(ctx, a.WithFactory(s.Factory).WithDirtyMarkDedupe())
 		}); err != nil {
-			return err
+			return markStoreConflict(err)
 		}
 		return s.notifyRefresh(ctx)
 	}
 	if err := WithinTx(transactionContext, beginner, func(ctx context.Context, a *Adapter) error {
 		return fn(ctx, a.WithFactory(s.Factory).WithDirtyMarkDedupe())
 	}); err != nil {
-		return err
+		return markStoreConflict(err)
 	}
 	return s.notifyRefresh(ctx)
+}
+
+// markStoreConflict tags a deadlock (40P01) or serialization failure (40001) as
+// indexer.ErrStoreConflict. Postgres rolls the whole transaction back for both, so the engine
+// retries the step instead of exiting. Reorg recovery locks tokens then token_stats while the
+// stats worker's trigger locks them in the opposite order (AUDIT_REPORT_TR HIGH-06).
+func markStoreConflict(err error) error {
+	var pgError *pgconn.PgError
+	if errors.As(err, &pgError) && (pgError.Code == "40P01" || pgError.Code == "40001") {
+		return fmt.Errorf("%w: %w", indexer.ErrStoreConflict, err)
+	}
+	return err
 }
 
 func (s IndexerStore) notifyRefresh(ctx context.Context) error {

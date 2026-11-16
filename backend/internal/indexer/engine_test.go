@@ -37,7 +37,9 @@ type memoryUnit struct {
 	identityLoads *int
 }
 type memoryStore struct {
-	unit             memoryUnit
+	unit memoryUnit
+	// failNext, when set, fails the next transaction with it and is then cleared.
+	failNext         error
 	nextTransaction  int
 	committedActions []memoryRecoveryAction
 }
@@ -48,6 +50,10 @@ type memoryRecoveryAction struct {
 }
 
 func (s *memoryStore) Transaction(ctx context.Context, fn func(context.Context, UnitOfWork) error) error {
+	if err := s.failNext; err != nil {
+		s.failNext = nil
+		return err
+	}
 	copyUnit := s.unit
 	copyUnit.blocks = make(map[int64]ledger.IndexedBlock)
 	for n, b := range s.unit.blocks {
@@ -477,6 +483,78 @@ func TestRunRetriesTransientRPCFailuresInProcess(t *testing.T) {
 	}
 }
 
+// A store transaction rolled back by a deadlock (the stats worker locks token_stats then
+// tokens, reorg recovery the reverse) is retried instead of stopping the indexer (HIGH-06).
+func TestRunRetriesStoreConflict(t *testing.T) {
+	e, store, _ := newTestEngine(t)
+	store.failNext = fmt.Errorf("recover reorg 1: %w: deadlock detected", ErrStoreConflict)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	failures := 0
+	e.settings.OnFailure = func(error) { failures++ }
+	e.settings.OnCommitted = func(state State) {
+		if state.Observed != nil && state.Observed.BlockNumber == 5 {
+			cancel()
+		}
+	}
+	if err := e.Run(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run() error = %v, want cancellation after the store conflict was retried", err)
+	}
+	if failures != 1 || store.unit.state.Observed.BlockNumber != 5 {
+		t.Fatalf("failures=%d observed=%+v", failures, store.unit.state.Observed)
+	}
+}
+
+// A reorg landing between a step's reads (here, between the chunk read and its tip recheck)
+// commits nothing and is retried in-process instead of stopping the indexer (HIGH-05).
+func TestRunRetriesCanonicalMismatchFromMidStepReorg(t *testing.T) {
+	e, store, source := newTestEngine(t)
+	changed := *source.headers[2]
+	changed.Extra = []byte("reorged between chunk read and recheck")
+	source.headerResponses = map[uint64][]*types.Header{2: {source.headers[2], &changed}}
+	failures := 0
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	e.settings.OnFailure = func(err error) {
+		if !errors.Is(err, ErrCanonicalMismatch) {
+			t.Errorf("step failure = %v, want canonical mismatch", err)
+		}
+		failures++
+	}
+	e.settings.OnCommitted = func(state State) {
+		if state.Observed != nil && state.Observed.BlockNumber == 5 {
+			cancel()
+		}
+	}
+	if err := e.Run(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run() error = %v, want cancellation after the mid-step reorg was retried", err)
+	}
+	if failures != 1 || store.unit.state.Observed.BlockNumber != 5 || len(store.unit.reorgs) != 0 {
+		t.Fatalf("failures=%d observed=%+v reorgs=%+v", failures, store.unit.state.Observed, store.unit.reorgs)
+	}
+}
+
+// A broken parent link inside the chunk involves no saved block, so it must not start reorg
+// recovery (whose ancestor would equal the observed tip); the step is re-read instead (HIGH-05).
+func TestStepTreatsBrokenLinkInsideChunkAsCanonicalMismatch(t *testing.T) {
+	e, store, source := newTestEngine(t)
+	if _, err := e.Step(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	forked := *source.headers[4]
+	forked.ParentHash = common.Hash{0xfa}
+	source.headerResponses = map[uint64][]*types.Header{4: {&forked}}
+	if _, err := e.Step(t.Context()); !errors.Is(err, ErrCanonicalMismatch) {
+		t.Fatalf("Step() error = %v, want canonical mismatch", err)
+	}
+	if len(store.unit.reorgs) != 0 || store.unit.state.Observed.BlockNumber != 2 {
+		t.Fatalf("in-chunk link break wrote state: reorgs=%+v observed=%+v", store.unit.reorgs, store.unit.state.Observed)
+	}
+	if advanced, err := e.Step(t.Context()); err != nil || !advanced || store.unit.state.Observed.BlockNumber != 4 {
+		t.Fatalf("retry Step() = %v, %v; observed=%+v", advanced, err, store.unit.state.Observed)
+	}
+}
+
 func TestSafeHashMismatchStopsBeforeWrites(t *testing.T) {
 	e, store, source := newTestEngine(t)
 	if _, err := e.Step(t.Context()); err != nil {
@@ -627,8 +705,8 @@ func assertReorgRecoveryAbortedWithoutWrites(t *testing.T, e *Engine, store *mem
 	t.Helper()
 	beforeBlocks := len(store.unit.blocks)
 	beforeObserved := state.Observed.BlockHash
-	if err := e.recoverReorg(t.Context(), state, tip); err == nil {
-		t.Fatal("recoverReorg() succeeded with an inconsistent RPC view")
+	if err := e.recoverReorg(t.Context(), state, tip); !errors.Is(err, ErrCanonicalMismatch) {
+		t.Fatalf("recoverReorg() error = %v, want a retryable canonical mismatch for an inconsistent RPC view", err)
 	}
 	if len(store.unit.reorgs) != 0 || len(store.committedActions) != 0 {
 		t.Fatalf("inconsistent RPC view caused recovery writes: reorgs=%+v actions=%v", store.unit.reorgs, store.committedActions)
