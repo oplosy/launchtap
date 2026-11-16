@@ -708,6 +708,11 @@ FROM (
         FROM wallet_realized_legs AS l
         WHERE l.chain_id = $1
           AND l.block_time >= now() - make_interval(days => $2::integer)
+          AND NOT EXISTS (
+              SELECT 1 FROM wallet_positions AS p
+              WHERE p.chain_id = l.chain_id AND p.wallet = l.wallet AND p.token_address = l.token_address
+                AND p.transferred_in > 0
+          )
         GROUP BY l.wallet
     ) AS w
     WHERE w.realized_pnl > 0
@@ -1573,6 +1578,8 @@ func (q *Queries) RecomputeTokensStats(ctx context.Context, arg RecomputeTokensS
 const recomputeWalletTotals = `-- name: RecomputeWalletTotals :exec
 WITH aggregate AS (
     SELECT p.chain_id, p.wallet, sum(p.realized_pnl) AS realized_pnl,
+        -- The leaderboard skips positions that received tokens by transfer (zero cost basis).
+        COALESCE(sum(p.realized_pnl) FILTER (WHERE p.transferred_in = 0), 0) AS leaderboard_realized_pnl,
         count(*) FILTER (WHERE p.trade_count > 0) AS tokens_traded,
         count(*) FILTER (WHERE p.balance > 0) AS held_count,
         min(p.first_block_number) AS first_block_number,
@@ -1585,10 +1592,10 @@ WITH aggregate AS (
     WHERE totals.chain_id = $1::bigint AND totals.wallet = $2::bytea
       AND NOT EXISTS (SELECT 1 FROM aggregate)
 )
-INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
-SELECT chain_id, wallet, realized_pnl, tokens_traded, held_count, first_block_number, last_block_number FROM aggregate
+INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, leaderboard_realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
+SELECT chain_id, wallet, realized_pnl, leaderboard_realized_pnl, tokens_traded, held_count, first_block_number, last_block_number FROM aggregate
 ON CONFLICT (chain_id, wallet) DO UPDATE SET
-    realized_pnl = EXCLUDED.realized_pnl, tokens_traded = EXCLUDED.tokens_traded, held_count = EXCLUDED.held_count,
+    realized_pnl = EXCLUDED.realized_pnl, leaderboard_realized_pnl = EXCLUDED.leaderboard_realized_pnl, tokens_traded = EXCLUDED.tokens_traded, held_count = EXCLUDED.held_count,
     first_block_number = EXCLUDED.first_block_number, last_block_number = EXCLUDED.last_block_number
 `
 

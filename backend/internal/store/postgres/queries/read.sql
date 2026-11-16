@@ -839,30 +839,37 @@ LIMIT sqlc.arg(page_size)::integer;
 -- totals.
 -- name: ListLeaderboard :many
 -- Only wallets with a positive realized PnL rank; fewer than page_size rows is normal. Ties are
--- broken by wallet address, so the order is deterministic.
-SELECT w.wallet, w.realized_pnl, w.tokens_traded, pu.username
+-- broken by wallet address, so the order is deterministic. The ranked PnL leaves out positions
+-- that received tokens by transfer (zero cost basis, AUDIT_REPORT_TR HIGH-08).
+SELECT w.wallet, w.leaderboard_realized_pnl AS realized_pnl, w.tokens_traded, pu.username
 FROM wallet_totals AS w
 LEFT JOIN public_wallet_usernames AS pu
   ON pu.chain_id = w.chain_id AND pu.deployment_id = sqlc.arg(deployment_id)::text AND pu.wallet = w.wallet
 WHERE w.chain_id = sqlc.arg(chain_id)
-  AND w.realized_pnl > 0
+  AND w.leaderboard_realized_pnl > 0
   AND w.wallet <> decode(repeat('00', 20), 'hex')
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.curve_address = w.wallet)
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.lp_pair = w.wallet)
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.locker = w.wallet)
   AND NOT EXISTS (SELECT 1 FROM v4_pool_managers AS m WHERE m.chain_id = w.chain_id AND m.pool_manager = w.wallet)
-ORDER BY w.realized_pnl DESC, w.wallet
+ORDER BY w.leaderboard_realized_pnl DESC, w.wallet
 LIMIT sqlc.arg(page_size)::integer;
 
 -- name: ListLeaderboardWindow :many
 -- Rolling-window variant of ListLeaderboard: sums the realized PnL of legs whose block time is
--- within window_days of the transaction's clock (now()). Same exclusions, positive-only rule and
--- tie-break. tokens_traded counts distinct tokens with a realized leg in the window.
+-- within window_days of the transaction's clock (now()). Same exclusions (including positions
+-- that received tokens by transfer), positive-only rule and tie-break. tokens_traded counts
+-- distinct tokens with a realized leg in the window.
 WITH windowed AS (
     SELECT l.wallet, sum(l.realized_pnl) AS realized_pnl, count(DISTINCT l.token_address) AS tokens_traded
     FROM wallet_realized_legs AS l
     WHERE l.chain_id = sqlc.arg(chain_id)
       AND l.block_time >= now() - make_interval(days => sqlc.arg(window_days)::integer)
+      AND NOT EXISTS (
+          SELECT 1 FROM wallet_positions AS p
+          WHERE p.chain_id = l.chain_id AND p.wallet = l.wallet AND p.token_address = l.token_address
+            AND p.transferred_in > 0
+      )
     GROUP BY l.wallet
 )
 SELECT w.wallet::bytea AS wallet, w.realized_pnl::numeric AS realized_pnl,
