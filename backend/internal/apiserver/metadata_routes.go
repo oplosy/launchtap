@@ -20,6 +20,7 @@ import (
 
 	"github.com/Contictus/launchtap/backend/internal/metadata"
 	"github.com/Contictus/launchtap/backend/internal/privyauth"
+	"github.com/Contictus/launchtap/backend/internal/social"
 	"github.com/danielgtaylor/huma/v2"
 )
 
@@ -108,6 +109,8 @@ func (r MetadataRoutes) Register(api huma.API) {
 	huma.Register(api, huma.Operation{OperationID: "getTokenMetadata", Method: http.MethodGet, Path: "/tokens/{token}/metadata", Tags: []string{"metadata"}}, r.getMetadata)
 	huma.Register(api, huma.Operation{
 		OperationID: "replaceTokenImage", Method: http.MethodPut, Path: "/tokens/{token}/image", Tags: []string{"metadata"},
+		// The raw body has no huma default cap; bound it at the image limit, not the 6 MiB server cap.
+		MaxBodyBytes: maxImageBytes,
 		RequestBody: &huma.RequestBody{Required: true, Content: map[string]*huma.MediaType{
 			"image/png": {Schema: &huma.Schema{Type: "string", Format: "binary"}}, "image/jpeg": {Schema: &huma.Schema{Type: "string", Format: "binary"}}, "image/webp": {Schema: &huma.Schema{Type: "string", Format: "binary"}},
 		}},
@@ -264,7 +267,7 @@ func mapMetadataError(ctx context.Context, err error) error {
 	case errors.Is(err, metadata.ErrRevisionConflict):
 		return apiProblem(http.StatusPreconditionFailed, "revision_conflict", "Resource revision changed")
 	default:
-		return apiRequestProblem(ctx, http.StatusInternalServerError, "internal_error", "Request failed")
+		return internalProblem(ctx, err, "internal_error", "Request failed")
 	}
 }
 
@@ -280,12 +283,18 @@ func validateMetadata(value metadataBody) error {
 	if !utf8.ValidString(value.Description) || len([]byte(value.Description)) > 2000 {
 		return apiProblem(http.StatusUnprocessableEntity, "invalid_metadata", "Description must be valid UTF-8 and at most 2000 bytes")
 	}
+	if strings.ContainsFunc(value.Description, social.UnsafeTextRune) {
+		return apiProblem(http.StatusUnprocessableEntity, "invalid_metadata", "Description must not contain control or bidirectional override characters")
+	}
 	for name, value := range map[string]string{"x_url": value.XURL, "telegram_url": value.TelegramURL} {
 		if value == "" {
 			continue
 		}
 		if len([]byte(value)) > 2048 {
 			return apiProblem(http.StatusUnprocessableEntity, "invalid_metadata", name+" must be at most 2048 bytes")
+		}
+		if !utf8.ValidString(value) || strings.ContainsFunc(value, social.UnsafeTextRune) {
+			return apiProblem(http.StatusUnprocessableEntity, "invalid_metadata", name+" must not contain control or bidirectional override characters")
 		}
 		parsed, err := url.Parse(value)
 		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {

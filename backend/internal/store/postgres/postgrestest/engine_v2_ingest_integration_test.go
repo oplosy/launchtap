@@ -150,6 +150,14 @@ func TestEngineV2FixtureIngestsThroughRouter(t *testing.T) {
 	if len(identities) != 1 || identities[0].EngineVersion != 2 || identities[0].Pair != (common.Address{}) {
 		t.Fatalf("identities = %+v, want one engine-2 token without a pair", identities)
 	}
+	var graduationBlock int64
+	if err := database.DB.QueryRowContext(ctx, "SELECT graduation_block_number FROM tokens WHERE chain_id=$1", chainID).Scan(&graduationBlock); err != nil {
+		t.Fatalf("read graduation block: %v", err)
+	}
+	// The ordering check rejects a curve trade after this block, so the identity must carry it.
+	if identities[0].GraduationBlock == nil || *identities[0].GraduationBlock != graduationBlock {
+		t.Fatalf("identity graduation block = %v, want %d", identities[0].GraduationBlock, graduationBlock)
+	}
 	if len(pools) != 1 || pools[chain.V4PoolID(identities[0].Token, firstLaunchHook(t, decoded))] != identities[0].Token {
 		t.Fatalf("graduated pools = %v, want the token's V4 pool", pools)
 	}

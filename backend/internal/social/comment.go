@@ -166,6 +166,16 @@ func NormalizeBody(raw string) (string, error) {
 	return body, nil
 }
 
+// UnsafeTextRune reports a rune that free text shown to other users may not contain: a control
+// rune under the comment rule (CR and tab are allowed: pasted text carries them), or a
+// bidirectional override or isolate. Token metadata uses it; Postgres TEXT rejects NUL.
+func UnsafeTextRune(r rune) bool {
+	if r == '\r' || r == '\t' {
+		return false
+	}
+	return isControlRune(r) || (r >= 0x202A && r <= 0x202E) || (r >= 0x2066 && r <= 0x2069)
+}
+
 // isControlRune reports runes rejected with the control rule: every control rune except LF, the
 // Unicode line and paragraph separators, the invisible directional marks (LRM, RLM, ALM) and the
 // zero-width space and byte order mark. ZWNJ and ZWJ stay allowed (emoji and some scripts need them).

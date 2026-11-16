@@ -170,7 +170,16 @@ func (a *Adapter) TokenIdentities(ctx context.Context, chainID int64) ([]indexer
 	}
 	result := make([]indexer.TokenIdentity, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, indexer.TokenIdentity{Token: common.Address(row.TokenAddress), Curve: common.Address(row.CurveAddress), Pair: addressOrZero(row.LpPair), EngineVersion: uint16(row.EngineVersion), Launch: ledger.EventCoordinates{ChainID: chainID, BlockNumber: row.LaunchBlockNumber, BlockHash: common.Hash(row.LaunchBlockHash), BlockTime: row.LaunchBlockTime.Time}})
+		result = append(result, indexer.TokenIdentity{Token: common.Address(row.TokenAddress), Curve: common.Address(row.CurveAddress), Pair: addressOrZero(row.LpPair), EngineVersion: uint16(row.EngineVersion), Launch: ledger.EventCoordinates{ChainID: chainID, BlockNumber: row.LaunchBlockNumber, BlockHash: common.Hash(row.LaunchBlockHash), BlockTime: row.LaunchBlockTime.Time}, GraduationBlock: graduationBlock(row.GraduationBlockNumber)})
 	}
 	return result, nil
+}
+
+// graduationBlock is nil for a token that has not graduated.
+func graduationBlock(value pgtype.Int8) *int64 {
+	if !value.Valid {
+		return nil
+	}
+	block := value.Int64
+	return &block
 }

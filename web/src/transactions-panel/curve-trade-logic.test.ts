@@ -25,7 +25,7 @@ const common = { abi: [], chainId: 31337, account, curve, toleranceBps: 200n, de
 describe("readCurveTradeIntent", () => {
   it("builds an exact engine-1 buy from the contract quote, not the API", async () => {
     // quoteBuy returns (inputUsed, tokensOut, protocolFee, creatorFee).
-    const { client, calls } = reader([990n, 10_000n, 5n, 5n]);
+    const { client, calls } = reader([1_000n, 10_000n, 5n, 5n]);
     const result = await readCurveTradeIntent({
       ...common,
       publicClient: client,
@@ -37,7 +37,7 @@ describe("readCurveTradeIntent", () => {
     expect(result.output).toBe(10_000n);
     expect(result.fee).toBe(10n);
     expect(result.protocolFee).toBe(5n);
-    expect(result.inputUsed).toBe(990n);
+    expect(result.inputUsed).toBe(1_000n);
     expect(result.taxQuote).toEqual({ snipeTax: 0n, taxBps: 0 });
     expect(result.intent).toEqual({
       account,
@@ -49,6 +49,22 @@ describe("readCurveTradeIntent", () => {
       chainId: 31337,
       functionName: "buy",
     });
+  });
+
+  it("attaches only the used input when the buy reaches the graduation cap", async () => {
+    // A capped quote uses 303 of 2,000; the minimum output comes from the capped quote, so the
+    // full amount must not be attached (a front-running sell would let all of it buy).
+    const { client } = reader([303n, 35_000n, 1n, 1n, 1_697n, true]);
+    const result = await readCurveTradeIntent({
+      ...common,
+      publicClient: client,
+      engineVersion: 1,
+      side: "buy",
+      quantity: 2_000n,
+    });
+    expect(result.inputUsed).toBe(303n);
+    expect(result.intent.value).toBe(303n);
+    expect(result.intent.minimumOutput).toBe(34_300n);
   });
 
   it("builds a sell with no value and the token quantity as input", async () => {

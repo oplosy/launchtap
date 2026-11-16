@@ -205,3 +205,31 @@ func TestSSEReportsStreamOpenAndClose(t *testing.T) {
 	}
 	t.Fatal("StreamClosed was not called")
 }
+
+func TestSSECapacityRejectionIsNotCountedAsOpen(t *testing.T) {
+	m := &recordingMetrics{}
+	cfg := DefaultConfig()
+	cfg.Metrics = m
+	server := New(cfg, ReadyFunc(func(context.Context) error { return nil }), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	hub := realtime.NewHub(1, 2)
+	held, err := hub.Subscribe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Close()
+	server.RegisterEventRoutes(EventRoutes{Hub: hub, ChainID: 1, DeploymentID: "dep", Heartbeat: time.Hour})
+	httpServer := httptest.NewServer(server.Handler)
+	defer httpServer.Close()
+
+	response, err := http.Get(httpServer.URL + "/v1/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = response.Body.Close() })
+	readUntil(t, bufio.NewReader(response.Body), "subscriber capacity reached", time.Second)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.opened != 0 || m.closed != 0 {
+		t.Fatalf("opened=%d closed=%d, want a rejected stream uncounted", m.opened, m.closed)
+	}
+}

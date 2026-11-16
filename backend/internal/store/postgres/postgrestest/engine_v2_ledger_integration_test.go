@@ -240,6 +240,9 @@ func TestEngineV2LedgerDownRefusesV2Rows(t *testing.T) {
 	// The candle, revenue, leaderboard and V4 swap migrations roll back first; the v2 projections
 	// migration holds no projection rows here, so it rolls back next.
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the audit follow-ups: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
 		t.Fatalf("roll back the candles ATH index: %v", err)
 	}
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {

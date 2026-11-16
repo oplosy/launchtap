@@ -234,6 +234,7 @@ func middleware(mux *http.ServeMux, cfg Config, limiter *RateLimiter, logger *sl
 		ctx := context.WithValue(r.Context(), requestIDKey, id)
 		clientKey := clientKeyFor(clientAddress(r, cfg.TrustedProxies))
 		ctx = context.WithValue(ctx, clientKeyContextKey, clientKey)
+		ctx = context.WithValue(ctx, loggerKey, logger)
 		defer func() {
 			if v := recover(); v != nil {
 				problem(rw, http.StatusInternalServerError, "internal_error", "internal server error", id)
