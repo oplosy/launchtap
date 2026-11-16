@@ -143,6 +143,7 @@ export function GraduatedSwapPanel({
       trade.unresolved
     )
       return;
+    const review = trade.beginReview();
     try {
       await trade.assertWalletForReview();
       const deadline = transactionDeadline(currentUnixSeconds(), DEFAULT_TTL);
@@ -153,9 +154,9 @@ export function GraduatedSwapPanel({
         slippageBps,
         deadline,
       );
-      fresh.replace();
-      trade.openReview(fresh.intent);
+      if (review.open(fresh.intent)) fresh.replace();
     } catch (cause) {
+      if (!review.current()) return;
       trade.closeReview(false);
       trade.setReviewNotice(decodeTransactionError(cause).message);
     }

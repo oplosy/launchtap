@@ -60,7 +60,6 @@ function TradingPanelReady({ token }: { token: TradingToken }) {
     transaction,
     approvalTransaction,
     state,
-    approvalHash,
     side,
     inputUnits,
     slippageBps,
@@ -172,6 +171,7 @@ function TradingPanelReady({ token }: { token: TradingToken }) {
     });
   const prepareTradeReview = async () => {
     if (!trade.walletReady || !inputUnits || slippageBps === null || trade.unresolved) return;
+    const review = trade.beginReview();
     try {
       await trade.assertWalletForReview();
       if (Number(await readPhase()) !== 0) throw new Error("WrongPhase");
@@ -183,17 +183,17 @@ function TradingPanelReady({ token }: { token: TradingToken }) {
         slippageBps,
         deadline,
       );
+      if (!review.open(fresh.intent)) return;
       showContractQuote(side, inputUnits, fresh);
-      trade.openReview(fresh.intent);
       setQuoteError(null);
     } catch (cause) {
+      if (!review.current()) return;
       trade.closeReview(false);
       setQuoteError(decodeTransactionError(cause).message);
     }
   };
   const execute = async () => {
     if (graduated) return;
-    const resumingApproval = side === "sell" && approvalHash !== undefined;
     if (
       !publicClient ||
       !walletClient ||
@@ -204,7 +204,7 @@ function TradingPanelReady({ token }: { token: TradingToken }) {
       !reviewDetails ||
       !transaction.ready ||
       (reviewDetails.side === "sell" && !approvalTransaction.ready) ||
-      (!resumingApproval && trade.unresolved) ||
+      trade.unresolved ||
       chainId !== configuration.chainId ||
       !readiness.selectedAccountVerified
     ) {

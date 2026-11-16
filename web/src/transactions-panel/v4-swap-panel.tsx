@@ -142,6 +142,7 @@ export function V4SwapPanel({
   const prepareSwapReview = async () => {
     if (!key || !trade.walletReady || !inputUnits || slippageBps === null || trade.unresolved)
       return;
+    const review = trade.beginReview();
     try {
       await trade.assertWalletForReview();
       let deadline = transactionDeadline(currentUnixSeconds(), DEFAULT_TTL);
@@ -165,9 +166,9 @@ export function V4SwapPanel({
         slippageBps,
         deadline,
       );
-      fresh.replace();
-      trade.openReview(fresh.intent);
+      if (review.open(fresh.intent)) fresh.replace();
     } catch (cause) {
+      if (!review.current()) return;
       trade.closeReview(false);
       trade.setReviewNotice(decodeTransactionError(cause).message);
     }

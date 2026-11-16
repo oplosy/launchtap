@@ -25,6 +25,7 @@ import {
   SlippageChips,
   usePersistedTransactionState,
 } from "./shared";
+import { useReviewGeneration } from "./review-generation";
 
 type FailurePhase = "preflight" | "simulation" | "write" | "receipt";
 type PersistedTransaction = ReturnType<typeof usePersistedTransactionState>;
@@ -109,8 +110,10 @@ export function useReviewedWrite(
   const [reviewIntent, setReviewIntent] = useState<ReviewedWriteIntent | null>(null);
   const [reviewNotice, setReviewNotice] = useState<string | null>(null);
   const lockRef = useRef(false);
+  const generation = useReviewGeneration();
 
   const closeReview = (clearNotice = true) => {
+    generation.bump();
     setConfirming(false);
     setReviewIntent(null);
     if (clearNotice) setReviewNotice(null);
@@ -283,6 +286,7 @@ export function useReviewedWrite(
     walletReady,
     unresolved: hasUnresolvedSubmission(state),
     openReview,
+    beginReview: () => generation.begin(openReview),
     closeReview,
     assertWalletForReview,
     runExecution,

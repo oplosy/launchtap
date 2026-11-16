@@ -257,6 +257,30 @@ describe("useReviewedTrade", () => {
     expect(result.current.slippageBps).toBe(100n);
   });
 
+  it("does not reopen a review prepared before the side or amount changed", () => {
+    const { result } = renderHook(() => useReviewedTrade(TOKEN));
+    act(() => result.current.changeInput("1"));
+    const stale = result.current.beginReview();
+    act(() => result.current.changeSide("sell"));
+    act(() => result.current.changeInput("3"));
+
+    let opened = true;
+    act(() => {
+      opened = stale.open(intent());
+    });
+    expect(opened).toBe(false);
+    expect(stale.current()).toBe(false);
+    expect(result.current.confirming).toBe(false);
+    expect(result.current.reviewIntent).toBeNull();
+
+    const fresh = result.current.beginReview();
+    act(() => {
+      opened = fresh.open(intent({ functionName: "sell" }));
+    });
+    expect(opened).toBe(true);
+    expect(result.current.confirming).toBe(true);
+  });
+
   it("clears the amount when the side changes", () => {
     const { result } = renderHook(() => useReviewedTrade(TOKEN));
     act(() => result.current.changeInput("2"));

@@ -26,7 +26,7 @@ type AttachState =
   | { status: "idle" }
   | { status: "running"; token: Address; step: AttachStep }
   | { status: "failed"; token: Address; step: AttachStep; message: string }
-  | { status: "done"; token: Address };
+  | { status: "done"; token: Address; image: boolean };
 
 /**
  * The image, description and links a creator attaches at launch, and the post-receipt writes that
@@ -39,8 +39,9 @@ export function useLaunchExtras(links: { xUrl: string; telegramUrl: string }) {
   const [fileError, setFileError] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const [attach, setAttach] = useState<AttachState>({ status: "idle" });
-  // The values a launch was signed with; a retry saves these, not later edits to the form.
-  const launched = useRef<LaunchExtras | null>(null);
+  // The values each launch was signed with, by token; a retry saves these, not later edits to
+  // the form or the details of a later launch.
+  const launched = useRef(new Map<Address, LaunchExtras>());
   useEffect(() => {
     return () => {
       if (preview) URL.revokeObjectURL(preview);
@@ -84,8 +85,8 @@ export function useLaunchExtras(links: { xUrl: string; telegramUrl: string }) {
       return;
     }
     const client = new ApiClient({ baseUrl: configuration.apiBaseUrl });
-    if (from === "index" || !launched.current) launched.current = extras;
-    const saved = launched.current;
+    const saved = launched.current.get(token) ?? extras;
+    launched.current.set(token, saved);
     try {
       await attachLaunchMetadata({
         client,
@@ -95,7 +96,7 @@ export function useLaunchExtras(links: { xUrl: string; telegramUrl: string }) {
         getAuth: auth.getAuth,
         onStep: (step) => setAttach({ status: "running", token, step }),
       });
-      setAttach({ status: "done", token });
+      setAttach({ status: "done", token, image: Boolean(saved.file) });
     } catch (cause) {
       const step = cause instanceof AttachError ? cause.step : from;
       const message =
@@ -241,7 +242,7 @@ export function LaunchAttachStatus({ extras }: { extras: LaunchExtrasState }) {
   if (attach.status === "done")
     return (
       <p className="discovery-notice" role="status">
-        Launched, with your image and details saved. {tokenLink}
+        Launched, with your {attach.image ? "image and details" : "details"} saved. {tokenLink}
       </p>
     );
   return (
