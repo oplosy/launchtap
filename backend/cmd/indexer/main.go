@@ -268,6 +268,9 @@ func initializeIndexerResources(ctx context.Context, source chain.RuntimeVerifie
 	if err := chain.VerifyDeploymentBytecode(ctx, source, deployment); err != nil {
 		return nil, nil, fmt.Errorf("verify indexer deployment bytecode before database startup: %w", err)
 	}
+	if err := chain.VerifyGovernanceTimelock(ctx, source, deployment); err != nil {
+		return nil, nil, fmt.Errorf("verify governance timelock before database startup: %w", err)
+	}
 	pool, err := openPool()
 	if err != nil {
 		return nil, nil, fmt.Errorf("open indexer database pool: %w", err)

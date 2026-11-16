@@ -71,7 +71,9 @@ deployer does not retain pause or timelock authority, but it cannot choose or ap
 signer set. Record:
 
 - multisig address, chain ID, threshold, signer addresses, and recovery process;
-- timelock address, delay, proposer/executor roles, and emergency procedure;
+- timelock address, delay, proposer/executor roles, and emergency procedure (the indexer refuses
+  a `production` manifest whose factory timelock is not a contract with `getMinDelay()` of at
+  least 48 hours; `chain.VerifyGovernanceTimelock`);
 - protocol treasury address and accounting owner;
 - a successful read-only role check and a controlled test of pause/timelock handoff;
 - the transaction hashes and explorer links for the final role configuration.

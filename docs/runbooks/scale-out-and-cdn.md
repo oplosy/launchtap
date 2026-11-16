@@ -93,8 +93,8 @@ decision. When one is added:
      }
      ```
 
-   - `API_TRUSTED_PROXY_CIDRS` in `deploy/compose.yaml`: append the same ranges to the private
-     ranges. Caddy appends the edge address to `X-Forwarded-For`, and the API
+   - `API_TRUSTED_PROXY_CIDRS` in `deploy/compose.yaml`: append the same ranges to the proxy's
+     pinned address. Caddy appends the edge address to `X-Forwarded-For`, and the API
      (`clientAddress` in `internal/apiserver/ratelimit.go`) walks the chain right to left, skipping
      trusted hops. Without the CDN ranges it stops at the edge address and still rate-limits the
      edge, not the client.

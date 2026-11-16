@@ -200,7 +200,9 @@ creation. On the forked chain it then switches the engine as the factory timeloc
 that a 1 gwei buy delivered to a fresh launch's pair reverts with `InvalidRecipient`; the
 engine switch itself stays a separate, timelock-signed transaction.
 
-Set process-only values (the timelock is currently an EOA, not a contract):
+Set process-only values (the timelock is currently an EOA, not a contract, so its calls take
+effect immediately; a `production` manifest refuses to index unless the timelock is a contract
+with `getMinDelay()` of at least 48 hours):
 
 ```powershell
 $env:ROBINHOOD_TESTNET_RPC_URL = "https://rpc.testnet.chain.robinhood.com"
