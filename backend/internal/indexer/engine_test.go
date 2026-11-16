@@ -37,7 +37,9 @@ type memoryUnit struct {
 	identityLoads *int
 }
 type memoryStore struct {
-	unit             memoryUnit
+	unit memoryUnit
+	// failNext, when set, fails the next transaction with it and is then cleared.
+	failNext         error
 	nextTransaction  int
 	committedActions []memoryRecoveryAction
 }
@@ -48,6 +50,10 @@ type memoryRecoveryAction struct {
 }
 
 func (s *memoryStore) Transaction(ctx context.Context, fn func(context.Context, UnitOfWork) error) error {
+	if err := s.failNext; err != nil {
+		s.failNext = nil
+		return err
+	}
 	copyUnit := s.unit
 	copyUnit.blocks = make(map[int64]ledger.IndexedBlock)
 	for n, b := range s.unit.blocks {
@@ -474,6 +480,28 @@ func TestRunRetriesTransientRPCFailuresInProcess(t *testing.T) {
 	stored.unit.fail = true
 	if err := e.Run(t.Context()); err == nil || errors.Is(err, ErrRPCUnhealthy) {
 		t.Fatalf("non-RPC failure was retried or hidden: %v", err)
+	}
+}
+
+// A store transaction rolled back by a deadlock (the stats worker locks token_stats then
+// tokens, reorg recovery the reverse) is retried instead of stopping the indexer (HIGH-06).
+func TestRunRetriesStoreConflict(t *testing.T) {
+	e, store, _ := newTestEngine(t)
+	store.failNext = fmt.Errorf("recover reorg 1: %w: deadlock detected", ErrStoreConflict)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	failures := 0
+	e.settings.OnFailure = func(error) { failures++ }
+	e.settings.OnCommitted = func(state State) {
+		if state.Observed != nil && state.Observed.BlockNumber == 5 {
+			cancel()
+		}
+	}
+	if err := e.Run(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run() error = %v, want cancellation after the store conflict was retried", err)
+	}
+	if failures != 1 || store.unit.state.Observed.BlockNumber != 5 {
+		t.Fatalf("failures=%d observed=%+v", failures, store.unit.state.Observed)
 	}
 }
 

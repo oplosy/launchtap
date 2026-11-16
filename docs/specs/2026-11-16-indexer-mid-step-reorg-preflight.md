@@ -44,3 +44,19 @@ step records a new incident. Nothing reads open rows, so this is audit noise, no
 `TestRunRetriesCanonicalMismatchFromMidStepReorg`,
 `TestStepTreatsBrokenLinkInsideChunkAsCanonicalMismatch`, and the three
 `TestReorgRecoveryRejects*` tests now assert the retryable error. All fail without the fix.
+
+## Addendum: deadlock with the stats worker (AUDIT_REPORT_TR HIGH-06)
+
+Confirmed for reorg recovery only: its transaction rebuilds token projections (locks the
+`tokens` row) and then deletes and recomputes `token_stats`, while the stats worker's
+`RecomputeTokensStats` upserts `token_stats` and its `token_stats_sync_token_sort_metrics`
+trigger then updates `tokens`. The normal chunk path never writes `token_stats`.
+
+- **Decision:** `IndexerStore.Transaction` tags Postgres `40P01` (deadlock) and `40001`
+  (serialization failure) as `indexer.ErrStoreConflict`, and `Run` retries it with the shared
+  budget. Rationale: Postgres rolls the losing transaction back completely, so a retry is
+  safe; the worker side already retries on its next lease.
+- **Alternative rejected:** forcing one lock order by locking `tokens` rows first inside the
+  single-statement batch recompute. It needs a locking CTE in a data-modifying statement, which
+  is fragile, and only removes one of the possible orderings.
+- **Tests:** `TestRunRetriesStoreConflict`, `TestMarkStoreConflictTagsOnlyRolledBackConflicts`.
