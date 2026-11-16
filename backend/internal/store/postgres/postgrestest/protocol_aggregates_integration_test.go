@@ -201,10 +201,10 @@ func (database *protocolAggregateCountingDB) record(query string) {
 	case strings.Contains(query, "INSERT INTO token_stats"):
 		database.tokenStatsCalls++
 		database.statementCalls++
-	case strings.Contains(query, "DELETE FROM protocol_daily"):
+	case strings.Contains(query, "DELETE FROM protocol_daily "):
 		database.clearDailyCalls++
 		database.statementCalls++
-	case strings.Contains(query, "INSERT INTO protocol_daily"):
+	case strings.Contains(query, "INSERT INTO protocol_daily ("):
 		database.dailyCalls++
 		database.statementCalls++
 	case strings.Contains(query, "INSERT INTO protocol_stats"):
@@ -326,7 +326,7 @@ func (barrier *protocolAggregateBarrier) BeginTx(ctx context.Context, options pg
 }
 
 func (barrier *protocolAggregateBarrier) pauseAfterClear(ctx context.Context, query string) error {
-	if !strings.Contains(query, "DELETE FROM protocol_daily") {
+	if !strings.Contains(query, "DELETE FROM protocol_daily ") {
 		return nil
 	}
 	barrier.once.Do(func() { close(barrier.reached) })

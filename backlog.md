@@ -41,12 +41,15 @@
   MED-14, HIGH-09, HIGH-10 (P0 pass); HIGH-07 (saturated price change), HIGH-05 (mid-step reorg
   retried), HIGH-06 (deadlocked indexer transaction retried), HIGH-04 (rate-limit LRU eviction),
   HIGH-11 (same-block funding), HIGH-08 (leaderboards skip positions funded by transfer, owner
-  decision 2026-11-16) (P1 pass).
+  decision 2026-11-16) (P1 pass); HIGH-13/14 items a-c below (protocol revenue daily
+  rollup, 1m candle ATH index, batched realized legs; spec
+  `docs/specs/2026-11-16-protocol-revenue-rollup-preflight.md`).
 - **Related files:** `AUDIT_REPORT_TR.md` (untracked, sections 3 and 8), `backend/internal/position/`,
   `backend/internal/store/postgres/migrations/`, `backend/internal/store/postgres/queries/`.
 - **Resume (next step):**
   1. HIGH-13/14, validated 2026-11-16 with `EXPLAIN (ANALYZE)` on a seeded Postgres 18.6
-     (1M transfers over 5,000 tokens; 50,000 1m candles per token). Fix, in this order:
+     (1M transfers over 5,000 tokens; 50,000 1m candles per token). a-c are done (migrations
+     00036/00037); d and e stay open:
      a. `trades`-wide revenue scan: `GET /v1/stats/protocol/revenue` (public, no cache header)
         aggregates every trade, graduation and LP collection per request. Serve it from
         `protocol_stats`-style incremental totals or cache it.

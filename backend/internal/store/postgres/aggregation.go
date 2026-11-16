@@ -75,7 +75,7 @@ func (adapter *Adapter) DeleteTokenStats(ctx context.Context, chainID int64, tok
 	return nil
 }
 
-// RecomputeProtocolAggregates rebuilds protocol_daily and protocol_stats from the whole history
+// RecomputeProtocolAggregates rebuilds protocol_daily, protocol_daily_revenue and protocol_stats from the whole history
 // and resets the daily watermark. Reorg recovery uses it after deleting canonical rows.
 func (adapter *Adapter) RecomputeProtocolAggregates(ctx context.Context, chainID int64) error {
 	return adapter.withinProtocolTx(ctx, func(ctx context.Context, transaction *Adapter) error {
@@ -134,6 +134,12 @@ func (adapter *Adapter) refreshProtocolAggregates(ctx context.Context, chainID i
 		}
 		if err := adapter.queries.RecomputeProtocolDaily(ctx, sqlc.RecomputeProtocolDailyParams{ChainID: chainID, FromDay: fromDay}); err != nil {
 			return fmt.Errorf("recompute protocol daily: %w", err)
+		}
+		if err := adapter.queries.ClearProtocolDailyRevenue(ctx, sqlc.ClearProtocolDailyRevenueParams{ChainID: chainID, FromDay: fromDay}); err != nil {
+			return fmt.Errorf("clear protocol daily revenue: %w", err)
+		}
+		if err := adapter.queries.RecomputeProtocolDailyRevenue(ctx, sqlc.RecomputeProtocolDailyRevenueParams{ChainID: chainID, FromDay: fromDay}); err != nil {
+			return fmt.Errorf("recompute protocol daily revenue: %w", err)
 		}
 	}
 	through := pgtype.Int8{Int64: bounds.HeadBlock, Valid: bounds.HeadBlock >= 0}

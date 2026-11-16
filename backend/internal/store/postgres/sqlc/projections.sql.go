@@ -458,6 +458,21 @@ func (q *Queries) ClearProtocolDaily(ctx context.Context, arg ClearProtocolDaily
 	return err
 }
 
+const clearProtocolDailyRevenue = `-- name: ClearProtocolDailyRevenue :exec
+DELETE FROM protocol_daily_revenue WHERE chain_id = $1 AND day >= $2::date
+`
+
+type ClearProtocolDailyRevenueParams struct {
+	ChainID int64
+	FromDay pgtype.Date
+}
+
+// from_day '-infinity' clears every day of the chain.
+func (q *Queries) ClearProtocolDailyRevenue(ctx context.Context, arg ClearProtocolDailyRevenueParams) error {
+	_, err := q.db.Exec(ctx, clearProtocolDailyRevenue, arg.ChainID, arg.FromDay)
+	return err
+}
+
 const completeAggregationDirty = `-- name: CompleteAggregationDirty :execrows
 DELETE FROM aggregation_dirty
 WHERE chain_id = $1
@@ -742,33 +757,42 @@ func (q *Queries) InsertLeaderboardWindowRanks(ctx context.Context, arg InsertLe
 	return result.RowsAffected(), nil
 }
 
-const insertWalletRealizedLeg = `-- name: InsertWalletRealizedLeg :exec
+const insertWalletRealizedLegs = `-- name: InsertWalletRealizedLegs :execrows
 INSERT INTO wallet_realized_legs (chain_id, wallet, token_address, block_number, transaction_index, block_time, realized_pnl)
-VALUES ($1, $2, $3, $4,
-    $5, $6, $7)
+SELECT $1, $2, $3,
+       n.block_number, x.transaction_index, t.block_time, r.realized_pnl
+FROM unnest($4::bigint[]) WITH ORDINALITY AS n(block_number, ord)
+JOIN unnest($5::integer[]) WITH ORDINALITY AS x(transaction_index, ord) ON x.ord = n.ord
+JOIN unnest($6::timestamptz[]) WITH ORDINALITY AS t(block_time, ord) ON t.ord = n.ord
+JOIN unnest($7::numeric[]) WITH ORDINALITY AS r(realized_pnl, ord) ON r.ord = n.ord
 `
 
-type InsertWalletRealizedLegParams struct {
-	ChainID          int64
-	Wallet           Address
-	TokenAddress     Address
-	BlockNumber      int64
-	TransactionIndex int32
-	BlockTime        pgtype.Timestamptz
-	RealizedPnl      pgtype.Numeric
+type InsertWalletRealizedLegsParams struct {
+	ChainID            int64
+	Wallet             Address
+	TokenAddress       Address
+	BlockNumbers       []int64
+	TransactionIndexes []int32
+	BlockTimes         []pgtype.Timestamptz
+	RealizedPnls       []pgtype.Numeric
 }
 
-func (q *Queries) InsertWalletRealizedLeg(ctx context.Context, arg InsertWalletRealizedLegParams) error {
-	_, err := q.db.Exec(ctx, insertWalletRealizedLeg,
+// All of one position's realized legs in one statement; the arrays are aligned by index. One
+// round trip per position instead of one per leg (AUDIT_REPORT_TR HIGH-14).
+func (q *Queries) InsertWalletRealizedLegs(ctx context.Context, arg InsertWalletRealizedLegsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertWalletRealizedLegs,
 		arg.ChainID,
 		arg.Wallet,
 		arg.TokenAddress,
-		arg.BlockNumber,
-		arg.TransactionIndex,
-		arg.BlockTime,
-		arg.RealizedPnl,
+		arg.BlockNumbers,
+		arg.TransactionIndexes,
+		arg.BlockTimes,
+		arg.RealizedPnls,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const listPositionLegs = `-- name: ListPositionLegs :many
@@ -1371,6 +1395,53 @@ type RecomputeProtocolDailyParams struct {
 // from_day '-infinity' rebuilds the whole history.
 func (q *Queries) RecomputeProtocolDaily(ctx context.Context, arg RecomputeProtocolDailyParams) error {
 	_, err := q.db.Exec(ctx, recomputeProtocolDaily, arg.ChainID, arg.FromDay)
+	return err
+}
+
+const recomputeProtocolDailyRevenue = `-- name: RecomputeProtocolDailyRevenue :exec
+WITH bounds AS (
+ SELECT ($2::date::timestamp AT TIME ZONE 'UTC') AS from_time
+), daily AS (
+ SELECT (l.block_time AT TIME ZONE 'UTC')::date AS day, l.engine_version, l.launch_fee_paid AS launch_fees,
+        0::numeric AS trade_fees, 0::numeric AS snipe_tax, 0::numeric AS graduation_remainder, 0::numeric AS lp_fees
+ FROM token_launches AS l
+ WHERE l.chain_id = $1 AND l.block_time >= (SELECT from_time FROM bounds)
+ UNION ALL
+ SELECT (t.block_time AT TIME ZONE 'UTC')::date, l.engine_version, 0, t.protocol_fee, t.snipe_tax, 0, 0
+ FROM trades AS t
+ JOIN token_launches AS l ON l.chain_id = t.chain_id AND l.token_address = t.token_address
+ WHERE t.chain_id = $1 AND t.block_time >= (SELECT from_time FROM bounds)
+ UNION ALL
+ SELECT (g.block_time AT TIME ZONE 'UTC')::date, l.engine_version, 0, 0, 0, g.eth_remainder, 0
+ FROM graduations AS g
+ JOIN token_launches AS l ON l.chain_id = g.chain_id AND l.token_address = g.token_address
+ WHERE g.chain_id = $1 AND g.block_time >= (SELECT from_time FROM bounds)
+ UNION ALL
+ SELECT (c.block_time AT TIME ZONE 'UTC')::date, l.engine_version, 0, 0, 0, 0,
+        c.eth_amount - div(c.eth_amount * COALESCE(l.lp_creator_share_bps, 0), 10000)
+ FROM lp_fee_collections AS c
+ JOIN token_launches AS l ON l.chain_id = c.chain_id AND l.token_address = c.token_address
+ WHERE c.chain_id = $1 AND c.block_time >= (SELECT from_time FROM bounds)
+)
+INSERT INTO protocol_daily_revenue (chain_id, day, engine_version, launch_fees, trade_fees, snipe_tax, graduation_remainder, lp_fees)
+SELECT $1, day, engine_version, sum(launch_fees), sum(trade_fees), sum(snipe_tax),
+       sum(graduation_remainder), sum(lp_fees)
+FROM daily
+GROUP BY day, engine_version
+`
+
+type RecomputeProtocolDailyRevenueParams struct {
+	ChainID int64
+	FromDay pgtype.Date
+}
+
+// ETH credited to the protocol per UTC day and engine, earned basis
+// (docs/specs/2026-11-12-protocol-revenue-design.md). The LP share mirrors LpFeeLocker._credit:
+// the creator gets floor(eth * bps / 10000), the protocol the rest. Every launch writes a row for
+// its engine and day, so ListProtocolRevenueByEngine lists each launched engine. Only days >=
+// from_day are rebuilt; from_day '-infinity' rebuilds the whole history.
+func (q *Queries) RecomputeProtocolDailyRevenue(ctx context.Context, arg RecomputeProtocolDailyRevenueParams) error {
+	_, err := q.db.Exec(ctx, recomputeProtocolDailyRevenue, arg.ChainID, arg.FromDay)
 	return err
 }
 

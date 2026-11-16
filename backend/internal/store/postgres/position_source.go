@@ -108,11 +108,12 @@ func (adapter *Adapter) recomputePosition(ctx context.Context, claim stats.Claim
 }
 
 // insertRealizedLegs writes one wallet_realized_legs row per leg whose realized PnL change is
-// non-zero; legs, times and realized are aligned.
+// non-zero, all in one statement; legs, times and realized are aligned.
 func (adapter *Adapter) insertRealizedLegs(ctx context.Context, key sqlc.DeleteWalletPositionParams, legs []position.Leg, times []pgtype.Timestamptz, realized []*big.Int) error {
 	if len(realized) != len(legs) || len(times) != len(legs) {
 		return fmt.Errorf("realized legs: %d legs, %d times, %d values", len(legs), len(times), len(realized))
 	}
+	arg := sqlc.InsertWalletRealizedLegsParams{ChainID: key.ChainID, Wallet: key.Wallet, TokenAddress: key.TokenAddress}
 	for i, value := range realized {
 		if value.Sign() == 0 {
 			continue
@@ -121,12 +122,20 @@ func (adapter *Adapter) insertRealizedLegs(ctx context.Context, key sqlc.DeleteW
 		if err != nil {
 			return err
 		}
-		if err := adapter.queries.InsertWalletRealizedLeg(ctx, sqlc.InsertWalletRealizedLegParams{
-			ChainID: key.ChainID, Wallet: key.Wallet, TokenAddress: key.TokenAddress,
-			BlockNumber: legs[i].Block, TransactionIndex: legs[i].TxIndex, BlockTime: times[i], RealizedPnl: amount,
-		}); err != nil {
-			return fmt.Errorf("insert wallet realized leg: %w", err)
-		}
+		arg.BlockNumbers = append(arg.BlockNumbers, legs[i].Block)
+		arg.TransactionIndexes = append(arg.TransactionIndexes, legs[i].TxIndex)
+		arg.BlockTimes = append(arg.BlockTimes, times[i])
+		arg.RealizedPnls = append(arg.RealizedPnls, amount)
+	}
+	if len(arg.BlockNumbers) == 0 {
+		return nil
+	}
+	inserted, err := adapter.queries.InsertWalletRealizedLegs(ctx, arg)
+	if err != nil {
+		return fmt.Errorf("insert wallet realized legs: %w", err)
+	}
+	if inserted != int64(len(arg.BlockNumbers)) {
+		return fmt.Errorf("insert wallet realized legs: wrote %d of %d rows", inserted, len(arg.BlockNumbers))
 	}
 	return nil
 }

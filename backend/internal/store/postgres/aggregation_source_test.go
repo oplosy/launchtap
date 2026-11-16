@@ -114,9 +114,9 @@ func (recorder *aggregationSourceRecorder) Exec(_ context.Context, query string,
 	}
 	chainID, _ := args[0].(int64)
 	switch {
-	case strings.Contains(query, "DELETE FROM protocol_daily"):
+	case strings.Contains(query, "DELETE FROM protocol_daily "):
 		recorder.clearDailyCalls[chainID]++
-	case strings.Contains(query, "INSERT INTO protocol_daily"):
+	case strings.Contains(query, "INSERT INTO protocol_daily ("):
 		recorder.dailyCalls[chainID]++
 	case strings.Contains(query, "INSERT INTO protocol_stats"):
 		recorder.protocolStatsCalls[chainID]++

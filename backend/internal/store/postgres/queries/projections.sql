@@ -459,10 +459,16 @@ DELETE FROM wallet_positions WHERE chain_id = $1 AND wallet = $2 AND token_addre
 -- name: DeleteWalletRealizedLegs :exec
 DELETE FROM wallet_realized_legs WHERE chain_id = $1 AND wallet = $2 AND token_address = $3;
 
--- name: InsertWalletRealizedLeg :exec
+-- All of one position's realized legs in one statement; the arrays are aligned by index. One
+-- round trip per position instead of one per leg (AUDIT_REPORT_TR HIGH-14).
+-- name: InsertWalletRealizedLegs :execrows
 INSERT INTO wallet_realized_legs (chain_id, wallet, token_address, block_number, transaction_index, block_time, realized_pnl)
-VALUES (sqlc.arg(chain_id), sqlc.arg(wallet), sqlc.arg(token_address), sqlc.arg(block_number),
-    sqlc.arg(transaction_index), sqlc.arg(block_time), sqlc.arg(realized_pnl));
+SELECT sqlc.arg(chain_id), sqlc.arg(wallet), sqlc.arg(token_address),
+       n.block_number, x.transaction_index, t.block_time, r.realized_pnl
+FROM unnest(sqlc.arg(block_numbers)::bigint[]) WITH ORDINALITY AS n(block_number, ord)
+JOIN unnest(sqlc.arg(transaction_indexes)::integer[]) WITH ORDINALITY AS x(transaction_index, ord) ON x.ord = n.ord
+JOIN unnest(sqlc.arg(block_times)::timestamptz[]) WITH ORDINALITY AS t(block_time, ord) ON t.ord = n.ord
+JOIN unnest(sqlc.arg(realized_pnls)::numeric[]) WITH ORDINALITY AS r(realized_pnl, ord) ON r.ord = n.ord;
 
 -- Rebuilds one wallet's totals from its positions; the row is deleted when none remain.
 -- name: RecomputeWalletTotals :exec
@@ -672,6 +678,46 @@ WITH bounds AS (
 INSERT INTO protocol_daily (chain_id,day,volume_eth_wad,launches_count,trades_count,graduations_count)
 SELECT sqlc.arg(chain_id),day,volume,launches,trades,graduations FROM daily_rollup
 ON CONFLICT (chain_id,day) DO UPDATE SET volume_eth_wad=excluded.volume_eth_wad,launches_count=excluded.launches_count,trades_count=excluded.trades_count,graduations_count=excluded.graduations_count;
+
+-- from_day '-infinity' clears every day of the chain.
+-- name: ClearProtocolDailyRevenue :exec
+DELETE FROM protocol_daily_revenue WHERE chain_id = sqlc.arg(chain_id) AND day >= sqlc.arg(from_day)::date;
+
+-- ETH credited to the protocol per UTC day and engine, earned basis
+-- (docs/specs/2026-11-12-protocol-revenue-design.md). The LP share mirrors LpFeeLocker._credit:
+-- the creator gets floor(eth * bps / 10000), the protocol the rest. Every launch writes a row for
+-- its engine and day, so ListProtocolRevenueByEngine lists each launched engine. Only days >=
+-- from_day are rebuilt; from_day '-infinity' rebuilds the whole history.
+-- name: RecomputeProtocolDailyRevenue :exec
+WITH bounds AS (
+ SELECT (sqlc.arg(from_day)::date::timestamp AT TIME ZONE 'UTC') AS from_time
+), daily AS (
+ SELECT (l.block_time AT TIME ZONE 'UTC')::date AS day, l.engine_version, l.launch_fee_paid AS launch_fees,
+        0::numeric AS trade_fees, 0::numeric AS snipe_tax, 0::numeric AS graduation_remainder, 0::numeric AS lp_fees
+ FROM token_launches AS l
+ WHERE l.chain_id = sqlc.arg(chain_id) AND l.block_time >= (SELECT from_time FROM bounds)
+ UNION ALL
+ SELECT (t.block_time AT TIME ZONE 'UTC')::date, l.engine_version, 0, t.protocol_fee, t.snipe_tax, 0, 0
+ FROM trades AS t
+ JOIN token_launches AS l ON l.chain_id = t.chain_id AND l.token_address = t.token_address
+ WHERE t.chain_id = sqlc.arg(chain_id) AND t.block_time >= (SELECT from_time FROM bounds)
+ UNION ALL
+ SELECT (g.block_time AT TIME ZONE 'UTC')::date, l.engine_version, 0, 0, 0, g.eth_remainder, 0
+ FROM graduations AS g
+ JOIN token_launches AS l ON l.chain_id = g.chain_id AND l.token_address = g.token_address
+ WHERE g.chain_id = sqlc.arg(chain_id) AND g.block_time >= (SELECT from_time FROM bounds)
+ UNION ALL
+ SELECT (c.block_time AT TIME ZONE 'UTC')::date, l.engine_version, 0, 0, 0, 0,
+        c.eth_amount - div(c.eth_amount * COALESCE(l.lp_creator_share_bps, 0), 10000)
+ FROM lp_fee_collections AS c
+ JOIN token_launches AS l ON l.chain_id = c.chain_id AND l.token_address = c.token_address
+ WHERE c.chain_id = sqlc.arg(chain_id) AND c.block_time >= (SELECT from_time FROM bounds)
+)
+INSERT INTO protocol_daily_revenue (chain_id, day, engine_version, launch_fees, trade_fees, snipe_tax, graduation_remainder, lp_fees)
+SELECT sqlc.arg(chain_id), day, engine_version, sum(launch_fees), sum(trade_fees), sum(snipe_tax),
+       sum(graduation_remainder), sum(lp_fees)
+FROM daily
+GROUP BY day, engine_version;
 
 -- The all-time columns are the sums of protocol_daily, which the caller has just brought up to
 -- daily_through_block; the 24h columns read the sources by block_time range.

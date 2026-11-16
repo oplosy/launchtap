@@ -202,6 +202,16 @@ sql:
             go_type: {type: "Uint256"}
           - column: "trades.snipe_tax"
             go_type: {type: "Uint256"}
+          - column: "protocol_daily_revenue.launch_fees"
+            go_type: {type: "Uint256"}
+          - column: "protocol_daily_revenue.trade_fees"
+            go_type: {type: "Uint256"}
+          - column: "protocol_daily_revenue.snipe_tax"
+            go_type: {type: "Uint256"}
+          - column: "protocol_daily_revenue.graduation_remainder"
+            go_type: {type: "Uint256"}
+          - column: "protocol_daily_revenue.lp_fees"
+            go_type: {type: "Uint256"}
           - column: "*.eth_amount"
             go_type: {type: "Uint256"}
           - column: "v4_pool_initializations.sqrt_price_x96"
