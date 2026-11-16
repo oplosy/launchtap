@@ -28,7 +28,16 @@ Date: 2026-11-16. Validation results and the rejected claims are in `backlog.md`
   unknown critical PNG chunks are rejected (MED-01), token identities carry the graduation
   block (MED-12).
 
-## Not changed
-
-MED-11 (needs an owner decision on charts excluding the snipe tax) and MED-13 (narrowing
-`img-src` needs a browser check of the Privy wallet modal's external logos).
+- **MED-11, chart price.** Owner direction 2026-11-16: take the recommendation. A curve trade's
+  market price is `(eth_gross - snipe_tax) / token_amount`: the anti-snipe tax is a charge, not
+  price. Volume stays gross. Migration 00038 replaces `market_trades`, drops the ratcheted
+  `token_stats` row of every token with a taxed trade and rebuilds its candles
+  (`rebuild_token_projections` marks it dirty for the stats worker). Token stats prices and caps
+  truncate like every other wad price.
+- **MED-13, CSP images.** `img-src` lists the API origin, `data:`, `blob:`, `*.privy.io` and
+  `*.walletconnect.com` (the Privy modal's WalletConnect registry logos) instead of any https
+  host. Not checked in the Privy modal locally (no Privy app id in the local env); a blocked
+  logo falls back to the wallet name.
+- **HIGH-13 d/e, indexes.** `transfers (chain_id, block_number)` for reorg reads and deletes;
+  `(chain_id, token_address)` on the eight token-keyed fee and refund tables, which per-token
+  reads and the `token_launches` foreign-key checks on reorg deletes scan.

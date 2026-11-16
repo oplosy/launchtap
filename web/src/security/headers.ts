@@ -43,9 +43,17 @@ export function contentSecurityPolicy(
     "https://*.walletconnect.com",
     "wss://*.walletconnect.com",
   ];
-  // Token metadata accepts user-supplied HTTPS image URLs. SafeImage still
-  // rejects non-HTTPS/non-local URLs and uses referrerPolicy=no-referrer.
-  const images = ["'self'", "data:", "blob:", "https:", ...origins];
+  // Token images come from the API origin (`/v1/tokens/{address}/image`) and upload previews
+  // from blob: URLs. The Privy modal shows WalletConnect registry logos and its own assets.
+  // No wildcard https: (AUDIT_REPORT_TR MED-13): any other host could see the viewer's IP.
+  const images = [
+    "'self'",
+    "data:",
+    "blob:",
+    ...origins,
+    "https://*.privy.io",
+    "https://*.walletconnect.com",
+  ];
   const scripts = nonce
     ? [
         "'self'",

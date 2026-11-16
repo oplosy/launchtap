@@ -10,7 +10,10 @@ describe("security headers", () => {
     expect(policy).toContain("https://api.launchpad.example");
     expect(policy).toContain("https://rpc.launchpad.example");
     expect(policy).not.toMatch(/connect-src 'self' https:(?:\s|;)/);
-    expect(policy).toContain("img-src 'self' data: blob: https:");
+    expect(policy).toContain(
+      "img-src 'self' data: blob: https://api.launchpad.example https://rpc.launchpad.example https://*.privy.io https://*.walletconnect.com;",
+    );
+    expect(policy).not.toMatch(/img-src[^;]* https:(?:\s|;)/);
   });
 
   it("rejects credentials and query strings in CSP origins", () => {

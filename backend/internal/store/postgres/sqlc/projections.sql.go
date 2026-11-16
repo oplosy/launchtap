@@ -1501,15 +1501,17 @@ WITH clock AS (
     SELECT
         t.chain_id,
         t.token_address,
-        t.initial_virtual_eth * 1000000000000000000 / NULLIF(t.initial_virtual_token, 0) AS launch_price,
+        -- Prices and caps truncate like every other wad price (market_trades); a bare numeric
+        -- division stored in NUMERIC(78,0) rounds half away from zero (AUDIT_REPORT_TR MED-11).
+        trunc(t.initial_virtual_eth * 1000000000000000000 / NULLIF(t.initial_virtual_token, 0)) AS launch_price,
         t.launch_block_time,
         -- Before the first trade there is no reserve row; the curve still quotes from its
         -- initial virtual reserves, matching GetTokenDetail and GetTokenQuoteState. A graduated
         -- engine-2 token prices from its V4 pool and reports no liquidity figure.
         CASE WHEN reserve.reserve_source = 'v4'
             THEN COALESCE(v4_spot_price_wad(reserve.sqrt_price_x96), 0)
-            ELSE COALESCE(COALESCE(reserve.eth_reserve, t.initial_virtual_eth) * 1000000000000000000
-                / NULLIF(COALESCE(reserve.token_reserve, t.initial_virtual_token), 0), 0)
+            ELSE COALESCE(trunc(COALESCE(reserve.eth_reserve, t.initial_virtual_eth) * 1000000000000000000
+                / NULLIF(COALESCE(reserve.token_reserve, t.initial_virtual_token), 0)), 0)
         END AS spot_price,
         CASE WHEN reserve.reserve_source = 'v4' THEN NULL
             ELSE COALESCE(reserve.eth_reserve, t.initial_virtual_eth, 0)
@@ -1601,8 +1603,8 @@ INSERT INTO token_stats (
 )
 SELECT chain_id, token_address,
  spot_price,
- spot_price * GREATEST(total_supply - non_circulating, 0) / 1000000000000000000,
- spot_price * total_supply / 1000000000000000000,
+ trunc(spot_price * GREATEST(total_supply - non_circulating, 0) / 1000000000000000000),
+ trunc(spot_price * total_supply / 1000000000000000000),
  liquidity,
  GREATEST(COALESCE(previous_ath, 0), COALESCE(launch_price, 0), candle_ath),
  CASE
