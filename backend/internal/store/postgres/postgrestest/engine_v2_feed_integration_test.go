@@ -106,7 +106,7 @@ func TestEngineV2ReadsCoverV4SwapsAndFeeRecipients(t *testing.T) {
 		AND balance.account <> token.protocol_treasury`, chainID); err != nil {
 		t.Fatalf("seed recipient balance: %v", err)
 	}
-	balances, err :=database.DB.QueryContext(ctx, "SELECT account, curve_eth_owed::text FROM creator_fee_balances WHERE chain_id=$1", chainID)
+	balances, err := database.DB.QueryContext(ctx, "SELECT account, curve_eth_owed::text FROM creator_fee_balances WHERE chain_id=$1", chainID)
 	if err != nil {
 		t.Fatalf("read creator fee balances: %v", err)
 	}
