@@ -178,7 +178,7 @@ func mustCompute(t *testing.T, legs ...position.Leg) position.Position {
 func newCurvePositionFixture(t *testing.T, ctx context.Context) walletSchemaFixture {
 	t.Helper()
 	database := NewMigrated(t)
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, IndexerRole))
 	at := time.Date(2026, time.November, 6, 9, 0, 0, 0, time.UTC)
 	hash := hashBytes(0x21)
 	mustInsertBlock(t, ctx, database.DB, walletChainID, 10, hash, hashBytes(0x20), at, "safe")

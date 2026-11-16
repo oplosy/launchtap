@@ -1,8 +1,12 @@
--- name: GetTokenCreatorForUpdate :one
+-- name: LockTokenLaunch :exec
+-- Holds the launch row FOR SHARE until commit through a SECURITY DEFINER function (migration
+-- 00039): a row lock needs UPDATE privilege, which the API role must not have on token_launches.
+SELECT lock_token_launch(sqlc.arg(chain_id)::BIGINT, sqlc.arg(token_address)::BYTEA);
+
+-- name: GetTokenCreator :one
 SELECT creator
 FROM token_launches
-WHERE chain_id = sqlc.arg(chain_id) AND token_address = sqlc.arg(token_address)
-FOR SHARE;
+WHERE chain_id = sqlc.arg(chain_id) AND token_address = sqlc.arg(token_address);
 
 -- name: GetTokenImage :one
 SELECT content_type, content, sha256, revision, updated_at

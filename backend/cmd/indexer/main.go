@@ -18,6 +18,7 @@ import (
 	"github.com/Contictus/launchtap/backend/internal/metrics"
 	"github.com/Contictus/launchtap/backend/internal/reconcile"
 	"github.com/Contictus/launchtap/backend/internal/redact"
+	"github.com/Contictus/launchtap/backend/internal/secretenv"
 	"github.com/Contictus/launchtap/backend/internal/stats"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/Contictus/launchtap/backend/internal/swapbackfill"
@@ -32,7 +33,11 @@ func main() {
 	}
 }
 func run() error {
-	c, err := config.Load(os.Getenv)
+	env, err := secretenv.Lookup(os.Getenv, "DATABASE_PASSWORD")
+	if err != nil {
+		return err
+	}
+	c, err := config.Load(env)
 	if err != nil {
 		return err
 	}

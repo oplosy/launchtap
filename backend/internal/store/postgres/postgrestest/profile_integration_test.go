@@ -16,7 +16,7 @@ func TestProfileReaderAggregatesActionsAcrossLinkedWallets(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, APIRole))
 
 	const chainID int64 = 46630
 	const deployment = "profile-read-test"

@@ -56,6 +56,9 @@ function Test-ComposeConfig {
         RELEASE_TAG = 'prep-validation'
         BACKEND_ENV_FILE = "$PSScriptRoot/backend.env.example"
         POSTGRES_PASSWORD_FILE = $SecretFile
+        POSTGRES_API_PASSWORD_FILE = $SecretFile
+        POSTGRES_INDEXER_PASSWORD_FILE = $SecretFile
+        POSTGRES_TELEGRAM_PASSWORD_FILE = $SecretFile
         NEXT_PUBLIC_CHAIN_ID = '46630'
         NEXT_PUBLIC_DEPLOYMENT_ID = 'compose-validation'
         NEXT_PUBLIC_PRIVY_APP_ID = 'compose-validation'

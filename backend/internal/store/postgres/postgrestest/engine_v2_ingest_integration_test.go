@@ -92,7 +92,7 @@ func TestEngineV2FixtureIngestsThroughRouter(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, IndexerRole))
 
 	const chainID int64 = 49020
 	block := ledger.IndexedBlock{ChainID: chainID, BlockNumber: 7, BlockHash: common.Hash{0xb7}, ParentHash: common.Hash{0xb6}, BlockTime: time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC), FinalityStatus: "observed"}

@@ -382,6 +382,16 @@ access and never put the URL in a ticket, chat or shell history (export it from 
 store for the session). Reports are only filed by authenticated users and trigger nothing
 automatically.
 
+Give each moderator a personal login in the `launchpad_moderate_role` group role, never the schema
+owner: it can read everything but write only the moderation tables
+(`docs/specs/2026-11-16-postgres-service-roles-preflight.md`). As the owner, once per moderator:
+
+```sql
+CREATE ROLE moderator_alice LOGIN PASSWORD '...' IN ROLE launchpad_moderate_role;
+```
+
+The funding worker (`/app/funding`) gets a login in `launchpad_funding_role` the same way.
+
 Every command takes the deployment scope and the operator name that is written to the audit log:
 
 ```sh

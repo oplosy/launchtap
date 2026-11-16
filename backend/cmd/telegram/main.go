@@ -17,6 +17,7 @@ import (
 
 	"github.com/Contictus/launchtap/backend/internal/config"
 	"github.com/Contictus/launchtap/backend/internal/redact"
+	"github.com/Contictus/launchtap/backend/internal/secretenv"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/Contictus/launchtap/backend/internal/telegram"
 )
@@ -35,7 +36,11 @@ func main() {
 }
 
 func run(ctx context.Context, getenv func(string) string) error {
-	c, err := config.LoadTelegram(getenv)
+	env, err := secretenv.Lookup(getenv, "DATABASE_PASSWORD")
+	if err != nil {
+		return err
+	}
+	c, err := config.LoadTelegram(env)
 	if err != nil {
 		return err
 	}

@@ -20,7 +20,7 @@ func TestRecomputeTokensStatsMatchesPerTokenRecompute(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, IndexerRole))
 	const chainID int64 = 48021
 	tokens := insertStatsBatchFixture(t, ctx, database, chainID)
 	adapter := storepostgres.NewAdapter(pool)

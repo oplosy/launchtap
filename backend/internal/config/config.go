@@ -177,7 +177,8 @@ func Load(getenv func(string) string) (Config, error) {
 	if err := validateURL("RPC_URL", values.rpcURL, "http", "https"); err != nil {
 		return Config{}, err
 	}
-	if err := validateURL("DATABASE_URL", values.databaseURL, "postgres", "postgresql"); err != nil {
+	databaseURL, err := resolveDatabaseURL(getenv)
+	if err != nil {
 		return Config{}, err
 	}
 
@@ -279,7 +280,7 @@ func Load(getenv func(string) string) (Config, error) {
 		ChainID:                       chainID,
 		DeploymentID:                  values.deploymentID,
 		RPCURL:                        values.rpcURL,
-		DatabaseURL:                   values.databaseURL,
+		DatabaseURL:                   databaseURL,
 		PrivyAppID:                    values.privyAppID,
 		PrivyVerificationKey:          values.privyVerificationKey,
 		LogLevel:                      logLevel,
@@ -317,8 +318,8 @@ func LoadDatabase(getenv func(string) string) (DatabaseConfig, error) {
 		return DatabaseConfig{}, &FieldError{Field: "getenv", Err: ErrMissing}
 	}
 
-	databaseURL := strings.TrimSpace(getenv("DATABASE_URL"))
-	if err := validateURL("DATABASE_URL", databaseURL, "postgres", "postgresql"); err != nil {
+	databaseURL, err := resolveDatabaseURL(getenv)
+	if err != nil {
 		return DatabaseConfig{}, err
 	}
 
@@ -349,7 +350,6 @@ type environmentValues struct {
 	chainID                       string
 	deploymentID                  string
 	rpcURL                        string
-	databaseURL                   string
 	privyAppID                    string
 	privyVerificationKey          string
 	logLevel                      string
@@ -385,7 +385,6 @@ func readEnvironment(getenv func(string) string) environmentValues {
 		chainID:                       strings.TrimSpace(getenv("CHAIN_ID")),
 		deploymentID:                  strings.TrimSpace(getenv("DEPLOYMENT_ID")),
 		rpcURL:                        strings.TrimSpace(getenv("RPC_URL")),
-		databaseURL:                   strings.TrimSpace(getenv("DATABASE_URL")),
 		privyAppID:                    strings.TrimSpace(getenv("PRIVY_APP_ID")),
 		privyVerificationKey:          strings.TrimSpace(getenv("PRIVY_VERIFICATION_KEY")),
 		logLevel:                      strings.TrimSpace(getenv("LOG_LEVEL")),

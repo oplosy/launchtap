@@ -47,7 +47,7 @@ func seedSocialToken(t *testing.T, ctx context.Context, database *Database, tag 
 
 func newSocialStore(t *testing.T, ctx context.Context, database *Database) (storepostgres.SocialStore, *pgxpool.Pool) {
 	t.Helper()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, APIRole))
 	return storepostgres.SocialStore{Pool: pool}, pool
 }
 
@@ -529,7 +529,7 @@ func TestSocialRateStateQueries(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, APIRole))
 	q := sqlc.New(pool)
 	token := seedSocialToken(t, ctx, database, 0x10)
 	window := float64(time.Hour / time.Second)
@@ -606,7 +606,7 @@ func TestSocialReportAndSubjectQueries(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, APIRole))
 	q := sqlc.New(pool)
 	token := seedSocialToken(t, ctx, database, 0x10)
 	wallet := socialHolder.Bytes()

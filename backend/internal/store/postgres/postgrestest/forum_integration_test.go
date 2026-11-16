@@ -35,7 +35,7 @@ func TestForumFeedAndCommunities(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, APIRole))
 	store := storepostgres.ForumStore{Pool: pool}
 	scope := social.Scope{ChainID: socialChainID, DeploymentID: socialDep}
 	a := seedSocialToken(t, ctx, database, 0x10)

@@ -20,7 +20,7 @@ var modScope = social.Scope{ChainID: socialChainID, DeploymentID: socialDep}
 
 func newModerationStore(t *testing.T, ctx context.Context, database *Database) (storepostgres.ModerationStore, storepostgres.SocialStore) {
 	t.Helper()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, ModerateRole))
 	return storepostgres.ModerationStore{Pool: pool}, storepostgres.SocialStore{Pool: pool}
 }
 
