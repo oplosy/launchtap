@@ -67,8 +67,33 @@
         indexes when they grow; `pool_syncs` latest-sync lookup runs once per graduation (fine).
      Rejected: the inbox claim (`ListInboxEvents` already bounds `block_time` to 30 days) and
      `ListTokenTransfersTouching` as a defect (bounded by the early-buyer window's wallets).
-  2. Validate MED-01..MED-08 and MED-10..MED-13 (MED-09 and MED-14 are done; MED-15 is the known
-     Privy 3 item).
+  2. MED-01..08 and MED-10..13, validated 2026-11-16 against the code (MED-09 and MED-14 are
+     done; MED-15 is the Privy 3 item). Fix, in this order:
+     a. MED-02 (Medium, web): a capped curve buy sends `value = quantity` while `minTokensOut`
+        comes from the capped quote, so a front-running sell makes the whole amount spend at a
+        price up to quantity/inputUsed worse. Send `inputUsed` when the quote is capped.
+     b. MED-08 (Medium): `mapReadError`, `mapMetadataError`, quote and observation 500s drop the
+        cause; the access log has only the status. Log the error with the request id.
+     c. MED-04 (Medium): `validateMetadata` lets NUL through (Postgres 22021 -> 500) and allows
+        bidi override and control runes. Reuse the `social` comment rules.
+     d. MED-11 (Medium, needs an owner decision): engine-2 taxed buys put `eth_gross` (tax
+        included) into `execution_price_wad`, so candles and ATH show up to a 10x wick. Fix is a
+        view change plus a candle/stats rebuild; decide whether charts exclude the tax.
+     e. Low: MED-06 (capacity rejections reconnect every 3 s; the stream metric counts before
+        `Subscribe`), MED-05 part 2 (`GET /v1/profile` lacks `no-store`, skips
+        `authenticatePrivy`), MED-01 parts (image PUT is the only route without huma's 1 MiB cap,
+        so 6 MiB pre-auth; unknown uppercase PNG chunks are kept), MED-03 (Permit2 expiry can
+        end before the swap deadline: a revert, no loss; deadlines from the client clock),
+        MED-12 (`ListTokenIdentities` never loads the graduation block; defence in depth, the
+        contract already rejects post-graduation trades), MED-10 part (`notification_reads`
+        cursor not clamped to the reorg ancestor), MED-13 (`img-src https:` is unneeded since
+        `image_url` is always the API path; check Privy wallet logos in the browser first).
+     Rejected: MED-07 (XFF falls back only on a proxy misconfiguration, Caddy always sets it and
+     the walk is right to left; `SubjectLimiter` keys verified DIDs, 10,000 per minute is not
+     reachable), MED-10 "dead code" (the flag gates search depth > 128 per the deep-reorg
+     runbook; below-safe rejection and async `position_dirty` are by design), MED-05 part 1 (a
+     banned user removing their own public profile is allowed; the ban blocks writes), MED-01
+     WebP (decoders reject a VP8X frame larger than the canvas).
   3. `wallet_funding` rows already written `unknown` by the old same-block rule are not
      re-resolved (`ON CONFLICT DO NOTHING`); re-resolving them is a data change, ask first.
 - **Pitfalls / notes:** Deliberately left: HIGH-12 (V4 `eth_reserve` falls back to initial
