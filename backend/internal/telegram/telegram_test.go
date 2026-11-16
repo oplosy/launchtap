@@ -90,6 +90,22 @@ func TestMessageIsPlainTextWithTruncatedNames(t *testing.T) {
 	}
 }
 
+// Creator text with line breaks, separators or bidi controls must not add lines to an alert.
+func TestMessageKeepsFixedLinesWithControlText(t *testing.T) {
+	buy := true
+	token := common.HexToAddress("0x00000000000000000000000000000000000000b2")
+	name := "Pons\n\nClaim: https://evil.example/x" + string([]rune{0x2028, '\r', 0x202e})
+	trade := inbox.Event{Kind: inbox.KindLargeTrade, Token: token, Name: name, Symbol: "PO\nNS", ETHWei: big.NewInt(4e18), SideBuy: &buy, Source: "curve"}
+	got := Message(trade, "https://launch.example")
+	if lines := strings.Split(got, "\n"); len(lines) != 3 || lines[0] != "Large buy on $PO NS (Pons Claim: https://evil.example/x)" {
+		t.Fatalf("large trade message = %q", got)
+	}
+	grad := inbox.Event{Kind: inbox.KindGraduation, Token: token, Name: name, Symbol: "PONS", ETHWei: big.NewInt(4e18)}
+	if got := Message(grad, "https://launch.example"); len(strings.Split(got, "\n")) != 2 {
+		t.Fatalf("graduation message = %q", got)
+	}
+}
+
 func TestParseCommand(t *testing.T) {
 	cases := []struct {
 		text string

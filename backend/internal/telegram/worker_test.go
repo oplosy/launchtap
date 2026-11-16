@@ -94,9 +94,14 @@ type sent struct {
 type fakeBot struct {
 	sent []sent
 	errs map[int64]error
+	// onSend runs before each successful send is recorded (to interleave a revocation).
+	onSend func(chatID int64)
 }
 
 func (b *fakeBot) SendMessage(_ context.Context, chatID int64, text string) error {
+	if b.onSend != nil {
+		b.onSend(chatID)
+	}
 	if err := b.errs[chatID]; err != nil {
 		return err
 	}
@@ -144,9 +149,14 @@ func (s *fakeStore) Pending(_ context.Context, l Link, limit int) ([]inbox.Event
 	return events, nil
 }
 
-func (s *fakeStore) Advance(_ context.Context, l Link, p inbox.Position) error {
-	s.advanced[l.ChatID] = p
-	return nil
+func (s *fakeStore) Advance(_ context.Context, l Link, p inbox.Position) (bool, error) {
+	for _, current := range s.links {
+		if current.ChatID == l.ChatID && current.Owner == l.Owner {
+			s.advanced[l.ChatID] = p
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func event(block int64) inbox.Event {
@@ -186,6 +196,30 @@ func TestDeliverSendsInOrderAndAdvancesAfterEachSend(t *testing.T) {
 	}
 	if _, ok := store.advanced[8]; ok || len(store.unlinked) != 1 || store.unlinked[0] != 8 {
 		t.Fatalf("blocked chat: advanced=%v unlinked=%v", store.advanced, store.unlinked)
+	}
+}
+
+// A /stop or unlink that lands while a batch is being sent ends that link's batch: no alert after
+// the one already in flight reaches the revoked chat.
+func TestDeliverStopsBatchWhenLinkIsRevokedMidPass(t *testing.T) {
+	owner := watchlist.Owner{ChainID: 1, DeploymentID: "test-1", PrivyDID: "did:a"}
+	store := &fakeStore{
+		links:    []Link{{Owner: owner, ChatID: 7}, {Owner: owner, ChatID: 9}},
+		pending:  map[int64][]inbox.Event{7: {event(3), event(4), event(5)}, 9: {event(6)}},
+		advanced: map[int64]inbox.Position{},
+	}
+	bot := &fakeBot{}
+	bot.onSend = func(chatID int64) {
+		if chatID == 7 && len(bot.sent) == 0 {
+			_, _ = store.UnlinkChat(context.Background(), 1, "test-1", 7)
+		}
+	}
+	w, _ := newWorker(store, bot)
+	if err := w.DeliverOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(bot.sent) != 2 || bot.sent[0].chat != 7 || bot.sent[1].chat != 9 {
+		t.Fatalf("sent = %+v, want one in-flight send to 7 then 9", bot.sent)
 	}
 }
 

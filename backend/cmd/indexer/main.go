@@ -27,7 +27,7 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		slog.Error("indexer stopped", "error", err)
+		slog.Error("indexer stopped", "error", redact.Error(err, os.Getenv("RPC_URL"), os.Getenv("DATABASE_URL")))
 		os.Exit(indexer.ExitCode(err))
 	}
 }
@@ -49,7 +49,7 @@ func run() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	health := new(indexer.HealthTracker)
+	health := &indexer.HealthTracker{Render: func(err error) string { return redact.Error(err, c.RPCURL, c.DatabaseURL) }}
 	metricsRegistry := metrics.NewRegistry(metrics.ComponentIndexer)
 	indexerMetrics := metrics.NewIndexer(metricsRegistry, health.Snapshot)
 	source, err := chain.Dial(ctx, c.RPCURL, chain.RPCConfig{Timeout: c.RPCTimeout, MaxRetries: c.RPCMaxRetries, RetryBackoff: c.RPCRetryBackoff, Observer: indexerMetrics})

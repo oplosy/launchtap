@@ -250,8 +250,15 @@ describe("task 6 transaction math and safety", () => {
     expect(
       classifyTransactionFailure(new Error("execution reverted: UnknownEngine"), "simulation"),
     ).toBe("simulation-reverted");
-    expect(classifyTransactionFailure(new Error("execution reverted"), "receipt")).toBe(
+    expect(classifyTransactionFailure(new Error("ReceiptReverted"), "receipt")).toBe(
       "receipt-reverted",
     );
+    expect(classifyTransactionFailure(new Error("Failed to fetch"), "receipt")).toBe("rpc-failure");
+    expect(
+      classifyTransactionFailure(
+        new Error("Timed out while waiting for transaction with hash 0x01 to be confirmed."),
+        "receipt",
+      ),
+    ).toBe("rpc-failure");
   });
 });

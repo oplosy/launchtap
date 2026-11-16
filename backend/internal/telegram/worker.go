@@ -104,8 +104,14 @@ func (w *Worker) DeliverOnce(ctx context.Context) error {
 			if err != nil {
 				break
 			}
-			if err := w.Store.Advance(ctx, link, e.Position); err != nil {
+			advanced, err := w.Store.Advance(ctx, link, e.Position)
+			if err != nil {
 				return fmt.Errorf("advance telegram cursor: %w", err)
+			}
+			if !advanced {
+				// /stop, a web unlink or a re-bind landed during this batch: send nothing more to
+				// this chat for this link. At most the one send already made can follow revocation.
+				break
 			}
 			if err := w.sleep(ctx, pace); err != nil {
 				return err

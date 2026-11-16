@@ -155,8 +155,8 @@ func TestTelegramLinkDeliveryAndRelink(t *testing.T) {
 		t.Fatalf("cursor = %+v", links[0].Cursor)
 	}
 	// The cursor never moves back.
-	if err := store.Advance(ctx, links[0], inbox.Position{Block: 13}); err != nil {
-		t.Fatal(err)
+	if moved, err := store.Advance(ctx, links[0], inbox.Position{Block: 13}); err != nil || moved {
+		t.Fatalf("backward Advance = %v, %v; want false", moved, err)
 	}
 	if links, _ = store.Links(ctx, walletChainID, inboxDeployment); links[0].Cursor.Block != 15 {
 		t.Fatalf("cursor moved back: %+v", links[0].Cursor)
@@ -172,8 +172,8 @@ func TestTelegramLinkDeliveryAndRelink(t *testing.T) {
 	if !claim(me, 99) {
 		t.Fatal("re-link failed")
 	}
-	if err := store.Advance(ctx, old, inbox.Position{Block: 20}); err != nil {
-		t.Fatal(err)
+	if moved, err := store.Advance(ctx, old, inbox.Position{Block: 20}); err != nil || moved {
+		t.Fatalf("stale Advance = %v, %v; want false", moved, err)
 	}
 	links, _ = store.Links(ctx, walletChainID, inboxDeployment)
 	if len(links) != 1 || links[0].ChatID != 99 || links[0].Cursor.Block != 14 || links[0].Settings.MinTradeWei.Cmp(strict.MinTradeWei) != 0 {

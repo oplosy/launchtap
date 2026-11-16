@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/Contictus/launchtap/backend/internal/inbox"
@@ -125,8 +126,10 @@ type DeliveryStore interface {
 	// Pending returns up to limit events after l.Cursor in safe blocks that pass l.Settings, in
 	// chain order.
 	Pending(ctx context.Context, l Link, limit int) ([]inbox.Event, error)
-	// Advance moves the cursor forward to p while the account is still bound to l.ChatID.
-	Advance(ctx context.Context, l Link, p inbox.Position) error
+	// Advance moves the cursor forward to p while the account is still bound to l.ChatID. It
+	// reports false when no link row moved: the link was removed or re-bound since Links ran (or
+	// the cursor is already past p), so the worker must stop sending that link's batch.
+	Advance(ctx context.Context, l Link, p inbox.Position) (bool, error)
 }
 
 // Command is a bot command a private chat sent.
@@ -159,10 +162,10 @@ func ParseCommand(text string) (Command, string) {
 }
 
 // Message is the plain-text alert for an event. Name and symbol are user-controlled; the message is
-// sent without a parse mode, so they cannot add markup.
+// sent without a parse mode, so they cannot add markup, and singleLine keeps them from adding lines.
 func Message(e inbox.Event, webOrigin string) string {
-	symbol := truncate(strings.TrimSpace(e.Symbol))
-	name := truncate(strings.TrimSpace(e.Name))
+	symbol := truncate(singleLine(e.Symbol))
+	name := truncate(singleLine(e.Name))
 	link := strings.TrimRight(webOrigin, "/") + "/token/" + strings.ToLower(e.Token.Hex())
 	if e.Kind == inbox.KindGraduation {
 		return "$" + symbol + " (" + name + ") graduated: " + formatETH(e.ETHWei) + " ETH moved to the pool\n" + link
@@ -181,6 +184,24 @@ func Message(e inbox.Event, webOrigin string) string {
 		line += " by " + hex[:6] + "…" + hex[len(hex)-4:]
 	}
 	return "Large " + side + " on $" + symbol + " (" + name + ")\n" + line + "\n" + link
+}
+
+// singleLine replaces control runes (line feeds included), line and paragraph separators, invisible
+// directional marks and bidi embeddings, overrides and isolates, the zero-width space and the byte
+// order mark with spaces and collapses space runs, so creator text cannot change the alert's fixed
+// line layout or reorder the text around it.
+func singleLine(s string) string {
+	return strings.Join(strings.Fields(strings.Map(func(r rune) rune {
+		switch {
+		case r == 0x2028, r == 0x2029, r == 0x200E, r == 0x200F, r == 0x061C, r == 0x200B, r == 0xFEFF,
+			r >= 0x202A && r <= 0x202E, r >= 0x2066 && r <= 0x2069:
+			return ' '
+		}
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, s)), " ")
 }
 
 func truncate(s string) string {
