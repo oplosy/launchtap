@@ -136,6 +136,34 @@ func TestInboxDerivedFromWatchlistAndLedger(t *testing.T) {
 	if want := []string{"large_trade@14-0-1", "graduation@13-0-0", "large_trade@12-1-0"}; err != nil || !slices.Equal(inboxIDs(page), want) || page.Unread != 1 {
 		t.Fatalf("after reorg = %v unread=%d err=%v, want %v unread 1", inboxIDs(page), page.Unread, err, want)
 	}
+
+	// MED-10: a read position inside orphaned blocks moves back to the ancestor, so an event the
+	// new branch mines at the same position shows as unread.
+	remineSell := func() {
+		l.block(15, "safe")
+		insertPoolSync(t, ctx, l.f.database.DB, walletChainID, 15, l.blockHash(15), l.blockTime(15), hashBytes(0x86), 0, l.f.pair.Bytes(), 200, 1200)
+		l.swap(15, 0, 0x86, 1, 10, 0, 0, 8*halfETH/5, 0xc3, 0xc3)
+	}
+	remineSell()
+	page, err = store.List(ctx, me, nil, 10)
+	if err != nil || len(page.Items) != 4 {
+		t.Fatalf("re-mined block 15: %v err=%v", inboxIDs(page), err)
+	}
+	if err := store.MarkRead(ctx, me, page.Items[0].Position); err != nil {
+		t.Fatal(err)
+	}
+	if page, err = store.List(ctx, me, nil, 10); err != nil || page.Unread != 0 {
+		t.Fatalf("after reading block 15: unread=%d err=%v, want 0", page.Unread, err)
+	}
+	if err := storepostgres.WithinTx(ctx, l.f.pool, func(ctx context.Context, a *storepostgres.Adapter) error {
+		return a.DeleteCanonicalAbove(ctx, walletChainID, 14)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	remineSell()
+	if page, err = store.List(ctx, me, nil, 10); err != nil || page.Unread != 1 {
+		t.Fatalf("after a second reorg and a re-mined block 15: unread=%d err=%v, want 1", page.Unread, err)
+	}
 }
 
 // Spec P0-C4 AC1: events older than 30 days are not listed even when the watch is older.

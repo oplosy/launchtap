@@ -67,6 +67,14 @@ func TestStripPNGMetadataKeepsRenderingChunksOnly(t *testing.T) {
 	}
 }
 
+func TestStripPNGMetadataRejectsUnknownCriticalChunk(t *testing.T) {
+	const ihdrEnd = 8 + 12 + 13
+	smuggled := insertAfter(testPNG(t, 3, 2), ihdrEnd, pngChunk("XXXX", []byte(secretMarker)))
+	if _, err := stripImageMetadata("image/png", smuggled); err == nil {
+		t.Fatal("an unknown critical chunk was accepted")
+	}
+}
+
 func TestStripJPEGMetadataKeepsPixelsAndColorProfile(t *testing.T) {
 	var encoded bytes.Buffer
 	if err := jpeg.Encode(&encoded, noisyImage(24, 16), &jpeg.Options{Quality: 90}); err != nil {

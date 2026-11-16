@@ -64,7 +64,7 @@ func (r ObservationRoutes) get(ctx context.Context, in *observationInput) (*cano
 		if errors.Is(err, observation.ErrNotFound) {
 			return nil, apiProblem(http.StatusNotFound, "transaction_not_indexed", "Transaction has no canonical indexed event at the current snapshot")
 		}
-		return nil, apiRequestProblem(ctx, http.StatusInternalServerError, "internal_error", "Request failed")
+		return nil, internalProblem(ctx, err, "internal_error", "Request failed")
 	}
 	body := canonicalObservationBody{ChainID: v.ChainID, DeploymentID: v.DeploymentID, TxHash: hash.Hex(), Snapshot: snapDTO(v.Snapshot, v.Finality), Finality: v.Finality, Events: make([]canonicalEventDTO, 0, len(v.Events))}
 	for _, event := range v.Events {

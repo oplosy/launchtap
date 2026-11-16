@@ -39,6 +39,8 @@ var pngRenderingChunks = map[string]bool{
 	"acTL": true, "fcTL": true, "fdAT": true,
 }
 
+var pngCriticalChunks = map[string]bool{"IHDR": true, "PLTE": true, "IDAT": true, "IEND": true}
+
 func stripPNGMetadata(content []byte) ([]byte, error) {
 	const signatureLength = 8
 	out := bytes.NewBuffer(make([]byte, 0, len(content)))
@@ -71,8 +73,14 @@ func stripPNGMetadata(content []byte) ([]byte, error) {
 				return nil, errMalformedImage
 			}
 		}
-		// An uppercase first letter marks a critical chunk, which a decoder cannot skip.
-		if (chunkType[0] >= 'A' && chunkType[0] <= 'Z') || pngRenderingChunks[chunkType] {
+		// An uppercase first letter marks a critical chunk, which a decoder cannot skip. PNG defines
+		// only four; any other critical chunk would be kept verbatim yet makes the file
+		// undecodable, so it is rejected rather than stored.
+		critical := chunkType[0] >= 'A' && chunkType[0] <= 'Z'
+		if critical && !pngCriticalChunks[chunkType] {
+			return nil, errMalformedImage
+		}
+		if critical || pngRenderingChunks[chunkType] {
 			out.Write(content[offset:end])
 		}
 		if chunkType == "IEND" {

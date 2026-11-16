@@ -68,6 +68,28 @@ func (q *Queries) AffectedTokensAbove(ctx context.Context, arg AffectedTokensAbo
 	return items, nil
 }
 
+const clampNotificationReadsAbove = `-- name: ClampNotificationReadsAbove :execrows
+UPDATE notification_reads
+SET read_block = $2, read_tx_index = 2147483647, read_log_index = 2147483647, updated_at = now()
+WHERE chain_id = $1 AND read_block > $2
+`
+
+type ClampNotificationReadsAboveParams struct {
+	ChainID   int64
+	ReadBlock int64
+}
+
+// A read position inside the orphaned blocks moves back to the end of the ancestor block, so an
+// event re-mined at or before the old position on the new branch shows as unread
+// (AUDIT_REPORT_TR MED-10). Positions at or below the ancestor are canonical and stay.
+func (q *Queries) ClampNotificationReadsAbove(ctx context.Context, arg ClampNotificationReadsAboveParams) (int64, error) {
+	result, err := q.db.Exec(ctx, clampNotificationReadsAbove, arg.ChainID, arg.ReadBlock)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const completeIndexerReorg = `-- name: CompleteIndexerReorg :one
 UPDATE indexer_reorgs SET outcome='recovered', completed_at=now()
 WHERE reorg_id=$1 AND outcome='open'

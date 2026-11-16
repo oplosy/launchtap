@@ -80,16 +80,17 @@ func (r EventRoutes) stream(ctx context.Context, input *eventInput, send sse.Sen
 		return
 	}
 	defer release()
-	if r.metrics != nil {
-		r.metrics.StreamOpened()
-		defer r.metrics.StreamClosed()
-	}
 	subscription, err := r.Hub.Subscribe()
 	if err != nil {
 		_ = send(sse.Message{Comment: "subscriber capacity reached", Retry: 3000})
 		return
 	}
 	defer subscription.Close()
+	// Counted only once subscribed, so a capacity rejection is not reported as an open stream.
+	if r.metrics != nil {
+		r.metrics.StreamOpened()
+		defer r.metrics.StreamClosed()
+	}
 	if err := send(sse.Message{Comment: "refresh-only stream; fetch REST after reconnect", Retry: 3000}); err != nil {
 		return
 	}

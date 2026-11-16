@@ -202,6 +202,10 @@ func (adapter *Adapter) DeleteCanonicalAbove(ctx context.Context, chainID, ances
 			_, err := adapter.queries.DeleteIndexedBlocksAbove(ctx, sqlc.DeleteIndexedBlocksAboveParams(arg))
 			return err
 		},
+		func(ctx context.Context) error {
+			_, err := adapter.queries.ClampNotificationReadsAbove(ctx, sqlc.ClampNotificationReadsAboveParams{ChainID: chainID, ReadBlock: ancestor})
+			return err
+		},
 	}
 	for _, deleteRows := range deletes {
 		if err := deleteRows(ctx); err != nil {

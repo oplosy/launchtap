@@ -39,6 +39,10 @@ type Querier interface {
 	ClaimPositionDirty(ctx context.Context, arg ClaimPositionDirtyParams) ([]ClaimPositionDirtyRow, error)
 	// R10: publishing a wallet another user published moves it to the caller.
 	ClaimPublicWallet(ctx context.Context, arg ClaimPublicWalletParams) error
+	// A read position inside the orphaned blocks moves back to the end of the ancestor block, so an
+	// event re-mined at or before the old position on the new branch shows as unread
+	// (AUDIT_REPORT_TR MED-10). Positions at or below the ancestor are canonical and stay.
+	ClampNotificationReadsAbove(ctx context.Context, arg ClampNotificationReadsAboveParams) (int64, error)
 	// The launch mint Transfer(0 -> curve) is ingested before the tokens row exists (the token
 	// constructor logs it before TokenLaunched), so the exclusion lookup could not see the curve.
 	// Drop the curve and pair marks once the row is written (R4).

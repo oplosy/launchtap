@@ -54,6 +54,9 @@ func TestProfileRouteRequiresCredentialsAndReturnsSnapshotBoundActions(t *testin
 	if response.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
+	if got := response.Header().Get("Cache-Control"); got != "private, no-store" {
+		t.Fatalf("Cache-Control = %q, want private, no-store", got)
+	}
 	for _, want := range []string{`"as_of_block":42`, `"token":"` + token.Hex() + `"`, `"creator_fees":"11"`, `"refund":"7"`} {
 		if !strings.Contains(response.Body.String(), want) {
 			t.Fatalf("body missing %s: %s", want, response.Body.String())
@@ -63,7 +66,7 @@ func TestProfileRouteRequiresCredentialsAndReturnsSnapshotBoundActions(t *testin
 
 func TestProfileRouteMapsReaderErrors(t *testing.T) {
 	server := New(DefaultConfig(), ReadyFunc(func(context.Context) error { return nil }), nil)
-	server.RegisterProfileRoutes(ProfileRoutes{Reader: profileReaderStub{err: errors.New("hidden")}, Verifier: profileVerifierStub{}, ChainID: 1})
+	server.RegisterProfileRoutes(ProfileRoutes{Reader: profileReaderStub{err: errors.New("hidden")}, Verifier: profileVerifierStub{principal: privyauth.Principal{PrivyDID: "did:privy:test"}}, ChainID: 1})
 	request := httptest.NewRequest(http.MethodGet, "/v1/profile", nil)
 	request.Header.Set("Authorization", "Bearer access")
 	request.Header.Set("privy-id-token", "identity")

@@ -68,7 +68,10 @@
      Rejected: the inbox claim (`ListInboxEvents` already bounds `block_time` to 30 days) and
      `ListTokenTransfersTouching` as a defect (bounded by the early-buyer window's wallets).
   2. MED-01..08 and MED-10..13, validated 2026-11-16 against the code (MED-09 and MED-14 are
-     done; MED-15 is the Privy 3 item). Fix, in this order:
+     done; MED-15 is the Privy 3 item). Done on `task/audit-med-fixes`
+     (`docs/specs/2026-11-16-audit-med-fixes-preflight.md`): a, b, c and every item of e except
+     MED-13; MED-06 is reduced to the metric fix (the web client's own backoff already stops a
+     reconnect storm). Still open: d (MED-11, owner decision) and MED-13. Original order:
      a. MED-02 (Medium, web): a capped curve buy sends `value = quantity` while `minTokensOut`
         comes from the capped quote, so a front-running sell makes the whole amount spend at a
         price up to quantity/inputUsed worse. Send `inputUsed` when the quote is capped.

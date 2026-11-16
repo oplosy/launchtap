@@ -9,6 +9,7 @@ import {
   poolId,
   poolKey,
   poolMatchesApi,
+  sellSwapDeadline,
 } from "./v4-swap";
 
 type FixtureLog = { emitterKind: string; topics: Hex[]; data: Hex };
@@ -157,7 +158,7 @@ describe("Universal Router V4_SWAP encoding", () => {
 describe("Permit2 sell steps", () => {
   const now = 1_800_000_000n;
   const ttl = 900n;
-  const base = { amount: 500n, nowSeconds: now, ttlSeconds: ttl };
+  const base = { amount: 500n, nowSeconds: now, ttlSeconds: ttl, deadline: now + ttl };
 
   it("approves Permit2 and the router exactly when nothing is approved", () => {
     expect(
@@ -183,6 +184,39 @@ describe("Permit2 sell steps", () => {
         permit2: { amount: 500n, expiration: now + ttl },
       }),
     ).toEqual(["execute"]);
+  });
+
+  it("re-approves a Permit2 allowance that expires before the swap deadline", () => {
+    expect(
+      planPermit2Sell({
+        ...base,
+        erc20Allowance: 500n,
+        permit2: { amount: 500n, expiration: now + 120n },
+      }),
+    ).toEqual(["approve-permit2", "execute"]);
+    expect(
+      planPermit2Sell({
+        ...base,
+        deadline: now + 120n,
+        erc20Allowance: 500n,
+        permit2: { amount: 500n, expiration: now + 120n },
+      }),
+    ).toEqual(["execute"]);
+  });
+
+  it("caps a resumed sell's deadline at the reusable Permit2 expiry", () => {
+    const args = { amount: 500n, nowSeconds: now, ttlSeconds: ttl };
+    expect(sellSwapDeadline({ ...args, permit2: { amount: 500n, expiration: now + 300n } })).toBe(
+      now + 300n,
+    );
+    // Not reusable (other amount, about to expire, none): the full deadline forces a re-approval.
+    for (const permit2 of [
+      { amount: 499n, expiration: now + 300n },
+      { amount: 500n, expiration: now + 59n },
+      { amount: 0n, expiration: 0n },
+    ]) {
+      expect(sellSwapDeadline({ ...args, permit2 })).toBe(now + ttl);
+    }
   });
 
   it("does not trust a larger, expired or longer-lived Permit2 allowance", () => {

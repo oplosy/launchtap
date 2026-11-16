@@ -77,7 +77,7 @@ func (r QuoteRoutes) handle(ctx context.Context, in *quoteInput) (*quoteOutput, 
 		case errors.Is(err, curve.ErrZeroOutput):
 			return nil, apiProblem(http.StatusUnprocessableEntity, "zero_output", "Quote output is zero")
 		default:
-			return nil, apiRequestProblem(ctx, http.StatusInternalServerError, "quote_failed", "Quote could not be computed")
+			return nil, internalProblem(ctx, err, "quote_failed", "Quote could not be computed")
 		}
 	}
 	return &quoteOutput{Body: quoteBody{Input: decimal(q.Input), Output: decimal(q.Output), ProtocolFee: decimal(q.ProtocolFee), CreatorFee: decimal(q.CreatorFee), Refund: decimal(q.Refund), Graduates: q.Graduates, NextVirtualETH: decimal(q.NextVirtualETH), NextVirtualToken: decimal(q.NextVirtualToken), AsOfBlock: q.AsOfBlock, Finality: q.Finality, ReserveSourceBlock: q.ReserveSourceBlock, ReserveSourceHash: q.ReserveSourceHash.Hex(), SnipeTax: decimal(q.SnipeTax), TaxBPS: q.TaxBPS, TaxEndsAt: rfc3339OrEmpty(q.TaxEndsAt), Informational: true}}, nil

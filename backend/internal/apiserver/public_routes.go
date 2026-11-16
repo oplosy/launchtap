@@ -231,7 +231,7 @@ func mapReadError(ctx context.Context, err error) error {
 	if errors.Is(err, context.Canceled) {
 		return err
 	}
-	return apiRequestProblem(ctx, http.StatusInternalServerError, "internal_error", "Request failed")
+	return internalProblem(ctx, err, "internal_error", "Request failed")
 }
 func apiProblem(status int, code, detail string) error {
 	return &huma.ErrorModel{Type: problemTypePrefix + code, Title: http.StatusText(status), Status: status, Detail: detail}

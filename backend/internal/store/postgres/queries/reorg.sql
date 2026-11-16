@@ -145,3 +145,11 @@ RETURNING reorg_id;
 UPDATE indexer_reorgs SET outcome='recovered', completed_at=now()
 WHERE reorg_id=$1 AND outcome='open'
 RETURNING chain_id, deployment_id, common_ancestor_number, common_ancestor_hash;
+
+-- A read position inside the orphaned blocks moves back to the end of the ancestor block, so an
+-- event re-mined at or before the old position on the new branch shows as unread
+-- (AUDIT_REPORT_TR MED-10). Positions at or below the ancestor are canonical and stay.
+-- name: ClampNotificationReadsAbove :execrows
+UPDATE notification_reads
+SET read_block = $2, read_tx_index = 2147483647, read_log_index = 2147483647, updated_at = now()
+WHERE chain_id = $1 AND read_block > $2;

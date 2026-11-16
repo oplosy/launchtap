@@ -6,6 +6,7 @@ import type { Abi } from "viem";
 import { type V4Addresses } from "@/engine";
 import { encodeV4ExactInSingle, planPermit2Sell, poolId, poolKey } from "@/v4-swap";
 import { browserAbis } from "@/contracts/generated";
+import { readPermit2Allowance, sellReviewDeadline } from "./permit2-allowance";
 import { addressExplorerUrl } from "@/wallet/explorer";
 import {
   decodeTransactionError,
@@ -143,7 +144,20 @@ export function V4SwapPanel({
       return;
     try {
       await trade.assertWalletForReview();
-      const deadline = transactionDeadline(currentUnixSeconds(), DEFAULT_TTL);
+      let deadline = transactionDeadline(currentUnixSeconds(), DEFAULT_TTL);
+      if (side === "sell" && publicClient && tokenAddress) {
+        // A sell resumed after its approvals reuses the exact Permit2 allowance; the swap
+        // deadline must not outlive it.
+        deadline = await sellReviewDeadline(publicClient, {
+          permit2: addresses.permit2,
+          owner: trade.account.address as Address,
+          token: tokenAddress,
+          spender: router,
+          amount: inputUnits,
+          nowSeconds: currentUnixSeconds(),
+          ttlSeconds: DEFAULT_TTL,
+        });
+      }
       const fresh = await readSwapIntent(
         trade.account.address as Address,
         side,
@@ -189,7 +203,7 @@ export function V4SwapPanel({
         const balance = await publicClient.getBalance({ address: reviewed.account as Address });
         if (balance < reviewedInput) throw new Error("InsufficientETHBalance");
       } else {
-        const [balance, erc20Allowance, permit2Allowance] = await Promise.all([
+        const [balance, erc20Allowance, permit2] = await Promise.all([
           publicClient.readContract({
             address: tokenAddress,
             abi: browserAbis.tokenV2,
@@ -202,25 +216,21 @@ export function V4SwapPanel({
             functionName: "allowance",
             args: [reviewed.account as Address, addresses.permit2],
           }),
-          publicClient.readContract({
-            address: addresses.permit2,
-            abi: browserAbis.permit2,
-            functionName: "allowance",
-            args: [reviewed.account as Address, tokenAddress, router],
+          readPermit2Allowance(publicClient, {
+            permit2: addresses.permit2,
+            owner: reviewed.account as Address,
+            token: tokenAddress,
+            spender: router,
           }),
         ]);
         if ((balance as bigint) < reviewedInput) throw new Error("ERC20InsufficientBalance");
-        const [permit2Amount, permit2Expiration] = permit2Allowance as readonly [
-          bigint,
-          number | bigint,
-          number | bigint,
-        ];
         const steps = planPermit2Sell({
           amount: reviewedInput,
           erc20Allowance: erc20Allowance as bigint,
-          permit2: { amount: permit2Amount, expiration: BigInt(permit2Expiration) },
+          permit2,
           nowSeconds: currentUnixSeconds(),
           ttlSeconds: DEFAULT_TTL,
+          deadline: reviewed.deadline!,
         });
         if (steps.length > 1) {
           const tokenWrite = (amount: bigint) => ({

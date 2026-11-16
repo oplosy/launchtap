@@ -83,7 +83,10 @@ export async function readCurveTradeIntent(args: {
     intent: {
       account,
       target: curve,
-      value: side === "buy" ? quantity : 0n,
+      // A buy that reaches the graduation cap uses only part of the input. Sending just that part
+      // keeps minTokensOut meaningful: with the full amount attached, a front-running sell would
+      // let the whole input buy at a far worse price and still clear the minimum.
+      value: side === "buy" ? (inputUsed < quantity ? inputUsed : quantity) : 0n,
       args: writeArgs,
       deadline,
       minimumOutput: exactMinimum,
