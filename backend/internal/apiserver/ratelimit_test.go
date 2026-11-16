@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -77,6 +78,59 @@ func TestRateLimiterRefillsAndBoundsBurst(t *testing.T) {
 	}
 	if ok, _ := limiter.Allow("a", now.Add(time.Hour)); ok {
 		t.Fatal("refill exceeded burst")
+	}
+}
+
+// A key flood that fills the limiter must not reset a client that is being throttled
+// (AUDIT_REPORT_TR HIGH-04): the least recently seen keys are evicted instead of every key.
+func TestRateLimiterKeyFloodKeepsThrottledClientLimited(t *testing.T) {
+	limiter := NewRateLimiter(60, 2)
+	start := time.Unix(1_700_000_000, 0)
+	for index := range maxRateLimiterKeys - 1 {
+		limiter.Allow("flood-"+strconv.Itoa(index), start)
+	}
+	attackerAt := start.Add(time.Millisecond)
+	for range 3 {
+		limiter.Allow("attacker", attackerAt)
+	}
+	if ok, _ := limiter.Allow("attacker", attackerAt); ok {
+		t.Fatal("attacker was not throttled before the flood")
+	}
+	newcomerAt := attackerAt.Add(time.Millisecond)
+	if ok, _ := limiter.Allow("newcomer", newcomerAt); !ok {
+		t.Fatal("a new client was refused while the limiter was full")
+	}
+	if len(limiter.buckets) > maxRateLimiterKeys {
+		t.Fatalf("limiter holds %d keys, want at most %d", len(limiter.buckets), maxRateLimiterKeys)
+	}
+	if len(limiter.buckets) != maxRateLimiterKeys-rateLimiterEvictBatch+1 {
+		t.Fatalf("limiter holds %d keys after eviction, want %d", len(limiter.buckets), maxRateLimiterKeys-rateLimiterEvictBatch+1)
+	}
+	if ok, _ := limiter.Allow("attacker", newcomerAt); ok {
+		t.Fatal("key flood reset the throttled attacker's bucket")
+	}
+}
+
+// Buckets that have refilled to burst carry no limit state, so they are dropped before any
+// recently active key is evicted.
+func TestRateLimiterEvictsRefilledBucketsFirst(t *testing.T) {
+	limiter := NewRateLimiter(60, 2)
+	start := time.Unix(1_700_000_000, 0)
+	for index := range maxRateLimiterKeys - 1 {
+		limiter.Allow("refilled-"+strconv.Itoa(index), start)
+	}
+	later := start.Add(2 * time.Second)
+	for range 3 {
+		limiter.Allow("throttled", later)
+	}
+	if ok, _ := limiter.Allow("newcomer", later); !ok {
+		t.Fatal("new client refused")
+	}
+	if len(limiter.buckets) != 2 {
+		t.Fatalf("limiter holds %d keys, want only the throttled client and the newcomer", len(limiter.buckets))
+	}
+	if ok, _ := limiter.Allow("throttled", later); ok {
+		t.Fatal("throttled client was reset")
 	}
 }
 
