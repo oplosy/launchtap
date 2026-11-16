@@ -674,3 +674,14 @@
     transition: none;
   }
 }
+
+/* Site-wide notice while the indexer is behind (src/live/stale-data-banner.tsx). */
+.stale-data-banner {
+  width: calc(100% - 2 * var(--gutter));
+  max-width: var(--measure-page);
+  margin: 8px auto 0;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-media);
+  padding: 10px 16px;
+  font-size: 13.5px;
+}

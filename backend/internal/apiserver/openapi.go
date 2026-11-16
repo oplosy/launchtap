@@ -16,6 +16,7 @@ func GenerateOpenAPI() ([]byte, error) {
 	s.RegisterMetadataRoutes(MetadataRoutes{})
 	s.RegisterEventRoutes(EventRoutes{})
 	s.RegisterObservationRoutes(ObservationRoutes{})
+	s.RegisterStatusRoutes(StatusRoutes{})
 	s.RegisterProfileRoutes(ProfileRoutes{})
 	s.RegisterReferenceRoutes(ReferenceRoutes{})
 	s.RegisterHighlightsRoutes(HighlightsRoutes{})

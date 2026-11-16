@@ -12,6 +12,7 @@ import type {
   QuoteResponse,
   CanonicalTransactionResponse,
   EthUsdReference,
+  StatusResponse,
   RecentTradesResponse,
   TokenHighlights,
   WalletResponse,
@@ -102,6 +103,10 @@ export class ApiClient extends AccountApi {
 
   getEthUsd(signal?: AbortSignal) {
     return this.request<EthUsdReference>("/v1/reference/eth-usd", { signal });
+  }
+
+  getStatus(signal?: AbortSignal) {
+    return this.request<StatusResponse>("/v1/status", { signal });
   }
 
   listRecentTrades(limit = 50, signal?: AbortSignal) {
@@ -268,6 +273,10 @@ export function getTokens(baseUrl: string, options: TokenListQuery = {}, signal?
 
 export function getEthUsd(baseUrl: string, signal?: AbortSignal) {
   return new ApiClient({ baseUrl }).getEthUsd(signal);
+}
+
+export function getStatus(baseUrl: string, signal?: AbortSignal) {
+  return new ApiClient({ baseUrl }).getStatus(signal);
 }
 
 export function getHighlights(baseUrl: string, signal?: AbortSignal) {

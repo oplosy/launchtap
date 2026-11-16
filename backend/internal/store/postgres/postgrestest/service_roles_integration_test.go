@@ -43,7 +43,7 @@ var chainDerived = []string{
 	"aggregation_dirty", "candles", "creator_fee_balances", "creator_fee_claims",
 	"engine_configurations", "fee_recipient_acceptances", "fee_recipient_proposals",
 	"future_defaults_configurations", "future_treasury_configurations", "graduations",
-	"holder_balances", "indexed_blocks", "indexer_reorgs", "launch_fee_claims", "launch_pause_events",
+	"holder_balances", "indexed_blocks", "indexer_heartbeats", "indexer_reorgs", "launch_fee_claims", "launch_pause_events",
 	"leaderboard_window_ranks", "leaderboard_window_refreshes", "lp_fee_claims", "lp_fee_collections",
 	"pool_burns", "pool_mints", "pool_swaps", "pool_syncs", "position_dirty", "protocol_daily",
 	"protocol_daily_revenue", "protocol_fee_claims", "protocol_stats", "refund_claims",
