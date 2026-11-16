@@ -435,3 +435,27 @@ func TestCommentListCarriesScore(t *testing.T) {
 		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 	}
 }
+
+// Flipping or clearing a vote never adds a vote row, so the store's hourly limit cannot see it;
+// the per-account request cap must refuse it before the store is reached.
+func TestVoteRequestsAreCappedPerAccount(t *testing.T) {
+	store := &commentStoreStub{voteRes: social.VoteResult{Score: 1, Vote: 1}}
+	server := New(DefaultConfig(), ReadyFunc(func(context.Context) error { return nil }), nil)
+	server.RegisterCommentRoutes(CommentRoutes{
+		Verifier: profileVerifierStub{principal: privyauth.Principal{PrivyDID: commentTestDID, Wallets: []common.Address{common.HexToAddress(commentWalletHex)}}},
+		Store:    store, ChainID: 46630, DeploymentID: "dep-1",
+		VoteLimiter: NewSubjectLimiter(2, time.Minute),
+	})
+	for i, body := range []string{`{"value":1}`, `{"value":-1}`, `{"value":1}`} {
+		w := serveComment(server, commentRequest("PUT", "/v1/comments/7/vote", body, true))
+		if i < 2 && w.Code != 200 {
+			t.Fatalf("vote %d: status=%d body=%s", i, w.Code, w.Body.String())
+		}
+		if i == 2 && (w.Code != 429 || problemCode(t, w) != "rate_limited" || w.Header().Get("Retry-After") != "60") {
+			t.Fatalf("vote %d: status=%d retry=%q body=%s", i, w.Code, w.Header().Get("Retry-After"), w.Body.String())
+		}
+	}
+	if len(store.votes) != 2 {
+		t.Fatalf("store reached %d times, want 2", len(store.votes))
+	}
+}

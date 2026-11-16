@@ -19,6 +19,24 @@ export function safeHttps(value: string) {
   }
 }
 
+/**
+ * Hosts each labelled link may point at; mirrors `socialLinkHosts` in
+ * backend/internal/apiserver/metadata_routes.go. The page shows these URLs under fixed
+ * "X profile" and "Telegram" labels, so another host would put any site behind a trusted label.
+ */
+const socialLinkHosts = {
+  x: new Set(["x.com", "www.x.com", "twitter.com", "www.twitter.com"]),
+  telegram: new Set(["t.me", "telegram.me", "www.telegram.me"]),
+} as const;
+
+/** True for an empty value or an HTTPS link to one of the allowed hosts for `kind`. */
+export function safeSocialLink(kind: keyof typeof socialLinkHosts, value: string) {
+  if (!value.trim()) return true;
+  if (!safeHttps(value)) return false;
+  const url = new URL(value);
+  return !url.port && socialLinkHosts[kind].has(url.hostname.toLowerCase());
+}
+
 export function descriptionTooLong(value: string) {
   return new TextEncoder().encode(value).length > maxDescriptionBytes;
 }

@@ -66,8 +66,9 @@ func (w *Worker) sleep(ctx context.Context, d time.Duration) error {
 }
 
 // DeliverOnce runs one delivery pass. A 429 ends the pass after waiting retry_after; a 403 (bot
-// blocked or chat gone) unlinks the chat; any other send failure leaves that link's cursor for
-// the next pass. Store failures end the pass with an error.
+// blocked) or a 400 that says the chat no longer exists unlinks the chat; any other 400 refuses
+// that one message for good, so it is skipped rather than retried every pass; any other send
+// failure leaves that link's cursor for the next pass. Store failures end the pass with an error.
 func (w *Worker) DeliverOnce(ctx context.Context) error {
 	links, err := w.Store.Links(ctx, w.ChainID, w.DeploymentID)
 	if err != nil {
@@ -87,11 +88,16 @@ func (w *Worker) DeliverOnce(ctx context.Context) error {
 			var apiErr *APIError
 			switch {
 			case err == nil:
-			case errors.As(err, &apiErr) && apiErr.Code == 403:
+			case errors.As(err, &apiErr) && (apiErr.Code == 403 || (apiErr.Code == 400 && chatGone(apiErr.Description))):
 				if _, err := w.Store.UnlinkChat(ctx, w.ChainID, w.DeploymentID, link.ChatID); err != nil {
 					return fmt.Errorf("unlink blocked telegram chat: %w", err)
 				}
 				w.logger().InfoContext(ctx, "telegram chat unlinked after a refusal", "description", apiErr.Description)
+			case errors.As(err, &apiErr) && apiErr.Code == 400:
+				// Telegram rejects this message itself; resending it would fail the same way on
+				// every pass and hold back every later alert for the chat.
+				w.logger().WarnContext(ctx, "telegram refused an alert; skipping it", "description", apiErr.Description)
+				err = nil
 			case errors.As(err, &apiErr) && apiErr.Code == 429:
 				w.logger().WarnContext(ctx, "telegram rate limited", "retry_after", apiErr.RetryAfter)
 				return w.sleep(ctx, max(apiErr.RetryAfter, time.Second))
@@ -216,4 +222,11 @@ func (w *Worker) deliverLoop(ctx context.Context) error {
 			return err
 		}
 	}
+}
+
+// chatGone reports whether a 400 description means the chat itself is unusable (deleted, never
+// started, or an invalid peer), as opposed to a refusal of one message.
+func chatGone(description string) bool {
+	d := strings.ToLower(description)
+	return strings.Contains(d, "chat not found") || strings.Contains(d, "peer_id_invalid") || strings.Contains(d, "user not found")
 }

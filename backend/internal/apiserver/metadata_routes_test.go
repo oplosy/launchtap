@@ -3,6 +3,7 @@ package apiserver
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"image"
 	"image/png"
 	"io"
@@ -183,10 +184,17 @@ func TestMetadataAuthenticationAuthorizationAndValidationProblems(t *testing.T) 
 		want     int
 	}{
 		{"authentication", fakeVerifier{err: privyauth.ErrInvalidCredentials}, nil, `{}`, http.StatusUnauthorized},
+		{"empty did", fakeVerifier{principal: privyauth.Principal{}}, nil, `{}`, http.StatusUnauthorized},
+		{"oversized did", fakeVerifier{principal: privyauth.Principal{PrivyDID: strings.Repeat("d", maxPrivyDIDBytes+1)}}, nil, `{}`, http.StatusUnauthorized},
 		{"authorization", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did", Wallets: []common.Address{common.HexToAddress("0x01")}}}, metadata.ErrUnauthorized, `{}`, http.StatusForbidden},
 		{"revision", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, metadata.ErrRevisionConflict, `{}`, http.StatusPreconditionFailed},
 		{"description", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"description":"` + strings.Repeat("x", 2001) + `"}`, http.StatusUnprocessableEntity},
 		{"url", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"x_url":"http://x.com/test"}`, http.StatusUnprocessableEntity},
+		{"x host", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"x_url":"https://drainer.example/x"}`, http.StatusUnprocessableEntity},
+		{"x lookalike host", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"x_url":"https://x.com.drainer.example/x"}`, http.StatusUnprocessableEntity},
+		{"telegram host", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"telegram_url":"https://x.com/test"}`, http.StatusUnprocessableEntity},
+		{"telegram port", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"telegram_url":"https://t.me:8443/test"}`, http.StatusUnprocessableEntity},
+		{"allowed hosts", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"x_url":"https://Twitter.com/test","telegram_url":"https://telegram.me/test"}`, http.StatusOK},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -300,12 +308,12 @@ func testPNG(t *testing.T, width, height int) []byte {
 	return encoded.Bytes()
 }
 
-// riffWebP builds a WebP header: RIFF, a zero size, WEBP, the first chunk tag, a zero chunk
-// size, then the chunk payload.
+// riffWebP builds a WebP header: RIFF, a zero size, WEBP, the first chunk tag, the payload
+// length as the chunk size, then the chunk payload.
 func riffWebP(chunk string, payload ...byte) []byte {
 	content := append([]byte("RIFF"), 0, 0, 0, 0)
 	content = append(content, "WEBP"+chunk...)
-	content = append(content, 0, 0, 0, 0)
+	content = binary.LittleEndian.AppendUint32(content, uint32(len(payload)))
 	return append(content, payload...)
 }
 
@@ -334,5 +342,10 @@ func TestWebPDimensions(t *testing.T) {
 	}
 	if _, _, err := webpDimensions(riffWebP("XXXX", make([]byte, 16)...)); err == nil {
 		t.Fatal("unknown WebP chunk accepted")
+	}
+	short := webpVP8X(640, 480)
+	binary.LittleEndian.PutUint32(short[16:20], 6)
+	if _, _, err := webpDimensions(short); err == nil {
+		t.Fatal("VP8X chunk with a payload size other than 10 accepted")
 	}
 }

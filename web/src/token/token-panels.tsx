@@ -8,6 +8,7 @@ import { liveTradeRows } from "@/live/live-strip-model";
 import { CoinGeckoAttribution } from "@/market/usd-line";
 import { Badge, Button, SafeExternalLink, Tabs } from "@/components/primitives";
 import { shortAddress } from "./address";
+import { safeSocialLink } from "./image-file";
 import type { TokenCollection } from "./pagination";
 import type { marketLinks } from "./market-links";
 import { finalityTone, finalityLabel } from "./token-format";
@@ -150,8 +151,15 @@ export function AboutPanel({
       </div>
       <p className="token-description">{token.description.trim() || "No description supplied."}</p>
       <div className="token-links">
-        <SafeExternalLink href={token.x_url}>X profile</SafeExternalLink>
-        <SafeExternalLink href={token.telegram_url}>Telegram</SafeExternalLink>
+        {/* Links saved before the host allowlist may point anywhere; show them as unavailable. */}
+        <SafeExternalLink href={safeSocialLink("x", token.x_url) ? token.x_url : ""}>
+          X profile
+        </SafeExternalLink>
+        <SafeExternalLink
+          href={safeSocialLink("telegram", token.telegram_url) ? token.telegram_url : ""}
+        >
+          Telegram
+        </SafeExternalLink>
         {explorer ? (
           <SafeExternalLink href={explorer}>
             Contract {shortAddress(token.address)}

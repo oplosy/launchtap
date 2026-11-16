@@ -245,13 +245,9 @@ func (r MetadataRoutes) authenticate(ctx context.Context, authorization, identit
 	if r.Verifier == nil || r.Store == nil {
 		return privyauth.Principal{}, apiRequestProblem(ctx, http.StatusInternalServerError, "internal_error", "Request failed")
 	}
-	access, err := privyauth.ParseBearer(authorization)
+	principal, err := authenticatePrivy(ctx, r.Verifier, WatchlistAuthInput{Authorization: authorization, IdentityToken: identity})
 	if err != nil {
-		return privyauth.Principal{}, apiProblem(http.StatusUnauthorized, "authentication_failed", "Authentication failed")
-	}
-	principal, err := r.Verifier.Verify(ctx, access, identity)
-	if err != nil {
-		return privyauth.Principal{}, apiProblem(http.StatusUnauthorized, "authentication_failed", "Authentication failed")
+		return privyauth.Principal{}, err
 	}
 	if !r.Limiter.Allow(principal.PrivyDID, time.Now()) {
 		return privyauth.Principal{}, apiProblem(http.StatusTooManyRequests, "rate_limited", "Write rate limit exceeded")
@@ -272,6 +268,14 @@ func mapMetadataError(ctx context.Context, err error) error {
 	}
 }
 
+// socialLinkHosts lists the hosts each labelled link may point at. The token page shows these
+// URLs under fixed "X profile" and "Telegram" labels, so any other host would let a creator put
+// an arbitrary site behind a trusted-looking label. Mirrored by web/src/token/image-file.ts.
+var socialLinkHosts = map[string]map[string]bool{
+	"x_url":        {"x.com": true, "www.x.com": true, "twitter.com": true, "www.twitter.com": true},
+	"telegram_url": {"t.me": true, "telegram.me": true, "www.telegram.me": true},
+}
+
 func validateMetadata(value metadataBody) error {
 	if !utf8.ValidString(value.Description) || len([]byte(value.Description)) > 2000 {
 		return apiProblem(http.StatusUnprocessableEntity, "invalid_metadata", "Description must be valid UTF-8 and at most 2000 bytes")
@@ -287,8 +291,18 @@ func validateMetadata(value metadataBody) error {
 		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
 			return apiProblem(http.StatusUnprocessableEntity, "invalid_metadata", name+" must be an HTTPS URL")
 		}
+		if parsed.Port() != "" || !socialLinkHosts[name][strings.ToLower(parsed.Hostname())] {
+			return apiProblem(http.StatusUnprocessableEntity, "invalid_metadata", name+" must link to "+socialLinkLabel(name))
+		}
 	}
 	return nil
+}
+
+func socialLinkLabel(name string) string {
+	if name == "x_url" {
+		return "x.com or twitter.com"
+	}
+	return "t.me or telegram.me"
 }
 
 func detectImage(content []byte) (string, error) {
@@ -337,6 +351,11 @@ func webpDimensions(content []byte) (int, int, error) {
 		bits := binary.LittleEndian.Uint32(content[21:25])
 		return int(bits&0x3fff) + 1, int((bits>>14)&0x3fff) + 1, nil
 	case "VP8X":
+		// RFC 9649 2.7: the VP8X payload is exactly 10 bytes; any other size would make the
+		// canvas fields below read the next chunk's header.
+		if binary.LittleEndian.Uint32(content[16:20]) != 10 {
+			return 0, 0, invalid
+		}
 		width := int(content[24]) | int(content[25])<<8 | int(content[26])<<16
 		height := int(content[27]) | int(content[28])<<8 | int(content[29])<<16
 		return width + 1, height + 1, nil

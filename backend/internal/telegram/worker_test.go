@@ -282,3 +282,28 @@ func TestHandleUpdateLinksUnlinksAndIgnoresGroups(t *testing.T) {
 		t.Fatal("an update without a message was answered")
 	}
 }
+
+// A 400 for a chat that no longer exists unlinks it; any other 400 refuses that one message, so the
+// cursor moves past it instead of retrying it on every pass.
+func TestDeliverHandlesBadRequestWithoutRetryingForever(t *testing.T) {
+	owner := watchlist.Owner{ChainID: 1, DeploymentID: "test-1", PrivyDID: "did:a"}
+	store := &fakeStore{
+		links:    []Link{{Owner: owner, ChatID: 7}, {Owner: owner, ChatID: 8}},
+		pending:  map[int64][]inbox.Event{7: {event(3), event(4)}, 8: {event(5)}},
+		advanced: map[int64]inbox.Position{},
+	}
+	bot := &fakeBot{errs: map[int64]error{
+		7: &APIError{Code: 400, Description: "Bad Request: message text is empty"},
+		8: &APIError{Code: 400, Description: "Bad Request: chat not found"},
+	}}
+	w, _ := newWorker(store, bot)
+	if err := w.DeliverOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if store.advanced[7].Block != 4 {
+		t.Fatalf("refused messages were not skipped: advanced=%v", store.advanced)
+	}
+	if _, ok := store.advanced[8]; ok || len(store.unlinked) != 1 || store.unlinked[0] != 8 {
+		t.Fatalf("missing chat: advanced=%v unlinked=%v", store.advanced, store.unlinked)
+	}
+}
