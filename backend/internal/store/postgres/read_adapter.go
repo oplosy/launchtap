@@ -371,10 +371,9 @@ func candleNumeric(v any) *big.Int {
 	case sqlc.Uint256:
 		return value.BigInt()
 	case pgtype.Numeric:
-		if value.Int == nil {
-			return new(big.Int)
-		}
-		return new(big.Int).Set(value.Int)
+		// The binary protocol strips trailing base-10000 zero groups into Exp, so 1e18 arrives
+		// as Int=100, Exp=16; dropping Exp shrinks the value by 10^Exp.
+		return numericBig(value)
 	case int64:
 		return big.NewInt(value)
 	default:

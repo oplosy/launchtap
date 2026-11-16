@@ -27,7 +27,9 @@ from `WEB_DOMAIN`. Run exactly one `telegram` replica: an advisory lock refuses 
 Early-buyer funding-source links are off until an archive + trace RPC exists: run one
 `cmd/funding` process per deployment with `FUNDING_RPC_URL` (secret, `BACKEND_ENV_FILE` only).
 Exchanges and bridges that must never link wallets go into the `funding_excluded_funders` table
-(chain id, address, label). The Compose file does not start that process yet.
+(chain id, address, label). The Compose file does not start that process yet. The backend image
+ships it as `/app/funding`, next to the operator tools `/app/moderate` and
+`/app/backfill-swap-sender`.
 The backend DSN uses that same password, percent-encoded. Local container database traffic
 uses the private Compose network; PostgreSQL has no published port.
 

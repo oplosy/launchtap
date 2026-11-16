@@ -38,8 +38,8 @@ SELECT DISTINCT affected.token_address FROM (
 
 -- name: ListPositionPairsAbove :many
 -- Run before DeleteCanonicalAbove: the rows (and a launched token's own row) are still present.
--- Excluded wallets (R4) are dropped here because a deleted token's curve and pair are not
--- resolvable afterwards.
+-- Excluded wallets (R4: curve, pair, locker, V4 PoolManager) are dropped here because a deleted
+-- token's curve and pair are not resolvable afterwards.
 SELECT DISTINCT pairs.wallet, pairs.token_address FROM (
     SELECT trade.trader AS wallet, trade.token_address FROM trades AS trade
     WHERE trade.chain_id=sqlc.arg(chain_id) AND trade.block_number>sqlc.arg(block_number)
@@ -67,6 +67,14 @@ WHERE pairs.wallet <> decode(repeat('00', 20), 'hex')
   AND NOT EXISTS (
     SELECT 1 FROM tokens AS excluded
     WHERE excluded.chain_id=sqlc.arg(chain_id) AND excluded.lp_pair=pairs.wallet
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id = sqlc.arg(chain_id) AND excluded.locker = pairs.wallet
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM v4_pool_managers AS manager
+    WHERE manager.chain_id = sqlc.arg(chain_id) AND manager.pool_manager = pairs.wallet
   )
 ORDER BY pairs.wallet, pairs.token_address;
 

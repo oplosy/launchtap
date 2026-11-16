@@ -63,7 +63,7 @@ func execute(ctx context.Context, args []string, getenv func(string) string, out
 	if err != nil {
 		return err
 	}
-	pool, err := storepostgres.OpenPool(ctx, c.DatabaseURL, storepostgres.PoolOptions{MaxConns: 2})
+	pool, err := storepostgres.OpenPool(ctx, c.DatabaseURL, storepostgres.PoolOptions{MaxConns: storepostgres.MinimumPoolMaxConns})
 	if err != nil {
 		return fmt.Errorf("open database pool: %w", err)
 	}

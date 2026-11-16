@@ -186,10 +186,26 @@ WITH curve AS (
     WHERE swap.chain_id = $1
     ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
     LIMIT 1
+), v4 AS (
+    -- Mirrors the V4 branch of the market_trades view; ordered and limited per base table.
+    SELECT graduation.token_address, swap.block_number, swap.block_time, swap.transaction_index,
+           swap.tx_hash, swap.log_index, 'dex'::TEXT AS source, swap.amount0_delta < 0 AS side_buy,
+           swap.tx_from AS trader, abs(swap.amount0_delta)::NUMERIC(78,0) AS gross_eth_volume,
+           abs(swap.amount1_delta)::NUMERIC(78,0) AS token_volume, block.finality_status AS finality
+    FROM v4_swaps AS swap
+    JOIN graduations AS graduation
+      ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    WHERE swap.chain_id = $1
+    ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+    LIMIT 1
 ), page AS (
     SELECT token_address, block_number, block_time, transaction_index, tx_hash, log_index, source, side_buy, trader, gross_eth_volume, token_volume, finality FROM curve
     UNION ALL
     SELECT token_address, block_number, block_time, transaction_index, tx_hash, log_index, source, side_buy, trader, gross_eth_volume, token_volume, finality FROM dex
+    UNION ALL
+    SELECT token_address, block_number, block_time, transaction_index, tx_hash, log_index, source, side_buy, trader, gross_eth_volume, token_volume, finality FROM v4
     ORDER BY block_number DESC, transaction_index DESC, log_index DESC
     LIMIT 1
 )
@@ -1292,10 +1308,28 @@ WITH curve AS (
           ($2::bigint, $3::integer, $4::integer)
     ORDER BY swap.block_number ASC, swap.transaction_index ASC, swap.log_index ASC
     LIMIT $5::integer
+), v4 AS (
+    -- Mirrors the V4 branch of the market_trades view; ordered and limited per base table.
+    SELECT graduation.token_address, swap.block_number, swap.block_time, swap.transaction_index,
+           swap.tx_hash, swap.log_index, 'dex'::TEXT AS source, swap.amount0_delta < 0 AS side_buy,
+           swap.tx_from AS trader, abs(swap.amount0_delta)::NUMERIC(78,0) AS gross_eth_volume,
+           abs(swap.amount1_delta)::NUMERIC(78,0) AS token_volume, block.finality_status AS finality
+    FROM v4_swaps AS swap
+    JOIN graduations AS graduation
+      ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    WHERE swap.chain_id = $1
+      AND (swap.block_number, swap.transaction_index, swap.log_index) >
+          ($2::bigint, $3::integer, $4::integer)
+    ORDER BY swap.block_number ASC, swap.transaction_index ASC, swap.log_index ASC
+    LIMIT $5::integer
 ), page AS (
     SELECT token_address, block_number, block_time, transaction_index, tx_hash, log_index, source, side_buy, trader, gross_eth_volume, token_volume, finality FROM curve
     UNION ALL
     SELECT token_address, block_number, block_time, transaction_index, tx_hash, log_index, source, side_buy, trader, gross_eth_volume, token_volume, finality FROM dex
+    UNION ALL
+    SELECT token_address, block_number, block_time, transaction_index, tx_hash, log_index, source, side_buy, trader, gross_eth_volume, token_volume, finality FROM v4
     ORDER BY block_number ASC, transaction_index ASC, log_index ASC
     LIMIT $5::integer
 )
@@ -1694,10 +1728,26 @@ WITH curve AS (
     WHERE swap.chain_id = $1
     ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
     LIMIT $2::integer
+), v4 AS (
+    -- Mirrors the V4 branch of the market_trades view; ordered and limited per base table.
+    SELECT graduation.token_address, swap.block_number, swap.block_time, swap.transaction_index,
+           swap.tx_hash, swap.log_index, 'dex'::TEXT AS source, swap.amount0_delta < 0 AS side_buy,
+           swap.tx_from AS trader, abs(swap.amount0_delta)::NUMERIC(78,0) AS gross_eth_volume,
+           abs(swap.amount1_delta)::NUMERIC(78,0) AS token_volume, block.finality_status AS finality
+    FROM v4_swaps AS swap
+    JOIN graduations AS graduation
+      ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    WHERE swap.chain_id = $1
+    ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+    LIMIT $2::integer
 ), page AS (
     SELECT token_address, block_number, block_time, transaction_index, tx_hash, log_index, source, side_buy, trader, gross_eth_volume, token_volume, finality FROM curve
     UNION ALL
     SELECT token_address, block_number, block_time, transaction_index, tx_hash, log_index, source, side_buy, trader, gross_eth_volume, token_volume, finality FROM dex
+    UNION ALL
+    SELECT token_address, block_number, block_time, transaction_index, tx_hash, log_index, source, side_buy, trader, gross_eth_volume, token_volume, finality FROM v4
     ORDER BY block_number DESC, transaction_index DESC, log_index DESC
     LIMIT $2::integer
 )
@@ -2326,6 +2376,18 @@ WITH legs AS (
       ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
     WHERE swap.chain_id = $1
       AND swap.block_time >= $3::timestamptz
+    UNION ALL
+    -- V4 deltas are the swapper's: amount0 < 0 means ETH paid in, a buy. The buyer is the
+    -- transaction sender (the swap's sender is the router); NULL until attributed.
+    SELECT graduation.token_address, abs(swap.amount0_delta) AS volume, swap.block_time,
+           CASE WHEN swap.amount0_delta < 0 THEN swap.tx_from END AS buyer
+    FROM v4_swaps AS swap
+    JOIN graduations AS graduation
+      ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    WHERE swap.chain_id = $1
+      AND swap.block_time >= $3::timestamptz
 ), ranked AS (
     SELECT token_address,
            sum(volume)::numeric(78, 0) AS window_volume_eth_wad,
@@ -2906,11 +2968,14 @@ func (q *Queries) TokenExists(ctx context.Context, arg TokenExistsParams) (bool,
 
 const walletAttributionComplete = `-- name: WalletAttributionComplete :one
 SELECT NOT EXISTS (
-    SELECT 1 FROM pool_swaps WHERE chain_id = $1 AND tx_from IS NULL
+    SELECT 1 FROM pool_swaps AS v2 WHERE v2.chain_id = $1 AND v2.tx_from IS NULL
+    UNION ALL
+    SELECT 1 FROM v4_swaps AS v4 WHERE v4.chain_id = $1 AND v4.tx_from IS NULL
 ) AS complete
 `
 
-// R5: attribution is chain-wide. Backed by the partial index pool_swaps_tx_from_null_idx.
+// R5: attribution is chain-wide. Backed by the partial indexes pool_swaps_tx_from_null_idx and
+// v4_swaps_tx_from_null_idx.
 func (q *Queries) WalletAttributionComplete(ctx context.Context, chainID int64) (bool, error) {
 	row := q.db.QueryRow(ctx, walletAttributionComplete, chainID)
 	var complete bool

@@ -343,6 +343,18 @@ WITH legs AS (
       ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
     WHERE swap.chain_id = sqlc.arg(chain_id)
       AND swap.block_time >= sqlc.arg(window_start)::timestamptz
+    UNION ALL
+    -- V4 deltas are the swapper's: amount0 < 0 means ETH paid in, a buy. The buyer is the
+    -- transaction sender (the swap's sender is the router); NULL until attributed.
+    SELECT graduation.token_address, abs(swap.amount0_delta) AS volume, swap.block_time,
+           CASE WHEN swap.amount0_delta < 0 THEN swap.tx_from END AS buyer
+    FROM v4_swaps AS swap
+    JOIN graduations AS graduation
+      ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    WHERE swap.chain_id = sqlc.arg(chain_id)
+      AND swap.block_time >= sqlc.arg(window_start)::timestamptz
 ), ranked AS (
     SELECT token_address,
            sum(volume)::numeric(78, 0) AS window_volume_eth_wad,
@@ -447,10 +459,28 @@ WITH curve AS (
           (sqlc.arg(after_block)::bigint, sqlc.arg(after_transaction_index)::integer, sqlc.arg(after_log_index)::integer)
     ORDER BY swap.block_number ASC, swap.transaction_index ASC, swap.log_index ASC
     LIMIT sqlc.arg(page_size)::integer
+), v4 AS (
+    -- Mirrors the V4 branch of the market_trades view; ordered and limited per base table.
+    SELECT graduation.token_address, swap.block_number, swap.block_time, swap.transaction_index,
+           swap.tx_hash, swap.log_index, 'dex'::TEXT AS source, swap.amount0_delta < 0 AS side_buy,
+           swap.tx_from AS trader, abs(swap.amount0_delta)::NUMERIC(78,0) AS gross_eth_volume,
+           abs(swap.amount1_delta)::NUMERIC(78,0) AS token_volume, block.finality_status AS finality
+    FROM v4_swaps AS swap
+    JOIN graduations AS graduation
+      ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    WHERE swap.chain_id = sqlc.arg(chain_id)
+      AND (swap.block_number, swap.transaction_index, swap.log_index) >
+          (sqlc.arg(after_block)::bigint, sqlc.arg(after_transaction_index)::integer, sqlc.arg(after_log_index)::integer)
+    ORDER BY swap.block_number ASC, swap.transaction_index ASC, swap.log_index ASC
+    LIMIT sqlc.arg(page_size)::integer
 ), page AS (
     SELECT * FROM curve
     UNION ALL
     SELECT * FROM dex
+    UNION ALL
+    SELECT * FROM v4
     ORDER BY block_number ASC, transaction_index ASC, log_index ASC
     LIMIT sqlc.arg(page_size)::integer
 )
@@ -503,10 +533,26 @@ WITH curve AS (
     WHERE swap.chain_id = sqlc.arg(chain_id)
     ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
     LIMIT sqlc.arg(page_size)::integer
+), v4 AS (
+    -- Mirrors the V4 branch of the market_trades view; ordered and limited per base table.
+    SELECT graduation.token_address, swap.block_number, swap.block_time, swap.transaction_index,
+           swap.tx_hash, swap.log_index, 'dex'::TEXT AS source, swap.amount0_delta < 0 AS side_buy,
+           swap.tx_from AS trader, abs(swap.amount0_delta)::NUMERIC(78,0) AS gross_eth_volume,
+           abs(swap.amount1_delta)::NUMERIC(78,0) AS token_volume, block.finality_status AS finality
+    FROM v4_swaps AS swap
+    JOIN graduations AS graduation
+      ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    WHERE swap.chain_id = sqlc.arg(chain_id)
+    ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+    LIMIT sqlc.arg(page_size)::integer
 ), page AS (
     SELECT * FROM curve
     UNION ALL
     SELECT * FROM dex
+    UNION ALL
+    SELECT * FROM v4
     ORDER BY block_number DESC, transaction_index DESC, log_index DESC
     LIMIT sqlc.arg(page_size)::integer
 )
@@ -578,10 +624,26 @@ WITH curve AS (
     WHERE swap.chain_id = sqlc.arg(chain_id)
     ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
     LIMIT 1
+), v4 AS (
+    -- Mirrors the V4 branch of the market_trades view; ordered and limited per base table.
+    SELECT graduation.token_address, swap.block_number, swap.block_time, swap.transaction_index,
+           swap.tx_hash, swap.log_index, 'dex'::TEXT AS source, swap.amount0_delta < 0 AS side_buy,
+           swap.tx_from AS trader, abs(swap.amount0_delta)::NUMERIC(78,0) AS gross_eth_volume,
+           abs(swap.amount1_delta)::NUMERIC(78,0) AS token_volume, block.finality_status AS finality
+    FROM v4_swaps AS swap
+    JOIN graduations AS graduation
+      ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    WHERE swap.chain_id = sqlc.arg(chain_id)
+    ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+    LIMIT 1
 ), page AS (
     SELECT * FROM curve
     UNION ALL
     SELECT * FROM dex
+    UNION ALL
+    SELECT * FROM v4
     ORDER BY block_number DESC, transaction_index DESC, log_index DESC
     LIMIT 1
 )
@@ -618,10 +680,13 @@ SELECT realized_pnl, tokens_traded, held_count, first_block_number, last_block_n
 FROM wallet_totals
 WHERE chain_id = sqlc.arg(chain_id) AND wallet = sqlc.arg(wallet);
 
--- R5: attribution is chain-wide. Backed by the partial index pool_swaps_tx_from_null_idx.
+-- R5: attribution is chain-wide. Backed by the partial indexes pool_swaps_tx_from_null_idx and
+-- v4_swaps_tx_from_null_idx.
 -- name: WalletAttributionComplete :one
 SELECT NOT EXISTS (
-    SELECT 1 FROM pool_swaps WHERE chain_id = sqlc.arg(chain_id) AND tx_from IS NULL
+    SELECT 1 FROM pool_swaps AS v2 WHERE v2.chain_id = sqlc.arg(chain_id) AND v2.tx_from IS NULL
+    UNION ALL
+    SELECT 1 FROM v4_swaps AS v4 WHERE v4.chain_id = sqlc.arg(chain_id) AND v4.tx_from IS NULL
 ) AS complete;
 
 -- The only username a wallet read may show: from public_wallet_usernames (published wallet of an

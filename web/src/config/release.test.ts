@@ -21,6 +21,16 @@ describe("validateReleaseEnvironment", () => {
     ).toContain("NEXT_PUBLIC_DEPLOYMENT_ID contains a fixture or test value");
   });
 
+  it("rejects fixture words only at a token start", () => {
+    expect(
+      validateReleaseEnvironment({ ...valid, NEXT_PUBLIC_PRIVY_APP_ID: "cmabe2e9contest" }).errors,
+    ).not.toContain("NEXT_PUBLIC_PRIVY_APP_ID contains a fixture or test value");
+    expect(
+      validateReleaseEnvironment({ ...valid, NEXT_PUBLIC_RPC_URL: "https://rpc.testnet.example" })
+        .errors,
+    ).toContain("NEXT_PUBLIC_RPC_URL contains a fixture or test value");
+  });
+
   it("rejects an unreviewed or disabled deployment", () => {
     expect(validateReleaseEnvironment(valid).errors).toEqual(
       expect.arrayContaining([

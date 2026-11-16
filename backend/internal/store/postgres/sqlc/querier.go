@@ -283,12 +283,17 @@ type Querier interface {
 	// inner join drops nothing; it supplies the block time the windowed leaderboard filters on.
 	ListPositionLegs(ctx context.Context, arg ListPositionLegsParams) ([]ListPositionLegsRow, error)
 	// Run before DeleteCanonicalAbove: the rows (and a launched token's own row) are still present.
-	// Excluded wallets (R4) are dropped here because a deleted token's curve and pair are not
-	// resolvable afterwards.
+	// Excluded wallets (R4: curve, pair, locker, V4 PoolManager) are dropped here because a deleted
+	// token's curve and pair are not resolvable afterwards.
 	ListPositionPairsAbove(ctx context.Context, arg ListPositionPairsAboveParams) ([]ListPositionPairsAboveRow, error)
 	// The precomputed ranking of ListLeaderboardWindow (docs/specs/2026-11-14-windowed-leaderboard-preflight.md),
 	// usernames joined at read time.
 	ListPrecomputedLeaderboardWindow(ctx context.Context, arg ListPrecomputedLeaderboardWindowParams) ([]ListPrecomputedLeaderboardWindowRow, error)
+	// Curve claims the signed-in wallets can make. Engine 1: the creator is owed every trade's
+	// creator fee less its claims. Engine 2: the fee recipient can change (FeeRecipientAccepted), so
+	// read each account's curve balance (creator_fee_balances.curve_eth_owed, mirroring the curve's
+	// creatorFeesOwed). LpFeeLocker fees are claimed from the locker, not the curve, so they are not
+	// a curve action here.
 	ListProfileActions(ctx context.Context, arg ListProfileActionsParams) ([]ListProfileActionsRow, error)
 	ListProtocolDaily(ctx context.Context, arg ListProtocolDailyParams) ([]ListProtocolDailyRow, error)
 	// ETH the contracts credit to the protocol, per engine, earned basis
@@ -373,7 +378,8 @@ type Querier interface {
 	MarkPairTokenDirty(ctx context.Context, arg MarkPairTokenDirtyParams) error
 	// A NULL tx_from (sender not yet known) is a no-op.
 	MarkPoolSwapPositionDirty(ctx context.Context, arg MarkPoolSwapPositionDirtyParams) error
-	// Excluded wallets (R4): the zero address, the factory, and any token's curve or pair.
+	// Excluded wallets (R4): the zero address, the factory, any token's curve, pair or locker, and
+	// the chain's V4 PoolManager (it takes the other side of every engine-2 graduation and swap).
 	MarkPositionDirty(ctx context.Context, arg MarkPositionDirtyParams) error
 	// Reorg re-mark: pairs were already filtered at collection time, so no exclusion lookup here
 	// (the token row of a pair may no longer exist).
@@ -490,7 +496,8 @@ type Querier interface {
 	V4SwapMatchesEvent(ctx context.Context, arg V4SwapMatchesEventParams) (pgtype.Bool, error)
 	// release_at: the hourly_limit-th newest vote set in the window (see CommentRateState).
 	VoteRateState(ctx context.Context, arg VoteRateStateParams) (VoteRateStateRow, error)
-	// R5: attribution is chain-wide. Backed by the partial index pool_swaps_tx_from_null_idx.
+	// R5: attribution is chain-wide. Backed by the partial indexes pool_swaps_tx_from_null_idx and
+	// v4_swaps_tx_from_null_idx.
 	WalletAttributionComplete(ctx context.Context, chainID int64) (bool, error)
 	// The key of the page_size-th newest event before the cursor across the wallet's base-table rows
 	// (curve trades by trader, V2 and V4 swaps by transaction sender), each read newest first from its

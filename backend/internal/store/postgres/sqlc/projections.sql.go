@@ -1090,6 +1090,14 @@ WHERE $2::bytea <> decode(repeat('00', 20), 'hex')
     SELECT 1 FROM tokens AS excluded
     WHERE excluded.chain_id = $1::bigint AND excluded.lp_pair = $2::bytea
   )
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id = $1::bigint AND excluded.locker = $2::bytea
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM v4_pool_managers AS manager
+    WHERE manager.chain_id = $1::bigint AND manager.pool_manager = $2::bytea
+  )
 ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq')
 `
 
@@ -1100,7 +1108,8 @@ type MarkPositionDirtyParams struct {
 	Factory      []byte
 }
 
-// Excluded wallets (R4): the zero address, the factory, and any token's curve or pair.
+// Excluded wallets (R4): the zero address, the factory, any token's curve, pair or locker, and
+// the chain's V4 PoolManager (it takes the other side of every engine-2 graduation and swap).
 func (q *Queries) MarkPositionDirty(ctx context.Context, arg MarkPositionDirtyParams) error {
 	_, err := q.db.Exec(ctx, markPositionDirty,
 		arg.ChainID,
@@ -1171,6 +1180,16 @@ FROM (
     WHERE swap.chain_id = $1
       AND swap.block_time >= $2::timestamptz
       AND swap.block_time < $3::timestamptz
+    UNION
+    SELECT DISTINCT graduation.chain_id, graduation.token_address
+    FROM v4_swaps AS swap
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    JOIN graduations AS graduation
+      ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
+    WHERE swap.chain_id = $1
+      AND swap.block_time >= $2::timestamptz
+      AND swap.block_time < $3::timestamptz
 ) AS touched
 ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregation_dirty_generation_seq')
 `
@@ -1224,6 +1243,14 @@ FROM (
       AND NOT EXISTS (
         SELECT 1 FROM tokens AS excluded
         WHERE excluded.chain_id = $1::bigint AND excluded.lp_pair = side.wallet
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM tokens AS excluded
+        WHERE excluded.chain_id = $1::bigint AND excluded.locker = side.wallet
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM v4_pool_managers AS manager
+        WHERE manager.chain_id = $1::bigint AND manager.pool_manager = side.wallet
       )
 ) AS sides
 ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq')
@@ -1626,6 +1653,14 @@ WITH pairs AS (
       AND NOT EXISTS (
         SELECT 1 FROM tokens AS excluded
         WHERE excluded.chain_id = $1::bigint AND excluded.lp_pair = source.wallet
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM tokens AS excluded
+        WHERE excluded.chain_id = $1::bigint AND excluded.locker = source.wallet
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM v4_pool_managers AS manager
+        WHERE manager.chain_id = $1::bigint AND manager.pool_manager = source.wallet
       )
 ), marked AS (
     INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
