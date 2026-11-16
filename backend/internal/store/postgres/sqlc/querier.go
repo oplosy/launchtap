@@ -11,8 +11,9 @@ import (
 )
 
 type Querier interface {
-	// Moves the cursor forward only, and only while the account is still bound to the same chat.
-	AdvanceTelegramCursor(ctx context.Context, arg AdvanceTelegramCursorParams) error
+	// Moves the cursor forward only, and only while the account is still bound to the same chat. Zero
+	// rows means the link was removed or re-bound (or the cursor is already past this event).
+	AdvanceTelegramCursor(ctx context.Context, arg AdvanceTelegramCursorParams) (int64, error)
 	AffectedTokensAbove(ctx context.Context, arg AffectedTokensAboveParams) ([]Address, error)
 	// Applies one event's owed-balance deltas (creator_fee_deltas). Callers apply it only when the
 	// ledger row was newly inserted, so a replay never double-counts.

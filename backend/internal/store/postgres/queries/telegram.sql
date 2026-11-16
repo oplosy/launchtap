@@ -98,8 +98,9 @@ WHERE w.chain_id = sqlc.arg(chain_id)
 ORDER BY e.block_number, e.transaction_index, e.log_index
 LIMIT sqlc.arg(page_size)::integer;
 
--- Moves the cursor forward only, and only while the account is still bound to the same chat.
--- name: AdvanceTelegramCursor :exec
+-- Moves the cursor forward only, and only while the account is still bound to the same chat. Zero
+-- rows means the link was removed or re-bound (or the cursor is already past this event).
+-- name: AdvanceTelegramCursor :execrows
 UPDATE telegram_links
 SET delivered_block = sqlc.arg(block)::bigint, delivered_tx_index = sqlc.arg(tx_index)::integer,
     delivered_log_index = sqlc.arg(log_index)::integer

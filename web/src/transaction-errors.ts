@@ -19,7 +19,9 @@ export function classifyTransactionFailure(
     return "rejected-signature";
   if (phase === "preflight") return "preflight-failure";
   if (phase === "simulation") return "simulation-reverted";
-  if (phase === "receipt") return "receipt-reverted";
+  // Only a mined receipt with a failed status is a revert. A transport error or timeout while
+  // waiting leaves the outcome unknown, so it must not release the submission as reverted.
+  if (phase === "receipt") return /ReceiptReverted/.test(text) ? "receipt-reverted" : "rpc-failure";
   if (
     /custom error|revert|execution reverted|slippage|deadline|wrongphase|nothingtoclaim/i.test(text)
   )

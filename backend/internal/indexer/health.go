@@ -45,6 +45,17 @@ type OperationalHealth struct {
 type HealthTracker struct {
 	mu       sync.RWMutex
 	snapshot Health
+	// Render turns a failure into the LastError text. The health endpoint serves that text, so
+	// the runtime sets it to a redacting renderer (provider keys sit in RPC URLs). Nil uses
+	// err.Error().
+	Render func(error) string
+}
+
+func (h *HealthTracker) render(err error) string {
+	if h.Render != nil {
+		return h.Render(err)
+	}
+	return err.Error()
 }
 
 func (h *HealthTracker) Set(snapshot Health) {
@@ -90,7 +101,7 @@ func (h *HealthTracker) Failed(err error) {
 		return
 	}
 	h.Update(func(snapshot *Health) {
-		snapshot.LastError = err.Error()
+		snapshot.LastError = h.render(err)
 		if errors.Is(err, ErrRPCUnhealthy) {
 			snapshot.RPCHealthy = false
 		}
@@ -103,7 +114,7 @@ func (h *HealthTracker) OwnershipLost(err error) {
 	h.Update(func(snapshot *Health) {
 		snapshot.OwnershipHeld = false
 		if err != nil {
-			snapshot.LastError = err.Error()
+			snapshot.LastError = h.render(err)
 		}
 	})
 }

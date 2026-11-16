@@ -15,34 +15,26 @@
 
 ## Active
 
-### Full security-audit run-4 (in progress)
+### Security-audit run-4 open leads (needs_validation)
 
-- **Date:** 2026-11-15
-- **Reason:** usage limit
-- **Where it stopped:** Standard-profile security-audit of commit 92727e6, run directory
-  `~/security-audit-skill/launchpad/run-4` (outside the repo). Ledger: 96 units, PASS. 37
-  candidates in `candidates.json`. Wave 11 hunter `h43-v2-pool-admission` (engine-2 V4 pool
-  admission) finished covered with no candidate; artifacts promoted, ledger PASS. Verifier prompts are generated in `vprompts/`
-  (`verifier-ids.json`, 37 entries); all verifiers have finished.
-- **Related files:** run-4 scripts `extract.cjs`, `consolidate.cjs`, `promote.cjs`,
-  `build-critic-input.cjs`, `critic-apply-w11.cjs`, `fix-blocks-w11.cjs`, `wave11-prompts.cjs`,
-  `verifier-prompts.cjs`; `docs/audits/` for the final record.
+- **Date:** 2026-11-16
+- **Reason:** scope decision (each lead needs an owner fact or a toolchain the audit sandbox lacks)
+- **Where it stopped:** Run-4 is complete and every confirmed finding is fixed
+  (`docs/audits/2026-11-16-security-audit-run-4.md`). 25 needs_validation leads stay open; full
+  trace, blocker and plan for each are in `~/security-audit-skill/launchpad/run-4/NEEDS-VALIDATION.md`.
+- **Related files:** `contracts/src/v2/BondingCurveV2.sol` (`_mintPosition`), `deploy/Caddyfile`,
+  `deploy/compose.yaml`, `backend/internal/chain/discovery.go`, `web/src/transactions-panel/`.
 - **Resume (next step):**
-  1. Done: hunting phase closed. Wave-11 critic and final-clean critic 3 both returned stop
-     with no missing units (`critic-wave11.json`, `critic-final3.json`).
-  2. Done: Phase 3. All 37 decisions are in `vresults/<vid>.json`. Confirmed: v03 medium
-     (indexer /healthz LastError leaks RPC_URL key), v13 medium (NUL / invalid UTF-8 launch
-     name halts indexer), v01 low (indexer exit log leaks RPC_URL key), v29 low (token name
-     line feeds inject lines into Telegram alerts), v30 low (alerts still sent within the
-     in-flight pass after /stop or unlink), v36 low (receipt-phase transport error shown as
-     reverted). Rejected: v02, v05, v21, v25, v27. needs_validation: the other 26 (fix
-     candidates: v09 long-name index overflow, v08/v31 V2 graduation ETH-delta underflow).
-  3. Next: merge every decision into the ledger.
-  4. `findings.json` + `validate-findings.cjs`, record verification, REPORT.md /
-     FINDINGS-DETAIL.md / NEEDS-VALIDATION.md, then fix confirmed items on a `task/<slug>` PR and
-     re-score Application security and Smart contracts in `docs/quality-scorecard.md`.
-- **Pitfalls / notes:** Target code runs only in Docker (`--network none`). Validators run in
-  `node:22` Docker (Windows lacks O_NOFOLLOW). Start Docker Desktop first if `docker info` fails.
+  1. Highest value, locally actionable: Foundry test for the V2 graduation ETH-delta underflow
+     (`contracts/src/v2:graduation-mint-eth-delta`, `v2-bonding-curve/graduation-positionmanager-stray-eth-sweep`):
+     `vm.deal(address(positionManager), S)` before the graduating buy, S above and below the
+     settled ETH. If it reverts, measure ETH spent from the PositionManager delta, not the
+     curve balance (high-risk contract change: pre-flight + review).
+  2. Web leads with a vitest plan (stale async prepare, sell submission guard, launch attach
+     snapshot, launch profile rebind): write the scratch tests from the plans and fix what fails.
+  3. Owner facts: Caddy XFF append at the pinned image, effective rate-limit env and edge
+     limits, Privy one-DID-per-wallet policy, RPC provider eth_getLogs limits.
+- **Pitfalls / notes:** Do not send live traffic to validate; the plans are configuration-only.
 
 ### P0-A external inputs: CoinGecko key and market-link identifiers
 
