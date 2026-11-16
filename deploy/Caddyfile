@@ -4,11 +4,17 @@
 }
 
 {$WEB_DOMAIN} {
+	# Browsers keep HTTPS for a year once they saw this over TLS; no includeSubDomains or preload,
+	# so other hosts under the operator's domain are unaffected.
+	header Strict-Transport-Security "max-age=31536000"
 	encode zstd gzip
 	reverse_proxy web:3000
 }
 
 {$API_DOMAIN} {
+	# Browsers keep HTTPS for a year once they saw this over TLS; no includeSubDomains or preload,
+	# so other hosts under the operator's domain are unaffected.
+	header Strict-Transport-Security "max-age=31536000"
 	# Event streams must not be buffered by a compressor.
 	@compressible {
 		not path /v1/events
