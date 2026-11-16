@@ -77,7 +77,10 @@ services:
       API_METRICS_ADDR: :8082
       # The API port is never published; only the proxy on the private compose network
       # reaches it, so its X-Forwarded-For entry identifies the client for rate limiting.
-      API_TRUSTED_PROXY_CIDRS: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      # Trust only the proxy's pinned address (networks.default below), never all of RFC 1918:
+      # another container on this network, or a host on the operator's LAN or VPC, must not be
+      # able to spoof a client IP.
+      API_TRUSTED_PROXY_CIDRS: 10.89.53.10/32
     depends_on:
       migrate: { condition: service_completed_successfully }
     healthcheck:
@@ -150,6 +153,10 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     ports: ["80:80", "443:443"]
+    networks:
+      default:
+        # The only address API_TRUSTED_PROXY_CIDRS trusts; outside the dynamic ip_range.
+        ipv4_address: 10.89.53.10
     depends_on:
       web: { condition: service_healthy }
       api: { condition: service_healthy }
@@ -207,6 +214,17 @@ services:
       retries: 3
     restart: unless-stopped
     logging: *logging
+
+# The default network is pinned so the proxy keeps a fixed address (10.89.53.10) that
+# API_TRUSTED_PROXY_CIDRS trusts alone; other containers get addresses from ip_range only.
+# Change the subnet, the proxy address and API_TRUSTED_PROXY_CIDRS together if 10.89.53.0/24
+# collides with a network on the host.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 10.89.53.0/24
+          ip_range: 10.89.53.128/25
 
 secrets:
   postgres_password:

@@ -19,6 +19,7 @@ var (
 	ErrPairMismatch        = errors.New("pair address mismatch")
 	ErrLaunchMismatch      = errors.New("launch does not match the deployment manifest")
 	ErrPoolMismatch        = errors.New("V4 pool does not match the launch pool key")
+	ErrTimelockPolicy      = errors.New("governance timelock does not meet the production policy")
 )
 
 type ChainIDMismatchError struct {

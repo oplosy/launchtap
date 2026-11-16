@@ -10,11 +10,13 @@ import (
 	"net/http"
 	"net/netip"
 	"regexp"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Contictus/launchtap/backend/internal/redact"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )
@@ -238,7 +240,8 @@ func middleware(mux *http.ServeMux, cfg Config, limiter *RateLimiter, logger *sl
 		defer func() {
 			if v := recover(); v != nil {
 				problem(rw, http.StatusInternalServerError, "internal_error", "internal server error", id)
-				logger.Error("panic recovered", "request_id", id)
+				// The value and stack make a panic diagnosable; redact keeps any URL (RPC keys) out.
+				logger.Error("panic recovered", "request_id", id, "panic", redact.Error(fmt.Errorf("%v", v)), "stack", string(debug.Stack()))
 			}
 			metrics.ObserveRequest(route, r.Method, status, time.Since(started))
 			if reason, ok := rejectionReason(r.Method, status); ok {

@@ -97,6 +97,12 @@
      runbook; below-safe rejection and async `position_dirty` are by design), MED-05 part 1 (a
      banned user removing their own public profile is allowed; the ban blocks writes), MED-01
      WebP (decoders reject a VP8X frame larger than the canvas).
+  2b. `AUDIT_REPORT_2026-11-16.md` (second pass, untracked): its new confirmed findings M-2
+     (production timelock must be a contract with a 48 h minimum delay), M-5 (trusted proxy is
+     the proxy's pinned address only), L-1 (panic value and stack logged) and L-4 (audit drafts
+     gitignored) are done on `task/audit-report-2-fixes`
+     (`docs/specs/2026-11-16-audit-report-2-fixes-preflight.md`); L-2, L-3 and L-5 rejected; the
+     rest were already covered by the P0/P1/MED passes.
   3. `wallet_funding` rows already written `unknown` by the old same-block rule are not
      re-resolved (`ON CONFLICT DO NOTHING`); re-resolving them is a data change, ask first.
 - **Pitfalls / notes:** Deliberately left: HIGH-12 (V4 `eth_reserve` falls back to initial

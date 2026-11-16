@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -37,5 +39,27 @@ func TestMapReadErrorDoesNotLogClientErrors(t *testing.T) {
 	_ = mapReadError(ctx, context.Canceled)
 	if buffer.Len() != 0 {
 		t.Fatalf("canceled request logged %q", buffer.String())
+	}
+}
+
+func TestPanicRecoveryLogsValueAndStack(t *testing.T) {
+	var buffer bytes.Buffer
+	server := New(DefaultConfig(), ReadyFunc(func(context.Context) error { return nil }), slog.New(slog.NewTextHandler(&buffer, nil)))
+	huma.Register(server.API, huma.Operation{OperationID: "panicProbe", Method: http.MethodGet, Path: "/panic-probe"}, func(context.Context, *struct{}) (*struct{}, error) {
+		panic("boom at https://rpc.example/secret-key")
+	})
+	response := httptest.NewRecorder()
+	server.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/panic-probe", nil))
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", response.Code)
+	}
+	logged := buffer.String()
+	for _, want := range []string{"panic recovered", "boom at", "stack=", "TestPanicRecoveryLogsValueAndStack"} {
+		if !strings.Contains(logged, want) {
+			t.Fatalf("panic log lacks %q: %s", want, logged)
+		}
+	}
+	if strings.Contains(logged, "secret-key") {
+		t.Fatalf("panic log leaks the URL: %s", logged)
 	}
 }
