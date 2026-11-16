@@ -96,6 +96,52 @@ contract BondingCurveV2GraduationTest is BondingCurveV2TestBase {
         assertTrue(token.graduated());
     }
 
+    /// SWEEP hands back the PositionManager's whole balance. ETH parked there before the
+    /// graduating buy (above or below ethUsed) must neither revert graduation nor skew the
+    /// reported ethSpent, remainder or protocol fees.
+    function test_graduate_ignoresPositionManagerPreloadAboveEthUsed() public {
+        _assertGraduatesWithPreload(5 ether);
+    }
+
+    function test_graduate_ignoresPositionManagerPreloadBelowEthUsed() public {
+        _assertGraduatesWithPreload(1 ether);
+    }
+
+    function _assertGraduatesWithPreload(uint256 preload) internal {
+        vm.warp(LAUNCH_TIMESTAMP + SNIPE_DURATION);
+        uint160 expectedSqrtPrice = GraduationMath.sqrtPriceX96(GRADUATION_ETH, LP_TOKENS);
+        (uint128 expectedLiquidity, uint256 ethUsed, uint256 tokenUsed) =
+            GraduationMath.fullRangePosition(expectedSqrtPrice, GRADUATION_ETH, LP_TOKENS);
+        vm.deal(address(positionManager), preload);
+        uint256 positionId = positionManager.nextTokenId();
+        uint256 protocolFeesBefore = curve.unclaimedProtocolFees();
+        (,, uint256 finalProtocolFee,,,,) = curve.quoteBuy(10 ether);
+
+        vm.expectEmit(true, true, false, true, address(curve));
+        emit ILaunchEventsV2.Graduated(
+            address(token),
+            PoolId.unwrap(_poolKey().toId()),
+            positionId,
+            ethUsed,
+            tokenUsed,
+            expectedLiquidity,
+            expectedSqrtPrice,
+            GRADUATION_ETH - ethUsed,
+            LP_TOKENS - tokenUsed
+        );
+        _buy(ALICE, 10 ether);
+
+        assertTrue(token.graduated());
+        assertEq(address(poolManager).balance, ethUsed);
+        assertEq(address(positionManager).balance, 0);
+        assertEq(
+            curve.unclaimedProtocolFees(),
+            protocolFeesBefore + finalProtocolFee + GRADUATION_ETH - ethUsed
+        );
+        // The preload ends up here as unbooked forced ETH, on top of everything that is owed.
+        assertGe(address(curve).balance, curve.unclaimedProtocolFees() + preload);
+    }
+
     function test_graduate_isAtomic() public {
         // A registry that briefly admits a third party lets it open the pool first.
         factory.setCurveOfToken(address(token), ATTACKER);
