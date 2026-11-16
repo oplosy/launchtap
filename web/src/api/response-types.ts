@@ -14,6 +14,7 @@ export type EarlyBuyersResponse = components["schemas"]["EarlyBuyersBody"];
 export type QuoteResponse = components["schemas"]["QuoteBody"];
 export type CanonicalTransactionResponse = components["schemas"]["CanonicalObservationBody"];
 export type EthUsdReference = components["schemas"]["EthUsdBody"];
+export type StatusResponse = components["schemas"]["StatusBody"];
 export type RecentTradesResponse = components["schemas"]["RecentTradesBody"];
 export type TokenHighlights = components["schemas"]["HighlightsBody"];
 export type WatchlistResponse = components["schemas"]["WatchlistBody"];

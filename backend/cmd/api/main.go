@@ -111,6 +111,7 @@ func run() error {
 	feedReader := storepostgres.FeedReader{Pool: pool, DeploymentID: c.DeploymentID}
 	server.RegisterFeedRoutes(apiserver.FeedRoutes{Reader: feedReader, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterWalletRoutes(apiserver.WalletRoutes{Reader: storepostgres.WalletReader{Pool: pool, DeploymentID: c.DeploymentID}, ChainID: int64(c.ChainID)})
+	server.RegisterStatusRoutes(apiserver.StatusRoutes{Reader: storepostgres.StatusReader{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterObservationRoutes(apiserver.ObservationRoutes{Reader: storepostgres.ObservationReader{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	references := apiserver.ReferenceRoutes{}
 	if c.ETHUSDSource == config.ETHUSDSourceCoinGecko {

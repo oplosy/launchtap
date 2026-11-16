@@ -206,6 +206,12 @@ type IndexedBlock struct {
 	FinalityStatus string
 }
 
+type IndexerHeartbeat struct {
+	ChainID      int64
+	DeploymentID string
+	BeatAt       pgtype.Timestamptz
+}
+
 type IndexerReorg struct {
 	ReorgID              int64
 	ChainID              int64

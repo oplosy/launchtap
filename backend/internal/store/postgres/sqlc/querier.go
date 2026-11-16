@@ -139,6 +139,7 @@ type Querier interface {
 	GetFundingFinalizedHead(ctx context.Context, arg GetFundingFinalizedHeadParams) (pgtype.Int8, error)
 	GetIndexedBlockByHash(ctx context.Context, arg GetIndexedBlockByHashParams) (IndexedBlock, error)
 	GetIndexedBlockByNumber(ctx context.Context, arg GetIndexedBlockByNumberParams) (IndexedBlock, error)
+	GetIndexerStatus(ctx context.Context, arg GetIndexerStatusParams) (GetIndexerStatusRow, error)
 	GetKingOfTheHill(ctx context.Context, chainID int64) (GetKingOfTheHillRow, error)
 	GetNewestFeedCursors(ctx context.Context, chainID int64) (GetNewestFeedCursorsRow, error)
 	GetProfileState(ctx context.Context, arg GetProfileStateParams) (GetProfileStateRow, error)
@@ -482,6 +483,7 @@ type Querier interface {
 	TokenExists(ctx context.Context, arg TokenExistsParams) (bool, error)
 	TokenLaunchMatchesEvent(ctx context.Context, arg TokenLaunchMatchesEventParams) (pgtype.Bool, error)
 	TokenLaunchV2MatchesEvent(ctx context.Context, arg TokenLaunchV2MatchesEventParams) (pgtype.Bool, error)
+	TouchIndexerHeartbeat(ctx context.Context, arg TouchIndexerHeartbeatParams) error
 	TradeMatchesEvent(ctx context.Context, arg TradeMatchesEventParams) (pgtype.Bool, error)
 	TradeV2MatchesEvent(ctx context.Context, arg TradeV2MatchesEventParams) (pgtype.Bool, error)
 	TradingPauseEventMatchesEvent(ctx context.Context, arg TradingPauseEventMatchesEventParams) (pgtype.Bool, error)

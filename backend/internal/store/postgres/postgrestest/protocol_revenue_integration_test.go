@@ -88,8 +88,8 @@ func TestProtocolRevenueSumsEachSourcePerEngine(t *testing.T) {
 		t.Fatalf("full protocol aggregate rebuild: %v", err)
 	}
 	assertRevenue(t, ctx, reader, chainID, "full rebuild")
-	// 00039 service roles, 00038 audit follow-ups, 00037 candle ATH index, 00036 revenue rollup.
-	for range 4 {
+	// 00040 indexer heartbeat, 00039 service roles, 00038 audit follow-ups, 00037 candle ATH index, 00036 revenue rollup.
+	for range 5 {
 		if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
 			t.Fatalf("roll back to before the revenue rollup: %v", err)
 		}

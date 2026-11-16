@@ -225,6 +225,7 @@ const cases: Case[] = [
   { name: "protocol", call: (c) => c.getProtocol(), url: "/v1/stats/protocol" },
   { name: "revenue", call: (c) => c.getProtocolRevenue(), url: "/v1/stats/protocol/revenue" },
   { name: "eth usd", call: (c) => c.getEthUsd(), url: "/v1/reference/eth-usd" },
+  { name: "status", call: (c) => c.getStatus(), url: "/v1/status" },
   { name: "recent trades", call: (c) => c.listRecentTrades(), url: "/v1/trades/recent?limit=50" },
   { name: "highlights", call: (c) => c.getHighlights(), url: "/v1/tokens/highlights" },
   { name: "token", call: (c) => c.getToken(token), url: `/v1/tokens/${token}` },

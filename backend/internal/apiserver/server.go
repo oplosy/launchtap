@@ -134,6 +134,7 @@ func New(cfg Config, ready Readiness, logger *slog.Logger) *Server {
 
 func (s *Server) RegisterTokenRoutes(r TokenRoutes)           { r.Register(s.API) }
 func (s *Server) RegisterQuoteRoutes(r QuoteRoutes)           { r.Register(s.API) }
+func (s *Server) RegisterStatusRoutes(r StatusRoutes)         { r.Register(s.API) }
 func (s *Server) RegisterHighlightsRoutes(r HighlightsRoutes) { r.Register(s.API) }
 func (s *Server) RegisterCandleRoutes(r CandleRoutes)         { r.Register(s.API) }
 func (s *Server) RegisterPublicRoutes(r PublicRoutes)         { r.Register(s.API) }

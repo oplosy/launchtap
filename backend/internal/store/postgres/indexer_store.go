@@ -122,8 +122,15 @@ func (a *Adapter) WriteState(ctx context.Context, state indexer.State) error {
 	on, oh, oa := to(state.Observed)
 	sn, sh, sa := to(state.Safe)
 	fn, fh, fa := to(state.Finalized)
-	_, err := a.UpsertSyncState(ctx, SyncState{ChainID: state.ChainID, DeploymentID: state.DeploymentID, ObservedNumber: on, ObservedHash: oh, ObservedAt: oa, SafeNumber: sn, SafeHash: sh, SafeAt: sa, FinalizedNumber: fn, FinalizedHash: fh, FinalizedAt: fa})
-	return err
+	if _, err := a.UpsertSyncState(ctx, SyncState{ChainID: state.ChainID, DeploymentID: state.DeploymentID, ObservedNumber: on, ObservedHash: oh, ObservedAt: oa, SafeNumber: sn, SafeHash: sh, SafeAt: sa, FinalizedNumber: fn, FinalizedHash: fh, FinalizedAt: fa}); err != nil {
+		return err
+	}
+	// Every committed step saves its state here, idle steps at the tip included, so the heartbeat
+	// commits with the step it reports (GET /v1/status, audit pass 3 L-5).
+	if err := a.queries.TouchIndexerHeartbeat(ctx, sqlc.TouchIndexerHeartbeatParams{ChainID: state.ChainID, DeploymentID: state.DeploymentID}); err != nil {
+		return fmt.Errorf("touch indexer heartbeat: %w", err)
+	}
+	return nil
 }
 func (a *Adapter) ReadBlock(ctx context.Context, chainID, n int64) (ledger.IndexedBlock, bool, error) {
 	b, err := a.GetIndexedBlockByNumber(ctx, chainID, n)
