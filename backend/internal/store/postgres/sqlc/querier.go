@@ -46,6 +46,8 @@ type Querier interface {
 	ClearOrphanProjections(ctx context.Context, arg ClearOrphanProjectionsParams) error
 	// from_day '-infinity' clears every day of the chain.
 	ClearProtocolDaily(ctx context.Context, arg ClearProtocolDailyParams) error
+	// from_day '-infinity' clears every day of the chain.
+	ClearProtocolDailyRevenue(ctx context.Context, arg ClearProtocolDailyRevenueParams) error
 	// Windows are measured on the database clock; window_seconds is a policy constant.
 	// release_at is the hourly_limit-th newest comment inside the window: once it leaves the window
 	// fewer than hourly_limit remain, so it is the exact end of an hourly block even when the
@@ -216,7 +218,9 @@ type Querier interface {
 	InsertV4Swap(ctx context.Context, arg InsertV4SwapParams) (int64, error)
 	// Rows are immutable: a second resolution of the same wallet keeps the first.
 	InsertWalletFunding(ctx context.Context, arg InsertWalletFundingParams) error
-	InsertWalletRealizedLeg(ctx context.Context, arg InsertWalletRealizedLegParams) error
+	// All of one position's realized legs in one statement; the arrays are aligned by index. One
+	// round trip per position instead of one per leg (AUDIT_REPORT_TR HIGH-14).
+	InsertWalletRealizedLegs(ctx context.Context, arg InsertWalletRealizedLegsParams) (int64, error)
 	InsertWatchlistEntry(ctx context.Context, arg InsertWatchlistEntryParams) (int64, error)
 	IsPublicWallet(ctx context.Context, arg IsPublicWalletParams) (bool, error)
 	LaunchFeeClaimMatchesEvent(ctx context.Context, arg LaunchFeeClaimMatchesEventParams) (pgtype.Bool, error)
@@ -299,8 +303,8 @@ type Querier interface {
 	ListProfileActions(ctx context.Context, arg ListProfileActionsParams) ([]ListProfileActionsRow, error)
 	ListProtocolDaily(ctx context.Context, arg ListProtocolDailyParams) ([]ListProtocolDailyRow, error)
 	// ETH the contracts credit to the protocol, per engine, earned basis
-	// (docs/specs/2026-11-12-protocol-revenue-design.md). The LP share mirrors
-	// LpFeeLocker._credit: the creator gets floor(eth * bps / 10000), the protocol the rest.
+	// (docs/specs/2026-11-12-protocol-revenue-design.md), summed from the protocol_daily_revenue
+	// rollup the stats worker keeps current (RecomputeProtocolDailyRevenue).
 	ListProtocolRevenueByEngine(ctx context.Context, chainID int64) ([]ListProtocolRevenueByEngineRow, error)
 	ListRecentMarketTrades(ctx context.Context, arg ListRecentMarketTradesParams) ([]ListRecentMarketTradesRow, error)
 	// Reads for the indexed-state reconciliation pass
@@ -423,6 +427,12 @@ type Querier interface {
 	// UTC calendar days regardless of the session TimeZone. Only days >= from_day are rebuilt;
 	// from_day '-infinity' rebuilds the whole history.
 	RecomputeProtocolDaily(ctx context.Context, arg RecomputeProtocolDailyParams) error
+	// ETH credited to the protocol per UTC day and engine, earned basis
+	// (docs/specs/2026-11-12-protocol-revenue-design.md). The LP share mirrors LpFeeLocker._credit:
+	// the creator gets floor(eth * bps / 10000), the protocol the rest. Every launch writes a row for
+	// its engine and day, so ListProtocolRevenueByEngine lists each launched engine. Only days >=
+	// from_day are rebuilt; from_day '-infinity' rebuilds the whole history.
+	RecomputeProtocolDailyRevenue(ctx context.Context, arg RecomputeProtocolDailyRevenueParams) error
 	// The all-time columns are the sums of protocol_daily, which the caller has just brought up to
 	// daily_through_block; the 24h columns read the sources by block_time range.
 	RecomputeProtocolStats(ctx context.Context, arg RecomputeProtocolStatsParams) error

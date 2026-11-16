@@ -405,6 +405,17 @@ type ProtocolDaily struct {
 	GraduationsCount int32
 }
 
+type ProtocolDailyRevenue struct {
+	ChainID             int64
+	Day                 pgtype.Date
+	EngineVersion       int32
+	LaunchFees          pgtype.Numeric
+	TradeFees           pgtype.Numeric
+	SnipeTax            pgtype.Numeric
+	GraduationRemainder pgtype.Numeric
+	LpFees              pgtype.Numeric
+}
+
 type ProtocolFeeClaim struct {
 	ChainID          int64
 	BlockNumber      int64

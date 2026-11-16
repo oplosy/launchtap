@@ -1619,40 +1619,16 @@ func (q *Queries) ListProtocolDaily(ctx context.Context, arg ListProtocolDailyPa
 }
 
 const listProtocolRevenueByEngine = `-- name: ListProtocolRevenueByEngine :many
-WITH engines AS (
-    SELECT DISTINCT engine_version FROM token_launches WHERE chain_id = $1::bigint
-), launch_fees AS (
-    SELECT engine_version, SUM(launch_fee_paid) AS amount
-    FROM token_launches WHERE chain_id = $1::bigint GROUP BY engine_version
-), trade_fees AS (
-    SELECT l.engine_version, SUM(t.protocol_fee) AS fee, SUM(t.snipe_tax) AS tax
-    FROM trades t
-    JOIN token_launches l ON l.chain_id = t.chain_id AND l.token_address = t.token_address
-    WHERE t.chain_id = $1::bigint GROUP BY l.engine_version
-), remainders AS (
-    SELECT l.engine_version, SUM(g.eth_remainder) AS amount
-    FROM graduations g
-    JOIN token_launches l ON l.chain_id = g.chain_id AND l.token_address = g.token_address
-    WHERE g.chain_id = $1::bigint GROUP BY l.engine_version
-), lp_fees AS (
-    SELECT l.engine_version,
-           SUM(c.eth_amount - div(c.eth_amount * COALESCE(l.lp_creator_share_bps, 0), 10000)) AS amount
-    FROM lp_fee_collections c
-    JOIN token_launches l ON l.chain_id = c.chain_id AND l.token_address = c.token_address
-    WHERE c.chain_id = $1::bigint GROUP BY l.engine_version
-)
-SELECT e.engine_version::integer AS engine_version,
-       COALESCE(lf.amount, 0)::text AS launch_fees,
-       COALESCE(tf.fee, 0)::text AS trade_fees,
-       COALESCE(tf.tax, 0)::text AS snipe_tax,
-       COALESCE(r.amount, 0)::text AS graduation_remainder,
-       COALESCE(lp.amount, 0)::text AS lp_fees
-FROM engines e
-LEFT JOIN launch_fees lf ON lf.engine_version = e.engine_version
-LEFT JOIN trade_fees tf ON tf.engine_version = e.engine_version
-LEFT JOIN remainders r ON r.engine_version = e.engine_version
-LEFT JOIN lp_fees lp ON lp.engine_version = e.engine_version
-ORDER BY e.engine_version
+SELECT r.engine_version::integer AS engine_version,
+       sum(r.launch_fees)::text AS launch_fees,
+       sum(r.trade_fees)::text AS trade_fees,
+       sum(r.snipe_tax)::text AS snipe_tax,
+       sum(r.graduation_remainder)::text AS graduation_remainder,
+       sum(r.lp_fees)::text AS lp_fees
+FROM protocol_daily_revenue AS r
+WHERE r.chain_id = $1::bigint
+GROUP BY r.engine_version
+ORDER BY r.engine_version
 `
 
 type ListProtocolRevenueByEngineRow struct {
@@ -1665,8 +1641,8 @@ type ListProtocolRevenueByEngineRow struct {
 }
 
 // ETH the contracts credit to the protocol, per engine, earned basis
-// (docs/specs/2026-11-12-protocol-revenue-design.md). The LP share mirrors
-// LpFeeLocker._credit: the creator gets floor(eth * bps / 10000), the protocol the rest.
+// (docs/specs/2026-11-12-protocol-revenue-design.md), summed from the protocol_daily_revenue
+// rollup the stats worker keeps current (RecomputeProtocolDailyRevenue).
 func (q *Queries) ListProtocolRevenueByEngine(ctx context.Context, chainID int64) ([]ListProtocolRevenueByEngineRow, error) {
 	rows, err := q.db.Query(ctx, listProtocolRevenueByEngine, chainID)
 	if err != nil {

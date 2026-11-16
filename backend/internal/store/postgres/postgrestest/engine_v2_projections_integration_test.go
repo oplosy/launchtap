@@ -260,7 +260,13 @@ func TestEngineV2Projections(t *testing.T) {
 	assertRebuildMatchesIncremental(t, ctx, database, adapter, chainID, token)
 
 	// The engine-1 projection schema cannot hold these rows, so the migration's Down refuses (after
-	// the leaderboard column and V4 swap indexes, which roll back freely).
+	// the candle, revenue, leaderboard and V4 swap migrations, which roll back freely).
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the candles ATH index: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the protocol daily revenue rollup: %v", err)
+	}
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
 		t.Fatalf("roll back the leaderboard ranked PnL column: %v", err)
 	}
