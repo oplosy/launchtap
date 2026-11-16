@@ -15,6 +15,42 @@
 
 ## Active
 
+### Production-readiness audit pass 3: open findings
+
+- **Date:** 2026-11-16
+- **Reason:** scope decision (each item needs a pre-flight, a product decision, or a contract change)
+- **Where it stopped:** findings and evidence in `docs/audits/2026-11-16-production-readiness-audit-3.md`.
+  Fixed on `task/audit-scorecard-9`: H-1 (indexer topic-spam halt), L-6 (Slither on every PR,
+  stale triage entries refreshed), L-7 (HSTS), Dependabot. Open, in priority order:
+  1. **M-1 per-service Postgres roles.** Every service connects as the `POSTGRES_USER` superuser.
+     Needs a pre-flight: list every table each binary writes (API: social, watchlist, inbox,
+     telegram, metadata; indexer: ledger, projections, inbox fan-out; moderate: social bans),
+     an init script for `launchpad_migrator` (owner) plus least-privilege roles, separate DSNs in
+     `deploy/backend.env.example`, and integration tests that run the API and indexer stores as
+     their own role so a missing GRANT fails CI instead of production.
+  2. **L-5 stale-data signal.** API readiness ignores indexer freshness and the web never shows
+     data as stale (`finality: "stale"` is never produced). Robinhood Chain may not produce
+     empty blocks, so block-time lag is a false positive; needs an indexer heartbeat column in
+     `sync_state` (migration) plus `GET /v1/status` and a web banner.
+  3. **M-2 comment/vote sybil.** Holder means `balance > 0` (`queries/social.sql:21-31`).
+     Product decision needed: minimum balance (share of supply) and/or minimum holding age.
+  4. **M-3 RPC load grows with token count.** Token `Transfer` logs are fetched in 500-address
+     batches every poll. Design a cold-token tier (tokens with no trade in N days scanned less
+     often) and an RPC failover provider.
+  5. **L-1 to L-4 contract and product items** (need a contract pre-flight before the external
+     audit): on-chain caps for `tradeFeeBps` and `launchFee`; enforce curve-end price equal to
+     pool-open price in `CurveMath.validateParameters`; decide whether pre-graduation transfers
+     into third-party AMM pairs are acceptable; metadata authority following the fee recipient
+     and a public metadata change history; treasury migration for existing launches.
+- **Related files:** `deploy/compose.yaml`, `deploy/backend.env.example`,
+  `backend/internal/store/postgres/migrations/`, `backend/cmd/api/main.go`,
+  `backend/internal/store/postgres/queries/social.sql`, `backend/internal/chain/discovery_v2.go`,
+  `contracts/src/libraries/CurveMath.sol`, `contracts/src/v2/LaunchTokenV2.sol`.
+- **Resume (next step):** write the M-1 pre-flight in `docs/specs/` (table-by-role write matrix).
+- **Pitfalls / notes:** none of these closes a scorecard "Path to 9" item; those need the external
+  audit, the Privy 3 upgrade, a production CDN, test-deployment measurements and live Telegram/USD
+  keys (see "Production release, governance, and audit inputs" and the scorecard).
+
 ### Security-audit run-4 open leads (needs_validation)
 
 - **Date:** 2026-11-16
