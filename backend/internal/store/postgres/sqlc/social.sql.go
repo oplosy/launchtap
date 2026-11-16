@@ -543,7 +543,8 @@ LEFT JOIN tokens AS t
 LEFT JOIN holder_balances AS h
   ON h.chain_id = $2 AND h.token_address = $3
  AND h.holder_address = w.wallet
-WHERE $4::text <> '' AND (t.creator = w.wallet OR h.balance > 0)
+WHERE $4::text <> ''
+  AND (t.creator = w.wallet OR (h.balance > 0 AND h.balance * 10000 >= t.total_supply))
 ORDER BY w.wallet
 `
 
@@ -559,7 +560,9 @@ type QualifyWalletsRow struct {
 	Role   string
 }
 
-// Wallets that are the token creator or hold a positive balance; creator wins.
+// Wallets that are the token creator or hold at least 0.01 % of the token's supply; creator
+// wins. The share keeps dust spread over many accounts from voting or commenting
+// (docs/specs/2026-11-16-owner-decisions-preflight.md, M-2).
 // deployment_id is accepted for scope uniformity; tokens and balances are chain-scoped.
 func (q *Queries) QualifyWallets(ctx context.Context, arg QualifyWalletsParams) ([]QualifyWalletsRow, error) {
 	rows, err := q.db.Query(ctx, qualifyWallets,

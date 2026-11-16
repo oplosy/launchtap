@@ -170,3 +170,18 @@ func (q *Queries) ListWalletsAwaitingFunding(ctx context.Context, arg ListWallet
 	}
 	return items, nil
 }
+
+const requeueUnknownWalletFunding = `-- name: RequeueUnknownWalletFunding :execrows
+DELETE FROM wallet_funding
+WHERE chain_id = $1 AND status = 'unknown'
+`
+
+// Drops the wallets resolved as unknown so the worker resolves them again with the current rule
+// (docs/specs/2026-11-16-owner-decisions-preflight.md). unknown is "not resolved", never a fact.
+func (q *Queries) RequeueUnknownWalletFunding(ctx context.Context, chainID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, requeueUnknownWalletFunding, chainID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}

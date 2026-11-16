@@ -97,7 +97,8 @@ export default function DocsPage() {
               Only metadata can change. The creator signs in with the creating wallet and edits the
               image, description, and links from the token page; the server checks that the signer
               is the on-chain creator. Supply, curve parameters, fees, and the pool address are
-              fixed at launch.
+              fixed at launch. Once the details change after launch, the token page shows when they
+              were last edited.
             </p>
           </section>
 
@@ -313,6 +314,16 @@ export default function DocsPage() {
               only the curve can move tokens into or out of the curve and the Uniswap pair. This
               stops anyone from seeding the pool early or corrupting the curve&apos;s inventory. The
               restriction lifts permanently at graduation.
+            </p>
+            <p>
+              Holders can still send tokens to any other contract, including a trading pool someone
+              opens elsewhere. Prices there are set by whoever trades there; they never move the
+              curve or the graduation, and Launchpad does not list or index them.
+            </p>
+            <p>
+              Commenting and voting on a token are open to its creator and to wallets holding at
+              least 0.01% of its supply, so a buy split into dust across many accounts cannot steer
+              the discussion.
             </p>
           </section>
 

@@ -223,12 +223,16 @@ func TestQualifyWallets(t *testing.T) {
 	tokens := seedWatchlistTokens(t, ctx, database, 1, 0x10)
 	// seeded creator is addressBytes(0x55); the chain id is the watchlist test chain.
 	token := tokens[0].Bytes()
-	creator, holder, empty, both := addressBytes(0x55), addressBytes(0x70), addressBytes(0x71), addressBytes(0x72)
+	creator, holder, empty, both, dust := addressBytes(0x55), addressBytes(0x70), addressBytes(0x71), addressBytes(0x72), addressBytes(0x73)
+	// The fixture supply is 1,000,000: 0.01 % is 100 units (M-2).
 	for _, h := range [][]byte{holder, both} {
 		mustExecSocial(t, ctx, database.DB, `
 			INSERT INTO holder_balances (chain_id, token_address, holder_address, balance, first_acquired_block_number)
-			VALUES ($1, $2, $3, 5, 1)`, watchlistChainID, token, h)
+			VALUES ($1, $2, $3, 100, 1)`, watchlistChainID, token, h)
 	}
+	mustExecSocial(t, ctx, database.DB, `
+		INSERT INTO holder_balances (chain_id, token_address, holder_address, balance, first_acquired_block_number)
+		VALUES ($1, $2, $3, 99, 1)`, watchlistChainID, token, dust)
 	mustExecSocial(t, ctx, database.DB, `
 		INSERT INTO holder_balances (chain_id, token_address, holder_address, balance, first_acquired_block_number)
 		VALUES ($1, $2, $3, 5, 1) ON CONFLICT DO NOTHING`, watchlistChainID, token, creator)
@@ -247,8 +251,9 @@ func TestQualifyWallets(t *testing.T) {
 		return out
 	}
 
-	// Creator holding a positive balance still reports creator.
-	if got := run(creator, holder, empty); len(got) != 2 || got[string(creator)] != "creator" || got[string(holder)] != "holder" {
+	// Creator holding a positive balance still reports creator; dust below 0.01 % of supply is
+	// not a holder.
+	if got := run(creator, holder, empty, dust); len(got) != 2 || got[string(creator)] != "creator" || got[string(holder)] != "holder" {
 		t.Fatalf("with balances = %v", got)
 	}
 	// Creator with a zero balance is still the creator.
