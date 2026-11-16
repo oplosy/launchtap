@@ -28,8 +28,8 @@ func LoadFunding(getenv func(string) string) (FundingConfig, error) {
 	if !deploymentIDPattern.MatchString(deploymentID) {
 		return FundingConfig{}, invalidOrMissing("DEPLOYMENT_ID", deploymentID)
 	}
-	databaseURL := get("DATABASE_URL")
-	if err := validateURL("DATABASE_URL", databaseURL, "postgres", "postgresql"); err != nil {
+	databaseURL, err := resolveDatabaseURL(getenv)
+	if err != nil {
 		return FundingConfig{}, err
 	}
 	logLevel, err := parseLogLevel(get("LOG_LEVEL"))

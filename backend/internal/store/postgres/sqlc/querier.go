@@ -156,7 +156,7 @@ type Querier interface {
 	GetSyncState(ctx context.Context, arg GetSyncStateParams) (SyncState, error)
 	GetSyncWatermarks(ctx context.Context, arg GetSyncWatermarksParams) (GetSyncWatermarksRow, error)
 	GetTelegramLink(ctx context.Context, arg GetTelegramLinkParams) (GetTelegramLinkRow, error)
-	GetTokenCreatorForUpdate(ctx context.Context, arg GetTokenCreatorForUpdateParams) (Address, error)
+	GetTokenCreator(ctx context.Context, arg GetTokenCreatorParams) (Address, error)
 	GetTokenDetail(ctx context.Context, arg GetTokenDetailParams) (GetTokenDetailRow, error)
 	GetTokenImage(ctx context.Context, arg GetTokenImageParams) (GetTokenImageRow, error)
 	GetTokenMetadata(ctx context.Context, arg GetTokenMetadataParams) (GetTokenMetadataRow, error)
@@ -376,6 +376,9 @@ type Querier interface {
 	LockProtocolAggregates(ctx context.Context, chainID int64) error
 	// Serializes per-subject social writes (rate limits, username changes). The key is built in SQL.
 	LockSocialSubject(ctx context.Context, arg LockSocialSubjectParams) error
+	// Holds the launch row FOR SHARE until commit through a SECURITY DEFINER function (migration
+	// 00039): a row lock needs UPDATE privilege, which the API role must not have on token_launches.
+	LockTokenLaunch(ctx context.Context, arg LockTokenLaunchParams) error
 	// Serializes the wallet_totals recompute of one wallet across concurrent position computes, so
 	// each recompute reads every committed position of the wallet.
 	LockWalletTotals(ctx context.Context, arg LockWalletTotalsParams) error

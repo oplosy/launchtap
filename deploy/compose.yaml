@@ -30,8 +30,12 @@ services:
       POSTGRES_USER: launchpad
       POSTGRES_DB: launchpad
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-    secrets: [postgres_password]
-    volumes: [postgres_data:/var/lib/postgresql]
+    # The service login roles' passwords; postgres/10-service-roles.sh creates the roles at first
+    # initialization (re-run it once on an existing database, see deploy/README.md).
+    secrets: [postgres_password, postgres_api_password, postgres_indexer_password, postgres_telegram_password]
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./postgres/10-service-roles.sh:/docker-entrypoint-initdb.d/10-service-roles.sh:ro
     healthcheck:
       test: [CMD-SHELL, "pg_isready -h 127.0.0.1 -U launchpad -d launchpad"]
       interval: 5s
@@ -60,9 +64,17 @@ services:
     security_opt: [no-new-privileges:true]
     logging: *logging
 
+  # Each backend service connects as its own least-privilege role with only its own password
+  # secret (docs/specs/2026-11-16-postgres-service-roles-preflight.md). The migration job alone uses
+  # the schema owner.
   migrate:
     <<: *backend
     command: [/app/migrate, up]
+    environment:
+      <<: *backend-env
+      DATABASE_URL: postgres://launchpad@postgres:5432/launchpad?sslmode=disable
+      DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
     depends_on:
       postgres: { condition: service_healthy }
       preflight: { condition: service_completed_successfully }
@@ -70,8 +82,11 @@ services:
   api:
     <<: *backend
     command: [/app/api]
+    secrets: [postgres_api_password]
     environment:
       <<: *backend-env
+      DATABASE_URL: postgres://launchpad_api@postgres:5432/launchpad?sslmode=disable
+      DATABASE_PASSWORD_FILE: /run/secrets/postgres_api_password
       API_ADDR: :8080
       # Metrics listen on a separate port that is never published and never proxied.
       API_METRICS_ADDR: :8082
@@ -93,8 +108,11 @@ services:
   indexer:
     <<: *backend
     command: [/app/indexer]
+    secrets: [postgres_indexer_password]
     environment:
       <<: *backend-env
+      DATABASE_URL: postgres://launchpad_indexer@postgres:5432/launchpad?sslmode=disable
+      DATABASE_PASSWORD_FILE: /run/secrets/postgres_indexer_password
       INDEXER_HEALTH_ADDR: :8081
       INDEXER_WORKER_ID: production-indexer-1
     depends_on:
@@ -115,8 +133,11 @@ services:
     <<: *backend
     profiles: [telegram]
     command: [/app/telegram]
+    secrets: [postgres_telegram_password]
     environment:
       <<: *backend-env
+      DATABASE_URL: postgres://launchpad_telegram@postgres:5432/launchpad?sslmode=disable
+      DATABASE_PASSWORD_FILE: /run/secrets/postgres_telegram_password
       TELEGRAM_WEB_ORIGIN: https://${WEB_DOMAIN:?Set WEB_DOMAIN}
     depends_on:
       migrate: { condition: service_completed_successfully }
@@ -229,6 +250,12 @@ networks:
 secrets:
   postgres_password:
     file: ${POSTGRES_PASSWORD_FILE:?Set POSTGRES_PASSWORD_FILE to an external secret file}
+  postgres_api_password:
+    file: ${POSTGRES_API_PASSWORD_FILE:?Set POSTGRES_API_PASSWORD_FILE to an external secret file}
+  postgres_indexer_password:
+    file: ${POSTGRES_INDEXER_PASSWORD_FILE:?Set POSTGRES_INDEXER_PASSWORD_FILE to an external secret file}
+  postgres_telegram_password:
+    file: ${POSTGRES_TELEGRAM_PASSWORD_FILE:?Set POSTGRES_TELEGRAM_PASSWORD_FILE to an external secret file}
   alertmanager_webhook_url:
     file: ${ALERTMANAGER_WEBHOOK_URL_FILE:-./monitoring/webhook-url.example}
 

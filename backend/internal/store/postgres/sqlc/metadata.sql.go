@@ -11,20 +11,19 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const getTokenCreatorForUpdate = `-- name: GetTokenCreatorForUpdate :one
+const getTokenCreator = `-- name: GetTokenCreator :one
 SELECT creator
 FROM token_launches
 WHERE chain_id = $1 AND token_address = $2
-FOR SHARE
 `
 
-type GetTokenCreatorForUpdateParams struct {
+type GetTokenCreatorParams struct {
 	ChainID      int64
 	TokenAddress Address
 }
 
-func (q *Queries) GetTokenCreatorForUpdate(ctx context.Context, arg GetTokenCreatorForUpdateParams) (Address, error) {
-	row := q.db.QueryRow(ctx, getTokenCreatorForUpdate, arg.ChainID, arg.TokenAddress)
+func (q *Queries) GetTokenCreator(ctx context.Context, arg GetTokenCreatorParams) (Address, error) {
+	row := q.db.QueryRow(ctx, getTokenCreator, arg.ChainID, arg.TokenAddress)
 	var creator Address
 	err := row.Scan(&creator)
 	return creator, err
@@ -104,6 +103,22 @@ func (q *Queries) GetTokenMetadata(ctx context.Context, arg GetTokenMetadataPara
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const lockTokenLaunch = `-- name: LockTokenLaunch :exec
+SELECT lock_token_launch($1::BIGINT, $2::BYTEA)
+`
+
+type LockTokenLaunchParams struct {
+	ChainID      int64
+	TokenAddress []byte
+}
+
+// Holds the launch row FOR SHARE until commit through a SECURITY DEFINER function (migration
+// 00039): a row lock needs UPDATE privilege, which the API role must not have on token_launches.
+func (q *Queries) LockTokenLaunch(ctx context.Context, arg LockTokenLaunchParams) error {
+	_, err := q.db.Exec(ctx, lockTokenLaunch, arg.ChainID, arg.TokenAddress)
+	return err
 }
 
 const replaceTokenImage = `-- name: ReplaceTokenImage :one

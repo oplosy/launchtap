@@ -14,6 +14,14 @@ the real public inputs. Keep `BACKEND_ENV_FILE` and `POSTGRES_PASSWORD_FILE` out
 checkout, mode `0600`; populate the former from `backend.env.example`. The backend
 Privy app ID must match the public app ID. Never place wallet keys in these files.
 The database password file contains only the password and an optional trailing newline.
+Each long-running backend service connects as its own least-privilege role
+(`launchpad_api`, `launchpad_indexer`, `launchpad_telegram`), so set
+`POSTGRES_API_PASSWORD_FILE`, `POSTGRES_INDEXER_PASSWORD_FILE` and
+`POSTGRES_TELEGRAM_PASSWORD_FILE` the same way, with distinct passwords. Postgres creates the
+roles from `postgres/10-service-roles.sh` when its data directory is first initialized; on an
+existing database run `docker compose --env-file .env exec postgres sh
+/docker-entrypoint-initdb.d/10-service-roles.sh` once after adding the secrets (it is idempotent
+and also rotates the passwords). Only `migrate` uses the owner password.
 `COINGECKO_API_KEY` is a secret and belongs only in `BACKEND_ENV_FILE`, which Compose passes
 to the backend containers. Set it together with `ETH_USD_SOURCE=coingecko`; leave both empty
 to disable USD reference pricing. The backend rejects either one set without the other.

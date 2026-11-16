@@ -37,7 +37,7 @@ func TestWatchlistAddListRemove(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
-	store := storepostgres.WatchlistStore{Pool: openPool(t, ctx, database.URL)}
+	store := storepostgres.WatchlistStore{Pool: openPool(t, ctx, database.URLAs(t, APIRole))}
 	tokens := seedWatchlistTokens(t, ctx, database, 2, 0x10)
 	owner := watchlist.Owner{ChainID: watchlistChainID, DeploymentID: "dep-a", PrivyDID: "did:privy:a"}
 
@@ -79,7 +79,7 @@ func TestWatchlistLimitConcurrent(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
-	store := storepostgres.WatchlistStore{Pool: openPool(t, ctx, database.URL)}
+	store := storepostgres.WatchlistStore{Pool: openPool(t, ctx, database.URLAs(t, APIRole))}
 	tokens := seedWatchlistTokens(t, ctx, database, 5, 0x10)
 	owner := watchlist.Owner{ChainID: watchlistChainID, DeploymentID: "dep-a", PrivyDID: "did:privy:full"}
 	// 199 pre-existing entries (their token rows need not exist: the table has no FK).
@@ -132,7 +132,7 @@ func TestWatchlistUnavailableToken(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
-	store := storepostgres.WatchlistStore{Pool: openPool(t, ctx, database.URL)}
+	store := storepostgres.WatchlistStore{Pool: openPool(t, ctx, database.URLAs(t, APIRole))}
 	tokens := seedWatchlistTokens(t, ctx, database, 1, 0x10)
 	owner := watchlist.Owner{ChainID: watchlistChainID, DeploymentID: "dep-a", PrivyDID: "did:privy:gone"}
 	if err := store.Add(ctx, owner, tokens[0]); err != nil {
@@ -166,7 +166,7 @@ func TestWatchlistIsolatedByDeployment(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
-	store := storepostgres.WatchlistStore{Pool: openPool(t, ctx, database.URL)}
+	store := storepostgres.WatchlistStore{Pool: openPool(t, ctx, database.URLAs(t, APIRole))}
 	tokens := seedWatchlistTokens(t, ctx, database, 1, 0x10)
 	a := watchlist.Owner{ChainID: watchlistChainID, DeploymentID: "dep-a", PrivyDID: "did:privy:same"}
 	b := watchlist.Owner{ChainID: watchlistChainID, DeploymentID: "dep-b", PrivyDID: "did:privy:same"}
@@ -194,7 +194,7 @@ func TestCountWatchersScopedToDeployment(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, APIRole))
 	store := storepostgres.WatchlistStore{Pool: pool}
 	token := common.BytesToAddress(addressBytes(0x77))
 	insert := func(chainID int64, deployment, did string) {

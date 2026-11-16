@@ -60,7 +60,7 @@ func ingestDirtyMarkFixture(t *testing.T, dedupe bool) (string, int) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, IndexerRole))
 	fixture := newProjectionDifferentialFixture()
 	fixture.chunks[3].events = append(fixture.chunks[3].events, knownSenderPoolSwaps(fixture.chainID)...)
 
@@ -113,7 +113,7 @@ func ingestV4DirtyMarkFixture(t *testing.T, dedupe bool) (string, int) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, IndexerRole))
 	const chainID int64 = 49031
 	block := ledger.IndexedBlock{ChainID: chainID, BlockNumber: 9, BlockHash: common.Hash{0xc9}, ParentHash: common.Hash{0xc8}, BlockTime: time.Date(2026, 11, 12, 9, 30, 0, 0, time.UTC), FinalityStatus: "observed"}
 	decoded := decodeV2Fixture(t, block, common.HexToAddress("0x0b0b"))

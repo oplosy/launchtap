@@ -22,7 +22,7 @@ func TestFundingWorkerQueueAndReader(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	pool, err := pgxpool.New(ctx, database.URL)
+	pool, err := pgxpool.New(ctx, database.URLAs(t, FundingRole))
 	if err != nil {
 		t.Fatal(err)
 	}
