@@ -1,7 +1,6 @@
 package stats
 
 import (
-	"errors"
 	"math/big"
 	"testing"
 	"time"
@@ -87,7 +86,7 @@ func TestComputeTokenStatsKeepsPriceChangeBeyondPostgresIntegerRange(t *testing.
 	}
 }
 
-func TestComputeTokenStatsRejectsPriceChangeOutsideSafeIntegerRange(t *testing.T) {
+func TestComputeTokenStatsSaturatesPriceChangeOutsideSafeIntegerRange(t *testing.T) {
 	now := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 	baseline := big.NewInt(10_000)
 	latest := new(big.Int).Add(baseline, big.NewInt(MaxSafePriceChange24hBPS+1))
@@ -95,33 +94,36 @@ func TestComputeTokenStatsRejectsPriceChangeOutsideSafeIntegerRange(t *testing.T
 		{Start: now.Add(-25 * time.Hour), Close: baseline},
 		{Start: now.Add(-time.Hour), Close: latest},
 	}}, now)
-	var rangeErr *PriceChangeRangeError
-	if !errors.As(err, &rangeErr) || !errors.Is(err, ErrPriceChangeOutsideSafeIntegerRange) || rangeErr.Value != "9007199254740992" {
-		t.Fatalf("ComputeTokenStats() error = %v, want typed safe-integer range error", err)
+	if err != nil {
+		t.Fatalf("ComputeTokenStats() error = %v, want a saturated value", err)
 	}
-	if got.PriceChange24hBPS != 0 {
-		t.Fatalf("overflow result = %d, want no wrapped value", got.PriceChange24hBPS)
+	if got.PriceChange24hBPS != MaxSafePriceChange24hBPS {
+		t.Fatalf("price change = %d bps, want %d", got.PriceChange24hBPS, int64(MaxSafePriceChange24hBPS))
 	}
 }
 
-func TestCheckedPriceChange24hBPSAcceptsSafeIntegerBoundaries(t *testing.T) {
+func TestSaturatedPriceChange24hBPSKeepsSafeIntegerBoundaries(t *testing.T) {
 	for _, want := range []int64{MinSafePriceChange24hBPS, MaxSafePriceChange24hBPS} {
-		got, err := checkedPriceChange24hBPS(big.NewInt(want))
-		if err != nil || got != want {
-			t.Fatalf("checkedPriceChange24hBPS(%d) = %d, %v; want exact boundary", want, got, err)
+		if got := saturatedPriceChange24hBPS(big.NewInt(want)); got != want {
+			t.Fatalf("saturatedPriceChange24hBPS(%d) = %d; want exact boundary", want, got)
 		}
 	}
 }
 
-func TestCheckedPriceChange24hBPSRejectsValuesOutsideSafeIntegerBoundaries(t *testing.T) {
-	for _, value := range []int64{MinSafePriceChange24hBPS - 1, MaxSafePriceChange24hBPS + 1} {
-		got, err := checkedPriceChange24hBPS(big.NewInt(value))
-		var rangeErr *PriceChangeRangeError
-		if got != 0 || !errors.As(err, &rangeErr) || !errors.Is(err, ErrPriceChangeOutsideSafeIntegerRange) {
-			t.Fatalf("checkedPriceChange24hBPS(%d) = %d, %v; want safe-integer range error", value, got, err)
-		}
-		if rangeErr.Value != big.NewInt(value).String() {
-			t.Fatalf("range error value = %s, want %d", rangeErr.Value, value)
+func TestSaturatedPriceChange24hBPSClampsValuesOutsideSafeIntegerBoundaries(t *testing.T) {
+	huge := new(big.Int).Lsh(big.NewInt(1), 200)
+	cases := []struct {
+		value *big.Int
+		want  int64
+	}{
+		{big.NewInt(MinSafePriceChange24hBPS - 1), MinSafePriceChange24hBPS},
+		{big.NewInt(MaxSafePriceChange24hBPS + 1), MaxSafePriceChange24hBPS},
+		{new(big.Int).Neg(huge), MinSafePriceChange24hBPS},
+		{huge, MaxSafePriceChange24hBPS},
+	}
+	for _, tc := range cases {
+		if got := saturatedPriceChange24hBPS(tc.value); got != tc.want {
+			t.Fatalf("saturatedPriceChange24hBPS(%s) = %d; want %d", tc.value, got, tc.want)
 		}
 	}
 }

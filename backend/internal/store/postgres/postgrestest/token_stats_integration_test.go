@@ -281,6 +281,41 @@ func TestRecomputeTokenStatsPriceChangeBigintBoundary(t *testing.T) {
 	if negativePersisted != -3333 || negativePersisted != negativeMirror.PriceChange24hBPS {
 		t.Fatalf("negative SQL/mirror values = %d/%d; want -3333", negativePersisted, negativeMirror.PriceChange24hBPS)
 	}
+
+	// A dust baseline makes the change exceed the JS-safe range; the recompute must saturate
+	// instead of failing this token's stats forever (AUDIT_REPORT_TR HIGH-07).
+	const dustLatest = "100000000000000000000"
+	for _, update := range []struct {
+		at    time.Time
+		price string
+	}{{baselineAt, "1"}, {latestAt, dustLatest}} {
+		if _, err := database.DB.ExecContext(ctx, `
+			UPDATE candles SET open_price_wad = $4, high_price_wad = $4, low_price_wad = $4, close_price_wad = $4
+			WHERE chain_id = $1 AND token_address = $2 AND interval = '1m' AND bucket_start_time = $3
+		`, chainID, token, update.at, update.price); err != nil {
+			t.Fatalf("set dust-baseline candle at %s: %v", update.at, err)
+		}
+	}
+	if err := adapter.RecomputeTokenStats(ctx, chainID, common.Address(token)); err != nil {
+		t.Fatalf("recompute dust-baseline price change: %v", err)
+	}
+	dustLatestPrice, _ := new(big.Int).SetString(dustLatest, 10)
+	saturatedMirror, err := stats.ComputeTokenStats(stats.TokenInput{Candles: []stats.Candle{
+		{Start: baselineAt, Close: big.NewInt(1)},
+		{Start: latestAt, Close: dustLatestPrice},
+	}}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saturatedPersisted int64
+	if err := database.DB.QueryRowContext(ctx, `
+		SELECT price_change_24h_bps FROM token_stats WHERE chain_id = $1 AND token_address = $2
+	`, chainID, token).Scan(&saturatedPersisted); err != nil {
+		t.Fatalf("read saturated price change: %v", err)
+	}
+	if saturatedPersisted != stats.MaxSafePriceChange24hBPS || saturatedPersisted != saturatedMirror.PriceChange24hBPS {
+		t.Fatalf("saturated SQL/mirror values = %d/%d; want %d", saturatedPersisted, saturatedMirror.PriceChange24hBPS, stats.MaxSafePriceChange24hBPS)
+	}
 }
 
 func TestPriceChangeBigintDownMigrationRejectsLossyNarrowing(t *testing.T) {

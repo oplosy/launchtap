@@ -1535,9 +1535,13 @@ SELECT chain_id, token_address,
    ELSE launch_block_time
  END,
  volume_24h,
+ -- Saturates at the JS-safe range (token_stats_price_change_24h_bps_js_safe_range) instead of
+ -- failing: a dust baseline can make the change unbounded, and an error would fail this token's
+ -- recompute forever. Mirrors stats.ComputeTokenStats.
  CASE
    WHEN baseline_price > 0 AND latest_price IS NOT NULL
-     THEN trunc((latest_price - baseline_price) * 10000 / baseline_price)::BIGINT
+     THEN LEAST(9007199254740991, GREATEST(-9007199254740991,
+            trunc((latest_price - baseline_price) * 10000 / baseline_price)))::BIGINT
    ELSE 0
  END,
  holder_count,
