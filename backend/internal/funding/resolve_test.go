@@ -97,6 +97,24 @@ func TestResolveFallsBackToTopLevelTransfers(t *testing.T) {
 	}
 }
 
+// A sniper wallet funded and spending in the same block (or bundle) holds nothing at the block
+// before its first send; the funding is found in the first-send block itself (HIGH-11).
+func TestResolveFindsFundingInTheFirstSendBlock(t *testing.T) {
+	chain := &fakeChain{
+		nonceFrom: 500,
+		balanceAt: map[uint64]int64{500: 2},
+		traced: map[uint64][]Transfer{500: {
+			{TxHash: common.HexToHash("0x04"), From: funder, To: wallet, Value: big.NewInt(3)},
+			{TxHash: common.HexToHash("0x05"), From: wallet, To: other, Value: big.NewInt(1)},
+		}},
+	}
+	got, err := Resolve(context.Background(), chain, wallet, 1_000)
+	want := Result{Status: StatusFunded, Funder: funder, Block: 500, TxHash: common.HexToHash("0x04"), CheckedBlock: 1_000}
+	if err != nil || got != want {
+		t.Fatalf("got %+v, %v; want %+v", got, err, want)
+	}
+}
+
 func TestResolveOtherStatuses(t *testing.T) {
 	cases := []struct {
 		name  string
