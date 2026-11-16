@@ -61,7 +61,8 @@ function attachMessage(step: AttachStep, cause: unknown) {
   if (cause instanceof ApiProblem) {
     const words = contextMessages["launch-details"];
     const contextual =
-      words[cause.apiCode] ?? (cause.code === "authentication_required" ? words.authentication_failed : undefined);
+      words[cause.apiCode] ??
+      (cause.code === "authentication_required" ? words.authentication_failed : undefined);
     if (contextual) return contextual;
     // A refusal that names what to fix (image, links, network) says so; a 404 while waiting
     // for the indexer is the step's own message below.

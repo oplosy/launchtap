@@ -57,7 +57,11 @@ function statusFallbackCode(status: number): string {
   return "";
 }
 
-export function mapProblem(status: number, body: unknown, requestId: string | null = null): ApiProblem {
+export function mapProblem(
+  status: number,
+  body: unknown,
+  requestId: string | null = null,
+): ApiProblem {
   const model = isErrorModel(body) ? body : undefined;
   const type = model && model.type !== "about:blank" ? (model.type?.split(":").pop() ?? "") : "";
   const code: ProblemCode =

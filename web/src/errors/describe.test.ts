@@ -93,7 +93,15 @@ describe("describeError", () => {
   });
 
   it("never returns an empty message", () => {
-    for (const cause of [undefined, null, 42, "text", {}, new Error(""), new ApiProblem(0, "unknown")])
+    for (const cause of [
+      undefined,
+      null,
+      42,
+      "text",
+      {},
+      new Error(""),
+      new ApiProblem(0, "unknown"),
+    ])
       expect(describeError(cause).message.length).toBeGreaterThan(0);
   });
 });

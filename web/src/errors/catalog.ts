@@ -85,7 +85,8 @@ export const apiMessages: Readonly<Record<string, string>> = {
   service_unavailable: "This feature is temporarily unavailable. Try again shortly.",
   timeout: "The server took too long to answer. Try again.",
   not_ready: "The service is starting up. Try again in a moment.",
-  origin_not_allowed: "This site is not allowed to use the API. Open the app from its official address.",
+  origin_not_allowed:
+    "This site is not allowed to use the API. Open the app from its official address.",
   // Client-side transport failures (api/transport.ts)
   network_unreachable: "Could not reach the server. Check your connection and try again.",
 };
@@ -195,7 +196,8 @@ export const contractMessages: Readonly<Record<string, string>> = {
   TradingPaused: "Buying is paused by the reviewed deployment. Selling remains available.",
   LaunchesPaused: "Launching is paused by the reviewed deployment.",
   LaunchValueMismatch: "The launch value changed. Refresh the factory fee and try again.",
-  DeveloperBuyCapExceeded: "The developer buy exceeds the contract cap. Reduce the amount and retry.",
+  DeveloperBuyCapExceeded:
+    "The developer buy exceeds the contract cap. Reduce the amount and retry.",
   UnknownEngine: "This launch engine is not supported by the reviewed factory.",
   EngineDisabled: "This launch engine is disabled by the reviewed factory.",
   EngineVersionMismatch: "The selected engine version does not match the reviewed implementation.",
@@ -340,16 +342,19 @@ export const walletMessages = {
   "wallet-unsupported": "Your wallet does not support this action. Try another wallet.",
   "wallet-disconnected": "Your wallet disconnected. Reconnect it and try again.",
   "chain-mismatch": "Your wallet is on another network. Switch to the reviewed network and retry.",
-  "chain-not-added": "Your wallet does not know this network yet. Add it in the wallet, then retry.",
+  "chain-not-added":
+    "Your wallet does not know this network yet. Add it in the wallet, then retry.",
   "switch-failed": "The wallet did not switch networks. Switch it manually, then retry.",
   "insufficient-funds": "The selected wallet does not have enough ETH for the amount plus gas.",
   "nonce-too-low":
     "Your wallet has a newer transaction already. Wait for it to confirm, then retry.",
-  "nonce-too-high": "Your wallet's transaction count is out of sync. Reset it in the wallet, then retry.",
+  "nonce-too-high":
+    "Your wallet's transaction count is out of sync. Reset it in the wallet, then retry.",
   "replacement-underpriced":
     "A pending transaction with the same nonce pays a higher fee. Wait for it or speed it up.",
   "fee-too-low": "The network fee is too low right now. Retry so the wallet picks a new fee.",
-  "fee-too-high": "The network fee the wallet chose is too high. Retry, or set the fee in the wallet.",
+  "fee-too-high":
+    "The network fee the wallet chose is too high. Retry, or set the fee in the wallet.",
   "gas-too-low": "The wallet set too little gas. Retry and let the wallet estimate gas.",
   "gas-too-high": "This transaction needs more gas than a block allows. Lower the amount.",
   "rpc-rate-limited": "The network provider is busy. Wait a moment and try again.",

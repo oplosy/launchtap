@@ -141,25 +141,41 @@ function revertReason(text: string): DecodedTransactionError | null {
 function walletKind(evidence: Evidence, text: string): WalletFailureKind | null {
   const { names, codes } = evidence;
   const named = (...candidates: string[]) => candidates.some((name) => names.includes(name));
-  if (codes.includes(4001) || named("UserRejectedRequestError") || /user rejected|user denied|denied transaction signature/i.test(text))
+  if (
+    codes.includes(4001) ||
+    named("UserRejectedRequestError") ||
+    /user rejected|user denied|denied transaction signature/i.test(text)
+  )
     return "user-rejected";
   if (named("SwitchChainError") || /switch(ing)? chain.*(failed|rejected)/i.test(text))
     return "switch-failed";
   if (codes.includes(4902) || /unrecognized chain|chain .*not (been )?added/i.test(text))
     return "chain-not-added";
-  if (named("ChainMismatchError", "ConnectorChainMismatchError") || /does not match the target chain|chain mismatch/i.test(text))
+  if (
+    named("ChainMismatchError", "ConnectorChainMismatchError") ||
+    /does not match the target chain|chain mismatch/i.test(text)
+  )
     return "chain-mismatch";
-  if (named("InsufficientFundsError") || /insufficient funds/i.test(text)) return "insufficient-funds";
+  if (named("InsufficientFundsError") || /insufficient funds/i.test(text))
+    return "insufficient-funds";
   if (named("NonceTooLowError") || /nonce too low/i.test(text)) return "nonce-too-low";
   if (named("NonceTooHighError", "NonceMaxValueError") || /nonce too high/i.test(text))
     return "nonce-too-high";
   if (/replacement (transaction )?underpriced/i.test(text)) return "replacement-underpriced";
   if (named("FeeCapTooHighError", "TipAboveFeeCapError")) return "fee-too-high";
-  if (named("FeeCapTooLowError") || /max fee per gas less than block base fee|fee cap.*too low/i.test(text))
+  if (
+    named("FeeCapTooLowError") ||
+    /max fee per gas less than block base fee|fee cap.*too low/i.test(text)
+  )
     return "fee-too-low";
   if (named("IntrinsicGasTooLowError") || /intrinsic gas too low/i.test(text)) return "gas-too-low";
-  if (named("IntrinsicGasTooHighError") || /exceeds block gas limit/i.test(text)) return "gas-too-high";
-  if (codes.includes(-32002) || named("ResourceUnavailableRpcError") || /already pending/i.test(text))
+  if (named("IntrinsicGasTooHighError") || /exceeds block gas limit/i.test(text))
+    return "gas-too-high";
+  if (
+    codes.includes(-32002) ||
+    named("ResourceUnavailableRpcError") ||
+    /already pending/i.test(text)
+  )
     return "wallet-busy";
   if (codes.includes(4100) || named("UnauthorizedProviderError")) return "wallet-unauthorized";
   if (codes.includes(4200) || named("UnsupportedProviderMethodError", "MethodNotSupportedRpcError"))
@@ -170,14 +186,25 @@ function walletKind(evidence: Evidence, text: string): WalletFailureKind | null 
     named("ProviderDisconnectedError", "ChainDisconnectedError", "ConnectorNotConnectedError")
   )
     return "wallet-disconnected";
-  if (codes.includes(-32005) || codes.includes(429) || named("LimitExceededRpcError") || /too many requests|rate limit/i.test(text))
+  if (
+    codes.includes(-32005) ||
+    codes.includes(429) ||
+    named("LimitExceededRpcError") ||
+    /too many requests|rate limit/i.test(text)
+  )
     return "rpc-rate-limited";
   if (named("TimeoutError", "WaitForTransactionReceiptTimeoutError") || /timed? ?out/i.test(text))
     return "rpc-timeout";
-  if (named("HttpRequestError", "WebSocketRequestError") || /failed to fetch|fetch failed|network ?error|ECONNREFUSED|ENOTFOUND/i.test(text))
+  if (
+    named("HttpRequestError", "WebSocketRequestError") ||
+    /failed to fetch|fetch failed|network ?error|ECONNREFUSED|ENOTFOUND/i.test(text)
+  )
     return "rpc-unreachable";
   if (named("InternalRpcError") || codes.includes(-32603)) return "rpc-unavailable";
-  if (named("ExecutionRevertedError", "ContractFunctionRevertedError") || /execution reverted|reverted/i.test(text))
+  if (
+    named("ExecutionRevertedError", "ContractFunctionRevertedError") ||
+    /execution reverted|reverted/i.test(text)
+  )
     return "execution-reverted";
   return null;
 }

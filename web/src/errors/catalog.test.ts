@@ -46,7 +46,10 @@ describe("error catalog", () => {
 
   it("has a message for every custom error in the reviewed contract ABIs", () => {
     const names = new Set<string>();
-    for (const abi of Object.values(browserAbis) as unknown as readonly (readonly { type: string; name?: string }[])[])
+    for (const abi of Object.values(browserAbis) as unknown as readonly (readonly {
+      type: string;
+      name?: string;
+    }[])[])
       for (const item of abi) if (item.type === "error" && item.name) names.add(item.name);
     expect(names.size).toBeGreaterThan(50);
     const missing = [...names].filter((name) => !contractMessages[name]);
@@ -70,6 +73,7 @@ describe("error catalog", () => {
   it("only overrides codes the API actually sends in a context", () => {
     const known = new Set([...Object.keys(apiMessages), "fallback"]);
     for (const [context, words] of Object.entries(contextMessages))
-      for (const code of Object.keys(words)) expect(known.has(code), `${context}.${code}`).toBe(true);
+      for (const code of Object.keys(words))
+        expect(known.has(code), `${context}.${code}`).toBe(true);
   });
 });
