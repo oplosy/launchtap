@@ -59,7 +59,7 @@ func run(ctx context.Context, getenv func(string) string) error {
 		defer cancel()
 		_ = lock.Close(closeCtx)
 	}()
-	pool, err := storepostgres.OpenPool(ctx, c.DatabaseURL, storepostgres.PoolOptions{MaxConns: 2})
+	pool, err := storepostgres.OpenPool(ctx, c.DatabaseURL, storepostgres.PoolOptions{MaxConns: storepostgres.MinimumPoolMaxConns})
 	if err != nil {
 		return err
 	}

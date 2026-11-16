@@ -15,10 +15,11 @@ func Open(databaseURL string) (*sql.DB, error) {
 	return sql.Open("pgx", databaseURL)
 }
 
-const (
-	defaultPoolMaxConns int32 = 8
-	minimumPoolMaxConns int32 = 4
-)
+const defaultPoolMaxConns int32 = 8
+
+// MinimumPoolMaxConns is the smallest pool OpenPool accepts. Single-purpose tools open their
+// pool at exactly this size so the floor and their callers cannot drift apart.
+const MinimumPoolMaxConns int32 = 4
 
 // PoolOptions configures the application pool. Session ownership uses a separate
 // connection, outside pool lifetime and idle policies; MaxConns remains fully
@@ -31,8 +32,8 @@ func OpenPool(ctx context.Context, databaseURL string, options PoolOptions) (*pg
 	if maxConns == 0 {
 		maxConns = defaultPoolMaxConns
 	}
-	if maxConns < minimumPoolMaxConns {
-		return nil, fmt.Errorf("pool max connections %d is below minimum %d", maxConns, minimumPoolMaxConns)
+	if maxConns < MinimumPoolMaxConns {
+		return nil, fmt.Errorf("pool max connections %d is below minimum %d", maxConns, MinimumPoolMaxConns)
 	}
 	config, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {

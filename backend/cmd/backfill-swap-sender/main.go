@@ -84,7 +84,7 @@ func execute(ctx context.Context, args []string, getenv func(string) string) err
 	if err := chain.VerifyRPCChainID(ctx, source, c.ChainID, deployment); err != nil {
 		return fmt.Errorf("verify RPC chain identity: %w", err)
 	}
-	pool, err := storepostgres.OpenPool(ctx, c.DatabaseURL, storepostgres.PoolOptions{MaxConns: 2})
+	pool, err := storepostgres.OpenPool(ctx, c.DatabaseURL, storepostgres.PoolOptions{MaxConns: storepostgres.MinimumPoolMaxConns})
 	if err != nil {
 		return fmt.Errorf("open database pool: %w", err)
 	}
@@ -129,7 +129,7 @@ func parseFlags(args []string) (flags, error) {
 // seedPositions queues every existing ledger (wallet, token) pair with one bounded statement per
 // token (excluding the zero address, the factory and every curve and pair). It is idempotent.
 func seedPositions(ctx context.Context, databaseURL string, chainID int64, factory common.Address, dryRun bool) error {
-	pool, err := storepostgres.OpenPool(ctx, databaseURL, storepostgres.PoolOptions{MaxConns: 2})
+	pool, err := storepostgres.OpenPool(ctx, databaseURL, storepostgres.PoolOptions{MaxConns: storepostgres.MinimumPoolMaxConns})
 	if err != nil {
 		return fmt.Errorf("open database pool: %w", err)
 	}
