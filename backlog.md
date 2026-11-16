@@ -23,20 +23,21 @@
   `~/security-audit-skill/launchpad/run-4` (outside the repo). Ledger: 96 units, PASS. 37
   candidates in `candidates.json`. Wave 11 hunter `h43-v2-pool-admission` (engine-2 V4 pool
   admission) finished covered with no candidate; artifacts promoted, ledger PASS. Verifier prompts are generated in `vprompts/`
-  (`verifier-ids.json`, 37 entries) but no verifier has run yet.
+  (`verifier-ids.json`, 37 entries); all verifiers have finished.
 - **Related files:** run-4 scripts `extract.cjs`, `consolidate.cjs`, `promote.cjs`,
   `build-critic-input.cjs`, `critic-apply-w11.cjs`, `fix-blocks-w11.cjs`, `wave11-prompts.cjs`,
   `verifier-prompts.cjs`; `docs/audits/` for the final record.
 - **Resume (next step):**
   1. Done: hunting phase closed. Wave-11 critic and final-clean critic 3 both returned stop
      with no missing units (`critic-wave11.json`, `critic-final3.json`).
-  2. Phase 3 in progress. Verifier results are saved in `vresults/<vid>.json` via
-     `sh vproc.sh <agentId> <vid>` (promotes `result.txt`, extracts the decision). Done: v01 CONFIRMED low (indexer stopped log leaks RPC_URL key), v02
-     rejected, v04 nv, v05 rejected, v03 CONFIRMED medium (indexer health LastError leaks RPC_URL key), v06 nv, v07 nv, v08 nv. All of v01-v08 are done (agent map in
-     `verifier-agents.txt`); relaunch any without a `vresults` file. Not started: v09-v37. Do
-     NOT regenerate `vprompts` (ids are fixed in `verifier-ids.json`).
-  3. Launch one fresh verifier (haiku, high) per remaining vid with the prompt "Read your full
-     instructions from ...\vprompts\<vid>.md ...", then merge every decision into the ledger.
+  2. Done: Phase 3. All 37 decisions are in `vresults/<vid>.json`. Confirmed: v03 medium
+     (indexer /healthz LastError leaks RPC_URL key), v13 medium (NUL / invalid UTF-8 launch
+     name halts indexer), v01 low (indexer exit log leaks RPC_URL key), v29 low (token name
+     line feeds inject lines into Telegram alerts), v30 low (alerts still sent within the
+     in-flight pass after /stop or unlink), v36 low (receipt-phase transport error shown as
+     reverted). Rejected: v02, v05, v21, v25, v27. needs_validation: the other 26 (fix
+     candidates: v09 long-name index overflow, v08/v31 V2 graduation ETH-delta underflow).
+  3. Next: merge every decision into the ledger.
   4. `findings.json` + `validate-findings.cjs`, record verification, REPORT.md /
      FINDINGS-DETAIL.md / NEEDS-VALIDATION.md, then fix confirmed items on a `task/<slug>` PR and
      re-score Application security and Smart contracts in `docs/quality-scorecard.md`.
