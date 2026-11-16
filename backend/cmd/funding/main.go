@@ -17,6 +17,7 @@ import (
 	"github.com/Contictus/launchtap/backend/internal/config"
 	"github.com/Contictus/launchtap/backend/internal/funding"
 	"github.com/Contictus/launchtap/backend/internal/redact"
+	"github.com/Contictus/launchtap/backend/internal/secretenv"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
 )
@@ -39,7 +40,11 @@ func main() {
 }
 
 func run(ctx context.Context, getenv func(string) string) error {
-	c, err := config.LoadFunding(getenv)
+	env, err := secretenv.Lookup(getenv, "DATABASE_PASSWORD")
+	if err != nil {
+		return err
+	}
+	c, err := config.LoadFunding(env)
 	if err != nil {
 		return err
 	}

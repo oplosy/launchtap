@@ -469,7 +469,7 @@ requires `DATABASE_URL`.
 | `DEPLOYMENT_ID`                  | `anvil-local` in example           | Required lower-case manifest identifier; must match the chain's reviewed deployment                 |
 | `RPC_URL`                        | `http://127.0.0.1:8545` in example | Required HTTP(S) JSON-RPC endpoint; use an approved endpoint for hosted services                    |
 | `DATABASE_URL`                   | Local PostgreSQL URL in example    | Required `postgres://` or `postgresql://` URL; secret in hosted environments                        |
-| `DATABASE_PASSWORD_FILE`         | Unset                              | Optional file holding the password for a password-less `DATABASE_URL` (one Docker secret per role)  |
+| `DATABASE_PASSWORD_FILE`         | Unset                              | Optional file holding the password for a password-less `DATABASE_URL` (one Docker secret per role); `DATABASE_PASSWORD` may hold it directly instead, never both |
 | `PRIVY_APP_ID`                   | Blank in example                   | Required by API for identity verification; must match the configured Privy app                      |
 | `PRIVY_VERIFICATION_KEY`         | Blank in example                   | Required by API; backend-only verification key from approved secret storage                         |
 | `LOG_LEVEL`                      | `info`                             | Structured log level; defaults to `info`                                                            |

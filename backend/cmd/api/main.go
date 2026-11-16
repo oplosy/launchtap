@@ -19,6 +19,7 @@ import (
 	"github.com/Contictus/launchtap/backend/internal/privyauth"
 	"github.com/Contictus/launchtap/backend/internal/quote"
 	"github.com/Contictus/launchtap/backend/internal/realtime"
+	"github.com/Contictus/launchtap/backend/internal/secretenv"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
@@ -32,7 +33,11 @@ func main() {
 }
 
 func run() error {
-	c, err := config.Load(os.Getenv)
+	env, err := secretenv.Lookup(os.Getenv, "DATABASE_PASSWORD")
+	if err != nil {
+		return err
+	}
+	c, err := config.Load(env)
 	if err != nil {
 		return err
 	}

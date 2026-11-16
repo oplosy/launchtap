@@ -44,7 +44,9 @@ member of its group role. Funding and moderation logins are created by the opera
 runbook, because neither runs in the Compose project.
 
 **5. Services get a password-less URL plus a password file.** `DATABASE_PASSWORD_FILE`, when set,
-is read at startup and inserted into `DATABASE_URL` (which must then carry no password). Each
+is read at startup and inserted into `DATABASE_URL` (which must then carry no password). The file
+is read by `internal/secretenv` in each binary's `main`, which maps it onto `DATABASE_PASSWORD`;
+`internal/config` only sees that value, because it stays free of file I/O (depguard). Each
 Compose service sets its own `DATABASE_URL` and mounts only its own secret; the shared backend env
 file no longer carries a database URL, so the API container never sees another role's credential.
 
