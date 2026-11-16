@@ -190,7 +190,8 @@ SELECT token.chain_id, token.token_address, nextval('aggregation_dirty_generatio
 ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregation_dirty_generation_seq');
 
 -- name: MarkPositionDirty :exec
--- Excluded wallets (R4): the zero address, the factory, and any token's curve or pair.
+-- Excluded wallets (R4): the zero address, the factory, any token's curve, pair or locker, and
+-- the chain's V4 PoolManager (it takes the other side of every engine-2 graduation and swap).
 INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
 SELECT sqlc.arg(chain_id)::bigint, sqlc.arg(wallet)::bytea, sqlc.arg(token_address)::bytea, nextval('position_dirty_generation_seq')
 WHERE sqlc.arg(wallet)::bytea <> decode(repeat('00', 20), 'hex')
@@ -202,6 +203,14 @@ WHERE sqlc.arg(wallet)::bytea <> decode(repeat('00', 20), 'hex')
   AND NOT EXISTS (
     SELECT 1 FROM tokens AS excluded
     WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.lp_pair = sqlc.arg(wallet)::bytea
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.locker = sqlc.arg(wallet)::bytea
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM v4_pool_managers AS manager
+    WHERE manager.chain_id = sqlc.arg(chain_id)::bigint AND manager.pool_manager = sqlc.arg(wallet)::bytea
   )
 ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq');
 
@@ -220,6 +229,14 @@ FROM (
       AND NOT EXISTS (
         SELECT 1 FROM tokens AS excluded
         WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.lp_pair = side.wallet
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM tokens AS excluded
+        WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.locker = side.wallet
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM v4_pool_managers AS manager
+        WHERE manager.chain_id = sqlc.arg(chain_id)::bigint AND manager.pool_manager = side.wallet
       )
 ) AS sides
 ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq');
@@ -835,6 +852,14 @@ WITH pairs AS (
       AND NOT EXISTS (
         SELECT 1 FROM tokens AS excluded
         WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.lp_pair = source.wallet
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM tokens AS excluded
+        WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.locker = source.wallet
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM v4_pool_managers AS manager
+        WHERE manager.chain_id = sqlc.arg(chain_id)::bigint AND manager.pool_manager = source.wallet
       )
 ), marked AS (
     INSERT INTO position_dirty (chain_id, wallet, token_address, generation)

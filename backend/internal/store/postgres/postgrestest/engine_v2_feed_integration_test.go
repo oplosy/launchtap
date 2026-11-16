@@ -27,6 +27,10 @@ func TestEngineV2SwapsReachFeedTrendingAndAttribution(t *testing.T) {
 	blockTime := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
 	block := ledger.IndexedBlock{ChainID: chainID, BlockNumber: 7, BlockHash: common.Hash{0xc7}, ParentHash: common.Hash{0xc6}, BlockTime: blockTime, FinalityStatus: "observed"}
 	decoded := decodeV2Fixture(t, block, common.HexToAddress("0x5a5a"))
+	// The indexer registers the reviewed PoolManager at startup, before any chunk.
+	if err := storepostgres.NewAdapter(pool).RegisterV4PoolManager(ctx, chainID, v2FixturePoolManager); err != nil {
+		t.Fatalf("register pool manager: %v", err)
+	}
 	if err := storepostgres.WithinTx(ctx, pool, func(ctx context.Context, adapter *storepostgres.Adapter) error {
 		if _, err := adapter.UpsertIndexedBlock(ctx, block); err != nil {
 			return err
@@ -74,6 +78,21 @@ func TestEngineV2SwapsReachFeedTrendingAndAttribution(t *testing.T) {
 	}
 	if len(trending) != 1 || trending[0].WindowVolumeEthWad.BigInt().String() != wantVolume {
 		t.Fatalf("trending = %+v, want one token with curve + V4 volume %s", trending, wantVolume)
+	}
+
+	// The PoolManager and locker take the other side of graduation and swap transfers; neither
+	// may be queued as a wallet position.
+	var managers, excludedQueued int
+	if err := database.DB.QueryRowContext(ctx, `SELECT
+		(SELECT count(*) FROM v4_pool_managers WHERE chain_id=$1),
+		(SELECT count(*) FROM position_dirty AS dirty WHERE dirty.chain_id=$1 AND (
+			dirty.wallet IN (SELECT pool_manager FROM v4_pool_managers WHERE chain_id=$1)
+			OR dirty.wallet IN (SELECT locker FROM tokens WHERE chain_id=$1 AND locker IS NOT NULL)))`,
+		chainID).Scan(&managers, &excludedQueued); err != nil {
+		t.Fatalf("read excluded position marks: %v", err)
+	}
+	if managers != 1 || excludedQueued != 0 {
+		t.Fatalf("pool managers = %d, queued PoolManager/locker positions = %d; want 1 and 0", managers, excludedQueued)
 	}
 
 	if complete, err := queries.WalletAttributionComplete(ctx, chainID); err != nil || !complete {

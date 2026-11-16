@@ -607,6 +607,14 @@ WHERE pairs.wallet <> decode(repeat('00', 20), 'hex')
     SELECT 1 FROM tokens AS excluded
     WHERE excluded.chain_id=$1 AND excluded.lp_pair=pairs.wallet
   )
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id = $1 AND excluded.locker = pairs.wallet
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM v4_pool_managers AS manager
+    WHERE manager.chain_id = $1 AND manager.pool_manager = pairs.wallet
+  )
 ORDER BY pairs.wallet, pairs.token_address
 `
 
@@ -622,8 +630,8 @@ type ListPositionPairsAboveRow struct {
 }
 
 // Run before DeleteCanonicalAbove: the rows (and a launched token's own row) are still present.
-// Excluded wallets (R4) are dropped here because a deleted token's curve and pair are not
-// resolvable afterwards.
+// Excluded wallets (R4: curve, pair, locker, V4 PoolManager) are dropped here because a deleted
+// token's curve and pair are not resolvable afterwards.
 func (q *Queries) ListPositionPairsAbove(ctx context.Context, arg ListPositionPairsAboveParams) ([]ListPositionPairsAboveRow, error) {
 	rows, err := q.db.Query(ctx, listPositionPairsAbove, arg.ChainID, arg.BlockNumber, arg.Factory)
 	if err != nil {

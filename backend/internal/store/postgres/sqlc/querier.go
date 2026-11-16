@@ -283,8 +283,8 @@ type Querier interface {
 	// inner join drops nothing; it supplies the block time the windowed leaderboard filters on.
 	ListPositionLegs(ctx context.Context, arg ListPositionLegsParams) ([]ListPositionLegsRow, error)
 	// Run before DeleteCanonicalAbove: the rows (and a launched token's own row) are still present.
-	// Excluded wallets (R4) are dropped here because a deleted token's curve and pair are not
-	// resolvable afterwards.
+	// Excluded wallets (R4: curve, pair, locker, V4 PoolManager) are dropped here because a deleted
+	// token's curve and pair are not resolvable afterwards.
 	ListPositionPairsAbove(ctx context.Context, arg ListPositionPairsAboveParams) ([]ListPositionPairsAboveRow, error)
 	// The precomputed ranking of ListLeaderboardWindow (docs/specs/2026-11-14-windowed-leaderboard-preflight.md),
 	// usernames joined at read time.
@@ -373,7 +373,8 @@ type Querier interface {
 	MarkPairTokenDirty(ctx context.Context, arg MarkPairTokenDirtyParams) error
 	// A NULL tx_from (sender not yet known) is a no-op.
 	MarkPoolSwapPositionDirty(ctx context.Context, arg MarkPoolSwapPositionDirtyParams) error
-	// Excluded wallets (R4): the zero address, the factory, and any token's curve or pair.
+	// Excluded wallets (R4): the zero address, the factory, any token's curve, pair or locker, and
+	// the chain's V4 PoolManager (it takes the other side of every engine-2 graduation and swap).
 	MarkPositionDirty(ctx context.Context, arg MarkPositionDirtyParams) error
 	// Reorg re-mark: pairs were already filtered at collection time, so no exclusion lookup here
 	// (the token row of a pair may no longer exist).
