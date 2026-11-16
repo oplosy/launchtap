@@ -490,7 +490,8 @@ type Querier interface {
 	V4SwapMatchesEvent(ctx context.Context, arg V4SwapMatchesEventParams) (pgtype.Bool, error)
 	// release_at: the hourly_limit-th newest vote set in the window (see CommentRateState).
 	VoteRateState(ctx context.Context, arg VoteRateStateParams) (VoteRateStateRow, error)
-	// R5: attribution is chain-wide. Backed by the partial index pool_swaps_tx_from_null_idx.
+	// R5: attribution is chain-wide. Backed by the partial indexes pool_swaps_tx_from_null_idx and
+	// v4_swaps_tx_from_null_idx.
 	WalletAttributionComplete(ctx context.Context, chainID int64) (bool, error)
 	// The key of the page_size-th newest event before the cursor across the wallet's base-table rows
 	// (curve trades by trader, V2 and V4 swaps by transaction sender), each read newest first from its

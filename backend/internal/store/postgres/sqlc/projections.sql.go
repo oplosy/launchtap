@@ -1171,6 +1171,16 @@ FROM (
     WHERE swap.chain_id = $1
       AND swap.block_time >= $2::timestamptz
       AND swap.block_time < $3::timestamptz
+    UNION
+    SELECT DISTINCT graduation.chain_id, graduation.token_address
+    FROM v4_swaps AS swap
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    JOIN graduations AS graduation
+      ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
+    WHERE swap.chain_id = $1
+      AND swap.block_time >= $2::timestamptz
+      AND swap.block_time < $3::timestamptz
 ) AS touched
 ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregation_dirty_generation_seq')
 `
