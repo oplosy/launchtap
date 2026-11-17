@@ -289,3 +289,105 @@ func (s *poolIgnoringSource) FilterLogs(_ context.Context, query ethereum.Filter
 	}
 	return nil, nil
 }
+
+// knownTokenTransferFixture returns a known token's Transfer log from the v2 fixture, a copy of
+// it emitted by a foreign token, and known emitters holding that token plus two more.
+func knownTokenTransferFixture(t *testing.T) (v2DiscoveryLogs, types.Log, types.Log, Emitters) {
+	t.Helper()
+	fixture := loadV2DiscoveryLogs(t)
+	_, logs, _ := loadFixtureLogsV2(t)
+	var own types.Log
+	for _, log := range logs {
+		decoded, err := fixture.decoder.Decode(log, fixture.emitters)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if transfer, ok := decoded.Value.(Transfer); ok && transfer.Token == fixture.launch.Token {
+			own = at(log, 12, 1, 0)
+			break
+		}
+	}
+	if own.Address == (common.Address{}) {
+		t.Fatal("v2 fixture has no Transfer of the first token")
+	}
+	foreign := at(own, 12, 2, 0)
+	foreign.Address = common.HexToAddress("0xbad")
+	known := emptyEmitters(fixture.emitters.Factory)
+	for _, token := range []common.Address{fixture.launch.Token, common.HexToAddress("0x01"), common.HexToAddress("0x02")} {
+		known.Tokens[token] = struct{}{}
+	}
+	return fixture, own, foreign, known
+}
+
+func tokenQueries(queries []ethereum.FilterQuery, transferTopic common.Hash) (topicOnly, batched int) {
+	for _, query := range queries {
+		if len(query.Topics) == 0 || !slices.Contains(query.Topics[0], transferTopic) {
+			continue
+		}
+		if len(query.Addresses) == 0 {
+			topicOnly++
+		} else {
+			batched++
+		}
+	}
+	return topicOnly, batched
+}
+
+// Near the tip, tokens needing more than one address batch are read with one topic-only query
+// filtered to the known tokens (docs/specs/2026-11-16-rpc-scale-design.md, option 2).
+func TestDiscovererV2ReadsKnownTokensByTopicNearTheTip(t *testing.T) {
+	t.Parallel()
+	fixture, own, foreign, known := knownTokenTransferFixture(t)
+	transferTopic := fixture.decoder.Topics(EmitterToken)[0]
+	source := &recordingLogSource{fixtureLogSource: fixtureLogSource{logs: []types.Log{own, foreign}}}
+	discoverer, err := NewDiscovererV2(source, fixture.decoder, fixture.emitters.Factory, 1, fixture.config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := discoverer.Discover(context.Background(), 12, 12, known)
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(result.Logs) != 1 || !sameLog(result.Logs[0], own) {
+		t.Fatalf("logs = %+v, want only the known token's transfer", result.Logs)
+	}
+	if topicOnly, batched := tokenQueries(source.queries, transferTopic); topicOnly != 1 || batched != 0 {
+		t.Fatalf("token queries: %d topic-only, %d batched; want 1 and 0", topicOnly, batched)
+	}
+
+	// A catch-up range keeps the address batches.
+	source.queries = nil
+	if _, err := discoverer.Discover(context.Background(), 12, 12+tokenTopicOnlyMaxBlocks, known); err != nil {
+		t.Fatalf("Discover() catch-up error = %v", err)
+	}
+	if topicOnly, batched := tokenQueries(source.queries, transferTopic); topicOnly != 0 || batched != 3 {
+		t.Fatalf("catch-up token queries: %d topic-only, %d batched; want 0 and 3", topicOnly, batched)
+	}
+}
+
+// A failed topic-only query falls back to the address batches and is not retried for the
+// cooldown, so a busy chain does not cost a failed call every step.
+func TestDiscovererV2KnownTokenTopicOnlyFailureFallsBackAndCoolsDown(t *testing.T) {
+	t.Parallel()
+	fixture, own, _, known := knownTokenTransferFixture(t)
+	transferTopic := fixture.decoder.Topics(EmitterToken)[0]
+	source := &recordingLogSource{fixtureLogSource: fixtureLogSource{logs: []types.Log{own}, failTopicOnly: true}}
+	discoverer, err := NewDiscovererV2(source, fixture.decoder, fixture.emitters.Factory, 1, fixture.config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := discoverer.Discover(context.Background(), 12, 12, known)
+	if err != nil || len(result.Logs) != 1 || !sameLog(result.Logs[0], own) {
+		t.Fatalf("Discover() = %+v, %v; want the transfer from the fallback", result.Logs, err)
+	}
+	if topicOnly, batched := tokenQueries(source.queries, transferTopic); topicOnly != 1 || batched != 3 {
+		t.Fatalf("token queries: %d topic-only, %d batched; want 1 and 3", topicOnly, batched)
+	}
+	source.queries = nil
+	if _, err := discoverer.Discover(context.Background(), 13, 13, known); err != nil {
+		t.Fatal(err)
+	}
+	if topicOnly, batched := tokenQueries(source.queries, transferTopic); topicOnly != 0 || batched != 3 {
+		t.Fatalf("token queries in the cooldown: %d topic-only, %d batched; want 0 and 3", topicOnly, batched)
+	}
+}

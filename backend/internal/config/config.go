@@ -18,7 +18,7 @@ const (
 	// Keep these bounds aligned with the indexer engine's reorg-search policy.
 	defaultIndexerReorgSearchDepth = uint64(128)
 	maxIndexerReorgSearchDepth     = uint64(100000)
-	defaultLogAddressBatch         = uint64(500)
+	defaultLogAddressBatch         = uint64(1000)
 	maxLogAddressBatch             = uint64(2000)
 	defaultLogFetchConcurrency     = uint64(4)
 	maxLogFetchConcurrency         = uint64(16)

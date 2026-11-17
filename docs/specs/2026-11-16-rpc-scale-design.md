@@ -1,7 +1,9 @@
 # Indexer RPC scale — design (2026-11-16)
 
-Production-readiness audit pass 3, M-3: RPC load grows with the number of tokens and pools. This
-is a design note; nothing here is implemented yet (backlog: "Production-readiness audit pass 3").
+Production-readiness audit pass 3, M-3: RPC load grows with the number of tokens and pools. Status
+2026-11-17: option 1 (default batch 1000) and option 2 (topic-only near the tip) are implemented
+(`2026-11-17-run4-owner-defaults-preflight.md` decision 8), and the RPC failover
+(`2026-11-17-rpc-failover-preflight.md`).
 
 ## Where the load comes from
 

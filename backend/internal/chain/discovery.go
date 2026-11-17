@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
+	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -27,6 +28,9 @@ type Discoverer struct {
 	v4 *V4Config
 	// slots caps eth_getLogs calls in flight; nil fetches sequentially (WithLogConcurrency).
 	slots chan struct{}
+	// tokenTopicCooldown counts the steps left before known-token transfers may use the
+	// topic-only fast path again after it failed (fetchKnownTokens).
+	tokenTopicCooldown atomic.Int64
 }
 
 func NewDiscoverer(source LogSource, decoder *Decoder, factory common.Address, addressBatchSize uint64) (*Discoverer, error) {
@@ -216,17 +220,33 @@ func (d *Discoverer) fetchByTopics(ctx context.Context, from, to uint64, topics 
 	if len(allowed) == 0 || len(topics) == 0 {
 		return nil, nil
 	}
-	query := ethereum.FilterQuery{FromBlock: new(big.Int).SetUint64(from), ToBlock: new(big.Int).SetUint64(to), Topics: [][]common.Hash{topics}}
-	logs, err := d.filterLogs(ctx, query)
+	logs, err := d.fetchTopicOnly(ctx, from, to, topics, allowed)
+	if err != nil && !errors.Is(err, errTopicOnlyFailed) {
+		return nil, err
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
 		batched, batchErr := d.fetch(ctx, from, to, setAddresses(allowed), topics)
 		if batchErr != nil {
-			return nil, errors.Join(batchErr, fmt.Errorf("topic-only query: %w", err))
+			return nil, errors.Join(batchErr, err)
 		}
 		return batched, nil
+	}
+	return logs, nil
+}
+
+// errTopicOnlyFailed marks a failed topic-only query, which callers answer with the
+// address-batched query; malformed or foreign-topic logs are returned as they are.
+var errTopicOnlyFailed = errors.New("topic-only query failed")
+
+// fetchTopicOnly runs one topic-only query and keeps the logs of allowed emitters.
+func (d *Discoverer) fetchTopicOnly(ctx context.Context, from, to uint64, topics []common.Hash, allowed AddressSet) ([]types.Log, error) {
+	query := ethereum.FilterQuery{FromBlock: new(big.Int).SetUint64(from), ToBlock: new(big.Int).SetUint64(to), Topics: [][]common.Hash{topics}}
+	logs, err := d.filterLogs(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errTopicOnlyFailed, err)
 	}
 	allowedTopics := make(map[common.Hash]struct{}, len(topics))
 	for _, topic := range topics {

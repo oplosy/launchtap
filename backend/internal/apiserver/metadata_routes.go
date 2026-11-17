@@ -12,6 +12,7 @@ import (
 	"image/png"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,6 +29,9 @@ const (
 	maxImageBytes            = 5 << 20
 	maxImageDimension        = 4096
 	maxSubjectLimiterEntries = 10_000
+	// subjectLimiterEvictBatch is how many windows a full subject limiter drops at once, so a
+	// principal flood pays the eviction sort once per batch.
+	subjectLimiterEvictBatch = maxSubjectLimiterEntries / 10
 	// Image URLs carry no content hash, so browsers revalidate after a short window and the
 	// ETag turns repeat loads into bodiless 304 responses.
 	imageCacheControl = "public, max-age=60, stale-while-revalidate=600"
@@ -417,12 +421,9 @@ func (l *SubjectLimiter) Allow(subject string, now time.Time) bool {
 	defer l.mu.Unlock()
 	entry, exists := l.entries[subject]
 	if !exists && len(l.entries) >= maxSubjectLimiterEntries {
-		for candidate, candidateEntry := range l.entries {
-			if now.Sub(candidateEntry.start) >= l.window {
-				delete(l.entries, candidate)
-			}
-		}
+		l.evict(now)
 		if len(l.entries) >= maxSubjectLimiterEntries {
+			// Every live window is throttled: forgetting one would reset its throttle.
 			return false
 		}
 	}
@@ -436,4 +437,33 @@ func (l *SubjectLimiter) Allow(subject string, now time.Time) bool {
 	entry.count++
 	l.entries[subject] = entry
 	return true
+}
+
+// evict makes room for a new subject instead of refusing every new principal while the table is
+// full (security-audit run-4). It drops expired windows; if verified principals still fill the
+// table, it drops a batch of the oldest windows of subjects under their limit. A throttled
+// subject is never forgotten, so eviction cannot hand it a fresh window.
+func (l *SubjectLimiter) evict(now time.Time) {
+	for candidate, candidateEntry := range l.entries {
+		if now.Sub(candidateEntry.start) >= l.window {
+			delete(l.entries, candidate)
+		}
+	}
+	if len(l.entries) < maxSubjectLimiterEntries {
+		return
+	}
+	type candidate struct {
+		subject string
+		start   time.Time
+	}
+	candidates := make([]candidate, 0, len(l.entries))
+	for subject, entry := range l.entries {
+		if entry.count < l.maximum {
+			candidates = append(candidates, candidate{subject, entry.start})
+		}
+	}
+	slices.SortFunc(candidates, func(a, b candidate) int { return a.start.Compare(b.start) })
+	for _, oldest := range candidates[:min(subjectLimiterEvictBatch, len(candidates))] {
+		delete(l.entries, oldest.subject)
+	}
 }

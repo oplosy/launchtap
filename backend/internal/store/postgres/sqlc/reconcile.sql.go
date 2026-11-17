@@ -11,24 +11,42 @@ import (
 
 const listReconcileTokens = `-- name: ListReconcileTokens :many
 
+WITH recent AS (
+    SELECT t.token_address
+    FROM tokens t
+    JOIN token_reserves r ON r.chain_id = t.chain_id AND r.token_address = t.token_address
+    WHERE t.chain_id = $1
+    ORDER BY r.source_block_number DESC, t.token_address
+    LIMIT $2
+), rotating AS (
+    SELECT t.token_address
+    FROM tokens t
+    WHERE t.chain_id = $1
+    ORDER BY (t.token_address < $3::bytea), t.token_address
+    LIMIT $2
+), picked AS (
+    SELECT token_address FROM recent
+    UNION
+    SELECT token_address FROM rotating
+)
 SELECT
     t.token_address,
     t.curve_address,
     t.phase,
-    r.reserve_source,
+    COALESCE(r.reserve_source, '')::text AS reserve_source,
     -- V4 reserve rows carry no ETH/token reserve (NULL); only curve rows are compared.
     COALESCE(r.eth_reserve, 0)::text AS eth_reserve_text,
     COALESCE(r.token_reserve, 0)::text AS token_reserve_text
-FROM tokens t
-JOIN token_reserves r ON r.chain_id = t.chain_id AND r.token_address = t.token_address
-WHERE t.chain_id = $1
-ORDER BY r.source_block_number DESC, t.token_address
-LIMIT $2
+FROM picked p
+JOIN tokens t ON t.chain_id = $1 AND t.token_address = p.token_address
+LEFT JOIN token_reserves r ON r.chain_id = t.chain_id AND r.token_address = t.token_address
+ORDER BY t.token_address
 `
 
 type ListReconcileTokensParams struct {
-	ChainID  int64
-	RowLimit int32
+	ChainID       int64
+	RowLimit      int32
+	RotationStart []byte
 }
 
 type ListReconcileTokensRow struct {
@@ -43,9 +61,12 @@ type ListReconcileTokensRow struct {
 // Reads for the indexed-state reconciliation pass
 // (docs/specs/2026-11-14-state-reconciliation-preflight.md). Amounts are read as text so the
 // comparison parses them into *big.Int without a float on the way.
-// The tokens whose reserves changed most recently: where trading, and therefore drift, happens.
+// Two samples of up to row_limit tokens each: the tokens whose reserves changed most recently
+// (where trading, and therefore drift, happens), and a rotating sample over every token, starting
+// at rotation_start and wrapping around, so a token that never trades or has left the recent set
+// is still compared on some pass (security-audit run-4).
 func (q *Queries) ListReconcileTokens(ctx context.Context, arg ListReconcileTokensParams) ([]ListReconcileTokensRow, error) {
-	rows, err := q.db.Query(ctx, listReconcileTokens, arg.ChainID, arg.RowLimit)
+	rows, err := q.db.Query(ctx, listReconcileTokens, arg.ChainID, arg.RowLimit, arg.RotationStart)
 	if err != nil {
 		return nil, err
 	}

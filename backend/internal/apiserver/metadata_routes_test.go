@@ -159,18 +159,46 @@ func TestMetadataAndImageHTTPContracts(t *testing.T) {
 }
 
 func TestSubjectLimiterBoundsIdentityState(t *testing.T) {
-	limiter := NewSubjectLimiter(1, time.Minute)
+	// A limit of two leaves each one-write subject unthrottled, so a full table can evict.
+	limiter := NewSubjectLimiter(2, time.Minute)
 	now := time.Unix(1_000, 0)
 	for index := 0; index < maxSubjectLimiterEntries; index++ {
 		if !limiter.Allow(strconv.Itoa(index), now) {
 			t.Fatalf("entry %d rejected before capacity", index)
 		}
 	}
-	if limiter.Allow("overflow", now) {
-		t.Fatal("limiter accepted an unbounded identity entry")
+	// A full table admits a new subject by evicting the oldest windows, not by refusing it.
+	if !limiter.Allow("overflow", now) || len(limiter.entries) > maxSubjectLimiterEntries {
+		t.Fatalf("full limiter refused a new subject or grew unbounded: entries=%d", len(limiter.entries))
+	}
+	for index := len(limiter.entries); index < maxSubjectLimiterEntries; index++ {
+		limiter.Allow("refill-"+strconv.Itoa(index), now)
 	}
 	if !limiter.Allow("replacement", now.Add(time.Minute)) || len(limiter.entries) != 1 {
 		t.Fatalf("expired entries were not pruned: entries=%d", len(limiter.entries))
+	}
+}
+
+// Under a principal flood, subjects under their limit are forgotten before throttled ones, so a
+// throttled subject keeps its throttle.
+func TestSubjectLimiterEvictsUnthrottledBeforeThrottled(t *testing.T) {
+	limiter := NewSubjectLimiter(2, time.Minute)
+	now := time.Unix(1_000, 0)
+	for range 2 {
+		if !limiter.Allow("throttled", now) {
+			t.Fatal("throttled subject setup failed")
+		}
+	}
+	for index := 1; index < maxSubjectLimiterEntries; index++ {
+		if !limiter.Allow(strconv.Itoa(index), now.Add(time.Second)) {
+			t.Fatalf("entry %d rejected before capacity", index)
+		}
+	}
+	if !limiter.Allow("newcomer", now.Add(2*time.Second)) {
+		t.Fatal("full limiter refused a new subject")
+	}
+	if limiter.Allow("throttled", now.Add(2*time.Second)) {
+		t.Fatal("eviction reset a throttled subject")
 	}
 }
 
@@ -352,5 +380,23 @@ func TestWebPDimensions(t *testing.T) {
 	binary.LittleEndian.PutUint32(short[16:20], 6)
 	if _, _, err := webpDimensions(short); err == nil {
 		t.Fatal("VP8X chunk with a payload size other than 10 accepted")
+	}
+}
+
+// A table full of throttled subjects refuses a new subject rather than resetting a throttle.
+func TestSubjectLimiterRefusesWhenEveryWindowIsThrottled(t *testing.T) {
+	limiter := NewSubjectLimiter(1, time.Minute)
+	now := time.Unix(1_000, 0)
+	for index := 0; index < maxSubjectLimiterEntries; index++ {
+		limiter.Allow(strconv.Itoa(index), now)
+	}
+	if limiter.Allow("newcomer", now) {
+		t.Fatal("a full table of throttled subjects admitted a new subject")
+	}
+	if limiter.Allow("0", now) {
+		t.Fatal("a throttled subject was reset")
+	}
+	if !limiter.Allow("newcomer", now.Add(time.Minute)) {
+		t.Fatal("expired windows were not pruned for a new subject")
 	}
 }
