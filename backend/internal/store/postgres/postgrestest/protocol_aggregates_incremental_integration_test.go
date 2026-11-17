@@ -105,7 +105,7 @@ func TestRefreshProtocolAggregatesMatchesFullRebuildWhileCatchingUp(t *testing.T
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, IndexerRole))
 	adapter := storepostgres.NewAdapter(pool)
 	const chainID int64 = 48010
 	now := time.Now().UTC().Truncate(time.Second)
@@ -156,7 +156,7 @@ func TestRefreshProtocolAggregatesRewritesOnlyDaysOfNewBlocks(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, IndexerRole))
 	adapter := storepostgres.NewAdapter(pool)
 	const chainID int64 = 48011
 	now := time.Now().UTC().Truncate(time.Second)
@@ -211,7 +211,7 @@ func TestProtocolAggregatesFollowReorgDeletes(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, IndexerRole))
 	adapter := storepostgres.NewAdapter(pool)
 	now := time.Now().UTC().Truncate(time.Second)
 
@@ -273,7 +273,7 @@ func TestRefreshProtocolAggregatesWaitsForConcurrentRefresh(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, IndexerRole))
 	const chainID int64 = 48014
 	newIncrementalFixture(t, ctx, database, chainID, time.Now().UTC().Add(-time.Hour))
 
@@ -311,7 +311,7 @@ func TestAggregationSourceBatchRefreshMatchesFullRebuild(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, IndexerRole))
 	adapter := storepostgres.NewAdapter(pool)
 	source := storepostgres.AggregationSource{Adapter: adapter}
 	const chainID int64 = 48016

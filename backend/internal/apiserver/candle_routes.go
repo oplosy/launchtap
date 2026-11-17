@@ -47,14 +47,14 @@ func (r CandleRoutes) handle(ctx context.Context, in *candleInput) (*candleOutpu
 		return nil, huma.Error503ServiceUnavailable("candle reader unavailable")
 	}
 	if !common.IsHexAddress(in.Token) {
-		return nil, huma.Error400BadRequest("invalid token address")
+		return nil, apiProblem(http.StatusBadRequest, "invalid_address", "invalid token address")
 	}
 	interval := in.Interval
 	if interval == "" {
 		interval = "1h"
 	}
 	if interval != "1m" && interval != "5m" && interval != "1h" && interval != "1d" && interval != "6h" && interval != "all" {
-		return nil, huma.Error400BadRequest("unsupported interval")
+		return nil, apiProblem(http.StatusBadRequest, "invalid_interval", "unsupported interval")
 	}
 	limit := in.Limit
 	if limit == 0 {
@@ -65,13 +65,13 @@ func (r CandleRoutes) handle(ctx context.Context, in *candleInput) (*candleOutpu
 	if in.From != "" {
 		from, err = time.Parse(time.RFC3339, in.From)
 		if err != nil {
-			return nil, huma.Error400BadRequest("invalid from")
+			return nil, apiProblem(http.StatusBadRequest, "invalid_range", "invalid from")
 		}
 	}
 	if in.To != "" {
 		to, err = time.Parse(time.RFC3339, in.To)
 		if err != nil {
-			return nil, huma.Error400BadRequest("invalid to")
+			return nil, apiProblem(http.StatusBadRequest, "invalid_range", "invalid to")
 		}
 	}
 	cur, e := cursor(in.Cursor)

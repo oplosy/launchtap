@@ -65,11 +65,14 @@ type Detail struct {
 	ReserveBlock                                                                 int64
 	ReserveHash                                                                  common.Hash
 	Description, ImageURL, XURL, TelegramURL                                     string
-	SpotPriceETH, FDVETH, LiquidityETH, ATHPriceETH                              *big.Int
-	ATHAt                                                                        time.Time
-	PriceChange24hBPS                                                            int64
-	Snapshot                                                                     pagination.Snapshot
-	Finality                                                                     string
+	// DetailsEditedAt is when the creator last changed the details or image after the first
+	// save; nil when they never did.
+	DetailsEditedAt                                 *time.Time
+	SpotPriceETH, FDVETH, LiquidityETH, ATHPriceETH *big.Int
+	ATHAt                                           time.Time
+	PriceChange24hBPS                               int64
+	Snapshot                                        pagination.Snapshot
+	Finality                                        string
 	// V2 holds the engine-2 launch, pool and fee facts; nil for engine 1.
 	V2 *V2Facts
 }

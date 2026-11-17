@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import { ApiClient, type CommentEligibilityResponse, type ReportReason } from "@/api/client";
+import { ApiClient, type CommentEligibilityResponse } from "@/api/client";
 import { ApiProblem } from "@/api/problems";
 import { Badge, Button } from "@/components/primitives";
 import { shortAddress } from "@/token/address";
@@ -13,31 +12,13 @@ import {
   codePointCount,
   MAX_BODY_CODE_POINTS,
 } from "./comment-rules";
-import {
-  appendPage,
-  authorLabel,
-  mergeFirstPage,
-  nextVote,
-  problemMessage,
-  scoreLabel,
-  voteProblemMessage,
-  type CommentItem,
-  type VoteValue,
-} from "./comment-model";
+import { appendPage, mergeFirstPage, problemMessage, type CommentItem } from "./comment-model";
 
+import { describeError } from "@/errors/describe";
+import { CommentRow, type AuthValue, type ClientRef } from "./comment-row";
 /** Window over which live `comment` hints collapse into one first-page refetch. */
 export const COMMENT_REFETCH_COALESCE_MS = 500;
 const PAGE_SIZE = 20;
-const REPORT_REASONS: ReportReason[] = ["spam", "scam", "abuse", "other"];
-
-function errorCode(error: unknown) {
-  return error instanceof ApiProblem ? error.apiCode || undefined : undefined;
-}
-
-function formatTime(iso: string) {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
-}
 
 /**
  * Token comments: public list with "Load more", a composer for holders and the creator, and a
@@ -87,7 +68,8 @@ export function CommentPanel({
     const controller = new AbortController();
     loadFirstPage(false, controller.signal)
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) setListError(problemMessage(errorCode(error)));
+        if (!controller.signal.aborted)
+          setListError(describeError(error, { context: "comment" }).message);
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -124,7 +106,7 @@ export function CommentPanel({
       setItems((current) => appendPage(current, page.items ?? []));
       setNextCursor(page.next_cursor ?? null);
     } catch (error) {
-      setListError(problemMessage(errorCode(error)));
+      setListError(describeError(error, { context: "comment" }).message);
     } finally {
       setLoadingMore(false);
     }
@@ -172,150 +154,6 @@ export function CommentPanel({
         </div>
       ) : null}
     </section>
-  );
-}
-
-type AuthValue = React.ContextType<typeof WatchlistAuthContext>;
-type ClientRef = React.RefObject<ApiClient>;
-
-function CommentRow({
-  item,
-  auth,
-  client,
-}: {
-  item: CommentItem;
-  auth: AuthValue;
-  client: ClientRef;
-}) {
-  const label = authorLabel(item.author);
-  const [reported, setReported] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const report = async (reason: ReportReason) => {
-    const headers = await auth.getAuth();
-    if (!headers) {
-      auth.login();
-      return;
-    }
-    try {
-      await client.current.reportComment(item.id, reason, headers);
-      setReported(true);
-      setMessage(null);
-    } catch (error) {
-      setMessage(problemMessage(errorCode(error)));
-    }
-  };
-  return (
-    <li className="comment-row">
-      <div className="comment-meta">
-        {label.walletHref ? (
-          <Link href={label.walletHref as never} title={item.author.wallet ?? undefined}>
-            {label.primary}
-          </Link>
-        ) : (
-          <span>{label.primary}</span>
-        )}
-        {item.author.username && item.author.wallet ? (
-          <span className="comment-wallet">{shortAddress(item.author.wallet)}</span>
-        ) : null}
-        {item.author.role === "creator" ? <Badge tone="accent">Creator</Badge> : null}
-        <time dateTime={item.created_at}>{formatTime(item.created_at)}</time>
-        {auth.available ? (
-          reported ? (
-            <span className="comment-reported">Reported</span>
-          ) : (
-            <details className="comment-report">
-              <summary>Report</summary>
-              <div role="menu" aria-label="Report reason">
-                {REPORT_REASONS.map((reason) => (
-                  <button
-                    key={reason}
-                    type="button"
-                    role="menuitem"
-                    onClick={() => void report(reason)}
-                  >
-                    {reason.charAt(0).toUpperCase() + reason.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </details>
-          )
-        ) : null}
-      </div>
-      <p className="comment-body">{item.body}</p>
-      <VoteControl item={item} auth={auth} client={client} onMessage={setMessage} />
-      {message ? (
-        <p className="comment-error" role="alert">
-          {message}
-        </p>
-      ) : null}
-    </li>
-  );
-}
-
-/**
- * Up/down arrows with the score. Holders (checked by the API) vote; the page remembers votes cast
- * here, but not earlier ones (docs/specs/2026-11-12-comment-votes-design.md).
- */
-function VoteControl({
-  item,
-  auth,
-  client,
-  onMessage,
-}: {
-  item: CommentItem;
-  auth: AuthValue;
-  client: ClientRef;
-  onMessage: (message: string | null) => void;
-}) {
-  const [score, setScore] = useState(item.score);
-  const [vote, setVote] = useState<VoteValue>(0);
-  const [busy, setBusy] = useState(false);
-  const cast = async (clicked: 1 | -1) => {
-    if (busy) return;
-    const headers = await auth.getAuth();
-    if (!headers) {
-      auth.login();
-      return;
-    }
-    setBusy(true);
-    try {
-      const result = await client.current.voteComment(item.id, nextVote(vote, clicked), headers);
-      setScore(result.score);
-      setVote(result.vote === 1 || result.vote === -1 ? result.vote : 0);
-      onMessage(null);
-    } catch (error) {
-      onMessage(voteProblemMessage(errorCode(error)));
-    } finally {
-      setBusy(false);
-    }
-  };
-  if (!auth.available) {
-    return <span className="comment-score mono">{scoreLabel(score)}</span>;
-  }
-  return (
-    <div className="comment-vote" role="group" aria-label={`Vote, ${scoreLabel(score)}`}>
-      <button
-        type="button"
-        className="comment-vote-button"
-        aria-label="Upvote"
-        aria-pressed={vote === 1}
-        disabled={busy}
-        onClick={() => void cast(1)}
-      >
-        <span aria-hidden="true">▲</span>
-      </button>
-      <span className="comment-score mono">{score}</span>
-      <button
-        type="button"
-        className="comment-vote-button"
-        aria-label="Downvote"
-        aria-pressed={vote === -1}
-        disabled={busy}
-        onClick={() => void cast(-1)}
-      >
-        <span aria-hidden="true">▼</span>
-      </button>
-    </div>
   );
 }
 
@@ -367,7 +205,10 @@ function CommentComposer({
         setWallet(data.eligible_wallets?.[0]?.address ?? "");
       } catch (err) {
         if (!controller.signal.aborted)
-          setEligibility({ state: "error", message: problemMessage(errorCode(err)) });
+          setEligibility({
+            state: "error",
+            message: describeError(err, { context: "comment" }).message,
+          });
       }
     })();
     return () => controller.abort();
@@ -427,7 +268,7 @@ function CommentComposer({
       setText("");
       onPosted(posted);
     } catch (err) {
-      setError(problemMessage(errorCode(err)));
+      setError(describeError(err, { context: "comment" }).message);
     } finally {
       setPosting(false);
     }

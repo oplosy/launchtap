@@ -16,20 +16,28 @@ import (
 	"github.com/Contictus/launchtap/backend/internal/config"
 	"github.com/Contictus/launchtap/backend/internal/indexer"
 	"github.com/Contictus/launchtap/backend/internal/metrics"
+	"github.com/Contictus/launchtap/backend/internal/reconcile"
+	"github.com/Contictus/launchtap/backend/internal/redact"
+	"github.com/Contictus/launchtap/backend/internal/secretenv"
 	"github.com/Contictus/launchtap/backend/internal/stats"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/Contictus/launchtap/backend/internal/swapbackfill"
+	"github.com/Contictus/launchtap/backend/internal/wallet"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
 	if err := run(); err != nil {
-		slog.Error("indexer stopped", "error", err)
+		slog.Error("indexer stopped", "error", redact.Error(err, os.Getenv("RPC_URL"), os.Getenv("RPC_FALLBACK_URL"), os.Getenv("DATABASE_URL")))
 		os.Exit(indexer.ExitCode(err))
 	}
 }
 func run() error {
-	c, err := config.Load(os.Getenv)
+	env, err := secretenv.Lookup(os.Getenv, "DATABASE_PASSWORD")
+	if err != nil {
+		return err
+	}
+	c, err := config.Load(env)
 	if err != nil {
 		return err
 	}
@@ -46,15 +54,23 @@ func run() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	health := new(indexer.HealthTracker)
+	fallback, err := config.LoadRPCFallback(env, c.RPCURL)
+	if err != nil {
+		return err
+	}
+	health := &indexer.HealthTracker{Render: func(err error) string { return redact.Error(err, c.RPCURL, fallback.URL, c.DatabaseURL) }}
 	metricsRegistry := metrics.NewRegistry(metrics.ComponentIndexer)
 	indexerMetrics := metrics.NewIndexer(metricsRegistry, health.Snapshot)
-	source, err := chain.Dial(ctx, c.RPCURL, chain.RPCConfig{Timeout: c.RPCTimeout, MaxRetries: c.RPCMaxRetries, RetryBackoff: c.RPCRetryBackoff, Observer: indexerMetrics})
+	rpcConfig := chain.RPCConfig{Timeout: c.RPCTimeout, MaxRetries: c.RPCMaxRetries, RetryBackoff: c.RPCRetryBackoff, Observer: indexerMetrics}
+	source, err := dialIndexerRPC(ctx, c.RPCURL, fallback, rpcConfig, c.ChainID, deployment, func(ctx context.Context, client *chain.Client) error {
+		return verifyFallbackRPC(ctx, client, c.ChainID, deployment)
+	})
 	if err != nil {
 		return err
 	}
 	defer source.Close()
-	pool, owner, err := initializeIndexerResources(ctx, source, c.ChainID, deployment,
+	// With a fallback, dialIndexerRPC already ran the identity checks on the provider started on.
+	pool, owner, err := initializeIndexerResources(ctx, source, !fallback.Enabled(), c.ChainID, deployment,
 		func() (*pgxpool.Pool, error) {
 			return storepostgres.OpenPool(ctx, c.DatabaseURL, storepostgres.PoolOptions{MaxConns: int32(c.DatabaseMaxConns)})
 		},
@@ -73,6 +89,9 @@ func run() error {
 	}
 	discovery, err := newDiscovery(source, decoder, deployment, c.IndexerLogAddressBatchSize)
 	if err != nil {
+		return err
+	}
+	if discovery, err = discovery.WithLogConcurrency(int(c.IndexerLogFetchConcurrency)); err != nil {
 		return err
 	}
 	store := storepostgres.IndexerStore{Pool: pool, Beginner: owner.Beginner(), Owner: owner, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, Factory: deployment.Factory, OnNotify: indexerMetrics.Notified}
@@ -170,6 +189,18 @@ func run() error {
 			slog.Warn("volume window sweeper stopped", "error", err)
 		}
 	}()
+	// Re-ranks the 7d and 30d leaderboards so reads do not aggregate every realized leg
+	// (docs/specs/2026-11-14-windowed-leaderboard-preflight.md). Never stops ingest.
+	leaderboards := stats.LeaderboardRefresher{Source: storepostgres.LeaderboardWindowSource{Adapter: storepostgres.NewAdapter(pool), ChainID: int64(c.ChainID)},
+		Windows: []int{int(wallet.Window7d), int(wallet.Window30d)}, Interval: stats.DefaultLeaderboardRefreshInterval,
+		OnError: func(windowDays int, err error) {
+			slog.Error("leaderboard window refresh failed", "chain_id", c.ChainID, "window_days", windowDays, "error", err)
+		}}
+	go func() {
+		if err := leaderboards.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn("leaderboard refresher stopped", "error", err)
+		}
+	}()
 	positions := stats.Worker{Source: storepostgres.PositionSource{Adapter: storepostgres.NewAdapter(pool), ChainID: int64(c.ChainID)}, WorkerID: c.IndexerWorkerID + "-positions", PollInterval: stats.DefaultDirtyPollInterval, BatchSize: 64, DrainFullBatches: true, Wake: positionWake, OnError: func(claim stats.Claim, err error) {
 		indexerMetrics.PositionFailed()
 		slog.Error("position compute failed", "chain_id", claim.ChainID, "error", err)
@@ -187,7 +218,7 @@ func run() error {
 		Interval: c.IndexerSenderBackfillInterval, Batch: swapbackfill.DefaultBatch, MaxTransactions: int(c.IndexerSenderBackfillMaxTxs),
 		SafeBlock: backfillStore.SafeBlock, Backlog: backfillStore.CountUnattributed, OnBacklog: indexerMetrics.SenderBackfillPending,
 		OnFilled: indexerMetrics.SenderBackfillFilled, OnError: indexerMetrics.SenderBackfillFailed,
-		Secrets: []string{c.RPCURL, c.DatabaseURL},
+		Secrets: []string{c.RPCURL, fallback.URL, c.DatabaseURL},
 	}
 	// Joined on return, before the deferred pool.Close, so no pass uses a closed pool.
 	senderBackfillDone := make(chan struct{})
@@ -195,9 +226,30 @@ func run() error {
 		defer close(senderBackfillDone)
 		_ = senderBackfill.Run(ctx)
 	}()
+	// Compares sampled projections with chain reads at the observed block and reports drift
+	// (docs/specs/2026-11-14-state-reconciliation-preflight.md). Read-only; never stops ingest.
+	reconciler := reconcile.Worker{
+		Store: storepostgres.ReconcileSource{Pool: pool, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID},
+		Chain: chain.StateReader{Client: source},
+		OnResult: func(result reconcile.Result) {
+			indexerMetrics.Reconciled(result)
+			for _, mismatch := range result.Mismatches {
+				slog.Error("indexed state differs from chain", "block", result.Block, "check", mismatch.Check, "token", mismatch.Token.Hex(), "subject", mismatch.Subject.Hex(), "indexed", mismatch.Indexed, "chain", mismatch.Chain)
+			}
+		},
+		OnError: func(err error) {
+			slog.Warn("state reconciliation pass failed; retrying next interval", "error", redact.Error(err, c.RPCURL, fallback.URL, c.DatabaseURL))
+		},
+	}
+	reconcilerDone := make(chan struct{})
+	go func() {
+		defer close(reconcilerDone)
+		_ = reconciler.Run(ctx)
+	}()
 	defer func() {
 		stop()
 		<-senderBackfillDone
+		<-reconcilerDone
 	}()
 	aggregationErrors := make(chan error, 2)
 	for _, worker := range []stats.Worker{aggregation, positions} {
@@ -222,12 +274,19 @@ func run() error {
 	return runErr
 }
 
-func initializeIndexerResources(ctx context.Context, source chain.RuntimeVerifier, configuredChainID uint64, deployment deployments.Deployment, openPool func() (*pgxpool.Pool, error), acquireOwnership func() (*storepostgres.Ownership, error)) (*pgxpool.Pool, *storepostgres.Ownership, error) {
-	if err := chain.VerifyRPCChainID(ctx, source, configuredChainID, deployment); err != nil {
-		return nil, nil, fmt.Errorf("verify indexer RPC chain identity before database startup: %w", err)
-	}
-	if err := chain.VerifyDeploymentBytecode(ctx, source, deployment); err != nil {
-		return nil, nil, fmt.Errorf("verify indexer deployment bytecode before database startup: %w", err)
+// initializeIndexerResources verifies the RPC identity (unless verifyRPC is false because the
+// caller already did) and then opens the database pool and writer ownership.
+func initializeIndexerResources(ctx context.Context, source chain.RuntimeVerifier, verifyRPC bool, configuredChainID uint64, deployment deployments.Deployment, openPool func() (*pgxpool.Pool, error), acquireOwnership func() (*storepostgres.Ownership, error)) (*pgxpool.Pool, *storepostgres.Ownership, error) {
+	if verifyRPC {
+		if err := chain.VerifyRPCChainID(ctx, source, configuredChainID, deployment); err != nil {
+			return nil, nil, fmt.Errorf("verify indexer RPC chain identity before database startup: %w", err)
+		}
+		if err := chain.VerifyDeploymentBytecode(ctx, source, deployment); err != nil {
+			return nil, nil, fmt.Errorf("verify indexer deployment bytecode before database startup: %w", err)
+		}
+		if err := chain.VerifyGovernanceTimelock(ctx, source, deployment); err != nil {
+			return nil, nil, fmt.Errorf("verify governance timelock before database startup: %w", err)
+		}
 	}
 	pool, err := openPool()
 	if err != nil {
@@ -239,6 +298,79 @@ func initializeIndexerResources(ctx context.Context, source chain.RuntimeVerifie
 		return nil, nil, fmt.Errorf("acquire indexer writer ownership: %w", err)
 	}
 	return pool, owner, nil
+}
+
+// dialIndexerRPC dials the primary provider and, when configured, a fallback that must pass the
+// same chain-id, bytecode, governance and finality-tag checks before the indexer starts
+// (docs/specs/2026-11-17-rpc-failover-preflight.md).
+func dialIndexerRPC(ctx context.Context, primaryURL string, fallback config.RPCFallbackConfig, rpcConfig chain.RPCConfig, chainID uint64, deployment deployments.Deployment, verifyFallback func(context.Context, *chain.Client) error) (*chain.Client, error) {
+	primary, err := chain.Dial(ctx, primaryURL, rpcConfig)
+	if err != nil || !fallback.Enabled() {
+		return primary, err
+	}
+	secondary, err := chain.Dial(ctx, fallback.URL, rpcConfig)
+	if err != nil {
+		primary.Close()
+		return nil, fmt.Errorf("dial fallback RPC: %w", err)
+	}
+	if err := verifyFallback(ctx, secondary); err != nil {
+		primary.Close()
+		secondary.Close()
+		return nil, fmt.Errorf("verify fallback RPC before database startup: %w", err)
+	}
+	// An unreachable primary starts the indexer on the fallback; a primary that answers with the
+	// wrong chain or bytecode is a misconfiguration and still refuses to start.
+	startOnFallback := false
+	if err := verifyPrimaryRPC(ctx, primary, chainID, deployment); err != nil {
+		if !chain.IsProviderUnavailable(err) {
+			primary.Close()
+			secondary.Close()
+			return nil, fmt.Errorf("verify indexer RPC before database startup: %w", err)
+		}
+		startOnFallback = true
+		slog.Warn("primary RPC unreachable at startup; starting on the fallback", "error", redact.Error(err, primaryURL, fallback.URL))
+	}
+	combined, err := chain.WithFallback(primary, secondary, chain.FailoverConfig{ChainID: chainID, AfterFailures: fallback.AfterFailures, ProbeInterval: fallback.ProbeInterval, StartOnFallback: startOnFallback})
+	if err != nil {
+		primary.Close()
+		secondary.Close()
+		return nil, err
+	}
+	slog.Info("RPC failover enabled", "after_failures", fallback.AfterFailures, "probe_interval", fallback.ProbeInterval)
+	return combined, nil
+}
+
+// verifyPrimaryRPC runs the identity checks on the primary and decides which provider the
+// indexer starts on; initializeIndexerResources does not repeat them when a fallback is set.
+func verifyPrimaryRPC(ctx context.Context, source chain.RuntimeVerifier, chainID uint64, deployment deployments.Deployment) error {
+	if err := chain.VerifyRPCChainID(ctx, source, chainID, deployment); err != nil {
+		return err
+	}
+	if err := chain.VerifyDeploymentBytecode(ctx, source, deployment); err != nil {
+		return err
+	}
+	return chain.VerifyGovernanceTimelock(ctx, source, deployment)
+}
+
+type fallbackVerifier interface {
+	chain.RuntimeVerifier
+	Heads(context.Context) (chain.Heads, error)
+}
+
+func verifyFallbackRPC(ctx context.Context, source fallbackVerifier, chainID uint64, deployment deployments.Deployment) error {
+	if err := chain.VerifyRPCChainID(ctx, source, chainID, deployment); err != nil {
+		return err
+	}
+	if err := chain.VerifyDeploymentBytecode(ctx, source, deployment); err != nil {
+		return err
+	}
+	if err := chain.VerifyGovernanceTimelock(ctx, source, deployment); err != nil {
+		return err
+	}
+	if _, err := source.Heads(ctx); err != nil {
+		return fmt.Errorf("read fallback finality heads: %w", err)
+	}
+	return nil
 }
 
 func loadDeploymentRegistry() (*deployments.Registry, error) {

@@ -9,6 +9,10 @@ import (
 
 var errMalformedImage = errors.New("malformed image container")
 
+// maxAnimationFrames caps APNG and animated WebP frames. Each frame stays inside the checked
+// canvas, but a browser still decodes every one of them on every loop.
+const maxAnimationFrames = 300
+
 // stripImageMetadata drops camera and editor metadata (EXIF, XMP, IPTC, text comments,
 // timestamps, embedded previews) without re-encoding pixels. Only the chunks a browser needs
 // to render the image (pixel data, palette, transparency, color profile, animation) survive;
@@ -35,10 +39,13 @@ var pngRenderingChunks = map[string]bool{
 	"acTL": true, "fcTL": true, "fdAT": true,
 }
 
+var pngCriticalChunks = map[string]bool{"IHDR": true, "PLTE": true, "IDAT": true, "IEND": true}
+
 func stripPNGMetadata(content []byte) ([]byte, error) {
 	const signatureLength = 8
 	out := bytes.NewBuffer(make([]byte, 0, len(content)))
 	out.Write(content[:signatureLength])
+	frames := 0
 	for offset := signatureLength; ; {
 		if len(content)-offset < 12 {
 			return nil, errMalformedImage
@@ -52,8 +59,28 @@ func stripPNGMetadata(content []byte) ([]byte, error) {
 		if crc32.ChecksumIEEE(content[offset+4:end-4]) != binary.BigEndian.Uint32(content[end-4:end]) {
 			return nil, errMalformedImage
 		}
-		// An uppercase first letter marks a critical chunk, which a decoder cannot skip.
-		if (chunkType[0] >= 'A' && chunkType[0] <= 'Z') || pngRenderingChunks[chunkType] {
+		switch chunkType {
+		case "acTL":
+			// num_frames, then num_plays (APNG spec, acTL).
+			if length != 8 {
+				return nil, errMalformedImage
+			}
+			if declared := binary.BigEndian.Uint32(content[offset+8 : offset+12]); declared < 1 || declared > maxAnimationFrames {
+				return nil, errMalformedImage
+			}
+		case "fcTL":
+			if frames++; frames > maxAnimationFrames {
+				return nil, errMalformedImage
+			}
+		}
+		// An uppercase first letter marks a critical chunk, which a decoder cannot skip. PNG defines
+		// only four; any other critical chunk would be kept verbatim yet makes the file
+		// undecodable, so it is rejected rather than stored.
+		critical := chunkType[0] >= 'A' && chunkType[0] <= 'Z'
+		if critical && !pngCriticalChunks[chunkType] {
+			return nil, errMalformedImage
+		}
+		if critical || pngRenderingChunks[chunkType] {
 			out.Write(content[offset:end])
 		}
 		if chunkType == "IEND" {
@@ -157,6 +184,7 @@ func stripWebPMetadata(content []byte) ([]byte, error) {
 	}
 	out := bytes.NewBuffer(make([]byte, 0, riffEnd))
 	out.Write(content[:headerLength])
+	imageChunks, frames := 0, 0
 	for offset := headerLength; offset < riffEnd; {
 		if riffEnd-offset < 8 {
 			return nil, errMalformedImage
@@ -166,6 +194,15 @@ func stripWebPMetadata(content []byte) ([]byte, error) {
 			return nil, errMalformedImage
 		}
 		chunkType := string(content[offset : offset+4])
+		switch chunkType {
+		case "VP8 ", "VP8L":
+			imageChunks++
+		case "ANMF":
+			imageChunks++
+			if frames++; frames > maxAnimationFrames {
+				return nil, errMalformedImage
+			}
+		}
 		if webpRenderingChunks[chunkType] {
 			start := out.Len()
 			out.Write(content[offset : offset+8+size])
@@ -178,6 +215,10 @@ func stripWebPMetadata(content []byte) ([]byte, error) {
 			}
 		}
 		offset = min(offset+8+size+size%2, riffEnd)
+	}
+	if imageChunks == 0 {
+		// A VP8X header alone passes the canvas check but carries no picture.
+		return nil, errMalformedImage
 	}
 	stripped := out.Bytes()
 	binary.LittleEndian.PutUint32(stripped[4:8], uint32(len(stripped)-8))

@@ -19,7 +19,7 @@ func TestAggregationDirtyLeaseGuardsStaleCompletion(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, IndexerRole))
 	const chainID int64 = 48010
 	now := time.Now().UTC().Truncate(time.Second)
 	blockHash := hashBytes(0x61)

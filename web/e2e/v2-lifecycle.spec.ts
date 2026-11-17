@@ -156,7 +156,7 @@ test.describe("Anvil v2 lifecycle gate", () => {
       await expect(preview).toContainText("50%, decaying to 0 over 1 min");
       await page.getByLabel("Name", { exact: true }).fill("Lifecycle V2");
       await page.getByLabel("Ticker", { exact: true }).fill("LV2");
-      await page.getByLabel("Developer buy", { exact: true }).fill("0.01");
+      await page.getByLabel("Developer buy (ETH)", { exact: true }).fill("0.01");
       await page.getByRole("button", { name: "Review launch" }).click();
       const before = (await sentHashes(page)).length;
       await page.getByRole("button", { name: "Sign launch" }).click();
@@ -214,7 +214,7 @@ test.describe("Anvil v2 lifecycle gate", () => {
       expect(trade!.args.snipeTax).toBeGreaterThan(0n);
       // Within the stated slippage: never fewer tokens than the reviewed minimum.
       expect(Number(formatBaseUnits(trade!.args.tokenAmount, 18, 6))).toBeGreaterThanOrEqual(
-        Number(minimum),
+        Number(minimum!.replace(/,/g, "")),
       );
     });
 

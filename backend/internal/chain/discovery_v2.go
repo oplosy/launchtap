@@ -131,14 +131,59 @@ func (d *Discoverer) discoverV2(ctx context.Context, from, to uint64, known Emit
 		freshTokens[log.BlockNumber][launch.Token] = struct{}{}
 	}
 
-	curveLogs, err := d.fetchByTopics(ctx, from, to, d.decoder.Topics(EmitterCurve), emitters.Curves)
-	if err != nil {
-		return DiscoveryResult{}, fmt.Errorf("fetch curve logs by topic: %w", err)
+	// The factory logs above name the new curves and tokens; the queries below are independent of
+	// each other and may run concurrently (WithLogConcurrency). Only the refetch of newly graduated
+	// pools waits, because the curve logs name those pools. The curve query stays job 0.
+	jobs := []logJob{func(ctx context.Context) ([]types.Log, error) {
+		logs, fetchErr := d.fetchByTopics(ctx, from, to, d.decoder.Topics(EmitterCurve), emitters.Curves)
+		if fetchErr != nil {
+			return nil, fmt.Errorf("fetch curve logs by topic: %w", fetchErr)
+		}
+		return logs, nil
+	}}
+	for _, block := range sortedKeys(freshTokens) {
+		jobs = append(jobs, func(ctx context.Context) ([]types.Log, error) {
+			logs, fetchErr := d.fetch(ctx, block, to, setAddresses(freshTokens[block]), d.decoder.Topics(EmitterToken))
+			if fetchErr != nil {
+				return nil, fmt.Errorf("refetch launched tokens from block %d: %w", block, fetchErr)
+			}
+			return logs, nil
+		})
 	}
-	if curveLogs, err = deduplicateAndSort(curveLogs); err != nil {
+	jobs = append(jobs, func(ctx context.Context) ([]types.Log, error) {
+		logs, fetchErr := d.fetchKnownTokens(ctx, from, to, known.Tokens)
+		if fetchErr != nil {
+			return nil, fmt.Errorf("fetch known token logs: %w", fetchErr)
+		}
+		return logs, nil
+	}, func(ctx context.Context) ([]types.Log, error) {
+		logs, fetchErr := d.fetch(ctx, from, to, []common.Address{d.v4.Locker}, d.decoder.Topics(EmitterLocker))
+		if fetchErr != nil {
+			return nil, fmt.Errorf("fetch locker logs: %w", fetchErr)
+		}
+		return logs, nil
+	})
+	knownPools := make([]common.Hash, 0, len(known.Pools))
+	for poolID := range known.Pools {
+		knownPools = append(knownPools, poolID)
+	}
+	jobs = append(jobs, func(ctx context.Context) ([]types.Log, error) {
+		logs, fetchErr := d.fetchPools(ctx, from, to, knownPools)
+		if fetchErr != nil {
+			return nil, fmt.Errorf("fetch known pool logs: %w", fetchErr)
+		}
+		return logs, nil
+	})
+	results, err := d.runLogJobs(ctx, jobs)
+	if err != nil {
+		return DiscoveryResult{}, err
+	}
+	curveLogs, err := deduplicateAndSort(results[0])
+	if err != nil {
 		return DiscoveryResult{}, err
 	}
 	allLogs = append(allLogs, curveLogs...)
+	allLogs = append(allLogs, concatLogs(results[1:])...)
 	freshPools := make(map[uint64][]common.Hash)
 	for _, log := range curveLogs {
 		decoded, decodeErr := d.decoder.Decode(log, emitters)
@@ -154,47 +199,62 @@ func (d *Discoverer) discoverV2(ctx context.Context, from, to uint64, known Emit
 		}
 	}
 
-	for _, block := range sortedKeys(freshTokens) {
-		logs, fetchErr := d.fetch(ctx, block, to, setAddresses(freshTokens[block]), d.decoder.Topics(EmitterToken))
-		if fetchErr != nil {
-			return DiscoveryResult{}, fmt.Errorf("refetch launched tokens from block %d: %w", block, fetchErr)
-		}
-		allLogs = append(allLogs, logs...)
-	}
-	tokenLogs, err := d.fetch(ctx, from, to, addressesFor(known, EmitterToken), d.decoder.Topics(EmitterToken))
-	if err != nil {
-		return DiscoveryResult{}, fmt.Errorf("fetch known token logs: %w", err)
-	}
-	allLogs = append(allLogs, tokenLogs...)
-
-	lockerLogs, err := d.fetch(ctx, from, to, []common.Address{d.v4.Locker}, d.decoder.Topics(EmitterLocker))
-	if err != nil {
-		return DiscoveryResult{}, fmt.Errorf("fetch locker logs: %w", err)
-	}
-	allLogs = append(allLogs, lockerLogs...)
-
+	poolJobs := make([]logJob, 0, len(freshPools))
 	for _, block := range sortedKeys(freshPools) {
-		logs, fetchErr := d.fetchPools(ctx, block, to, freshPools[block])
-		if fetchErr != nil {
-			return DiscoveryResult{}, fmt.Errorf("refetch graduated pools from block %d: %w", block, fetchErr)
-		}
-		allLogs = append(allLogs, logs...)
+		poolJobs = append(poolJobs, func(ctx context.Context) ([]types.Log, error) {
+			logs, fetchErr := d.fetchPools(ctx, block, to, freshPools[block])
+			if fetchErr != nil {
+				return nil, fmt.Errorf("refetch graduated pools from block %d: %w", block, fetchErr)
+			}
+			return logs, nil
+		})
 	}
-	knownPools := make([]common.Hash, 0, len(known.Pools))
-	for poolID := range known.Pools {
-		knownPools = append(knownPools, poolID)
-	}
-	poolLogs, err := d.fetchPools(ctx, from, to, knownPools)
+	poolResults, err := d.runLogJobs(ctx, poolJobs)
 	if err != nil {
-		return DiscoveryResult{}, fmt.Errorf("fetch known pool logs: %w", err)
+		return DiscoveryResult{}, err
 	}
-	allLogs = append(allLogs, poolLogs...)
+	allLogs = append(allLogs, concatLogs(poolResults)...)
 
 	deduplicated, err := deduplicateAndSort(allLogs)
 	if err != nil {
 		return DiscoveryResult{}, err
 	}
 	return DiscoveryResult{Logs: deduplicated, LaunchesV2: launches, Emitters: emitters}, nil
+}
+
+const (
+	// tokenTopicOnlyMaxBlocks bounds the range fetchKnownTokens reads by topic only. Every ERC-20
+	// and ERC-721 Transfer on the chain matches the topic; the 2026-09-11 mainnet probe measured
+	// about 94 logs (83 kB) per block for all events together, so 10 blocks stay far below any
+	// response limit while a catch-up chunk of 100 blocks (7.5 MB unfiltered) does not.
+	tokenTopicOnlyMaxBlocks = 10
+	// tokenTopicOnlyCooldownSteps is how many eligible discovery calls (one per indexer step at
+	// the tip, more when a failed step is retried) use the address batches after a failed
+	// topic-only query, so a busy chain costs one failed call per cooldown, not one per step.
+	tokenTopicOnlyCooldownSteps = 100
+)
+
+// fetchKnownTokens reads the known tokens' Transfer logs. Near the chain tip, once the tokens
+// need more than one address batch, one topic-only query filtered to the known tokens replaces
+// ceil(tokens / batch) calls (docs/specs/2026-11-16-rpc-scale-design.md, option 2). Any failure
+// of that query falls back to the address batches, which impostor logs cannot inflate.
+func (d *Discoverer) fetchKnownTokens(ctx context.Context, from, to uint64, tokens AddressSet) ([]types.Log, error) {
+	topics := d.decoder.Topics(EmitterToken)
+	if len(tokens) > d.addressBatchSize && to-from < tokenTopicOnlyMaxBlocks {
+		if d.tokenTopicCooldown.Load() > 0 {
+			d.tokenTopicCooldown.Add(-1)
+		} else {
+			logs, err := d.fetchTopicOnly(ctx, from, to, topics, tokens)
+			if err == nil || !errors.Is(err, errTopicOnlyFailed) {
+				return logs, err
+			}
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			d.tokenTopicCooldown.Store(tokenTopicOnlyCooldownSteps)
+		}
+	}
+	return d.fetch(ctx, from, to, setAddresses(tokens), topics)
 }
 
 // registerPool admits a graduation's pool only when its id is the one derived from the token and
@@ -234,30 +294,36 @@ func (d *Discoverer) fetchPools(ctx context.Context, from, to uint64, poolIDs []
 	for _, topic := range topics {
 		allowedTopics[topic] = struct{}{}
 	}
-	result := make([]types.Log, 0)
+	jobs := make([]logJob, 0, (len(poolIDs)+d.addressBatchSize-1)/d.addressBatchSize)
 	for start := 0; start < len(poolIDs); start += d.addressBatchSize {
 		batch := poolIDs[start:min(start+d.addressBatchSize, len(poolIDs))]
-		logs, err := d.fetchRangeTopics(ctx, from, to, []common.Address{d.v4.PoolManager}, [][]common.Hash{topics, batch})
-		if err != nil {
-			return nil, err
-		}
-		for _, log := range logs {
-			if log.Address != d.v4.PoolManager {
-				return nil, &EmitterError{Address: log.Address, Coordinates: coordinates(log)}
+		jobs = append(jobs, func(ctx context.Context) ([]types.Log, error) {
+			logs, err := d.fetchRangeTopics(ctx, from, to, []common.Address{d.v4.PoolManager}, [][]common.Hash{topics, batch})
+			if err != nil {
+				return nil, err
 			}
-			if len(log.Topics) < 2 {
-				return nil, &LogError{Coordinates: coordinates(log), Err: fmt.Errorf("%w: PoolManager log without a pool id", ErrMalformedLog)}
+			for _, log := range logs {
+				if log.Address != d.v4.PoolManager {
+					return nil, &EmitterError{Address: log.Address, Coordinates: coordinates(log)}
+				}
+				if len(log.Topics) < 2 {
+					return nil, &LogError{Coordinates: coordinates(log), Err: fmt.Errorf("%w: PoolManager log without a pool id", ErrMalformedLog)}
+				}
+				if _, ok := allowedTopics[log.Topics[0]]; !ok {
+					return nil, &LogError{Coordinates: coordinates(log), Err: fmt.Errorf("%w: %s", ErrUnknownTopic, log.Topics[0])}
+				}
+				if !slices.Contains(batch, log.Topics[1]) {
+					return nil, &EmitterError{Address: log.Address, Coordinates: coordinates(log)}
+				}
 			}
-			if _, ok := allowedTopics[log.Topics[0]]; !ok {
-				return nil, &LogError{Coordinates: coordinates(log), Err: fmt.Errorf("%w: %s", ErrUnknownTopic, log.Topics[0])}
-			}
-			if !slices.Contains(batch, log.Topics[1]) {
-				return nil, &EmitterError{Address: log.Address, Coordinates: coordinates(log)}
-			}
-		}
-		result = append(result, logs...)
+			return logs, nil
+		})
 	}
-	return result, nil
+	results, err := d.runLogJobs(ctx, jobs)
+	if err != nil {
+		return nil, err
+	}
+	return concatLogs(results), nil
 }
 
 func sortedKeys[V any](values map[uint64]V) []uint64 {

@@ -14,17 +14,30 @@ the real public inputs. Keep `BACKEND_ENV_FILE` and `POSTGRES_PASSWORD_FILE` out
 checkout, mode `0600`; populate the former from `backend.env.example`. The backend
 Privy app ID must match the public app ID. Never place wallet keys in these files.
 The database password file contains only the password and an optional trailing newline.
+Each long-running backend service connects as its own least-privilege role
+(`launchpad_api`, `launchpad_indexer`, `launchpad_telegram`), so set
+`POSTGRES_API_PASSWORD_FILE`, `POSTGRES_INDEXER_PASSWORD_FILE` and
+`POSTGRES_TELEGRAM_PASSWORD_FILE` the same way, with distinct passwords. Postgres creates the
+roles from `postgres/10-service-roles.sh` when its data directory is first initialized; on an
+existing database run `docker compose --env-file .env exec postgres sh
+/docker-entrypoint-initdb.d/10-service-roles.sh` once after adding the secrets (it is idempotent
+and also rotates the passwords). Only `migrate` uses the owner password.
 `COINGECKO_API_KEY` is a secret and belongs only in `BACKEND_ENV_FILE`, which Compose passes
 to the backend containers. Set it together with `ETH_USD_SOURCE=coingecko`; leave both empty
 to disable USD reference pricing. The backend rejects either one set without the other.
-Telegram alerts are off until a bot exists: set `TELEGRAM_BOT_USERNAME` for the API and run one
-`cmd/telegram` process per deployment with `TELEGRAM_BOT_TOKEN` (secret, `BACKEND_ENV_FILE`
-only) and `TELEGRAM_WEB_ORIGIN`; the Compose file does not start that process yet.
+`COINGECKO_API_PLAN=demo` uses CoinGecko's free Demo key (5-minute poll, within its 10,000-call
+monthly cap); leave it empty for a paid Pro key.
+Telegram alerts are off until a bot exists. To turn them on, create the bot with BotFather, put
+`TELEGRAM_BOT_TOKEN` (secret) and `TELEGRAM_BOT_USERNAME` in `BACKEND_ENV_FILE`, then start the
+opt-in worker with `docker compose --profile telegram up -d`. Compose sets `TELEGRAM_WEB_ORIGIN`
+from `WEB_DOMAIN`. Run exactly one `telegram` replica: an advisory lock refuses a second one.
 
 Early-buyer funding-source links are off until an archive + trace RPC exists: run one
 `cmd/funding` process per deployment with `FUNDING_RPC_URL` (secret, `BACKEND_ENV_FILE` only).
 Exchanges and bridges that must never link wallets go into the `funding_excluded_funders` table
-(chain id, address, label). The Compose file does not start that process yet.
+(chain id, address, label). The Compose file does not start that process yet. The backend image
+ships it as `/app/funding`, next to the operator tools `/app/moderate` and
+`/app/backfill-swap-sender`.
 The backend DSN uses that same password, percent-encoded. Local container database traffic
 uses the private Compose network; PostgreSQL has no published port.
 
@@ -37,6 +50,9 @@ Before public deployment, point both DNS names at the host, allow TCP 80/443, co
 the exact HTTPS web origin in Privy, complete governance/audit sign-off, and run the root
 production release gate in a clean checkout with the same public configuration.
 Use the input/evidence checklist in `docs/runbooks/production-readiness.md`.
+To run more than one API replica (`docker compose up -d --scale api=N`), more hosts, or a CDN
+in front of the proxy, follow `docs/runbooks/scale-out-and-cdn.md`: rate limits are per replica,
+and a CDN needs its egress ranges trusted by both Caddy and the API.
 For the root production release gate, export the same `NEXT_PUBLIC_*` values used for
 the image, including `NEXT_PUBLIC_API_BASE_URL=https://API_DOMAIN` and
 `NEXT_PUBLIC_WEB_ORIGIN=https://WEB_DOMAIN`. The Compose `.env` file is not automatically

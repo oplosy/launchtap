@@ -47,18 +47,19 @@ func (q *Queries) ListGraduatedV4Pools(ctx context.Context, chainID int64) ([]Li
 
 const listTokenIdentities = `-- name: ListTokenIdentities :many
 SELECT token_address, curve_address, lp_pair, engine_version,
-       launch_block_number, launch_block_hash, launch_block_time
+       launch_block_number, launch_block_hash, launch_block_time, graduation_block_number
 FROM tokens WHERE chain_id=$1 ORDER BY token_address
 `
 
 type ListTokenIdentitiesRow struct {
-	TokenAddress      Address
-	CurveAddress      Address
-	LpPair            *Address
-	EngineVersion     int32
-	LaunchBlockNumber int64
-	LaunchBlockHash   Hash
-	LaunchBlockTime   pgtype.Timestamptz
+	TokenAddress          Address
+	CurveAddress          Address
+	LpPair                *Address
+	EngineVersion         int32
+	LaunchBlockNumber     int64
+	LaunchBlockHash       Hash
+	LaunchBlockTime       pgtype.Timestamptz
+	GraduationBlockNumber pgtype.Int8
 }
 
 func (q *Queries) ListTokenIdentities(ctx context.Context, chainID int64) ([]ListTokenIdentitiesRow, error) {
@@ -78,6 +79,7 @@ func (q *Queries) ListTokenIdentities(ctx context.Context, chainID int64) ([]Lis
 			&i.LaunchBlockNumber,
 			&i.LaunchBlockHash,
 			&i.LaunchBlockTime,
+			&i.GraduationBlockNumber,
 		); err != nil {
 			return nil, err
 		}

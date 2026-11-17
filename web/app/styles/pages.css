@@ -623,21 +623,19 @@
 .leaderboard-row a:hover {
   text-decoration: underline;
 }
+/* Balances and per-token costs run to 15 monospace characters; the columns are sized so they fit
+   without truncation, and the table scrolls sideways below that width. */
 .wallet-positions .history-row {
-  grid-template-columns: 1.4fr 1fr 1fr 1.2fr 1.2fr 1.2fr 0.6fr;
-  min-width: 860px;
+  grid-template-columns: 1.2fr 1.4fr 1.4fr 1.2fr 1.2fr 1fr 0.6fr;
+  min-width: 1000px;
 }
 .wallet-trades .history-row {
-  grid-template-columns: 1.4fr 1fr 0.6fr 1fr 1.2fr;
-  min-width: 640px;
+  grid-template-columns: 1.4fr 1fr 0.6fr 1.4fr 1.2fr;
+  min-width: 720px;
 }
 .wallet-created .history-row {
   grid-template-columns: 1.2fr 0.8fr 1.2fr 1fr;
   min-width: 520px;
-}
-.wallet-positions .history-row > span,
-.wallet-trades .history-row > span {
-  overflow: visible;
 }
 .wallet-more {
   display: flex;
@@ -979,6 +977,9 @@
 .forum-post-meta a {
   position: relative;
   z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
   color: var(--text-2);
 }
 .forum-post-meta a:hover,

@@ -45,3 +45,6 @@ pnpm-debug.log*
 
 # Retired design-review captures; Playwright now writes them to web/test-results/screenshots/.
 .impeccable/
+
+# Local, unreviewed audit drafts; findings are tracked in backlog.md and docs/specs.
+AUDIT_REPORT*.md

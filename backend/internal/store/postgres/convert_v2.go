@@ -52,7 +52,7 @@ func tokenLaunchV2Params(event ledger.TokenLaunchV2) (sqlc.InsertTokenLaunchV2Pa
 	return sqlc.InsertTokenLaunchV2Params{
 		ChainID: b.ChainID, BlockNumber: b.BlockNumber, BlockHash: b.BlockHash, BlockTime: b.BlockTime, TransactionIndex: b.TransactionIndex, TxHash: b.TxHash, LogIndex: b.LogIndex,
 		TokenAddress: sqlc.Address(event.Token), CurveAddress: sqlc.Address(event.Curve), Creator: sqlc.Address(event.Creator), ProtocolTreasury: sqlc.Address(event.ProtocolTreasury),
-		EngineVersion: int32(event.EngineVersion), Name: event.Name, Symbol: event.Symbol,
+		EngineVersion: int32(event.EngineVersion), Name: storableText(event.Name), Symbol: storableText(event.Symbol),
 		TotalSupply: amounts[0], VirtualEth: amounts[1], VirtualToken: amounts[2], CurveTokens: amounts[3], LpTokens: amounts[4], GraduationEth: amounts[5], LaunchFeePaid: amounts[6],
 		TradeFeeBps: int32(event.TradeFeeBPS), ProtocolShareBps: int32(event.ProtocolShareBPS),
 		Hook: addressPointer(event.Hook), Locker: addressPointer(event.Locker),

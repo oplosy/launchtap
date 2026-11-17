@@ -394,10 +394,11 @@ input[type="file"].ui-input::file-selector-button {
   position: relative;
   display: inline-flex;
 }
+/* 24px is the WCAG 2.2 minimum touch target (target-size). */
 .ui-info-button {
   display: inline-grid;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border: 1px solid var(--hairline-strong);
   border-radius: 50%;
   color: var(--text-3);

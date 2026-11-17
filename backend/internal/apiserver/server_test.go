@@ -50,7 +50,7 @@ func TestServerBoundaries(t *testing.T) {
 	if got := w.Header().Get("Access-Control-Allow-Headers"); got != "Authorization,Content-Type,privy-id-token,If-Match,If-None-Match" {
 		t.Fatalf("preflight headers=%q", got)
 	}
-	if got := w.Header().Get("Access-Control-Expose-Headers"); got != "ETag, X-Revision, Retry-After" {
+	if got := w.Header().Get("Access-Control-Expose-Headers"); got != "ETag, X-Revision, Retry-After, X-Request-ID" {
 		t.Fatalf("preflight exposed headers=%q", got)
 	}
 	if strings.Contains(logs.String(), "secret") {
@@ -69,6 +69,15 @@ func TestServerBoundaries(t *testing.T) {
 	s.Handler.ServeHTTP(deniedReadW, deniedRead)
 	if deniedReadW.Header().Get("Access-Control-Allow-Origin") != "" || deniedReadW.Header().Get("Access-Control-Expose-Headers") != "" {
 		t.Fatalf("disallowed origin received CORS read headers: %v", deniedReadW.Header())
+	}
+	// A shared cache must key on Origin for every response, or a response cached for a request
+	// without CORS headers is served to an allowed origin.
+	noOrigin := httptest.NewRecorder()
+	s.Handler.ServeHTTP(noOrigin, httptest.NewRequest(http.MethodGet, "/v1/healthz", nil))
+	for name, h := range map[string]http.Header{"no origin": noOrigin.Header(), "denied origin": deniedReadW.Header()} {
+		if got := h.Values("Vary"); len(got) != 1 || got[0] != "Origin" {
+			t.Fatalf("%s: Vary=%v, want exactly Origin", name, got)
+		}
 	}
 }
 

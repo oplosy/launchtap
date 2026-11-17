@@ -30,7 +30,7 @@ func runProjectionDifferential(t *testing.T, pattern []int) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, IndexerRole))
 	fixture := newProjectionDifferentialFixture()
 
 	nextBlock := 0
@@ -197,7 +197,7 @@ func readDirtyGeneration(t testing.TB, ctx context.Context, database *Database, 
 func TestIncrementalCandleBucketEdgesMatchRebuild(t *testing.T) {
 	database := NewMigrated(t)
 	ctx := t.Context()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, IndexerRole))
 	fixture := newProjectionDifferentialFixture()
 	launch := fixture.chunks[0]
 	if err := storepostgres.WithinTx(ctx, pool, func(ctx context.Context, a *storepostgres.Adapter) error {
@@ -243,7 +243,7 @@ func TestIncrementalCandleBucketEdgesMatchRebuild(t *testing.T) {
 func TestIncrementalNegativeBalanceAbortsEvent(t *testing.T) {
 	database := NewMigrated(t)
 	ctx := t.Context()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, IndexerRole))
 	fixture := newProjectionDifferentialFixture()
 	chunk := fixture.chunks[0]
 	err := storepostgres.WithinTx(ctx, pool, func(ctx context.Context, a *storepostgres.Adapter) error {

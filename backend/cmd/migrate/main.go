@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/Contictus/launchtap/backend/internal/config"
+	"github.com/Contictus/launchtap/backend/internal/secretenv"
 	"github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/Contictus/launchtap/backend/internal/store/postgres/migrations"
 )
@@ -37,7 +38,11 @@ func run(
 	if err != nil {
 		return writeFailure(stderr, 2, "%v", err)
 	}
-	databaseConfig, err := config.LoadDatabase(getenv)
+	env, err := secretenv.Lookup(getenv, "DATABASE_PASSWORD")
+	if err != nil {
+		return writeFailure(stderr, 1, "load database configuration: %v", err)
+	}
+	databaseConfig, err := config.LoadDatabase(env)
 	if err != nil {
 		return writeFailure(stderr, 1, "load database configuration: %v", err)
 	}

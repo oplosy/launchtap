@@ -41,13 +41,13 @@ func seedSocialToken(t *testing.T, ctx context.Context, database *Database, tag 
 	callRebuild(t, ctx, database.DB, socialChainID, fixture.token)
 	mustExecSocial(t, ctx, database.DB, `
 		INSERT INTO holder_balances (chain_id, token_address, holder_address, balance, first_acquired_block_number)
-		VALUES ($1, $2, $3, 5, $4)`, socialChainID, fixture.token, socialHolder.Bytes(), block)
+		VALUES ($1, $2, $3, 100, $4)`, socialChainID, fixture.token, socialHolder.Bytes(), block)
 	return common.BytesToAddress(fixture.token)
 }
 
 func newSocialStore(t *testing.T, ctx context.Context, database *Database) (storepostgres.SocialStore, *pgxpool.Pool) {
 	t.Helper()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, APIRole))
 	return storepostgres.SocialStore{Pool: pool}, pool
 }
 
@@ -529,7 +529,7 @@ func TestSocialRateStateQueries(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, APIRole))
 	q := sqlc.New(pool)
 	token := seedSocialToken(t, ctx, database, 0x10)
 	window := float64(time.Hour / time.Second)
@@ -606,7 +606,7 @@ func TestSocialReportAndSubjectQueries(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, APIRole))
 	q := sqlc.New(pool)
 	token := seedSocialToken(t, ctx, database, 0x10)
 	wallet := socialHolder.Bytes()

@@ -9,7 +9,14 @@ import { ApiClient, resolveApiAssetUrl } from "@/api/client";
 import { ApiProblem } from "@/api/problems";
 import { publicConfiguration } from "@/config/public";
 import { Button, ErrorState, Input, SafeImage } from "@/components/primitives";
+import { describeError, UserFacingError } from "@/errors/describe";
 import { useWalletReadiness } from "@/wallet/readiness";
+import {
+  acceptableImageFile,
+  descriptionTooLong,
+  hasValidImageSignature,
+  safeSocialLink,
+} from "./image-file";
 
 type Props = {
   token: {
@@ -21,32 +28,6 @@ type Props = {
   };
   onConflict: () => Promise<unknown> | void;
 };
-
-const maxImageBytes = 5 * 1024 * 1024;
-const imageTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
-
-function safeHttps(value: string) {
-  if (!value.trim()) return true;
-  if (new TextEncoder().encode(value).length > 2048) return false;
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && Boolean(url.hostname) && !url.username && !url.password;
-  } catch {
-    return false;
-  }
-}
-
-async function hasValidImageSignature(file: File) {
-  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
-  const png =
-    bytes.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10].every((v, i) => bytes[i] === v);
-  const jpeg = bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
-  const webp =
-    bytes.length >= 12 &&
-    new TextDecoder().decode(bytes.slice(0, 4)) === "RIFF" &&
-    new TextDecoder().decode(bytes.slice(8, 12)) === "WEBP";
-  return png || jpeg || webp;
-}
 
 export type MetadataConflictRecovery = {
   description: string;
@@ -97,6 +78,17 @@ export async function recoverMetadataConflict(
     metadataEtag,
     imageRevision: imageResult.status === "fulfilled" ? imageResult.value.revision : 0,
   };
+}
+
+/**
+ * The editor for the wallet that launched the token only. Visitors never see it, and its reads
+ * (a 404 for a token without metadata) are not made for them. Showing it is not authorization:
+ * the API still checks every write against the signed-in account's linked creator wallet.
+ */
+export function CreatorMetadataEditor({ creator, ...props }: Props & { creator: string }) {
+  const readiness = useWalletReadiness();
+  if (!readiness.address || readiness.address.toLowerCase() !== creator.toLowerCase()) return null;
+  return <MetadataEditor {...props} />;
 }
 
 export function MetadataEditor({ token, onConflict }: Props) {
@@ -160,7 +152,7 @@ export function MetadataEditor({ token, onConflict }: Props) {
     setError(null);
     setNotice(null);
     if (!candidate) return;
-    if (!imageTypes.has(candidate.type) || candidate.size < 1 || candidate.size > maxImageBytes) {
+    if (!acceptableImageFile(candidate)) {
       setFile(null);
       setPreview(null);
       setError("Choose a PNG, JPEG, or WebP image up to 5 MiB.");
@@ -185,12 +177,12 @@ export function MetadataEditor({ token, onConflict }: Props) {
       return;
     }
     if (
-      new TextEncoder().encode(description).length > 2000 ||
-      !safeHttps(xUrl) ||
-      !safeHttps(telegramUrl)
+      descriptionTooLong(description) ||
+      !safeSocialLink("x", xUrl) ||
+      !safeSocialLink("telegram", telegramUrl)
     ) {
       setError(
-        "Description must be at most 2,000 bytes and links must be HTTPS URLs up to 2,048 bytes.",
+        "Description must be at most 2,000 bytes, the X link must point at x.com or twitter.com, and the Telegram link at t.me or telegram.me.",
       );
       return;
     }
@@ -205,7 +197,7 @@ export function MetadataEditor({ token, onConflict }: Props) {
     setSaving(true);
     try {
       const accessToken = await getAccessToken();
-      if (!accessToken) throw new Error("Sign in again to refresh the access token.");
+      if (!accessToken) throw new UserFacingError("Sign in again to refresh the access token.");
       const client = new ApiClient({ baseUrl: configuration.apiBaseUrl });
       const auth = { accessToken, identityToken };
       const metadataResult = await client.updateTokenMetadata(
@@ -225,7 +217,14 @@ export function MetadataEditor({ token, onConflict }: Props) {
     } catch (cause) {
       if (cause instanceof ApiProblem && cause.code === "revision_conflict") {
         const client = new ApiClient({ baseUrl: configuration.apiBaseUrl });
-        const refreshed = await recoverMetadataConflict(client, token.address, onConflict);
+        let refreshed: Awaited<ReturnType<typeof recoverMetadataConflict>>;
+        try {
+          refreshed = await recoverMetadataConflict(client, token.address, onConflict);
+        } catch (reloadCause) {
+          // The save was refused and the latest version could not be loaded either.
+          setError(describeError(reloadCause, { context: "metadata" }).message);
+          return;
+        }
         setDescription(refreshed.description);
         setXUrl(refreshed.xUrl);
         setTelegramUrl(refreshed.telegramUrl);
@@ -241,7 +240,7 @@ export function MetadataEditor({ token, onConflict }: Props) {
         setNotice(
           "This token changed in another session. The latest token, metadata, and image revision were loaded; review them before resubmitting.",
         );
-      } else setError(cause instanceof Error ? cause.message : "The metadata update was rejected.");
+      } else setError(describeError(cause, { context: "metadata" }).message);
     } finally {
       setSaving(false);
     }

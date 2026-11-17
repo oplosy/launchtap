@@ -321,6 +321,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tokens": {
         parameters: {
             query?: never;
@@ -932,6 +948,7 @@ export interface components {
             chain_id: number;
             deployment_id: string;
             name: string;
+            /** @description Uniswap v2 pair of an engine-1 token; the zero address for an engine-2 token, which graduates into a v4 pool with no pair contract. */
             pair: string;
             symbol: string;
             token: string;
@@ -1023,6 +1040,25 @@ export interface components {
             readonly $schema?: string;
             /** @description Mark every notification up to and including this id as read. */
             through: string;
+        };
+        IndexerStatusDTO: {
+            /** Format: int64 */
+            finalized_block: number | null;
+            /**
+             * Format: int64
+             * @description Whole seconds since heartbeat_at, or null before the first step.
+             */
+            heartbeat_age_seconds: number | null;
+            /** @description Database time of the last committed indexer step (RFC 3339), or null before the first. */
+            heartbeat_at: string | null;
+            /** Format: int64 */
+            observed_block: number | null;
+            /** Format: int64 */
+            safe_block: number | null;
+            /** @description True when the indexer has not committed a step within stale_after_seconds, or never has. */
+            stale: boolean;
+            /** Format: int64 */
+            stale_after_seconds: number;
         };
         KingDTO: {
             address: string;
@@ -1329,6 +1365,18 @@ export interface components {
             chain_id: number;
             finality: string;
         };
+        StatusBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /v1/schemas/StatusBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            chain_id: number;
+            deployment_id: string;
+            indexer: components["schemas"]["IndexerStatusDTO"];
+        };
         TelegramLinkBody: {
             /**
              * Format: uri
@@ -1396,8 +1444,11 @@ export interface components {
             curve: string;
             curve_tokens: string;
             description: string;
+            /** @description When the creator last changed the details or image after the first save (RFC 3339), or null if never. */
+            details_edited_at: string | null;
             /** Format: int32 */
             engine_version: number;
+            /** @description ETH reserve for the curve and pair sources. A v4 pool has no reserves: for reserve_source v4 this is the launch's initial virtual ETH; read pool liquidity from v2. */
             eth_reserve: string;
             fdv_eth: string;
             graduation_eth: string;
@@ -1429,11 +1480,13 @@ export interface components {
             /** Format: int64 */
             reserve_block: number;
             reserve_hash: string;
+            /** @description Where the reserves come from: curve, pair (engine-1 Uniswap v2 pair) or v4 (engine-2 Uniswap v4 pool). */
             reserve_source: string;
             snapshot: components["schemas"]["SnapshotDTO"];
             spot_price_eth: string;
             symbol: string;
             telegram_url: string;
+            /** @description Token reserve for the curve and pair sources; for reserve_source v4 this is the launch's initial virtual token reserve. */
             token_reserve: string;
             total_supply: string;
             /** Format: int32 */
@@ -2642,6 +2695,36 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RevenueBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    getStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusBody"];
                 };
             };
             /** @description Error */

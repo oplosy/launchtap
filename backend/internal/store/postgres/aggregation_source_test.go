@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/Contictus/launchtap/backend/internal/stats"
-	"github.com/Contictus/launchtap/backend/internal/store/postgres/sqlc"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -39,8 +38,9 @@ func TestAggregationSourceComputeBatchCoalescesByChainAndKeepsTokenFailures(t *t
 			t.Fatalf("claim %d error = %v, want nil", i, err)
 		}
 	}
-	if db.tokenStatsCalls != len(claims) {
-		t.Fatalf("token stats calls = %d, want %d", db.tokenStatsCalls, len(claims))
+	// One statement per chain; the failing chain falls back to one statement per token.
+	if want := 2 + 3; db.tokenStatsCalls != want {
+		t.Fatalf("token stats calls = %d, want %d", db.tokenStatsCalls, want)
 	}
 	for _, chainID := range []int64{4663, 46630} {
 		if got := db.clearDailyCalls[chainID]; got != 1 {
@@ -104,17 +104,19 @@ func (recorder *aggregationSourceRecorder) Exec(_ context.Context, query string,
 	}
 	if strings.Contains(query, "INSERT INTO token_stats") {
 		recorder.tokenStatsCalls++
-		if len(args) > 1 {
-			if address, ok := args[1].(sqlc.Address); ok && [20]byte(address) == recorder.failToken && recorder.tokenFailure != nil {
-				return pgconn.CommandTag{}, recorder.tokenFailure
+		if tokens, ok := args[0].([][]byte); ok && recorder.tokenFailure != nil {
+			for _, token := range tokens {
+				if [20]byte(token) == recorder.failToken {
+					return pgconn.CommandTag{}, recorder.tokenFailure
+				}
 			}
 		}
 	}
 	chainID, _ := args[0].(int64)
 	switch {
-	case strings.Contains(query, "DELETE FROM protocol_daily"):
+	case strings.Contains(query, "DELETE FROM protocol_daily "):
 		recorder.clearDailyCalls[chainID]++
-	case strings.Contains(query, "INSERT INTO protocol_daily"):
+	case strings.Contains(query, "INSERT INTO protocol_daily ("):
 		recorder.dailyCalls[chainID]++
 	case strings.Contains(query, "INSERT INTO protocol_stats"):
 		recorder.protocolStatsCalls[chainID]++

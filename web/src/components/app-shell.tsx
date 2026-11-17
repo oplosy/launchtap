@@ -23,6 +23,7 @@ import { ThemeToggle } from "./theme-toggle";
 import { walletPath } from "@/portfolio/wallet-model";
 import { WalletConnectButton, useWalletConnection } from "@/wallet/connection-context";
 import { NotificationBell } from "@/live/notifications";
+import { StaleDataBanner } from "@/live/stale-data-banner";
 
 // The palette is only downloaded the first time someone opens it.
 const CommandPalette = lazy(() => import("./command-palette"));
@@ -124,7 +125,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         onPointerLeave={hoverLeave}
       >
         <div className="navbar-inner">
-          <Link className="navbar-brand" href="/" aria-label="Open home">
+          <Link className="navbar-brand" href="/">
             Launchpad
           </Link>
           <nav className="navbar-links" aria-label="Primary">
@@ -198,6 +199,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
+      <StaleDataBanner />
       <main className="app-content">{children}</main>
       <SiteFooter />
       <BackToTop />

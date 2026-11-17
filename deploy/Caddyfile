@@ -4,15 +4,32 @@
 }
 
 {$WEB_DOMAIN} {
+	# Browsers keep HTTPS for a year once they saw this over TLS; no includeSubDomains or preload,
+	# so other hosts under the operator's domain are unaffected.
+	header Strict-Transport-Security "max-age=31536000"
 	encode zstd gzip
 	reverse_proxy web:3000
 }
 
 {$API_DOMAIN} {
+	# Browsers keep HTTPS for a year once they saw this over TLS; no includeSubDomains or preload,
+	# so other hosts under the operator's domain are unaffected.
+	header Strict-Transport-Security "max-age=31536000"
 	# Event streams must not be buffered by a compressor.
 	@compressible {
 		not path /v1/events
 	}
 	encode @compressible zstd gzip
-	reverse_proxy api:8080
+	# Re-resolves the api service name so `docker compose up --scale api=N` spreads requests over
+	# every replica (docs/runbooks/scale-out-and-cdn.md); a single replica works the same way.
+	# Without trusted_proxies, Caddy replaces any client-sent X-Forwarded-For with the TCP peer
+	# address, which is the client key the API rate limits on (verified against the pinned
+	# 2.10.2 image, docs/specs/2026-11-17-run4-owner-defaults-preflight.md). Re-check it when the
+	# image changes, and add trusted_proxies only for a CDN in front of this proxy.
+	reverse_proxy {
+		dynamic a api 8080 {
+			refresh 10s
+		}
+		lb_policy least_conn
+	}
 }

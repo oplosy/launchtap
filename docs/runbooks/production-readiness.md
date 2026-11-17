@@ -71,7 +71,9 @@ deployer does not retain pause or timelock authority, but it cannot choose or ap
 signer set. Record:
 
 - multisig address, chain ID, threshold, signer addresses, and recovery process;
-- timelock address, delay, proposer/executor roles, and emergency procedure;
+- timelock address, delay, proposer/executor roles, and emergency procedure (the indexer refuses
+  a `production` manifest whose factory timelock is not a contract with `getMinDelay()` of at
+  least 48 hours; `chain.VerifyGovernanceTimelock`);
 - protocol treasury address and accounting owner;
 - a successful read-only role check and a controlled test of pause/timelock handoff;
 - the transaction hashes and explorer links for the final role configuration.
@@ -150,6 +152,8 @@ Alert rules (`deploy/monitoring/alerts.yml`, unit-tested in `alerts.test.yml`):
 | `DatabaseDown` | indexer DB check down, or API pool had to make acquires wait (empty acquires rising) with no idle connection | 2m | page |
 | `WriteRejectionSpike` | 5m rejection rate > 10x the 1h average ending 15m ago, and > 0.05/s | 15m | ticket |
 | `EthUsdStale` | last ETH/USD refresh older than 600s (absent series: price source disabled, no alert) | 10m | ticket |
+| `IndexerStateDrift` | the last reconciliation pass found indexed values that differ from the chain | 25m | page |
+| `IndexerReconciliationStale` | no reconciliation pass has completed its comparison for 3600s | 10m | ticket |
 
 - `IndexerObservedLagHigh` fires during the initial backfill from `StartBlock`; silence it
   during first sync.
@@ -159,6 +163,16 @@ Alert rules (`deploy/monitoring/alerts.yml`, unit-tested in `alerts.test.yml`):
   zero baseline does not produce noise; the owner can retune that floor.
 - `RPCErrorRateHigh` counts an unsupported safe or finalized block tag as an
   `eth_getBlockByNumber` error, so a chain without those tags will raise it.
+- `IndexerStateDrift`: the indexer compares 25 recently traded tokens with `eth_call` reads at the
+  observed block every 10 minutes (phase, curve reserves, holder-balance sum against
+  `totalSupply`, the 5 largest holders). Each mismatch is logged as `indexed state differs from
+  chain` with the check, token, subject and both values. A pass whose block was reorged during
+  the pass is discarded, not reported. On a page: read the logged values and compare them with a
+  block explorer, then re-index into a fresh database to confirm; a mismatch a fresh index also has is an
+  indexer bug. Design: `docs/specs/2026-11-14-state-reconciliation-preflight.md`.
+- `IndexerReconciliationStale` means passes keep failing (`state reconciliation pass failed` in
+  the log, `launchpad_indexer_reconciliation_runs_total{outcome="error"}` rising), usually an RPC
+  that cannot serve `eth_call` at the observed block.
 
 ### Live feed (P0-B)
 
@@ -367,6 +381,16 @@ holds it can moderate, so run the CLI only from a host or tunnel that already ha
 access and never put the URL in a ticket, chat or shell history (export it from the secret
 store for the session). Reports are only filed by authenticated users and trigger nothing
 automatically.
+
+Give each moderator a personal login in the `launchpad_moderate_role` group role, never the schema
+owner: it can read everything but write only the moderation tables
+(`docs/specs/2026-11-16-postgres-service-roles-preflight.md`). As the owner, once per moderator:
+
+```sql
+CREATE ROLE moderator_alice LOGIN PASSWORD '...' IN ROLE launchpad_moderate_role;
+```
+
+The funding worker (`/app/funding`) gets a login in `launchpad_funding_role` the same way.
 
 Every command takes the deployment scope and the operator name that is written to the audit log:
 

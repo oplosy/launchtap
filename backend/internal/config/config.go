@@ -3,11 +3,8 @@ package config
 import (
 	"errors"
 	"fmt"
-	"net"
 	"net/netip"
-	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -21,8 +18,10 @@ const (
 	// Keep these bounds aligned with the indexer engine's reorg-search policy.
 	defaultIndexerReorgSearchDepth = uint64(128)
 	maxIndexerReorgSearchDepth     = uint64(100000)
-	defaultLogAddressBatch         = uint64(500)
+	defaultLogAddressBatch         = uint64(1000)
 	maxLogAddressBatch             = uint64(2000)
+	defaultLogFetchConcurrency     = uint64(4)
+	maxLogFetchConcurrency         = uint64(16)
 	defaultPollInterval            = time.Second
 	defaultRPCTimeout              = 10 * time.Second
 	defaultRPCMaxRetries           = uint64(3)
@@ -46,6 +45,12 @@ const (
 
 // ETHUSDSourceCoinGecko selects the CoinGecko ETH/USD reference price source.
 const ETHUSDSourceCoinGecko = "coingecko"
+
+// CoinGecko API plans. The Demo plan is free with a monthly call cap; Pro is the paid plan.
+const (
+	CoinGeckoPlanPro  = "pro"
+	CoinGeckoPlanDemo = "demo"
+)
 
 var (
 	ErrInvalid = errors.New("invalid configuration value")
@@ -95,6 +100,7 @@ type Config struct {
 	IndexerReorgSearchDepth    uint64        `env:"INDEXER_REORG_SEARCH_DEPTH"`
 	IndexerReorgRecoveryMode   bool          `env:"INDEXER_REORG_RECOVERY_MODE"`
 	IndexerLogAddressBatchSize uint64        `env:"INDEXER_LOG_ADDRESS_BATCH_SIZE"`
+	IndexerLogFetchConcurrency uint64        `env:"INDEXER_LOG_FETCH_CONCURRENCY"`
 	IndexerPollInterval        time.Duration `env:"INDEXER_POLL_INTERVAL"`
 	RPCTimeout                 time.Duration `env:"RPC_TIMEOUT"`
 	RPCMaxRetries              uint64        `env:"RPC_MAX_RETRIES"`
@@ -106,6 +112,9 @@ type Config struct {
 	// CoinGeckoAPIKey is a secret; it is required when ETHUSDSource is coingecko and
 	// rejected otherwise. It never appears in error text.
 	CoinGeckoAPIKey string `env:"COINGECKO_API_KEY"`
+	// CoinGeckoAPIPlan is CoinGeckoPlanPro (default when CoinGecko is enabled) or
+	// CoinGeckoPlanDemo; empty while ETHUSDSource is empty.
+	CoinGeckoAPIPlan string `env:"COINGECKO_API_PLAN"`
 	// IndexerSenderBackfillInterval is the period of the indexer's automatic pool swap sender
 	// backfill; 0 disables it.
 	IndexerSenderBackfillInterval time.Duration `env:"INDEXER_SENDER_BACKFILL_INTERVAL"`
@@ -139,6 +148,13 @@ func Load(getenv func(string) string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	logFetchConcurrency, err := optionalBoundedUint64(
+		"INDEXER_LOG_FETCH_CONCURRENCY", values.indexerLogFetchConcurrency,
+		defaultLogFetchConcurrency, 1, maxLogFetchConcurrency,
+	)
+	if err != nil {
+		return Config{}, err
+	}
 	pollInterval, err := optionalPositiveDuration("INDEXER_POLL_INTERVAL", values.indexerPollInterval, defaultPollInterval)
 	if err != nil {
 		return Config{}, err
@@ -161,7 +177,8 @@ func Load(getenv func(string) string) (Config, error) {
 	if err := validateURL("RPC_URL", values.rpcURL, "http", "https"); err != nil {
 		return Config{}, err
 	}
-	if err := validateURL("DATABASE_URL", values.databaseURL, "postgres", "postgresql"); err != nil {
+	databaseURL, err := resolveDatabaseURL(getenv)
+	if err != nil {
 		return Config{}, err
 	}
 
@@ -244,6 +261,10 @@ func Load(getenv func(string) string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	coinGeckoAPIPlan, err := parseCoinGeckoPlan(ethUSDSource, values.coinGeckoAPIPlan)
+	if err != nil {
+		return Config{}, err
+	}
 	senderBackfillInterval, err := optionalDisableableDuration("INDEXER_SENDER_BACKFILL_INTERVAL", values.indexerSenderBackfillInterval,
 		defaultSenderBackfillInterval, minSenderBackfillInterval, maxSenderBackfillInterval)
 	if err != nil {
@@ -259,7 +280,7 @@ func Load(getenv func(string) string) (Config, error) {
 		ChainID:                       chainID,
 		DeploymentID:                  values.deploymentID,
 		RPCURL:                        values.rpcURL,
-		DatabaseURL:                   values.databaseURL,
+		DatabaseURL:                   databaseURL,
 		PrivyAppID:                    values.privyAppID,
 		PrivyVerificationKey:          values.privyVerificationKey,
 		LogLevel:                      logLevel,
@@ -276,6 +297,7 @@ func Load(getenv func(string) string) (Config, error) {
 		IndexerReorgSearchDepth:       reorgSearchDepth,
 		IndexerReorgRecoveryMode:      reorgRecoveryMode,
 		IndexerLogAddressBatchSize:    addressBatchSize,
+		IndexerLogFetchConcurrency:    logFetchConcurrency,
 		IndexerPollInterval:           pollInterval,
 		RPCTimeout:                    rpcTimeout,
 		RPCMaxRetries:                 rpcMaxRetries,
@@ -284,6 +306,7 @@ func Load(getenv func(string) string) (Config, error) {
 		IndexerConfirmations:          confirmations,
 		ETHUSDSource:                  ethUSDSource,
 		CoinGeckoAPIKey:               coinGeckoAPIKey,
+		CoinGeckoAPIPlan:              coinGeckoAPIPlan,
 		IndexerSenderBackfillInterval: senderBackfillInterval,
 		IndexerSenderBackfillMaxTxs:   senderBackfillMaxTxs,
 	}, nil
@@ -295,8 +318,8 @@ func LoadDatabase(getenv func(string) string) (DatabaseConfig, error) {
 		return DatabaseConfig{}, &FieldError{Field: "getenv", Err: ErrMissing}
 	}
 
-	databaseURL := strings.TrimSpace(getenv("DATABASE_URL"))
-	if err := validateURL("DATABASE_URL", databaseURL, "postgres", "postgresql"); err != nil {
+	databaseURL, err := resolveDatabaseURL(getenv)
+	if err != nil {
 		return DatabaseConfig{}, err
 	}
 
@@ -327,7 +350,6 @@ type environmentValues struct {
 	chainID                       string
 	deploymentID                  string
 	rpcURL                        string
-	databaseURL                   string
 	privyAppID                    string
 	privyVerificationKey          string
 	logLevel                      string
@@ -344,6 +366,7 @@ type environmentValues struct {
 	indexerReorgSearchDepth       string
 	indexerReorgRecoveryMode      string
 	indexerLogAddressBatchSize    string
+	indexerLogFetchConcurrency    string
 	indexerPollInterval           string
 	rpcTimeout                    string
 	rpcMaxRetries                 string
@@ -352,6 +375,7 @@ type environmentValues struct {
 	indexerConfirmations          string
 	ethUSDSource                  string
 	coinGeckoAPIKey               string
+	coinGeckoAPIPlan              string
 	indexerSenderBackfillInterval string
 	indexerSenderBackfillMaxTxs   string
 }
@@ -361,7 +385,6 @@ func readEnvironment(getenv func(string) string) environmentValues {
 		chainID:                       strings.TrimSpace(getenv("CHAIN_ID")),
 		deploymentID:                  strings.TrimSpace(getenv("DEPLOYMENT_ID")),
 		rpcURL:                        strings.TrimSpace(getenv("RPC_URL")),
-		databaseURL:                   strings.TrimSpace(getenv("DATABASE_URL")),
 		privyAppID:                    strings.TrimSpace(getenv("PRIVY_APP_ID")),
 		privyVerificationKey:          strings.TrimSpace(getenv("PRIVY_VERIFICATION_KEY")),
 		logLevel:                      strings.TrimSpace(getenv("LOG_LEVEL")),
@@ -378,6 +401,7 @@ func readEnvironment(getenv func(string) string) environmentValues {
 		indexerReorgSearchDepth:       strings.TrimSpace(getenv("INDEXER_REORG_SEARCH_DEPTH")),
 		indexerReorgRecoveryMode:      strings.TrimSpace(getenv("INDEXER_REORG_RECOVERY_MODE")),
 		indexerLogAddressBatchSize:    strings.TrimSpace(getenv("INDEXER_LOG_ADDRESS_BATCH_SIZE")),
+		indexerLogFetchConcurrency:    strings.TrimSpace(getenv("INDEXER_LOG_FETCH_CONCURRENCY")),
 		indexerPollInterval:           strings.TrimSpace(getenv("INDEXER_POLL_INTERVAL")),
 		rpcTimeout:                    strings.TrimSpace(getenv("RPC_TIMEOUT")),
 		rpcMaxRetries:                 strings.TrimSpace(getenv("RPC_MAX_RETRIES")),
@@ -386,221 +410,8 @@ func readEnvironment(getenv func(string) string) environmentValues {
 		indexerConfirmations:          strings.TrimSpace(getenv("INDEXER_CONFIRMATIONS")),
 		ethUSDSource:                  strings.TrimSpace(getenv("ETH_USD_SOURCE")),
 		coinGeckoAPIKey:               strings.TrimSpace(getenv("COINGECKO_API_KEY")),
+		coinGeckoAPIPlan:              strings.TrimSpace(getenv("COINGECKO_API_PLAN")),
 		indexerSenderBackfillInterval: strings.TrimSpace(getenv("INDEXER_SENDER_BACKFILL_INTERVAL")),
 		indexerSenderBackfillMaxTxs:   strings.TrimSpace(getenv("INDEXER_SENDER_BACKFILL_MAX_TXS")),
 	}
-}
-
-func parseETHUSDSource(source, apiKey string) (string, string, error) {
-	switch source {
-	case "":
-		if apiKey != "" {
-			return "", "", &FieldError{Field: "COINGECKO_API_KEY", Err: ErrInvalid}
-		}
-		return "", "", nil
-	case ETHUSDSourceCoinGecko:
-		if apiKey == "" {
-			return "", "", &FieldError{Field: "COINGECKO_API_KEY", Err: ErrMissing}
-		}
-		return source, apiKey, nil
-	default:
-		return "", "", &FieldError{Field: "ETH_USD_SOURCE", Err: ErrInvalid}
-	}
-}
-
-func parseOrigins(value string) ([]string, error) {
-	if value == "" {
-		return nil, nil
-	}
-	parts := strings.Split(value, ",")
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		origin := strings.TrimSpace(part)
-		if origin == "" || origin == "*" {
-			return nil, &FieldError{Field: "API_ALLOWED_ORIGINS", Err: ErrInvalid}
-		}
-		u, err := url.Parse(origin)
-		if err != nil || u.Scheme == "" || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
-			return nil, &FieldError{Field: "API_ALLOWED_ORIGINS", Err: ErrInvalid}
-		}
-		if u.Scheme != "http" && u.Scheme != "https" {
-			return nil, &FieldError{Field: "API_ALLOWED_ORIGINS", Err: ErrInvalid}
-		}
-		if _, ok := seen[origin]; ok {
-			continue
-		}
-		seen[origin] = struct{}{}
-		out = append(out, origin)
-	}
-	return out, nil
-}
-
-func parseTrustedProxies(value string) ([]netip.Prefix, error) {
-	if value == "" {
-		return nil, nil
-	}
-	var out []netip.Prefix
-	for _, part := range strings.Split(value, ",") {
-		prefix, err := netip.ParsePrefix(strings.TrimSpace(part))
-		if err != nil {
-			return nil, &FieldError{Field: "API_TRUSTED_PROXY_CIDRS", Err: ErrInvalid}
-		}
-		out = append(out, prefix.Masked())
-	}
-	return out, nil
-}
-
-func optionalPositiveDuration(field, value string, defaultValue time.Duration) (time.Duration, error) {
-	if value == "" {
-		return defaultValue, nil
-	}
-	parsed, err := time.ParseDuration(value)
-	if err != nil || parsed <= 0 {
-		return 0, &FieldError{Field: field, Err: ErrInvalid}
-	}
-	return parsed, nil
-}
-
-// optionalDisableableDuration accepts 0 (disabled) or a duration within [minValue, maxValue].
-func optionalDisableableDuration(field, value string, defaultValue, minValue, maxValue time.Duration) (time.Duration, error) {
-	if value == "" {
-		return defaultValue, nil
-	}
-	parsed, err := time.ParseDuration(value)
-	if err != nil || (parsed != 0 && (parsed < minValue || parsed > maxValue)) {
-		return 0, &FieldError{Field: field, Err: ErrInvalid}
-	}
-	return parsed, nil
-}
-
-func requiredPositiveUint64(field, value string) (uint64, error) {
-	if value == "" {
-		return 0, &FieldError{Field: field, Err: ErrMissing}
-	}
-
-	parsed, err := strconv.ParseUint(value, 10, 64)
-	if err != nil || parsed == 0 {
-		return 0, &FieldError{Field: field, Err: ErrInvalid}
-	}
-
-	return parsed, nil
-}
-
-func optionalUint64(field, value string) (*uint64, error) {
-	if value == "" {
-		return nil, nil
-	}
-
-	parsed, err := strconv.ParseUint(value, 10, 64)
-	if err != nil {
-		return nil, &FieldError{Field: field, Err: ErrInvalid}
-	}
-
-	return &parsed, nil
-}
-
-func optionalBoundedUint64(field, value string, defaultValue, minValue, maxValue uint64) (uint64, error) {
-	if value == "" {
-		return defaultValue, nil
-	}
-
-	parsed, err := strconv.ParseUint(value, 10, 64)
-	if err != nil || parsed < minValue || parsed > maxValue {
-		return 0, &FieldError{Field: field, Err: ErrInvalid}
-	}
-
-	return parsed, nil
-}
-
-func optionalRecoveryMode(value string) (bool, error) {
-	switch value {
-	case "", "false":
-		return false, nil
-	case "true":
-		return true, nil
-	default:
-		return false, &FieldError{Field: "INDEXER_REORG_RECOVERY_MODE", Err: ErrInvalid}
-	}
-}
-
-func validateURL(field, value string, allowedSchemes ...string) error {
-	if value == "" {
-		return &FieldError{Field: field, Err: ErrMissing}
-	}
-
-	parsed, err := url.Parse(value)
-	if err != nil || parsed.Host == "" {
-		return &FieldError{Field: field, Err: ErrInvalid}
-	}
-
-	for _, scheme := range allowedSchemes {
-		if parsed.Scheme == scheme {
-			return nil
-		}
-	}
-
-	return &FieldError{Field: field, Err: ErrInvalid}
-}
-
-func parseLogLevel(value string) (string, error) {
-	if value == "" {
-		return defaultLogLevel, nil
-	}
-
-	switch value {
-	case "debug", "info", "warn", "error":
-		return value, nil
-	default:
-		return "", &FieldError{Field: "LOG_LEVEL", Err: ErrInvalid}
-	}
-}
-
-func parseAPIAddr(value string) (string, error) {
-	return parseListenerAddr("API_ADDR", value, defaultAPIAddr)
-}
-
-// parseAPIMetricsAddr validates the optional metrics listener. Empty disables it;
-// a value equal to the API listener is rejected so metrics never share the
-// public port.
-func parseAPIMetricsAddr(value, apiAddr string) (string, error) {
-	if value == "" {
-		return "", nil
-	}
-	addr, err := parseListenerAddr("API_METRICS_ADDR", value, "")
-	if err != nil {
-		return "", err
-	}
-	if addr == apiAddr {
-		return "", &FieldError{Field: "API_METRICS_ADDR", Err: ErrInvalid}
-	}
-
-	return addr, nil
-}
-
-func parseListenerAddr(field, value, defaultValue string) (string, error) {
-	if value == "" {
-		value = defaultValue
-	}
-
-	// API processes need a stable numeric listener. Ephemeral port zero and
-	// service names such as "http" are intentionally rejected.
-	_, port, err := net.SplitHostPort(value)
-	if err != nil {
-		return "", &FieldError{Field: field, Err: ErrInvalid}
-	}
-	parsedPort, err := strconv.ParseUint(port, 10, 16)
-	if err != nil || parsedPort == 0 {
-		return "", &FieldError{Field: field, Err: ErrInvalid}
-	}
-
-	return value, nil
-}
-
-func invalidOrMissing(field, value string) error {
-	if value == "" {
-		return &FieldError{Field: field, Err: ErrMissing}
-	}
-
-	return &FieldError{Field: field, Err: ErrInvalid}
 }

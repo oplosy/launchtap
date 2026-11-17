@@ -22,3 +22,5 @@ backend/internal/curve/testdata/** text eol=lf
 backend/internal/chain/abi/** text eol=lf
 backend/internal/chain/testdata/** text eol=lf
 backend/deployments/testdata/** text eol=lf
+# Shell scripts run inside Linux containers (Postgres init): a CRLF checkout breaks them.
+*.sh text eol=lf

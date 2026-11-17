@@ -89,7 +89,12 @@ func (store MetadataStore) GetMetadata(ctx context.Context, chainID int64, token
 }
 
 func (adapter *Adapter) authorizedCreator(ctx context.Context, chainID int64, token common.Address, wallets []common.Address) (common.Address, error) {
-	creator, err := adapter.queries.GetTokenCreatorForUpdate(ctx, sqlc.GetTokenCreatorForUpdateParams{ChainID: chainID, TokenAddress: sqlc.Address(token)})
+	// The lock keeps the launch (and so its creator) until this write commits, as a reorg could
+	// otherwise delete it between the check and the write.
+	if err := adapter.queries.LockTokenLaunch(ctx, sqlc.LockTokenLaunchParams{ChainID: chainID, TokenAddress: token.Bytes()}); err != nil {
+		return common.Address{}, fmt.Errorf("lock token launch: %w", err)
+	}
+	creator, err := adapter.queries.GetTokenCreator(ctx, sqlc.GetTokenCreatorParams{ChainID: chainID, TokenAddress: sqlc.Address(token)})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return common.Address{}, metadata.ErrNotFound
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
+	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -25,6 +26,11 @@ type Discoverer struct {
 	verifyLaunchPair func(context.Context, TokenLaunched) error
 	// v4 is set only for an engine-2 discoverer (NewDiscovererV2).
 	v4 *V4Config
+	// slots caps eth_getLogs calls in flight; nil fetches sequentially (WithLogConcurrency).
+	slots chan struct{}
+	// tokenTopicCooldown counts the steps left before known-token transfers may use the
+	// topic-only fast path again after it failed (fetchKnownTokens).
+	tokenTopicCooldown atomic.Int64
 }
 
 func NewDiscoverer(source LogSource, decoder *Decoder, factory common.Address, addressBatchSize uint64) (*Discoverer, error) {
@@ -108,14 +114,18 @@ func (d *Discoverer) Discover(ctx context.Context, from, to uint64, known Emitte
 		newByBlock[log.BlockNumber] = blockSet
 	}
 
-	// Curve events have protocol-unique signatures, so one topic-only query covers every known
-	// and newly launched curve instead of one address-batched query per 500 curves. Logs from
-	// other contracts that reuse these signatures are not ours and are dropped.
-	curveLogs, err := d.fetchByTopics(ctx, from, to, d.decoder.Topics(EmitterCurve), emitters.Curves)
-	if err != nil {
-		return DiscoveryResult{}, fmt.Errorf("fetch curve logs by topic: %w", err)
-	}
-	allLogs = append(allLogs, curveLogs...)
+	// One topic-only query covers every known and newly launched curve instead of one
+	// address-batched query per 500 curves. Any contract can reuse these signatures: their logs
+	// are dropped, and a flood of them makes fetchByTopics fall back to address batches.
+	// The factory logs above name the new emitters; every query below is independent of the
+	// others, so they may run concurrently (WithLogConcurrency).
+	jobs := []logJob{func(ctx context.Context) ([]types.Log, error) {
+		logs, fetchErr := d.fetchByTopics(ctx, from, to, d.decoder.Topics(EmitterCurve), emitters.Curves)
+		if fetchErr != nil {
+			return nil, fmt.Errorf("fetch curve logs by topic: %w", fetchErr)
+		}
+		return logs, nil
+	}}
 
 	launchBlocks := make([]uint64, 0, len(newByBlock))
 	for block := range newByBlock {
@@ -127,21 +137,30 @@ func (d *Discoverer) Discover(ctx context.Context, from, to uint64, known Emitte
 		// Token Transfer and pair events use standard ERC-20/Uniswap signatures, so they stay
 		// address-filtered.
 		for _, kind := range []EmitterKind{EmitterToken, EmitterPair} {
-			logs, fetchErr := d.fetch(ctx, block, to, addressesFor(fresh, kind), d.decoder.Topics(kind))
-			if fetchErr != nil {
-				return DiscoveryResult{}, fmt.Errorf("refetch discovered addresses from block %d: %w", block, fetchErr)
-			}
-			allLogs = append(allLogs, logs...)
+			jobs = append(jobs, func(ctx context.Context) ([]types.Log, error) {
+				logs, fetchErr := d.fetch(ctx, block, to, addressesFor(fresh, kind), d.decoder.Topics(kind))
+				if fetchErr != nil {
+					return nil, fmt.Errorf("refetch discovered addresses from block %d: %w", block, fetchErr)
+				}
+				return logs, nil
+			})
 		}
 	}
 
 	for _, kind := range []EmitterKind{EmitterToken, EmitterPair} {
-		logs, fetchErr := d.fetch(ctx, from, to, addressesFor(known, kind), d.decoder.Topics(kind))
-		if fetchErr != nil {
-			return DiscoveryResult{}, fmt.Errorf("fetch known emitter kind %d: %w", kind, fetchErr)
-		}
-		allLogs = append(allLogs, logs...)
+		jobs = append(jobs, func(ctx context.Context) ([]types.Log, error) {
+			logs, fetchErr := d.fetch(ctx, from, to, addressesFor(known, kind), d.decoder.Topics(kind))
+			if fetchErr != nil {
+				return nil, fmt.Errorf("fetch known emitter kind %d: %w", kind, fetchErr)
+			}
+			return logs, nil
+		})
 	}
+	results, err := d.runLogJobs(ctx, jobs)
+	if err != nil {
+		return DiscoveryResult{}, err
+	}
+	allLogs = append(allLogs, concatLogs(results)...)
 
 	deduplicated, err := deduplicateAndSort(allLogs)
 	if err != nil {
@@ -155,44 +174,79 @@ func (d *Discoverer) fetch(ctx context.Context, from, to uint64, addresses []com
 		return nil, nil
 	}
 	slices.SortFunc(addresses, func(a, b common.Address) int { return bytes.Compare(a[:], b[:]) })
-	result := make([]types.Log, 0)
+	allowedTopics := make(map[common.Hash]struct{}, len(topics))
+	for _, topic := range topics {
+		allowedTopics[topic] = struct{}{}
+	}
+	jobs := make([]logJob, 0, (len(addresses)+d.addressBatchSize-1)/d.addressBatchSize)
 	for start := 0; start < len(addresses); start += d.addressBatchSize {
 		end := min(start+d.addressBatchSize, len(addresses))
 		batch := addresses[start:end]
-		logs, err := d.fetchRange(ctx, from, to, batch, topics)
-		if err != nil {
-			return nil, err
-		}
-		allowedAddresses := NewAddressSet(batch...)
-		allowedTopics := make(map[common.Hash]struct{}, len(topics))
-		for _, topic := range topics {
-			allowedTopics[topic] = struct{}{}
-		}
-		for _, log := range logs {
-			if _, ok := allowedAddresses[log.Address]; !ok {
-				return nil, &EmitterError{Address: log.Address, Coordinates: coordinates(log)}
+		jobs = append(jobs, func(ctx context.Context) ([]types.Log, error) {
+			logs, err := d.fetchRange(ctx, from, to, batch, topics)
+			if err != nil {
+				return nil, err
 			}
-			if len(log.Topics) == 0 {
-				return nil, &LogError{Coordinates: coordinates(log), Err: fmt.Errorf("%w: missing topic0", ErrMalformedLog)}
+			allowedAddresses := NewAddressSet(batch...)
+			for _, log := range logs {
+				if _, ok := allowedAddresses[log.Address]; !ok {
+					return nil, &EmitterError{Address: log.Address, Coordinates: coordinates(log)}
+				}
+				if len(log.Topics) == 0 {
+					return nil, &LogError{Coordinates: coordinates(log), Err: fmt.Errorf("%w: missing topic0", ErrMalformedLog)}
+				}
+				if _, ok := allowedTopics[log.Topics[0]]; !ok {
+					return nil, &LogError{Coordinates: coordinates(log), Err: fmt.Errorf("%w: %s", ErrUnknownTopic, log.Topics[0])}
+				}
 			}
-			if _, ok := allowedTopics[log.Topics[0]]; !ok {
-				return nil, &LogError{Coordinates: coordinates(log), Err: fmt.Errorf("%w: %s", ErrUnknownTopic, log.Topics[0])}
-			}
-		}
-		result = append(result, logs...)
+			return logs, nil
+		})
 	}
-	return result, nil
+	results, err := d.runLogJobs(ctx, jobs)
+	if err != nil {
+		return nil, err
+	}
+	return concatLogs(results), nil
 }
 
 // fetchByTopics queries a range by event signature only and keeps logs from allowed emitters.
 // A log with a signature outside the requested set is still a provider fault and fails closed.
+//
+// Any contract can emit these signatures, so a topic-only query is only a fast path: a range
+// flooded with impostor logs can exceed the provider's result or size limit even for one block.
+// Any failure of that single attempt therefore falls back to the address-batched query of the
+// allowed emitters, which impostors cannot inflate and which splits ranges on capacity errors.
 func (d *Discoverer) fetchByTopics(ctx context.Context, from, to uint64, topics []common.Hash, allowed AddressSet) ([]types.Log, error) {
 	if len(allowed) == 0 || len(topics) == 0 {
 		return nil, nil
 	}
-	logs, err := d.fetchRange(ctx, from, to, nil, topics)
-	if err != nil {
+	logs, err := d.fetchTopicOnly(ctx, from, to, topics, allowed)
+	if err != nil && !errors.Is(err, errTopicOnlyFailed) {
 		return nil, err
+	}
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		batched, batchErr := d.fetch(ctx, from, to, setAddresses(allowed), topics)
+		if batchErr != nil {
+			return nil, errors.Join(batchErr, err)
+		}
+		return batched, nil
+	}
+	return logs, nil
+}
+
+// errTopicOnlyFailed marks a failed topic-only query, which callers answer with the
+// address-batched query; malformed or foreign-topic logs are returned as they are.
+var errTopicOnlyFailed = errors.New("topic-only query failed")
+
+// fetchTopicOnly runs one topic-only query and keeps the logs of allowed emitters.
+func (d *Discoverer) fetchTopicOnly(ctx context.Context, from, to uint64, topics []common.Hash, allowed AddressSet) ([]types.Log, error) {
+	query := ethereum.FilterQuery{FromBlock: new(big.Int).SetUint64(from), ToBlock: new(big.Int).SetUint64(to), Topics: [][]common.Hash{topics}}
+	logs, err := d.filterLogs(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errTopicOnlyFailed, err)
 	}
 	allowedTopics := make(map[common.Hash]struct{}, len(topics))
 	for _, topic := range topics {
@@ -225,7 +279,7 @@ func (d *Discoverer) fetchRange(ctx context.Context, from, to uint64, addresses 
 // the provider reports a capacity error.
 func (d *Discoverer) fetchRangeTopics(ctx context.Context, from, to uint64, addresses []common.Address, topics [][]common.Hash) ([]types.Log, error) {
 	query := ethereum.FilterQuery{FromBlock: new(big.Int).SetUint64(from), ToBlock: new(big.Int).SetUint64(to), Addresses: addresses, Topics: topics}
-	logs, err := d.source.FilterLogs(ctx, query)
+	logs, err := d.filterLogs(ctx, query)
 	if err == nil {
 		return logs, nil
 	}

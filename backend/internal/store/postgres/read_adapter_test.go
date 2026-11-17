@@ -5,10 +5,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
 	"testing"
 	"time"
 
 	"github.com/Contictus/launchtap/backend/internal/pagination"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func TestEscapeLikePatternMakesWildcardsLiteral(t *testing.T) {
@@ -65,5 +67,22 @@ func TestAgeCutoff(t *testing.T) {
 	}
 	if _, _, err := ageCutoff("all", now, &pagination.Cursor{Since: "2026-01-02T03:04:05Z"}); !errors.Is(err, pagination.ErrInvalidCursor) {
 		t.Fatalf("all with since err=%v", err)
+	}
+}
+
+func TestCandleNumericKeepsBinaryNumericExponent(t *testing.T) {
+	oneETH, _ := new(big.Int).SetString("1000000000000000000", 10)
+	for name, tc := range map[string]struct {
+		in   any
+		want *big.Int
+	}{
+		"trailing zero groups": {pgtype.Numeric{Int: big.NewInt(100), Exp: 16, Valid: true}, oneETH},
+		"no exponent":          {pgtype.Numeric{Int: big.NewInt(12345), Valid: true}, big.NewInt(12345)},
+		"null":                 {pgtype.Numeric{}, new(big.Int)},
+		"int64":                {int64(7), big.NewInt(7)},
+	} {
+		if got := candleNumeric(tc.in); got.Cmp(tc.want) != 0 {
+			t.Errorf("%s: candleNumeric = %s, want %s", name, got, tc.want)
+		}
 	}
 }

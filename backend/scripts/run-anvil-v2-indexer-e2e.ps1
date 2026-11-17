@@ -86,7 +86,7 @@ try {
     $env:ANVIL_V2_TREASURY = $protocolTreasury
     Push-Location $backendRoot
     try {
-        go test -tags=integration -race -count=1 -run '^TestAnvilV2LifecycleAndReorg$' ./internal/indexer/...
+        go test -tags=integration -race -count=1 -run '^(TestAnvilV2LifecycleAndReorg|TestAnvilV2DeepReorgSoak)$' ./internal/indexer/...
         if ($LASTEXITCODE -ne 0) { Fail "Go v2 indexer test failed" }
     }
     finally { Pop-Location }

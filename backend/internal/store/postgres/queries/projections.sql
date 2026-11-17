@@ -190,7 +190,8 @@ SELECT token.chain_id, token.token_address, nextval('aggregation_dirty_generatio
 ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregation_dirty_generation_seq');
 
 -- name: MarkPositionDirty :exec
--- Excluded wallets (R4): the zero address, the factory, and any token's curve or pair.
+-- Excluded wallets (R4): the zero address, the factory, any token's curve, pair or locker, and
+-- the chain's V4 PoolManager (it takes the other side of every engine-2 graduation and swap).
 INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
 SELECT sqlc.arg(chain_id)::bigint, sqlc.arg(wallet)::bytea, sqlc.arg(token_address)::bytea, nextval('position_dirty_generation_seq')
 WHERE sqlc.arg(wallet)::bytea <> decode(repeat('00', 20), 'hex')
@@ -202,6 +203,14 @@ WHERE sqlc.arg(wallet)::bytea <> decode(repeat('00', 20), 'hex')
   AND NOT EXISTS (
     SELECT 1 FROM tokens AS excluded
     WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.lp_pair = sqlc.arg(wallet)::bytea
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM tokens AS excluded
+    WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.locker = sqlc.arg(wallet)::bytea
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM v4_pool_managers AS manager
+    WHERE manager.chain_id = sqlc.arg(chain_id)::bigint AND manager.pool_manager = sqlc.arg(wallet)::bytea
   )
 ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq');
 
@@ -220,6 +229,14 @@ FROM (
       AND NOT EXISTS (
         SELECT 1 FROM tokens AS excluded
         WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.lp_pair = side.wallet
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM tokens AS excluded
+        WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.locker = side.wallet
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM v4_pool_managers AS manager
+        WHERE manager.chain_id = sqlc.arg(chain_id)::bigint AND manager.pool_manager = side.wallet
       )
 ) AS sides
 ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq');
@@ -442,15 +459,23 @@ DELETE FROM wallet_positions WHERE chain_id = $1 AND wallet = $2 AND token_addre
 -- name: DeleteWalletRealizedLegs :exec
 DELETE FROM wallet_realized_legs WHERE chain_id = $1 AND wallet = $2 AND token_address = $3;
 
--- name: InsertWalletRealizedLeg :exec
+-- All of one position's realized legs in one statement; the arrays are aligned by index. One
+-- round trip per position instead of one per leg (AUDIT_REPORT_TR HIGH-14).
+-- name: InsertWalletRealizedLegs :execrows
 INSERT INTO wallet_realized_legs (chain_id, wallet, token_address, block_number, transaction_index, block_time, realized_pnl)
-VALUES (sqlc.arg(chain_id), sqlc.arg(wallet), sqlc.arg(token_address), sqlc.arg(block_number),
-    sqlc.arg(transaction_index), sqlc.arg(block_time), sqlc.arg(realized_pnl));
+SELECT sqlc.arg(chain_id), sqlc.arg(wallet), sqlc.arg(token_address),
+       n.block_number, x.transaction_index, t.block_time, r.realized_pnl
+FROM unnest(sqlc.arg(block_numbers)::bigint[]) WITH ORDINALITY AS n(block_number, ord)
+JOIN unnest(sqlc.arg(transaction_indexes)::integer[]) WITH ORDINALITY AS x(transaction_index, ord) ON x.ord = n.ord
+JOIN unnest(sqlc.arg(block_times)::timestamptz[]) WITH ORDINALITY AS t(block_time, ord) ON t.ord = n.ord
+JOIN unnest(sqlc.arg(realized_pnls)::numeric[]) WITH ORDINALITY AS r(realized_pnl, ord) ON r.ord = n.ord;
 
 -- Rebuilds one wallet's totals from its positions; the row is deleted when none remain.
 -- name: RecomputeWalletTotals :exec
 WITH aggregate AS (
     SELECT p.chain_id, p.wallet, sum(p.realized_pnl) AS realized_pnl,
+        -- The leaderboard skips positions that received tokens by transfer (zero cost basis).
+        COALESCE(sum(p.realized_pnl) FILTER (WHERE p.transferred_in = 0), 0) AS leaderboard_realized_pnl,
         count(*) FILTER (WHERE p.trade_count > 0) AS tokens_traded,
         count(*) FILTER (WHERE p.balance > 0) AS held_count,
         min(p.first_block_number) AS first_block_number,
@@ -463,28 +488,36 @@ WITH aggregate AS (
     WHERE totals.chain_id = sqlc.arg(chain_id)::bigint AND totals.wallet = sqlc.arg(wallet)::bytea
       AND NOT EXISTS (SELECT 1 FROM aggregate)
 )
-INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
-SELECT chain_id, wallet, realized_pnl, tokens_traded, held_count, first_block_number, last_block_number FROM aggregate
+INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, leaderboard_realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
+SELECT chain_id, wallet, realized_pnl, leaderboard_realized_pnl, tokens_traded, held_count, first_block_number, last_block_number FROM aggregate
 ON CONFLICT (chain_id, wallet) DO UPDATE SET
-    realized_pnl = EXCLUDED.realized_pnl, tokens_traded = EXCLUDED.tokens_traded, held_count = EXCLUDED.held_count,
+    realized_pnl = EXCLUDED.realized_pnl, leaderboard_realized_pnl = EXCLUDED.leaderboard_realized_pnl, tokens_traded = EXCLUDED.tokens_traded, held_count = EXCLUDED.held_count,
     first_block_number = EXCLUDED.first_block_number, last_block_number = EXCLUDED.last_block_number;
 
--- name: RecomputeTokenStats :exec
+-- name: RecomputeTokensStats :exec
+-- Recomputes token_stats for every listed token of one chain in one statement (pre-flight
+-- 2026-11-13-batch-token-stats-recompute). Unknown tokens are skipped; duplicates are collapsed
+-- because ON CONFLICT cannot update the same row twice.
 WITH clock AS (
     SELECT now() AS now_at
+), targets AS (
+    SELECT DISTINCT target.token_address
+    FROM unnest(sqlc.arg(token_addresses)::bytea[]) AS target(token_address)
 ), prices AS (
     SELECT
         t.chain_id,
         t.token_address,
-        t.initial_virtual_eth * 1000000000000000000 / NULLIF(t.initial_virtual_token, 0) AS launch_price,
+        -- Prices and caps truncate like every other wad price (market_trades); a bare numeric
+        -- division stored in NUMERIC(78,0) rounds half away from zero (AUDIT_REPORT_TR MED-11).
+        trunc(t.initial_virtual_eth * 1000000000000000000 / NULLIF(t.initial_virtual_token, 0)) AS launch_price,
         t.launch_block_time,
         -- Before the first trade there is no reserve row; the curve still quotes from its
         -- initial virtual reserves, matching GetTokenDetail and GetTokenQuoteState. A graduated
         -- engine-2 token prices from its V4 pool and reports no liquidity figure.
         CASE WHEN reserve.reserve_source = 'v4'
             THEN COALESCE(v4_spot_price_wad(reserve.sqrt_price_x96), 0)
-            ELSE COALESCE(COALESCE(reserve.eth_reserve, t.initial_virtual_eth) * 1000000000000000000
-                / NULLIF(COALESCE(reserve.token_reserve, t.initial_virtual_token), 0), 0)
+            ELSE COALESCE(trunc(COALESCE(reserve.eth_reserve, t.initial_virtual_eth) * 1000000000000000000
+                / NULLIF(COALESCE(reserve.token_reserve, t.initial_virtual_token), 0)), 0)
         END AS spot_price,
         CASE WHEN reserve.reserve_source = 'v4' THEN NULL
             ELSE COALESCE(reserve.eth_reserve, t.initial_virtual_eth, 0)
@@ -495,37 +528,12 @@ WITH clock AS (
         t.engine_version,
         t.locker,
         manager.pool_manager
-    FROM tokens AS t
+    FROM targets
+    JOIN tokens AS t
+      ON t.chain_id = sqlc.arg(chain_id)::bigint AND t.token_address = targets.token_address
     LEFT JOIN token_reserves AS reserve
       ON reserve.chain_id = t.chain_id AND reserve.token_address = t.token_address
     LEFT JOIN v4_pool_managers AS manager ON manager.chain_id = t.chain_id
-    WHERE t.chain_id = $1 AND t.token_address = $2
--- Every trade is bucketed into all four candle intervals; ATH, baseline, latest, and volume
--- read only the finest ('1m') series so each trade is counted once.
-), candles_ath AS (
-    SELECT c.chain_id, c.token_address, c.high_price_wad, c.bucket_start_time
-    FROM candles AS c
-    WHERE c.chain_id = $1 AND c.token_address = $2 AND c.interval = '1m'
-    ORDER BY c.high_price_wad DESC, c.bucket_start_time ASC
-    LIMIT 1
-), baseline AS (
-    SELECT c.close_price_wad
-    FROM candles AS c CROSS JOIN clock
-    WHERE c.chain_id = $1 AND c.token_address = $2 AND c.interval = '1m'
-      AND c.bucket_start_time <= clock.now_at - interval '24 hours'
-    ORDER BY c.bucket_start_time DESC
-    LIMIT 1
-), latest AS (
-    SELECT c.close_price_wad
-    FROM candles AS c
-    WHERE c.chain_id = $1 AND c.token_address = $2 AND c.interval = '1m'
-    ORDER BY c.bucket_start_time DESC
-    LIMIT 1
-), rolling AS (
-    SELECT COALESCE(sum(c.gross_eth_volume), 0) AS volume_24h
-    FROM candles AS c CROSS JOIN clock
-    WHERE c.chain_id = $1 AND c.token_address = $2 AND c.interval = '1m'
-      AND c.bucket_start_time >= clock.now_at - interval '24 hours'
 ), holders AS (
     SELECT
         p.chain_id,
@@ -560,10 +568,37 @@ WITH clock AS (
         previous.ath_at AS previous_ath_at
     FROM prices AS p
     JOIN holders AS h USING (chain_id, token_address)
-    CROSS JOIN rolling
-    LEFT JOIN candles_ath USING (chain_id, token_address)
-    LEFT JOIN baseline ON TRUE
-    LEFT JOIN latest ON TRUE
+    CROSS JOIN clock
+    -- Every trade is bucketed into all four candle intervals; ATH, baseline, latest, and volume
+    -- read only the finest ('1m') series so each trade is counted once.
+    LEFT JOIN LATERAL (
+        SELECT c.high_price_wad, c.bucket_start_time
+        FROM candles AS c
+        WHERE c.chain_id = p.chain_id AND c.token_address = p.token_address AND c.interval = '1m'
+        ORDER BY c.high_price_wad DESC, c.bucket_start_time ASC
+        LIMIT 1
+    ) AS candles_ath ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT c.close_price_wad
+        FROM candles AS c
+        WHERE c.chain_id = p.chain_id AND c.token_address = p.token_address AND c.interval = '1m'
+          AND c.bucket_start_time <= clock.now_at - interval '24 hours'
+        ORDER BY c.bucket_start_time DESC
+        LIMIT 1
+    ) AS baseline ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT c.close_price_wad
+        FROM candles AS c
+        WHERE c.chain_id = p.chain_id AND c.token_address = p.token_address AND c.interval = '1m'
+        ORDER BY c.bucket_start_time DESC
+        LIMIT 1
+    ) AS latest ON TRUE
+    CROSS JOIN LATERAL (
+        SELECT COALESCE(sum(c.gross_eth_volume), 0) AS volume_24h
+        FROM candles AS c
+        WHERE c.chain_id = p.chain_id AND c.token_address = p.token_address AND c.interval = '1m'
+          AND c.bucket_start_time >= clock.now_at - interval '24 hours'
+    ) AS rolling
     LEFT JOIN token_stats AS previous
       ON previous.chain_id = p.chain_id AND previous.token_address = p.token_address
 )
@@ -574,8 +609,8 @@ INSERT INTO token_stats (
 )
 SELECT chain_id, token_address,
  spot_price,
- spot_price * GREATEST(total_supply - non_circulating, 0) / 1000000000000000000,
- spot_price * total_supply / 1000000000000000000,
+ trunc(spot_price * GREATEST(total_supply - non_circulating, 0) / 1000000000000000000),
+ trunc(spot_price * total_supply / 1000000000000000000),
  liquidity,
  GREATEST(COALESCE(previous_ath, 0), COALESCE(launch_price, 0), candle_ath),
  CASE
@@ -584,14 +619,20 @@ SELECT chain_id, token_address,
    ELSE launch_block_time
  END,
  volume_24h,
+ -- Saturates at the JS-safe range (token_stats_price_change_24h_bps_js_safe_range) instead of
+ -- failing: a dust baseline can make the change unbounded, and an error would fail this token's
+ -- recompute forever. Mirrors stats.ComputeTokenStats.
  CASE
    WHEN baseline_price > 0 AND latest_price IS NOT NULL
-     THEN trunc((latest_price - baseline_price) * 10000 / baseline_price)::BIGINT
+     THEN LEAST(9007199254740991, GREATEST(-9007199254740991,
+            trunc((latest_price - baseline_price) * 10000 / baseline_price)))::BIGINT
    ELSE 0
  END,
  holder_count,
  now()
 FROM computed
+-- A fixed row order keeps concurrent multi-token upserts from locking rows in opposite orders.
+ORDER BY chain_id, token_address
 ON CONFLICT (chain_id,token_address) DO UPDATE SET
  spot_price_eth_wad=EXCLUDED.spot_price_eth_wad,market_cap_eth_wad=EXCLUDED.market_cap_eth_wad,
  fdv_eth_wad=EXCLUDED.fdv_eth_wad,liquidity_eth_wad=EXCLUDED.liquidity_eth_wad,
@@ -639,6 +680,46 @@ WITH bounds AS (
 INSERT INTO protocol_daily (chain_id,day,volume_eth_wad,launches_count,trades_count,graduations_count)
 SELECT sqlc.arg(chain_id),day,volume,launches,trades,graduations FROM daily_rollup
 ON CONFLICT (chain_id,day) DO UPDATE SET volume_eth_wad=excluded.volume_eth_wad,launches_count=excluded.launches_count,trades_count=excluded.trades_count,graduations_count=excluded.graduations_count;
+
+-- from_day '-infinity' clears every day of the chain.
+-- name: ClearProtocolDailyRevenue :exec
+DELETE FROM protocol_daily_revenue WHERE chain_id = sqlc.arg(chain_id) AND day >= sqlc.arg(from_day)::date;
+
+-- ETH credited to the protocol per UTC day and engine, earned basis
+-- (docs/specs/2026-11-12-protocol-revenue-design.md). The LP share mirrors LpFeeLocker._credit:
+-- the creator gets floor(eth * bps / 10000), the protocol the rest. Every launch writes a row for
+-- its engine and day, so ListProtocolRevenueByEngine lists each launched engine. Only days >=
+-- from_day are rebuilt; from_day '-infinity' rebuilds the whole history.
+-- name: RecomputeProtocolDailyRevenue :exec
+WITH bounds AS (
+ SELECT (sqlc.arg(from_day)::date::timestamp AT TIME ZONE 'UTC') AS from_time
+), daily AS (
+ SELECT (l.block_time AT TIME ZONE 'UTC')::date AS day, l.engine_version, l.launch_fee_paid AS launch_fees,
+        0::numeric AS trade_fees, 0::numeric AS snipe_tax, 0::numeric AS graduation_remainder, 0::numeric AS lp_fees
+ FROM token_launches AS l
+ WHERE l.chain_id = sqlc.arg(chain_id) AND l.block_time >= (SELECT from_time FROM bounds)
+ UNION ALL
+ SELECT (t.block_time AT TIME ZONE 'UTC')::date, l.engine_version, 0, t.protocol_fee, t.snipe_tax, 0, 0
+ FROM trades AS t
+ JOIN token_launches AS l ON l.chain_id = t.chain_id AND l.token_address = t.token_address
+ WHERE t.chain_id = sqlc.arg(chain_id) AND t.block_time >= (SELECT from_time FROM bounds)
+ UNION ALL
+ SELECT (g.block_time AT TIME ZONE 'UTC')::date, l.engine_version, 0, 0, 0, g.eth_remainder, 0
+ FROM graduations AS g
+ JOIN token_launches AS l ON l.chain_id = g.chain_id AND l.token_address = g.token_address
+ WHERE g.chain_id = sqlc.arg(chain_id) AND g.block_time >= (SELECT from_time FROM bounds)
+ UNION ALL
+ SELECT (c.block_time AT TIME ZONE 'UTC')::date, l.engine_version, 0, 0, 0, 0,
+        c.eth_amount - div(c.eth_amount * COALESCE(l.lp_creator_share_bps, 0), 10000)
+ FROM lp_fee_collections AS c
+ JOIN token_launches AS l ON l.chain_id = c.chain_id AND l.token_address = c.token_address
+ WHERE c.chain_id = sqlc.arg(chain_id) AND c.block_time >= (SELECT from_time FROM bounds)
+)
+INSERT INTO protocol_daily_revenue (chain_id, day, engine_version, launch_fees, trade_fees, snipe_tax, graduation_remainder, lp_fees)
+SELECT sqlc.arg(chain_id), day, engine_version, sum(launch_fees), sum(trade_fees), sum(snipe_tax),
+       sum(graduation_remainder), sum(lp_fees)
+FROM daily
+GROUP BY day, engine_version;
 
 -- The all-time columns are the sums of protocol_daily, which the caller has just brought up to
 -- daily_through_block; the 24h columns read the sources by block_time range.
@@ -694,6 +775,16 @@ FROM (
       ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
     JOIN tokens AS token
       ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
+    WHERE swap.chain_id = sqlc.arg(chain_id)
+      AND swap.block_time >= sqlc.arg(window_from)::timestamptz
+      AND swap.block_time < sqlc.arg(window_to)::timestamptz
+    UNION
+    SELECT DISTINCT graduation.chain_id, graduation.token_address
+    FROM v4_swaps AS swap
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    JOIN graduations AS graduation
+      ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
     WHERE swap.chain_id = sqlc.arg(chain_id)
       AND swap.block_time >= sqlc.arg(window_from)::timestamptz
       AND swap.block_time < sqlc.arg(window_to)::timestamptz
@@ -816,6 +907,14 @@ WITH pairs AS (
         SELECT 1 FROM tokens AS excluded
         WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.lp_pair = source.wallet
       )
+      AND NOT EXISTS (
+        SELECT 1 FROM tokens AS excluded
+        WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.locker = source.wallet
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM v4_pool_managers AS manager
+        WHERE manager.chain_id = sqlc.arg(chain_id)::bigint AND manager.pool_manager = source.wallet
+      )
 ), marked AS (
     INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
     SELECT sqlc.arg(chain_id)::bigint, pairs.wallet, pairs.token_address, nextval('position_dirty_generation_seq')
@@ -825,3 +924,50 @@ WITH pairs AS (
     RETURNING 1
 )
 SELECT (SELECT count(*) FROM pairs)::bigint AS pair_count, (SELECT count(*) FROM marked)::bigint AS marked;
+
+-- Leaderboard window refresh (docs/specs/2026-11-14-windowed-leaderboard-preflight.md). Serializes
+-- refreshes of one chain so two refreshers never interleave a window's delete and insert.
+-- name: LockLeaderboardWindows :exec
+SELECT pg_advisory_xact_lock(hashtextextended('leaderboard_windows:' || sqlc.arg(chain_id)::bigint::text, 0));
+
+-- name: DeleteLeaderboardWindowRanks :exec
+DELETE FROM leaderboard_window_ranks
+WHERE chain_id = sqlc.arg(chain_id) AND window_days = sqlc.arg(window_days)::integer;
+
+-- The top 100 of ListLeaderboardWindow (read.sql), ranked 1..n: the same window, aggregation,
+-- positive-only rule, exclusions and tie-break. TestPrecomputedLeaderboardMatchesLiveQuery keeps
+-- the two in step.
+-- name: InsertLeaderboardWindowRanks :execrows
+INSERT INTO leaderboard_window_ranks (chain_id, window_days, rank, wallet, realized_pnl, tokens_traded)
+SELECT sqlc.arg(chain_id), sqlc.arg(window_days)::integer,
+       row_number() OVER (ORDER BY ranked.realized_pnl DESC, ranked.wallet),
+       ranked.wallet, ranked.realized_pnl, ranked.tokens_traded
+FROM (
+    SELECT w.wallet, w.realized_pnl, w.tokens_traded
+    FROM (
+        SELECT l.wallet, sum(l.realized_pnl) AS realized_pnl, count(DISTINCT l.token_address) AS tokens_traded
+        FROM wallet_realized_legs AS l
+        WHERE l.chain_id = sqlc.arg(chain_id)
+          AND l.block_time >= now() - make_interval(days => sqlc.arg(window_days)::integer)
+          AND NOT EXISTS (
+              SELECT 1 FROM wallet_positions AS p
+              WHERE p.chain_id = l.chain_id AND p.wallet = l.wallet AND p.token_address = l.token_address
+                AND p.transferred_in > 0
+          )
+        GROUP BY l.wallet
+    ) AS w
+    WHERE w.realized_pnl > 0
+      AND w.wallet <> decode(repeat('00', 20), 'hex')
+      AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = sqlc.arg(chain_id) AND t.curve_address = w.wallet)
+      AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = sqlc.arg(chain_id) AND t.lp_pair = w.wallet)
+      AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = sqlc.arg(chain_id) AND t.locker = w.wallet)
+      AND NOT EXISTS (SELECT 1 FROM v4_pool_managers AS m WHERE m.chain_id = sqlc.arg(chain_id) AND m.pool_manager = w.wallet)
+    ORDER BY w.realized_pnl DESC, w.wallet
+    LIMIT 100
+) AS ranked;
+
+-- Stamps the refresh with the transaction's clock, the same now() the window was computed from.
+-- name: UpsertLeaderboardWindowRefresh :exec
+INSERT INTO leaderboard_window_refreshes (chain_id, window_days, refreshed_at)
+VALUES (sqlc.arg(chain_id), sqlc.arg(window_days)::integer, now())
+ON CONFLICT (chain_id, window_days) DO UPDATE SET refreshed_at = EXCLUDED.refreshed_at;

@@ -67,8 +67,9 @@ func (f walletReaderFixture) position(wallet, token byte, balance, cost, realize
 }
 
 func (f walletReaderFixture) totals(wallet byte, realized, tokensTraded, held int64) {
-	f.ledger.exec(`INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
-		VALUES ($1, $2, $3, $4, $5, 10, 12)`, walletChainID, addressBytes(wallet), realized, tokensTraded, held)
+	// No fixture position received tokens by transfer, so the ranked PnL equals the realized PnL.
+	f.ledger.exec(`INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, leaderboard_realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
+		VALUES ($1, $2, $3, $3, $4, $5, 10, 12)`, walletChainID, addressBytes(wallet), realized, tokensTraded, held)
 }
 
 // seedWallets gives W three open positions and W2 three closed ones.
@@ -384,8 +385,8 @@ func TestLeaderboardRanksAndExcludesProtocol(t *testing.T) {
 	f.totals(0x31, 9999, 1, 0)
 	f.totals(0x41, 8888, 1, 0)
 	f.totals(0x42, 8887, 1, 0)
-	f.ledger.exec(`INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
-		VALUES ($1, decode(repeat('00', 20), 'hex'), 7777, 1, 0, 10, 12)`, walletChainID)
+	f.ledger.exec(`INSERT INTO wallet_totals (chain_id, wallet, realized_pnl, leaderboard_realized_pnl, tokens_traded, held_count, first_block_number, last_block_number)
+		VALUES ($1, decode(repeat('00', 20), 'hex'), 7777, 7777, 1, 0, 10, 12)`, walletChainID)
 
 	page, err := f.reader.Leaderboard(ctx, walletChainID, wallet.WindowAll, 100)
 	if err != nil {
@@ -491,6 +492,43 @@ func TestLeaderboardWindows(t *testing.T) {
 	if err != nil || len(limited.Items) != 1 || limited.Items[0].Address != wantAddr(0xb1) {
 		t.Fatalf("limited = %+v %v", limited, err)
 	}
+
+	// Precomputed rankings (docs/specs/2026-11-14-windowed-leaderboard-preflight.md). The checks
+	// above ran with no refresh row, so they exercised the live fallback; after a refresh the same
+	// pages come from leaderboard_window_ranks.
+	source := storepostgres.LeaderboardWindowSource{Adapter: storepostgres.NewAdapter(f.pool), ChainID: walletChainID}
+	refresh := func(window wallet.LeaderboardWindow, wantRanked int64) {
+		t.Helper()
+		if n, err := source.RefreshLeaderboardWindow(ctx, int(window)); err != nil || n != wantRanked {
+			t.Fatalf("refresh window %d = %d, %v; want %d", window, n, err, wantRanked)
+		}
+	}
+	refresh(wallet.Window7d, 2)
+	refresh(wallet.Window30d, 2)
+	// A leg booked after the refresh is absent from the precomputed pages, which shows the reads
+	// use them, and the pages still equal the live query's.
+	f.realizedLeg(0xb4, walletTokenA, 12, "1 minute", 1000)
+	check(wallet.Window7d, []want{{0xb1, 300, 1}, {0xb2, 300, 1}})
+	check(wallet.Window30d, []want{{0xb1, 500, 2}, {0xb3, 50, 1}})
+	limited, err = f.reader.Leaderboard(ctx, walletChainID, wallet.Window7d, 1)
+	if err != nil || len(limited.Items) != 1 || limited.Items[0].Address != wantAddr(0xb1) {
+		t.Fatalf("precomputed limited = %+v %v", limited, err)
+	}
+	// A stale refresh falls back to the live query, which sees the new leg; the other window
+	// keeps its precomputed page.
+	f.ledger.exec(`UPDATE leaderboard_window_refreshes SET refreshed_at = now() - interval '5 minutes 1 second'
+		WHERE chain_id = $1 AND window_days = 7`, walletChainID)
+	check(wallet.Window7d, []want{{0xb4, 1000, 1}, {0xb1, 300, 1}, {0xb2, 300, 1}})
+	check(wallet.Window30d, []want{{0xb1, 500, 2}, {0xb3, 50, 1}})
+	// The next refresh replaces each ranking.
+	refresh(wallet.Window7d, 3)
+	refresh(wallet.Window30d, 3)
+	check(wallet.Window7d, []want{{0xb4, 1000, 1}, {0xb1, 300, 1}, {0xb2, 300, 1}})
+	check(wallet.Window30d, []want{{0xb4, 1000, 1}, {0xb1, 500, 2}, {0xb3, 50, 1}})
+	if _, err := source.RefreshLeaderboardWindow(ctx, 1); err == nil {
+		t.Fatal("unsupported window refreshed")
+	}
+
 	if _, err := f.reader.Leaderboard(ctx, walletChainID, wallet.LeaderboardWindow(1), 10); err == nil {
 		t.Fatal("unsupported window accepted by reader")
 	}

@@ -469,6 +469,7 @@ requires `DATABASE_URL`.
 | `DEPLOYMENT_ID`                  | `anvil-local` in example           | Required lower-case manifest identifier; must match the chain's reviewed deployment                 |
 | `RPC_URL`                        | `http://127.0.0.1:8545` in example | Required HTTP(S) JSON-RPC endpoint; use an approved endpoint for hosted services                    |
 | `DATABASE_URL`                   | Local PostgreSQL URL in example    | Required `postgres://` or `postgresql://` URL; secret in hosted environments                        |
+| `DATABASE_PASSWORD_FILE`         | Unset                              | Optional file holding the password for a password-less `DATABASE_URL` (one Docker secret per role); `DATABASE_PASSWORD` may hold it directly instead, never both |
 | `PRIVY_APP_ID`                   | Blank in example                   | Required by API for identity verification; must match the configured Privy app                      |
 | `PRIVY_VERIFICATION_KEY`         | Blank in example                   | Required by API; backend-only verification key from approved secret storage                         |
 | `LOG_LEVEL`                      | `info`                             | Structured log level; defaults to `info`                                                            |
@@ -478,13 +479,17 @@ requires `DATABASE_URL`.
 | `INDEXER_CHUNK_SIZE`             | `100`                              | Blocks per processing chunk; default 100, accepted range 1–10,000                                   |
 | `INDEXER_REORG_SEARCH_DEPTH`     | `128`                              | Default header search window; accepted range 1–100,000                                              |
 | `INDEXER_REORG_RECOVERY_MODE`    | `false`                            | Must be `true` only with an explicitly larger search depth; see the deep-reorg runbook              |
-| `INDEXER_LOG_ADDRESS_BATCH_SIZE` | `500`                              | Addresses per log query batch; default 500, accepted range 1–2,000                                  |
+| `INDEXER_LOG_ADDRESS_BATCH_SIZE` | `1000`                             | Addresses per log query batch; default 1,000, accepted range 1–2,000                                |
+| `INDEXER_LOG_FETCH_CONCURRENCY`  | `4`                                | `eth_getLogs` calls discovery keeps in flight; default 4, accepted range 1–16 (1 is sequential)     |
 | `INDEXER_POLL_INTERVAL`          | `1s`                               | Positive polling duration; defaults to 1 second                                                     |
 | `INDEXER_SENDER_BACKFILL_INTERVAL` | `60s`                            | Automatic pool swap sender backfill period (safe blocks only); `0` disables, otherwise 1s–24h       |
 | `INDEXER_SENDER_BACKFILL_MAX_TXS`  | `500`                            | Transactions one automatic backfill pass looks up; default 500, accepted range 1–10,000             |
 | `RPC_TIMEOUT`                    | `10s`                              | Positive per-RPC timeout; defaults to 10 seconds                                                    |
 | `RPC_MAX_RETRIES`                | `3`                                | Retry count; defaults to 3, accepted range 0–20                                                     |
 | `RPC_RETRY_BACKOFF`              | `250ms`                            | Positive retry backoff; defaults to 250 milliseconds                                                |
+| `RPC_FALLBACK_URL`               | unset                              | Optional second indexer RPC (secret); empty disables failover                                       |
+| `RPC_FALLBACK_AFTER_FAILURES`    | `3`                                | Consecutive provider failures before switching, 1-100                                               |
+| `RPC_FALLBACK_PROBE_INTERVAL`    | `30s`                              | How often the fallback probes the primary, 1s-1h                                                    |
 | `INDEXER_WORKER_ID`              | `indexer-1` in example             | Required non-empty identity for the indexer writer process                                          |
 | `INDEXER_CONFIRMATIONS`          | Blank                              | Optional local-only finality override; do not use as production finality or on a non-local manifest |
 | `ETH_USD_SOURCE`                 | Blank                              | Configuration placeholder only; provider runtime adapter is not implemented                         |

@@ -237,8 +237,38 @@ func TestEngineV2LedgerDownRefusesV2Rows(t *testing.T) {
 	if err := insertLedgerRow(ctx, database.DB, "token_launches", eventCoordinates{chainID, 1, hashBytes(0x01), base, 0, hashBytes(0x41), 0}, v2Launch(addressBytes(0x41))...); err != nil {
 		t.Fatal(err)
 	}
-	// The V4 swap sender index rolls back first; the v2 projections migration holds no projection
-	// rows here, so it rolls back next.
+	// The candle, revenue, leaderboard and V4 swap migrations roll back first; the v2 projections
+	// migration holds no projection rows here, so it rolls back next.
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the indexer heartbeat: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the service roles: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the audit follow-ups: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the candles ATH index: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the protocol daily revenue rollup: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the leaderboard ranked PnL column: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the V4 swap chain order index: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the V4 swap sender order index: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the leaderboard windows: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the tokens locker index: %v", err)
+	}
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
 		t.Fatalf("roll back the incremental protocol aggregates: %v", err)
 	}

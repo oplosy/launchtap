@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const advanceTelegramCursor = `-- name: AdvanceTelegramCursor :exec
+const advanceTelegramCursor = `-- name: AdvanceTelegramCursor :execrows
 UPDATE telegram_links
 SET delivered_block = $1::bigint, delivered_tx_index = $2::integer,
     delivered_log_index = $3::integer
@@ -31,9 +31,10 @@ type AdvanceTelegramCursorParams struct {
 	ChatID       int64
 }
 
-// Moves the cursor forward only, and only while the account is still bound to the same chat.
-func (q *Queries) AdvanceTelegramCursor(ctx context.Context, arg AdvanceTelegramCursorParams) error {
-	_, err := q.db.Exec(ctx, advanceTelegramCursor,
+// Moves the cursor forward only, and only while the account is still bound to the same chat. Zero
+// rows means the link was removed or re-bound (or the cursor is already past this event).
+func (q *Queries) AdvanceTelegramCursor(ctx context.Context, arg AdvanceTelegramCursorParams) (int64, error) {
+	result, err := q.db.Exec(ctx, advanceTelegramCursor,
 		arg.Block,
 		arg.TxIndex,
 		arg.LogIndex,
@@ -42,7 +43,10 @@ func (q *Queries) AdvanceTelegramCursor(ctx context.Context, arg AdvanceTelegram
 		arg.PrivyDid,
 		arg.ChatID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const consumeTelegramLinkCode = `-- name: ConsumeTelegramLinkCode :one

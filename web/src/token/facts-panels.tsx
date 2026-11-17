@@ -1,6 +1,7 @@
 "use client";
 
 import { formatSignificantPrice } from "@/amounts";
+import { PriceText } from "@/components/price-text";
 import { UsdLine } from "@/market/usd-line";
 import { addressExplorerUrl } from "@/wallet/explorer";
 import { type LaunchFacts } from "./launch-facts";
@@ -147,7 +148,15 @@ export function LaunchFactsPanel({
         </div>
         <div>
           <dt>Pool opens at</dt>
-          <dd>{openingPrice === null ? "Unavailable" : `${openingPrice} ETH`}</dd>
+          <dd>
+            {openingPrice === null ? (
+              "Unavailable"
+            ) : (
+              <>
+                <PriceText value={openingPrice} /> ETH
+              </>
+            )}
+          </dd>
         </div>
         <div>
           <dt>Market cap at graduation</dt>

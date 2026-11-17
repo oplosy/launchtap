@@ -38,3 +38,21 @@ ORDER BY deployment_id;
 
 -- name: NotifyAPIRefresh :exec
 SELECT pg_notify('api_refresh', sqlc.arg(payload)::text);
+
+-- name: TouchIndexerHeartbeat :exec
+INSERT INTO indexer_heartbeats (chain_id, deployment_id, beat_at)
+VALUES ($1, $2, now())
+ON CONFLICT (chain_id, deployment_id) DO UPDATE SET beat_at = EXCLUDED.beat_at;
+
+-- name: GetIndexerStatus :one
+SELECT
+    now()::TIMESTAMPTZ AS checked_at,
+    s.observed_number,
+    s.safe_number,
+    s.finalized_number,
+    h.beat_at
+FROM (SELECT 1) AS probe
+LEFT JOIN sync_state AS s
+    ON s.chain_id = sqlc.arg(chain_id) AND s.deployment_id = sqlc.arg(deployment_id)
+LEFT JOIN indexer_heartbeats AS h
+    ON h.chain_id = s.chain_id AND h.deployment_id = s.deployment_id;

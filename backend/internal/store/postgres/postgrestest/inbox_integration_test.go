@@ -23,7 +23,7 @@ const halfETH int64 = 500_000_000_000_000_000
 func newInboxFixture(t *testing.T, ctx context.Context, at time.Time) positionLedger {
 	t.Helper()
 	database := NewMigrated(t)
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, APIRole))
 	hash := hashBytes(0x21)
 	mustInsertBlock(t, ctx, database.DB, walletChainID, 10, hash, hashBytes(0x20), at, "safe")
 	pair := addressBytes(0x31)
@@ -84,6 +84,8 @@ func TestInboxDerivedFromWatchlistAndLedger(t *testing.T) {
 	l.swap(15, 0, 0x86, 1, 10, 0, 0, 8*halfETH/5, 0xc3, 0xc3)
 	l.exec(`UPDATE pool_swaps SET tx_from = NULL WHERE chain_id = $1 AND block_number = 15`, walletChainID)
 
+	// The reorg runs as the indexer; the inbox reads and read marks run as the API.
+	indexer := openPool(t, ctx, l.f.database.URLAs(t, IndexerRole))
 	store := storepostgres.InboxStore{Pool: l.f.pool}
 	first, err := store.List(ctx, me, nil, 2)
 	if err != nil {
@@ -127,7 +129,7 @@ func TestInboxDerivedFromWatchlistAndLedger(t *testing.T) {
 	}
 
 	// AC4: a reorg that deletes block 15 removes its trade from the next read.
-	if err := storepostgres.WithinTx(ctx, l.f.pool, func(ctx context.Context, a *storepostgres.Adapter) error {
+	if err := storepostgres.WithinTx(ctx, indexer, func(ctx context.Context, a *storepostgres.Adapter) error {
 		return a.DeleteCanonicalAbove(ctx, walletChainID, 14)
 	}); err != nil {
 		t.Fatal(err)
@@ -135,6 +137,34 @@ func TestInboxDerivedFromWatchlistAndLedger(t *testing.T) {
 	page, err := store.List(ctx, me, nil, 10)
 	if want := []string{"large_trade@14-0-1", "graduation@13-0-0", "large_trade@12-1-0"}; err != nil || !slices.Equal(inboxIDs(page), want) || page.Unread != 1 {
 		t.Fatalf("after reorg = %v unread=%d err=%v, want %v unread 1", inboxIDs(page), page.Unread, err, want)
+	}
+
+	// MED-10: a read position inside orphaned blocks moves back to the ancestor, so an event the
+	// new branch mines at the same position shows as unread.
+	remineSell := func() {
+		l.block(15, "safe")
+		insertPoolSync(t, ctx, l.f.database.DB, walletChainID, 15, l.blockHash(15), l.blockTime(15), hashBytes(0x86), 0, l.f.pair.Bytes(), 200, 1200)
+		l.swap(15, 0, 0x86, 1, 10, 0, 0, 8*halfETH/5, 0xc3, 0xc3)
+	}
+	remineSell()
+	page, err = store.List(ctx, me, nil, 10)
+	if err != nil || len(page.Items) != 4 {
+		t.Fatalf("re-mined block 15: %v err=%v", inboxIDs(page), err)
+	}
+	if err := store.MarkRead(ctx, me, page.Items[0].Position); err != nil {
+		t.Fatal(err)
+	}
+	if page, err = store.List(ctx, me, nil, 10); err != nil || page.Unread != 0 {
+		t.Fatalf("after reading block 15: unread=%d err=%v, want 0", page.Unread, err)
+	}
+	if err := storepostgres.WithinTx(ctx, indexer, func(ctx context.Context, a *storepostgres.Adapter) error {
+		return a.DeleteCanonicalAbove(ctx, walletChainID, 14)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	remineSell()
+	if page, err = store.List(ctx, me, nil, 10); err != nil || page.Unread != 1 {
+		t.Fatalf("after a second reorg and a re-mined block 15: unread=%d err=%v, want 1", page.Unread, err)
 	}
 }
 

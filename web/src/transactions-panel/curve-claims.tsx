@@ -5,16 +5,15 @@ import type { Abi, WalletClient } from "viem";
 import type { useAccount, usePublicClient } from "wagmi";
 import type { publicConfiguration } from "@/config/public";
 import type { WalletReadiness } from "@/wallet/readiness";
-import { classifyTransactionFailure, decodeTransactionError } from "@/transactions";
-import { Badge, Button } from "@/components/primitives";
+import { Button } from "@/components/primitives";
 import {
   type Address,
-  ErrorCopy,
   eth,
   hasUnresolvedSubmission,
-  statusLabel,
   usePersistedTransactionState,
+  TransactionProgress,
 } from "./shared";
+import { runDirectWrite } from "./direct-write";
 
 /**
  * Creator-fee and refund claims on the bonding curve: the claimable balances, both claim
@@ -140,82 +139,55 @@ export function useCurveClaims({
     claimLockRef.current = true;
     setClaimBusy(true);
     const setClaimState = kind === "creator" ? setCreatorClaimState : setRefundClaimState;
-    let submittedHash: Address | undefined;
-    let failurePhase: "preflight" | "simulation" | "write" | "receipt" = "preflight";
+    const functionName = kind === "creator" ? "claimCreatorFees" : "claimRefund";
+    const claimAccount = account.address;
     try {
-      setClaimState({ status: "validating" });
-      const [walletAccounts, latestChainId] = await Promise.all([
-        walletClient.getAddresses(),
-        publicClient.getChainId(),
-      ]);
-      if (
-        latestChainId !== configuration.chainId ||
-        walletAccounts[0]?.toLowerCase() !== account.address.toLowerCase()
-      )
-        throw new Error("Wallet or network changed; review the claim again.");
-      if (kind === "creator" && engineVersion === 2) {
-        const amount = await publicClient.readContract({
-          address: safeCurveAddress,
-          abi: curveAbi,
-          functionName: "creatorFeesOwed",
-          args: [account.address],
-        });
-        if ((amount as bigint) === 0n) throw new Error("NothingToClaim");
-      } else if (kind === "creator") {
-        const [creator, amount] = await Promise.all([
-          publicClient.readContract({
-            address: safeCurveAddress,
-            abi: curveAbi,
-            functionName: "creator",
-          }),
-          publicClient.readContract({
-            address: safeCurveAddress,
-            abi: curveAbi,
-            functionName: "unclaimedCreatorFees",
-          }),
-        ]);
-        if (
-          String(creator).toLowerCase() !== account.address.toLowerCase() ||
-          (amount as bigint) === 0n
-        )
-          throw new Error("NothingToClaim");
-      } else {
-        const amount = await publicClient.readContract({
-          address: safeCurveAddress,
-          abi: curveAbi,
-          functionName: "pendingRefund",
-          args: [account.address],
-        });
-        if ((amount as bigint) === 0n) throw new Error("NothingToClaim");
-      }
-      const functionName = kind === "creator" ? "claimCreatorFees" : "claimRefund";
-      setClaimState({ status: "simulating" });
-      failurePhase = "simulation";
-      await publicClient.simulateContract({
-        address: safeCurveAddress,
-        abi: curveAbi,
-        functionName,
-        account: account.address,
-      } as never);
-      setClaimState({ status: "awaiting-signature" });
-      failurePhase = "write";
-      const hash = await walletClient.writeContract({
-        address: safeCurveAddress,
-        abi: curveAbi,
-        functionName,
-        account: account.address,
-      } as never);
-      submittedHash = hash as Address;
-      setClaimState({ status: "submitted", hash: submittedHash });
-      failurePhase = "receipt";
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") throw new Error("ReceiptReverted");
-      setClaimState({ status: "indexing", hash: submittedHash });
-    } catch (cause) {
-      setClaimState({
-        status: classifyTransactionFailure(cause, failurePhase),
-        hash: submittedHash,
-        error: decodeTransactionError(cause).message,
+      await runDirectWrite({
+        publicClient,
+        walletClient,
+        chainId: configuration.chainId,
+        account: claimAccount,
+        write: { address: safeCurveAddress, abi: curveAbi, functionName },
+        setState: setClaimState,
+        changedMessage: "Wallet or network changed; review the claim again.",
+        settled: "indexing",
+        preflight: async () => {
+          if (kind === "creator" && engineVersion === 2) {
+            const amount = await publicClient.readContract({
+              address: safeCurveAddress,
+              abi: curveAbi,
+              functionName: "creatorFeesOwed",
+              args: [claimAccount],
+            });
+            if ((amount as bigint) === 0n) throw new Error("NothingToClaim");
+          } else if (kind === "creator") {
+            const [creator, amount] = await Promise.all([
+              publicClient.readContract({
+                address: safeCurveAddress,
+                abi: curveAbi,
+                functionName: "creator",
+              }),
+              publicClient.readContract({
+                address: safeCurveAddress,
+                abi: curveAbi,
+                functionName: "unclaimedCreatorFees",
+              }),
+            ]);
+            if (
+              String(creator).toLowerCase() !== claimAccount.toLowerCase() ||
+              (amount as bigint) === 0n
+            )
+              throw new Error("NothingToClaim");
+          } else {
+            const amount = await publicClient.readContract({
+              address: safeCurveAddress,
+              abi: curveAbi,
+              functionName: "pendingRefund",
+              args: [claimAccount],
+            });
+            if ((amount as bigint) === 0n) throw new Error("NothingToClaim");
+          }
+        },
       });
     } finally {
       claimLockRef.current = false;
@@ -234,6 +206,14 @@ export function useCurveClaims({
 
 export type CurveClaims = ReturnType<typeof useCurveClaims>;
 
+/** States before any claim was attempted; past them the row keeps showing the claim's progress. */
+const IDLE_CLAIM = new Set(["disconnected", "provider-loading", "wrong-chain", "validating"]);
+
+/** A claim line shows only to an account with something to claim, or with a claim under way. */
+export function showClaim(amount: bigint | null, status: string) {
+  return (amount ?? 0n) > 0n || !IDLE_CLAIM.has(status);
+}
+
 // Curve claims stay open after graduation: engine-2 curve creator fees accrue per account
 // and remain claimable on the curve once the token trades in its V4 pool (spec §5.3).
 export function CurveClaimRow({ claims }: { claims: CurveClaims }) {
@@ -247,73 +227,79 @@ export function CurveClaimRow({ claims }: { claims: CurveClaims }) {
   } = claims;
   const creatorClaimState = creatorClaimTransaction.state;
   const refundClaimState = refundClaimTransaction.state;
+  const showCreator = showClaim(creatorClaimable, creatorClaimState.status);
+  const showRefund = showClaim(refundClaimable, refundClaimState.status);
+  if (!showCreator && !showRefund) return null;
   return (
     <>
       <div className="claim-row">
         <span>
-          Claimable creator fees:{" "}
-          {creatorClaimable === null ? "Unavailable" : eth(creatorClaimable)}
-          <br />
-          Claimable refund: {refundClaimable === null ? "Unavailable" : eth(refundClaimable)}
+          {showCreator ? (
+            <span className="claim-line">
+              Claimable creator fees:{" "}
+              {creatorClaimable === null ? "Unavailable" : eth(creatorClaimable)}
+            </span>
+          ) : null}
+          {showRefund ? (
+            <span className="claim-line">
+              Claimable refund: {refundClaimable === null ? "Unavailable" : eth(refundClaimable)}
+            </span>
+          ) : null}
         </span>
         <div className="transaction-actions">
-          <Button
-            size="sm"
-            disabled={
-              creatorClaimable === null ||
-              creatorClaimable === 0n ||
-              claimBusy ||
-              !creatorClaimTransaction.ready ||
-              hasUnresolvedSubmission(creatorClaimState)
-            }
-            loading={
-              creatorClaimState.status === "simulating" ||
-              creatorClaimState.status === "awaiting-signature"
-            }
-            onClick={() => void executeClaim("creator")}
-          >
-            Claim creator fees
-          </Button>
-          <Button
-            size="sm"
-            disabled={
-              refundClaimable === null ||
-              refundClaimable === 0n ||
-              claimBusy ||
-              !refundClaimTransaction.ready ||
-              hasUnresolvedSubmission(refundClaimState)
-            }
-            loading={
-              refundClaimState.status === "simulating" ||
-              refundClaimState.status === "awaiting-signature"
-            }
-            onClick={() => void executeClaim("refund")}
-          >
-            Claim refund
-          </Button>
+          {showCreator ? (
+            <Button
+              size="sm"
+              disabled={
+                creatorClaimable === null ||
+                creatorClaimable === 0n ||
+                claimBusy ||
+                !creatorClaimTransaction.ready ||
+                hasUnresolvedSubmission(creatorClaimState)
+              }
+              loading={
+                creatorClaimState.status === "simulating" ||
+                creatorClaimState.status === "awaiting-signature"
+              }
+              onClick={() => void executeClaim("creator")}
+            >
+              Claim creator fees
+            </Button>
+          ) : null}
+          {showRefund ? (
+            <Button
+              size="sm"
+              disabled={
+                refundClaimable === null ||
+                refundClaimable === 0n ||
+                claimBusy ||
+                !refundClaimTransaction.ready ||
+                hasUnresolvedSubmission(refundClaimState)
+              }
+              loading={
+                refundClaimState.status === "simulating" ||
+                refundClaimState.status === "awaiting-signature"
+              }
+              onClick={() => void executeClaim("refund")}
+            >
+              Claim refund
+            </Button>
+          ) : null}
         </div>
       </div>
-      {[creatorClaimState, refundClaimState].map((claim) =>
-        claim.status !== "disconnected" ? (
-          <div className="transaction-progress" role="status" key={claim.hash ?? claim.status}>
-            <Badge
+      {[showCreator ? creatorClaimState : null, showRefund ? refundClaimState : null].map(
+        (claim, index) =>
+          claim && (
+            <TransactionProgress
+              key={index === 0 ? "creator" : "refund"}
+              state={claim}
               tone={
                 claim.status === "reverted" || claim.status === "rejected-signature"
                   ? "danger"
                   : "warning"
               }
-            >
-              {statusLabel(claim.status)}
-            </Badge>
-            {claim.hash ? <span className="mono">{claim.hash}</span> : null}
-            {claim.error ? <ErrorCopy error={new Error(claim.error)} /> : null}
-            {claim.canonicalRefreshUnavailable ? (
-              <span className="transaction-error" role="alert">
-                Canonical status refresh unavailable. Showing the last known status.
-              </span>
-            ) : null}
-          </div>
-        ) : null,
+            />
+          ),
       )}
     </>
   );

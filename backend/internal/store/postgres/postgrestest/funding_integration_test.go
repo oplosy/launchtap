@@ -22,7 +22,7 @@ func TestFundingWorkerQueueAndReader(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	pool, err := pgxpool.New(ctx, database.URL)
+	pool, err := pgxpool.New(ctx, database.URLAs(t, FundingRole))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,5 +136,20 @@ func TestFundingWorkerQueueAndReader(t *testing.T) {
 	}
 	if got, err := reader.ReadEarlyBuyers(ctx, earlybuyer.Query{ChainID: chainID, Token: addr(tokenBytes)}); err != nil || len(got.Clusters) != 1 {
 		t.Fatalf("curve funder: %+v, %v", got.Clusters, err)
+	}
+
+	// Requeue: unknown rows are deleted (the funding role may), so those wallets wait again;
+	// resolved rows stay.
+	if _, err := database.DB.ExecContext(ctx, `UPDATE wallet_funding SET status = 'unknown', funder = NULL, funding_tx = NULL WHERE wallet = $1`, w2); err != nil {
+		t.Fatal(err)
+	}
+	if deleted, err := store.RequeueUnknown(ctx); err != nil || deleted != 1 {
+		t.Fatalf("requeue unknown: deleted %d, %v; want 1", deleted, err)
+	}
+	if waiting, err := store.AwaitingWallets(ctx, head, 20, nil); err != nil || !reflect.DeepEqual(waiting, []common.Address{addr(w2)}) {
+		t.Fatalf("waiting after requeue %v, %v; want only w2", waiting, err)
+	}
+	if deleted, err := store.RequeueUnknown(ctx); err != nil || deleted != 0 {
+		t.Fatalf("second requeue: deleted %d, %v; want 0", deleted, err)
 	}
 }

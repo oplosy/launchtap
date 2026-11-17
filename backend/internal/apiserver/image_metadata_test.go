@@ -67,6 +67,14 @@ func TestStripPNGMetadataKeepsRenderingChunksOnly(t *testing.T) {
 	}
 }
 
+func TestStripPNGMetadataRejectsUnknownCriticalChunk(t *testing.T) {
+	const ihdrEnd = 8 + 12 + 13
+	smuggled := insertAfter(testPNG(t, 3, 2), ihdrEnd, pngChunk("XXXX", []byte(secretMarker)))
+	if _, err := stripImageMetadata("image/png", smuggled); err == nil {
+		t.Fatal("an unknown critical chunk was accepted")
+	}
+}
+
 func TestStripJPEGMetadataKeepsPixelsAndColorProfile(t *testing.T) {
 	var encoded bytes.Buffer
 	if err := jpeg.Encode(&encoded, noisyImage(24, 16), &jpeg.Options{Quality: 90}); err != nil {
@@ -187,5 +195,56 @@ func TestImageUploadStoresStrippedContent(t *testing.T) {
 	server.Handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || !bytes.Equal(store.image.Content, original) {
 		t.Fatalf("status=%d stored %d bytes, want the %d-byte original", response.Code, len(store.image.Content), len(original))
+	}
+}
+
+// Animation is kept but bounded: an APNG or animated WebP may not declare or carry more than
+// maxAnimationFrames frames, and a WebP must carry a picture, not just a VP8X header.
+func TestStripImageMetadataBoundsAnimationAndRequiresPixels(t *testing.T) {
+	const ihdrEnd = 8 + 12 + 13
+	actl := func(frames uint32) []byte {
+		return pngChunk("acTL", binary.BigEndian.AppendUint32(binary.BigEndian.AppendUint32(nil, frames), 0))
+	}
+	fctl := pngChunk("fcTL", make([]byte, 26))
+	manyFctl := make([][]byte, maxAnimationFrames+1)
+	for i := range manyFctl {
+		manyFctl[i] = fctl
+	}
+	vp8x := webpChunk("VP8X", []byte{0x02, 0, 0, 0, 99, 0, 0, 49, 0, 0})
+	frame := webpChunk("ANMF", make([]byte, 16))
+	frames := func(n int) []byte {
+		chunks := [][]byte{vp8x, webpChunk("ANIM", make([]byte, 6))}
+		for range n {
+			chunks = append(chunks, frame)
+		}
+		return riffWrap(chunks...)
+	}
+
+	accepted := map[string]struct {
+		contentType string
+		content     []byte
+	}{
+		"apng at the frame cap": {"image/png", insertAfter(testPNG(t, 2, 2), ihdrEnd, actl(maxAnimationFrames), fctl)},
+		"webp at the frame cap": {"image/webp", frames(maxAnimationFrames)},
+	}
+	for name, test := range accepted {
+		if _, err := stripImageMetadata(test.contentType, test.content); err != nil {
+			t.Errorf("%s: rejected: %v", name, err)
+		}
+	}
+	rejected := map[string]struct {
+		contentType string
+		content     []byte
+	}{
+		"apng declares too many frames": {"image/png", insertAfter(testPNG(t, 2, 2), ihdrEnd, actl(maxAnimationFrames+1))},
+		"apng declares zero frames":     {"image/png", insertAfter(testPNG(t, 2, 2), ihdrEnd, actl(0))},
+		"apng carries too many frames":  {"image/png", insertAfter(testPNG(t, 2, 2), ihdrEnd, manyFctl...)},
+		"webp carries too many frames":  {"image/webp", frames(maxAnimationFrames + 1)},
+		"webp header without a picture": {"image/webp", riffWrap(vp8x)},
+	}
+	for name, test := range rejected {
+		if _, err := stripImageMetadata(test.contentType, test.content); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
 	}
 }

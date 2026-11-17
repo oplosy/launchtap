@@ -55,8 +55,8 @@ test("the four sections appear in order", async ({ page }) => {
   await expect(form.getByRole("heading", { level: 2 })).toHaveText([
     "Image",
     "Name and symbol",
-    // The Links heading also carries its info tip's text.
-    /^Links/,
+    // The About heading (description and links) also carries its info tip's text.
+    /^About/,
     "Initial buy",
   ]);
   await expect

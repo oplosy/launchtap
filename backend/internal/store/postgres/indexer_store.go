@@ -11,6 +11,7 @@ import (
 	"github.com/Contictus/launchtap/backend/internal/store/postgres/sqlc"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -39,16 +40,28 @@ func (s IndexerStore) Transaction(ctx context.Context, fn func(context.Context, 
 		if err := s.Owner.WithinTx(transactionContext, func(ctx context.Context, a *Adapter) error {
 			return fn(ctx, a.WithFactory(s.Factory).WithDirtyMarkDedupe())
 		}); err != nil {
-			return err
+			return markStoreConflict(err)
 		}
 		return s.notifyRefresh(ctx)
 	}
 	if err := WithinTx(transactionContext, beginner, func(ctx context.Context, a *Adapter) error {
 		return fn(ctx, a.WithFactory(s.Factory).WithDirtyMarkDedupe())
 	}); err != nil {
-		return err
+		return markStoreConflict(err)
 	}
 	return s.notifyRefresh(ctx)
+}
+
+// markStoreConflict tags a deadlock (40P01) or serialization failure (40001) as
+// indexer.ErrStoreConflict. Postgres rolls the whole transaction back for both, so the engine
+// retries the step instead of exiting. Reorg recovery locks tokens then token_stats while the
+// stats worker's trigger locks them in the opposite order (AUDIT_REPORT_TR HIGH-06).
+func markStoreConflict(err error) error {
+	var pgError *pgconn.PgError
+	if errors.As(err, &pgError) && (pgError.Code == "40P01" || pgError.Code == "40001") {
+		return fmt.Errorf("%w: %w", indexer.ErrStoreConflict, err)
+	}
+	return err
 }
 
 func (s IndexerStore) notifyRefresh(ctx context.Context) error {
@@ -109,8 +122,15 @@ func (a *Adapter) WriteState(ctx context.Context, state indexer.State) error {
 	on, oh, oa := to(state.Observed)
 	sn, sh, sa := to(state.Safe)
 	fn, fh, fa := to(state.Finalized)
-	_, err := a.UpsertSyncState(ctx, SyncState{ChainID: state.ChainID, DeploymentID: state.DeploymentID, ObservedNumber: on, ObservedHash: oh, ObservedAt: oa, SafeNumber: sn, SafeHash: sh, SafeAt: sa, FinalizedNumber: fn, FinalizedHash: fh, FinalizedAt: fa})
-	return err
+	if _, err := a.UpsertSyncState(ctx, SyncState{ChainID: state.ChainID, DeploymentID: state.DeploymentID, ObservedNumber: on, ObservedHash: oh, ObservedAt: oa, SafeNumber: sn, SafeHash: sh, SafeAt: sa, FinalizedNumber: fn, FinalizedHash: fh, FinalizedAt: fa}); err != nil {
+		return err
+	}
+	// Every committed step saves its state here, idle steps at the tip included, so the heartbeat
+	// commits with the step it reports (GET /v1/status, audit pass 3 L-5).
+	if err := a.queries.TouchIndexerHeartbeat(ctx, sqlc.TouchIndexerHeartbeatParams{ChainID: state.ChainID, DeploymentID: state.DeploymentID}); err != nil {
+		return fmt.Errorf("touch indexer heartbeat: %w", err)
+	}
+	return nil
 }
 func (a *Adapter) ReadBlock(ctx context.Context, chainID, n int64) (ledger.IndexedBlock, bool, error) {
 	b, err := a.GetIndexedBlockByNumber(ctx, chainID, n)
@@ -157,7 +177,16 @@ func (a *Adapter) TokenIdentities(ctx context.Context, chainID int64) ([]indexer
 	}
 	result := make([]indexer.TokenIdentity, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, indexer.TokenIdentity{Token: common.Address(row.TokenAddress), Curve: common.Address(row.CurveAddress), Pair: addressOrZero(row.LpPair), EngineVersion: uint16(row.EngineVersion), Launch: ledger.EventCoordinates{ChainID: chainID, BlockNumber: row.LaunchBlockNumber, BlockHash: common.Hash(row.LaunchBlockHash), BlockTime: row.LaunchBlockTime.Time}})
+		result = append(result, indexer.TokenIdentity{Token: common.Address(row.TokenAddress), Curve: common.Address(row.CurveAddress), Pair: addressOrZero(row.LpPair), EngineVersion: uint16(row.EngineVersion), Launch: ledger.EventCoordinates{ChainID: chainID, BlockNumber: row.LaunchBlockNumber, BlockHash: common.Hash(row.LaunchBlockHash), BlockTime: row.LaunchBlockTime.Time}, GraduationBlock: graduationBlock(row.GraduationBlockNumber)})
 	}
 	return result, nil
+}
+
+// graduationBlock is nil for a token that has not graduated.
+func graduationBlock(value pgtype.Int8) *int64 {
+	if !value.Valid {
+		return nil
+	}
+	block := value.Int64
+	return &block
 }

@@ -15,166 +15,69 @@
 
 ## Active
 
-### P0-A external inputs: CoinGecko key and market-link identifiers
+### Operator-only inputs (accounts, keystores, secrets)
 
-- **Date:** 2026-11-05
-- **Reason:** scope decision (needs a commercial account and verified third-party identifiers)
-- **Where it stopped:** P0-A market data and discovery is implemented and verified. The USD line
-  and the Dexscreener/GeckoTerminal links stay hidden until two external inputs exist; nothing
-  is invented in the meantime.
-- **Related files:** `backend/internal/config/config.go`, `deploy/backend.env.example`,
-  `contracts/deployments/`, `backend/deployments/testdata/`, `web/src/contracts/`
-- **Resume (next step):**
-  1. Provision a CoinGecko commercial API key as the backend secret `COINGECKO_API_KEY` and set
-     `ETH_USD_SOURCE=coingecko` in the deployment environment.
-  2. Identifiers verified 2026-11-06: Dexscreener chain `robinhood` and GeckoTerminal network
-     `robinhood`. Both index Robinhood Chain **mainnet** only (sample pairs/pools have code on
-     `rpc.mainnet.chain.robinhood.com` and none on testnet), so they must not go into
-     `robinhood-testnet-v1.json`. Add `"marketLinks": {"dexscreenerChain": "robinhood",
-     "geckoterminalNetwork": "robinhood"}` to the reviewed mainnet manifest when it exists, copy
-     it to the backend testdata, then run `cd web && npm run web-contracts-sync`.
-  3. Once the key is live, measure CoinGecko's `last_updated_at` lag. If the USD line flickers
-     against the 120 s freshness budget, make the poll jitter symmetric and allow a few seconds
-     of future-skew tolerance (`backend/internal/pricefeed/feed.go` ~201 and ~258).
-- **Pitfalls / notes:** Never commit the key. The manifest copies must stay byte-identical
-  (`task verify` checks drift).
+- **Date:** 2026-11-17 (merges the CoinGecko, Telegram, testnet engine switch, production
+  release, M-3 provider and funding requeue items; first opened 2026-10-04)
+- **Reason:** each step needs an account, a keystore, a secret or a signature only the owner
+  holds. Every product and code decision is made; nothing here needs more code.
+- **Where it stopped:** code, specs and runbooks are merged. The choices below are locked; only
+  their execution is left.
+- **Related files:** `docs/runbooks/production-readiness.md`,
+  `docs/runbooks/robinhood-testnet-deployment.md`, `deploy/README.md`,
+  `deploy/backend.env.example`, `docs/release-checklist.md`, `contracts/deployments/`,
+  `backend/deployments/testdata/`.
+- **Resume (next step), in this order:**
+  1. **Testnet engine switch** (runbook "Engine implementation upgrade"): deploy the
+     implementation with the deployer keystore, fund the timelock, call
+     `configureEngine(1, <new impl>, true)` from the timelock keystore, then record
+     `curveImplementation` and `bytecodeHashes.bondingCurveV1` in the manifest and its backend
+     testdata copy and run `cd web && npm run web-contracts-sync`. Existing clones cannot be fixed.
+  2. **Archive RPC secret:** replace `ROBINHOOD_MAINNET_ARCHIVE_RPC_URL` (fails the TLS handshake
+     since contracts run `37326499597`) and re-run the `contracts` workflow via
+     `workflow_dispatch`; the fork gate on the release checklist needs it too.
+  3. **RPC providers (M-3):** set `RPC_FALLBACK_URL` to a second provider (decision: a different
+     company than `RPC_URL`), and confirm the production provider accepts 1,000-address
+     `eth_getLogs` arrays and 10-block topic-only reads; if not, lower
+     `INDEXER_LOG_ADDRESS_BATCH_SIZE` to its limit.
+  4. **CoinGecko Demo key:** create it, set `COINGECKO_API_KEY`, `ETH_USD_SOURCE=coingecko` and
+     `COINGECKO_API_PLAN=demo` in `BACKEND_ENV_FILE`. If the USD line flickers against the 120 s
+     freshness budget, make the poll jitter symmetric (`backend/internal/pricefeed/feed.go`).
+  5. **Telegram bot:** create it with BotFather, set `TELEGRAM_BOT_TOKEN` and
+     `TELEGRAM_BOT_USERNAME`, start `docker compose --profile telegram up -d`, and send `/start`
+     once through `/notifications` (only tested against a fake Bot API so far).
+  6. **Production:** fill every `<pending>` row in `docs/runbooks/production-readiness.md`
+     (hosting/domain, Privy app and origin, edge rate limits with a per-prefix connection cap,
+     monitoring owner and `ALERTMANAGER_WEBHOOK_URL_FILE`, multisig, timelock >= 48 h, treasury,
+     external audit, legal/geo), obtain the reviewed mainnet manifest with
+     `"marketLinks": {"dexscreenerChain": "robinhood", "geckoterminalNetwork": "robinhood"}`
+     (mainnet only, never testnet), run `node scripts/verify-release.mjs --target=production`,
+     then build and promote with `deploy/README.md`. Token images stay in PostgreSQL behind the
+     API's ETag cache until a CDN is chosen with hosting.
+  7. **After the first deployment:** run `go run ./cmd/funding requeue-unknown` once with the
+     funding service's environment, and measure the funding pass with `pg_stat_statements`.
+- **Pitfalls / notes:** never commit keys, RPC URLs, wallet keys or a predicted address before
+  its receipt exists. Manifest copies must stay byte-identical (`task verify`). Exactly one
+  Telegram worker per deployment.
 
 ### Wallet SDK upgrade: Privy 3 to clear allowlisted advisories
 
 - **Date:** 2026-11-06
-- **Reason:** scope decision (major-version auth/wallet upgrade, needs its own review)
-- **Where it stopped:** The runtime audit gate allowlists two high advisories that only the
-  wallet SDK chain pulls in: zod 3.x (GHSA-mrhx-c7xc-m3w5) and decode-uri-component 0.2.x
-  (GHSA-qr28-fpjm-wq7f), both reached through `@privy-io/react-auth` 2.17.3, WalletConnect and
-  Reown. Their only fixes are zod 4 and an ESM-only decode-uri-component, which the current
-  SDKs cannot take. Both entries expire on 2027-02-01, after which CI fails again.
+- **Reason:** blocked upstream (major-version auth/wallet upgrade, high-risk)
+- **Where it stopped:** the runtime audit gate allowlists zod 3.x (GHSA-mrhx-c7xc-m3w5) and
+  decode-uri-component 0.2.x (GHSA-qr28-fpjm-wq7f), reached through `@privy-io/react-auth`
+  2.17.3, WalletConnect and Reown; both entries expire on 2027-02-01. Privy 3 does not clear
+  them: re-checked 2026-11-17, the newest `@privy-io/react-auth` 3.51.4 still depends on
+  `x402` ^0.7.1, and the newest `x402` (1.2.0) still requires wagmi ^2.15.6 and zod ^3.24.2.
+  Trial lockfile evidence: `docs/audits/runtime-advisory-review-2026-11-06.md`.
 - **Related files:** `web/package.json`, `web/package-lock.json`, `web/audit-allowlist.json`,
   `web/src/wallet/`, `web/src/providers.tsx`
-- **Checked 2026-11-06:** Privy 3 does **not** clear them. `@privy-io/react-auth` 3 depends on
-  `x402`, which pulls wagmi 2 → WalletConnect 2.21.1 → `decode-uri-component` 0.2.2, and zod 3
-  still arrives through `x402`, Reown and `abitype`; wagmi 3 changes nothing. Details:
-  `docs/audits/runtime-advisory-review-2026-11-06.md`. The upgrade was not done.
-  **Re-checked 2026-11-09 and 2026-11-12:** the newest release, `@privy-io/react-auth` 3.51.3,
-  still depends on `x402` ^0.7.1 (latest 1.2.0 of `x402` itself still requires wagmi ^2.15.6
-  and zod ^3.24.2), so both highs remain. **Trial lockfile 2026-11-12** (`@privy-io/react-auth`
-  3.51.3 + `@privy-io/wagmi` 4.0.20, viem 2.57.16, wagmi 2.16.9): `npm audit --omit=dev` still
-  reports GHSA-mrhx-c7xc-m3w5 (zod via `x402` 0.7.3) and GHSA-qr28-fpjm-wq7f
-  (decode-uri-component); the owner asked for the upgrade that day and it was declined on this
-  evidence. The current tree passes `scripts/audit-runtime.mjs`.
-- **Resume (next step):** Before 2027-02-01, re-run the trial install from that document with
-  the then-current Privy release. Upgrade only once `npm audit --omit=dev` on the trial tree no
-  longer reports the two highs; otherwise renew the allowlist entries with a fresh impact review.
-  Decide with the owner whether to enable Dependabot or Renovate for version-update PRs.
-- **Pitfalls / notes:** This touches wallet authentication; treat it as high-risk. Do not
-  extend the allowlist dates without a fresh impact review.
+- **Resume (next step):** before 2027-02-01, run `npm view @privy-io/react-auth@latest
+  dependencies` and `npm view x402 dependencies`; upgrade only when neither pulls zod 3 or
+  wagmi 2, otherwise renew the allowlist entries with a fresh impact review.
+- **Pitfalls / notes:** do not extend the allowlist dates without that review.
 
-### Operator actions: testnet engine switch and fork RPC secret
-
-- **Date:** 2026-10-05
-- **Reason:** scope decision (needs the owner's keystores and repository secrets)
-- **Where it stopped:** `contracts/script/DeployCurveImplementation.s.sol` and the runbook
-  section "Engine implementation upgrade" in `docs/runbooks/robinhood-testnet-deployment.md`
-  are merged (PR #11); the fork dry-run passed. The testnet v1 curve implementation and every
-  existing clone still accept a buy whose token recipient is the pair (permanent graduation
-  freeze). Separately, the `ROBINHOOD_MAINNET_ARCHIVE_RPC_URL` repository secret fails the TLS
-  handshake (`received fatal alert: InternalError`, contracts run `37326499597`, both
-  attempts), so the `Release gate` and `Robinhood mainnet fork` jobs cannot pass until it is
-  replaced; the Slither step of the same run passed.
-- **Related files:** `contracts/script/DeployCurveImplementation.s.sol`,
-  `docs/runbooks/robinhood-testnet-deployment.md`,
-  `contracts/deployments/robinhood-testnet-v1.json`, `backend/deployments/testdata/`,
-  `.github/workflows/contracts.yml`
-- **Resume (next step):**
-  1. Follow the runbook: deploy the implementation with the deployer keystore, fund the
-     timelock, and call `configureEngine(1, <new impl>, true)` from the timelock keystore.
-     With the transaction hashes, record `curveImplementation` and
-     `bytecodeHashes.bondingCurveV1` in the manifest and its backend testdata copy, regenerate
-     the web contracts, and re-run the indexer bytecode verification.
-  2. Replace the archive RPC secret with a working endpoint and re-run the `contracts`
-     workflow through `workflow_dispatch`.
-- **Pitfalls / notes:** Existing clones cannot be fixed. Do not commit the RPC URL, keys, or a
-  predicted implementation address before its deployment receipt exists.
-
-### Production release, governance, and audit inputs
-
-- **Date:** 2026-10-04
-- **Reason:** production-only external coordination
-- **Where it stopped:** A Docker Compose deployment package now includes pinned backend/web,
-  PostgreSQL and HTTPS proxy images, migrations before API/indexer startup, public configuration
-  preflight, external secret files, backup/restore instructions, and a disposable runtime check.
-  Container build/runtime, database dump/restore, web unit/browser, and configuration rejection
-  checks passed locally. The runtime npm audit gate (`npm run audit:runtime`) passes with two
-  reviewed high advisories allowlisted (see the wallet SDK item) and 23 low/moderate package findings
-  (7 advisories) reviewed in `docs/audits/runtime-advisory-review-2026-11-06.md`: none reachable
-  with impact beyond the user's own browser tab. Hosting and domain are not provisioned; no mainnet
-  manifest, production Privy allowlist, signer, monitoring owner, or external audit is invented.
-- **Related files:** `docs/runbooks/production-readiness.md`,
-  `docs/runbooks/web-release.md`, `web/.env.example`, `backend/.env.example`,
-  `scripts/verify-release.mjs`, `deploy/README.md`, `deploy/compose.yaml`, `deploy/check.ps1`,
-  `.github/workflows/deployment-package.yml`
-- **Resume (next step):** Product/infrastructure/security owners must fill every `<pending>`
-  row in `docs/runbooks/production-readiness.md`, provision values through the approved
-  secret/variable manager, and run `node scripts/verify-release.mjs --target=production`.
-  Provision hosting/domain and production Privy inputs, choose object storage/CDN delivery
-  for token images (today they are stored in PostgreSQL and served by the API with an ETag and
-  a short public cache),
-  obtain a reviewed mainnet deployment manifest, then build/promote using `deploy/README.md`.
-  Production approval still requires signed governance and external-audit evidence. An independent
-  infrastructure review of the deployment package is still outstanding.
-- **Pitfalls / notes:** These do not authorize changing existing launch economics or adding
-  a reserve rescue path. Do not commit credentials, private RPC URLs, wallet keys, or guessed
-  deployment addresses. The monitoring owner and the real alert destination
-  (`ALERTMANAGER_WEBHOOK_URL_FILE`, see the runbook "Monitoring" section) are also still unassigned.
-
-### P0-C5 forum deferral: ticker tape
-
-- **Date:** 2026-11-10
-- **Reason:** scope decision (made while the owner was away; spec
-  `docs/specs/2026-11-10-p0c5-forum-memestock-design.md` non-goals)
-- **Where it stopped:** the forum shipped as read views over token comments; votes and the
-  vote-ranked "Best" tab shipped on 2026-11-12 (`docs/specs/2026-11-12-comment-votes-design.md`).
-  One reference-screen piece is left out: the scrolling stock ticker tape. It needs a
-  third-party equities quote feed (provider choice, licence for redistribution, an API secret, a
-  new external dependency). Owner input.
-- **Related files:** `web/app/forum/page.tsx`, `web/src/forum/forum-view.tsx`.
-- **Resume (next step):** owner picks an equities data provider (or drops the tape).
-- **Pitfalls / notes:** the tape must stay a client-side widget with its own failure state so a
-  provider outage never blocks the forum.
-
-### Telegram alerts: bot and process setup
-
-- **Date:** 2026-11-12
-- **Reason:** scope decision (owner input: a bot account and a secret)
-- **Where it stopped:** the feature is built and tested
-  (`docs/specs/2026-11-12-telegram-alerts-design.md`): link codes, settings and unlink on the
-  API, the `cmd/telegram` worker, the "Telegram alerts" card on `/notifications`. It is off
-  everywhere because no bot exists yet, and Compose does not start `cmd/telegram`.
-- **Related files:** `backend/cmd/telegram/main.go`, `deploy/README.md`, `deploy/compose.yaml`,
-  `deploy/backend.env.example`.
-- **Resume (next step):** owner creates the bot with BotFather; put `TELEGRAM_BOT_TOKEN` in
-  `BACKEND_ENV_FILE`, set `TELEGRAM_BOT_USERNAME` and `TELEGRAM_WEB_ORIGIN`, then add a
-  `telegram` service (same backend image, `telegram` binary, one replica) to Compose and
-  `deploy/check.ps1`.
-- **Pitfalls / notes:** run exactly one worker per deployment (an advisory lock refuses a second
-  one); the bot was never exercised against the real Bot API, only a fake server.
-
-### Early-buyer clusters Level 2: archive RPC and exclusion list
-
-- **Date:** 2026-11-12
-- **Reason:** scope decision (owner input: a paid data source and a secret)
-- **Where it stopped:** built off by default (`docs/specs/2026-11-12-funding-source-clusters-design.md`):
-  `cmd/funding`, `wallet_funding`, `funding_excluded_funders`, the `funding_source` link and the
-  web coverage line. Tested against Anvil only; the official mainnet RPC has no historical state
-  and no tracing, so nothing runs in production yet.
-- **Related files:** `backend/internal/funding/`, `backend/cmd/funding/`,
-  `backend/internal/earlybuyer/group.go`, migration `00029_wallet_funding.sql`.
-- **Resume (next step):** owner picks an archive + trace provider for Robinhood Chain, sets
-  `FUNDING_RPC_URL`, runs `cmd/funding` once against it and checks a few results on an explorer;
-  then fills `funding_excluded_funders` (canonical bridge's aliased L1 sender, known exchanges).
-- **Pitfalls / notes:** the exclusion list is reviewed operator data, not code guesses; the
-  provider must support `debug_traceBlockByNumber` with the callTracer or every wallet funded by
-  a contract call ends as `unknown`.
-
+<!-- Template:
 ### <short title>
 - **Date:** YYYY-MM-DD
 - **Reason:** time | limit (~__%) | scope decision
@@ -187,6 +90,27 @@
 ---
 
 ## Done
+
+### Audit follow-ups: pass 3, run-4 leads, AUDIT_REPORT_TR and second report
+
+- **Date:** 2026-11-17
+- **What closed:** every finding of production-readiness audit pass 3
+  (`docs/audits/2026-11-16-production-readiness-audit-3.md`; M-1 #89, M-2/L-2/L-3/L-4 #91, L-1
+  #92, M-3 code #93 and #94), the 26 security-audit run-4 leads
+  (`docs/specs/2026-11-17-run4-owner-defaults-preflight.md`), the `AUDIT_REPORT_TR.md`
+  CRIT/HIGH/MED items (P0, P1 and MED passes, HIGH-13/14 a-e) and the second report's M-2, M-5,
+  L-1 and L-4. Rejected with reasons in those specs: MED-07, MED-10 "dead code", MED-05 part 1,
+  MED-01 WebP, the inbox claim, `ListTokenTransfersTouching`, second-report L-2 (static Privy
+  verification key: rotation is an operator restart), L-3 (server-side launch simulation: the
+  contracts enforce the rules) and L-5 (`prices.Run`/`tail.Start` return only when their context
+  ends). Left to the operator: "Operator-only inputs" (Active).
+
+### Product scope decisions: ticker tape and clusters Level 2
+
+- **Date:** 2026-11-14
+- **What closed:** the owner dropped the forum ticker tape and early-buyer clusters Level 2 from
+  scope (`docs/specs/2026-11-14-product-scope-decisions.md`). Level 1 clusters stay live; the
+  Level 2 code stays built and switched off.
 
 ### Telegram alerts
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   executionPriceWad,
+  compactZeros,
   formatBaseUnits,
   formatCanonicalBaseUnits,
   formatDisplayAmount,
@@ -49,6 +50,18 @@ describe("formatSignificantPrice", () => {
     expect(formatSignificantPrice("0")).toBe("0");
     expect(formatSignificantPrice("01")).toBeNull();
     expect(formatSignificantPrice("-1")).toBeNull();
+  });
+});
+
+describe("compactZeros", () => {
+  it("writes four or more leading fraction zeros as a subscript count", () => {
+    expect(compactZeros("0.000000001699")).toBe("0.0₈1699");
+    expect(compactZeros("0.00001234")).toBe("0.0₄1234");
+    expect(compactZeros("0.000000000000000001")).toBe("0.0₁₇1");
+  });
+  it("leaves short runs, whole numbers and anything else unchanged", () => {
+    for (const value of ["0.0001234", "1.5", "0", "12.00001", "Unavailable", "—", "0.0000"])
+      expect(compactZeros(value)).toBe(value);
   });
 });
 

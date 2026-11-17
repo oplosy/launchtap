@@ -8,11 +8,13 @@ import (
 	"time"
 
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
+	"github.com/Contictus/launchtap/backend/internal/store/postgres/migrations"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Protocol revenue sums every ETH flow credited to the protocol per engine
-// (docs/specs/2026-11-12-protocol-revenue-design.md).
+// (docs/specs/2026-11-12-protocol-revenue-design.md), read from the protocol_daily_revenue rollup
+// the stats worker refreshes (docs/specs/2026-11-16-protocol-revenue-rollup-preflight.md).
 func TestProtocolRevenueSumsEachSourcePerEngine(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -31,6 +33,14 @@ func TestProtocolRevenueSumsEachSourcePerEngine(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	adapter := storepostgres.NewAdapter(pool)
+	refresh := func() {
+		t.Helper()
+		if err := adapter.RefreshProtocolAggregates(ctx, chainID); err != nil {
+			t.Fatalf("refresh protocol aggregates: %v", err)
+		}
+	}
+	refresh()
 	empty, err := reader.ReadProtocolRevenue(ctx, chainID)
 	if err != nil {
 		t.Fatal(err)
@@ -39,8 +49,11 @@ func TestProtocolRevenueSumsEachSourcePerEngine(t *testing.T) {
 		t.Fatalf("empty revenue %+v", empty)
 	}
 
+	// The events land in block 2, a day later, so the incremental refresh rebuilds only that day.
+	next := base.Add(24 * time.Hour)
+	mustInsertBlock(t, ctx, database.DB, chainID, 2, hashBytes(0x02), hashBytes(0x01), next, "safe")
 	at := func(tx byte, log int) eventCoordinates {
-		return eventCoordinates{chainID, 1, hashBytes(0x01), base, 0, hashBytes(tx), log}
+		return eventCoordinates{chainID, 2, hashBytes(0x02), next, 0, hashBytes(tx), log}
 	}
 	insert := func(table string, coordinates eventCoordinates, payload ...column) {
 		t.Helper()
@@ -65,6 +78,30 @@ func TestProtocolRevenueSumsEachSourcePerEngine(t *testing.T) {
 	insert("lp_fee_collections", at(0x36, 0), column{"token_address", v2}, column{"eth_amount", 7}, column{"token_amount", 2})
 	insert("lp_fee_collections", at(0x36, 1), column{"token_address", v2}, column{"eth_amount", 11}, column{"token_amount", 0})
 
+	if stale, err := reader.ReadProtocolRevenue(ctx, chainID); err != nil || stale.Total.Sign() != 0 {
+		t.Fatalf("revenue before the refresh = %+v, %v; want the rollup unchanged", stale, err)
+	}
+	refresh()
+	assertRevenue(t, ctx, reader, chainID, "incremental refresh")
+	// A reorg's full rebuild and the migration's backfill produce the same rollup.
+	if err := adapter.RecomputeProtocolAggregates(ctx, chainID); err != nil {
+		t.Fatalf("full protocol aggregate rebuild: %v", err)
+	}
+	assertRevenue(t, ctx, reader, chainID, "full rebuild")
+	// 00040 indexer heartbeat, 00039 service roles, 00038 audit follow-ups, 00037 candle ATH index, 00036 revenue rollup.
+	for range 5 {
+		if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+			t.Fatalf("roll back to before the revenue rollup: %v", err)
+		}
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandUp); err != nil {
+		t.Fatalf("re-apply the revenue rollup migration: %v", err)
+	}
+	assertRevenue(t, ctx, reader, chainID, "migration backfill")
+}
+
+func assertRevenue(t *testing.T, ctx context.Context, reader storepostgres.ProtocolReader, chainID int64, stage string) {
+	t.Helper()
 	got, err := reader.ReadProtocolRevenue(ctx, chainID)
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +109,7 @@ func TestProtocolRevenueSumsEachSourcePerEngine(t *testing.T) {
 	check := func(name string, got [3]int64, want [3]int64) {
 		t.Helper()
 		if got != want {
-			t.Fatalf("%s = %v, want %v", name, got, want)
+			t.Fatalf("%s: %s = %v, want %v", stage, name, got, want)
 		}
 	}
 	for _, c := range []struct {
@@ -89,6 +126,6 @@ func TestProtocolRevenueSumsEachSourcePerEngine(t *testing.T) {
 		check(c.name, c.src, c.want)
 	}
 	if got.Total.Int64() != 34 || got.Finality != "safe" {
-		t.Fatalf("total %s finality %q", got.Total, got.Finality)
+		t.Fatalf("%s: total %s finality %q", stage, got.Total, got.Finality)
 	}
 }

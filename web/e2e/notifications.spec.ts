@@ -182,7 +182,7 @@ test("the bell panel closes when focus leaves it", async ({ page }) => {
   await expect(panel.getByRole("link")).toBeFocused();
   await expect(panel).toBeVisible();
   // Moving focus elsewhere (keyboard or programmatic) closes it.
-  await page.getByRole("link", { name: "Open home" }).focus();
+  await page.getByRole("link", { name: "Launchpad", exact: true }).focus();
   await expect(panel).toHaveCount(0);
   await expect(bell).toHaveAttribute("aria-expanded", "false");
 });

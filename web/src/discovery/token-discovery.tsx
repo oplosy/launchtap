@@ -3,11 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiClient, type TokenListQuery, type TokenListResponse } from "@/api/client";
 import { ApiProblem } from "@/api/problems";
 import { queryKeys, snapshotIdentity, type Snapshot } from "@/api/types";
-import type { LiveEvent } from "@/api/types";
-import { useLiveEvents } from "@/live/live-events";
 import { publicConfiguration } from "@/config/public";
 import { CoinGeckoAttribution } from "@/market/usd-line";
 import { WatchlistTab } from "@/watchlist/watchlist-tab";
@@ -34,14 +31,12 @@ import {
 } from "./query-state";
 import { TrendingList, useHighlights } from "./highlights";
 import { TokenCard, TokenListHead } from "./token-card";
-import { loadTokenDiscoveryPage } from "./controller";
 import { Button, EmptyState, ErrorState, Input, Skeleton } from "@/components/primitives";
 import { SlidingIndicator } from "@/components/sliding-indicator";
 
-export type TokenListFetcher = (
-  query: TokenListQuery,
-  signal?: AbortSignal,
-) => Promise<TokenListResponse>;
+import { useTokenListPages, type TokenListFetcher } from "./use-token-list-pages";
+
+export type { TokenListFetcher } from "./use-token-list-pages";
 
 type Layout = "list" | "grid";
 
@@ -59,8 +54,6 @@ const SORT_OPTIONS: Partial<Record<ExploreView, ReadonlyArray<{ value: string; l
       { value: "volume_24h", label: SORT_LABELS.volume_24h },
     ],
   };
-
-const DISCOVERY_REFRESH_INTERVAL_MS = 2_000;
 
 /** The /explore list: view tabs, one control row and the token list, all driven by the URL. */
 export function TokenDiscovery({ fetchPage: injectedFetcher }: { fetchPage?: TokenListFetcher }) {
@@ -84,25 +77,12 @@ export function TokenDiscovery({ fetchPage: injectedFetcher }: { fetchPage?: Tok
   // not re-run the list's effects.
   const [urlState, setUrlState] = useState(nextState);
   if (!sameTokenListQuery(urlState, nextState)) setUrlState(nextState);
-  const listActiveRef = useRef(listActive);
   const highlights = useHighlights(view === "trending" ? configuration.apiBaseUrl : null);
   const [layout, setLayout] = useState<Layout>("grid");
   const [searchDraft, setSearchDraft] = useState(urlState.q);
-  const [pages, setPages] = useState<TokenListResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<ApiProblem | Error | null>(null);
-  const [resetNotice, setResetNotice] = useState(false);
-  const pagesRef = useRef<TokenListResponse[]>([]);
-  const requestId = useRef(0);
-  const abortRef = useRef<AbortController | null>(null);
-  const latestState = useRef(urlState);
   const searchEditedRef = useRef(false);
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    latestState.current = urlState;
-    listActiveRef.current = listActive;
     searchEditedRef.current = false;
     // URL navigation is an external synchronization point, including browser back/forward.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -126,115 +106,12 @@ export function TokenDiscovery({ fetchPage: injectedFetcher }: { fetchPage?: Tok
     return () => clearTimeout(timer);
   }, [searchDraft, urlState, writeOwnedParams]);
 
-  const loadPage = useCallback(
-    async (
-      state: TokenListQueryState,
-      cursor?: string,
-      append = false,
-      externalSignal?: AbortSignal,
-      // Live refreshes keep the shown cards until the new page arrives, instead of blanking
-      // the list to a skeleton (which made every card flash every couple of seconds).
-      background = false,
-    ) => {
-      if (configuration.status !== "ready" || !configuration.apiBaseUrl) {
-        setLoading(false);
-        setLoadingMore(false);
-        return;
-      }
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
-      const abortFromOutside = () => controller.abort();
-      externalSignal?.addEventListener("abort", abortFromOutside, { once: true });
-      const currentRequest = ++requestId.current;
-      setError(null);
-      if (append) setLoadingMore(true);
-      else if (!background) {
-        setLoading(true);
-        setPages([]);
-        pagesRef.current = [];
-      }
-      const fetchPage = injectedFetcher
-        ? injectedFetcher
-        : (query: TokenListQuery, signal?: AbortSignal) =>
-            new ApiClient({ baseUrl: configuration.apiBaseUrl! }).getTokens(query, signal);
-      try {
-        const result = await loadTokenDiscoveryPage({
-          fetchPage,
-          state,
-          cursor: append ? cursor : undefined,
-          existingPages: pagesRef.current,
-          signal: controller.signal,
-        });
-        if (controller.signal.aborted || currentRequest !== requestId.current) return;
-        pagesRef.current = result.pages;
-        setPages(result.pages);
-        setResetNotice(result.reset);
-      } catch (cause) {
-        if (controller.signal.aborted || currentRequest !== requestId.current) return;
-        // A failed background refresh keeps the list already on screen.
-        if (background && pagesRef.current.length > 0) return;
-        setError(cause instanceof Error ? cause : new Error("The token list could not be loaded."));
-        if (!append) {
-          pagesRef.current = [];
-          setPages([]);
-        }
-      } finally {
-        externalSignal?.removeEventListener("abort", abortFromOutside);
-        if (currentRequest === requestId.current) {
-          setLoading(false);
-          setLoadingMore(false);
-        }
-      }
-    },
-    [configuration.apiBaseUrl, configuration.status, injectedFetcher],
-  );
-  useEffect(() => {
-    // Trending's ranking and Watchlist are not paged token lists, so they do not fetch /v1/tokens.
-    if (!listActive) {
-      abortRef.current?.abort();
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLoading(false);
-      return;
-    }
-    // Fetching is the intended synchronization with the external API when URL state changes.
-    void loadPage(urlState);
-    return () => abortRef.current?.abort();
-  }, [listActive, loadPage, urlState]);
-
-  const onLiveEvent = useCallback(
-    (event: LiveEvent) => {
-      if (event.event !== "launch" && event.event !== "token" && event.event !== "reorg") return;
-      if (
-        event.data.chain_id !== configuration.chainId ||
-        event.data.deployment_id !== configuration.deploymentId
-      )
-        return;
-      // Hints arrive for every trade on every token. Refresh page one at most once per
-      // interval, and never replace pages the reader has already appended.
-      if (!listActiveRef.current || refreshTimerRef.current || pagesRef.current.length > 1) return;
-      refreshTimerRef.current = setTimeout(() => {
-        refreshTimerRef.current = null;
-        if (pagesRef.current.length > 1) return;
-        void loadPage(latestState.current, undefined, false, undefined, true);
-      }, DISCOVERY_REFRESH_INTERVAL_MS);
-    },
-    [configuration.chainId, configuration.deploymentId, loadPage],
-  );
-  const recoverLive = useCallback(
-    async (signal?: AbortSignal) => {
-      await loadPage(latestState.current, undefined, false, signal, true);
-    },
-    [loadPage],
-  );
-  useLiveEvents(onLiveEvent, recoverLive);
-  useEffect(
-    () => () => {
-      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-      refreshTimerRef.current = null;
-    },
-    [],
-  );
+  const { pages, loading, loadingMore, error, resetNotice, loadPage } = useTokenListPages({
+    configuration,
+    listActive,
+    urlState,
+    fetchPage: injectedFetcher,
+  });
 
   const snapshot: Snapshot | undefined = pages[0]?.snapshot;
   const items = pages.flatMap((page) => page.items ?? []);

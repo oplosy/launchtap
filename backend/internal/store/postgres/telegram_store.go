@@ -177,14 +177,15 @@ func (s TelegramStore) Pending(ctx context.Context, l telegram.Link, limit int) 
 	return events, nil
 }
 
-func (s TelegramStore) Advance(ctx context.Context, l telegram.Link, p inbox.Position) error {
-	if err := sqlc.New(s.Pool).AdvanceTelegramCursor(ctx, sqlc.AdvanceTelegramCursorParams{
+func (s TelegramStore) Advance(ctx context.Context, l telegram.Link, p inbox.Position) (bool, error) {
+	rows, err := sqlc.New(s.Pool).AdvanceTelegramCursor(ctx, sqlc.AdvanceTelegramCursorParams{
 		Block: p.Block, TxIndex: p.TxIndex, LogIndex: p.LogIndex,
 		ChainID: l.Owner.ChainID, DeploymentID: l.Owner.DeploymentID, PrivyDid: l.Owner.PrivyDID, ChatID: l.ChatID,
-	}); err != nil {
-		return fmt.Errorf("advance telegram cursor: %w", err)
+	})
+	if err != nil {
+		return false, fmt.Errorf("advance telegram cursor: %w", err)
 	}
-	return nil
+	return rows == 1, nil
 }
 
 func telegramSettings(graduations, largeTrades bool, minTradeWei string) (telegram.Settings, error) {

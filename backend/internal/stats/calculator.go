@@ -2,8 +2,6 @@
 package stats
 
 import (
-	"errors"
-	"fmt"
 	"math/big"
 	"time"
 
@@ -22,21 +20,6 @@ const (
 	// MinSafePriceChange24hBPS is the smallest integer JavaScript Number represents exactly.
 	MinSafePriceChange24hBPS int64 = -MaxSafePriceChange24hBPS
 )
-
-// ErrPriceChangeOutsideSafeIntegerRange marks values that JSON/JavaScript clients cannot represent exactly.
-var ErrPriceChangeOutsideSafeIntegerRange = errors.New("24-hour price change is outside the JavaScript safe-integer range")
-
-// PriceChangeRangeError records the computed basis-point value that exceeded the public numeric contract.
-type PriceChangeRangeError struct {
-	// Value is the exact decimal basis-point result.
-	Value string
-}
-
-func (e *PriceChangeRangeError) Error() string {
-	return fmt.Sprintf("%s: computed %s bps; supported range is [%d, %d]", ErrPriceChangeOutsideSafeIntegerRange, e.Value, MinSafePriceChange24hBPS, MaxSafePriceChange24hBPS)
-}
-
-func (e *PriceChangeRangeError) Unwrap() error { return ErrPriceChangeOutsideSafeIntegerRange }
 
 type Holder struct {
 	Address common.Address
@@ -129,20 +112,22 @@ func ComputeTokenStats(input TokenInput, now time.Time) (TokenStats, error) {
 		delta := new(big.Int).Sub(latest.Close, baseline.Close)
 		delta.Mul(delta, big.NewInt(10_000))
 		priceChange := delta.Quo(delta, baseline.Close)
-		priceChangeBPS, err := checkedPriceChange24hBPS(priceChange)
-		if err != nil {
-			return TokenStats{}, err
-		}
-		result.PriceChange24hBPS = priceChangeBPS
+		result.PriceChange24hBPS = saturatedPriceChange24hBPS(priceChange)
 	}
 	return result, nil
 }
 
-func checkedPriceChange24hBPS(value *big.Int) (int64, error) {
-	if value.Cmp(big.NewInt(MinSafePriceChange24hBPS)) < 0 || value.Cmp(big.NewInt(MaxSafePriceChange24hBPS)) > 0 {
-		return 0, &PriceChangeRangeError{Value: value.String()}
+// saturatedPriceChange24hBPS clamps to the JavaScript safe-integer range the API publishes. A dust
+// baseline makes the change unbounded; saturating keeps the token's stats computable instead of
+// failing its recompute forever. Mirrors the LEAST/GREATEST in RecomputeTokenStats.
+func saturatedPriceChange24hBPS(value *big.Int) int64 {
+	if value.Cmp(big.NewInt(MaxSafePriceChange24hBPS)) > 0 {
+		return MaxSafePriceChange24hBPS
 	}
-	return value.Int64(), nil
+	if value.Cmp(big.NewInt(MinSafePriceChange24hBPS)) < 0 {
+		return MinSafePriceChange24hBPS
+	}
+	return value.Int64()
 }
 
 func positive(value *big.Int) bool { return value != nil && value.Sign() > 0 }

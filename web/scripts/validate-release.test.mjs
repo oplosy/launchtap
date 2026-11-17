@@ -49,6 +49,57 @@ describe("release target validation", () => {
     ).toContain("E2E fixture is not deployable");
   });
 
+  it("validates engine 2 deployments against their v4 addresses", () => {
+    const v4 = {
+      poolManager: "0x0000000000000000000000000000000000000011",
+      permit2: "0x0000000000000000000000000000000000000012",
+      universalRouter: "0x0000000000000000000000000000000000000013",
+      v4Quoter: "0x0000000000000000000000000000000000000014",
+      hook: "0x0000000000000000000000000000000000000015",
+      locker: "0x0000000000000000000000000000000000000016",
+    };
+    const engine2 = {
+      ...reviewed[0],
+      engineVersion: 2,
+      weth: null,
+      uniswapV2Factory: null,
+      uniswapV2Router02: null,
+      v4,
+    };
+    expect(validateReleaseEnvironment(valid, "production", [engine2])).toEqual([]);
+    expect(
+      validateReleaseEnvironment(valid, "production", [
+        { ...engine2, v4: { ...v4, locker: null } },
+      ]),
+    ).toContain("enabled deployment is missing reviewed contract addresses");
+    expect(validateReleaseEnvironment(valid, "production", [{ ...engine2, v4: null }])).toContain(
+      "enabled deployment is missing reviewed contract addresses",
+    );
+  });
+
+  it("rejects fixture words only at a token start", () => {
+    for (const value of ["cmabe2e9contest", "cl_latest_attest"])
+      expect(
+        validateReleaseEnvironment(
+          { ...valid, NEXT_PUBLIC_PRIVY_APP_ID: value },
+          "production",
+          reviewed,
+        ),
+      ).toEqual([]);
+    for (const value of [
+      "https://rpc.testnet.example",
+      "https://e2e-rpc.example",
+      "http://127.0.0.1",
+    ])
+      expect(
+        validateReleaseEnvironment(
+          { ...valid, NEXT_PUBLIC_RPC_URL: value },
+          "production",
+          reviewed,
+        ),
+      ).toContain("NEXT_PUBLIC_RPC_URL contains a fixture or test value");
+  });
+
   it("requires explicit fixture mode for deterministic Anvil", () => {
     expect(validateReleaseEnvironment({ ...valid }, "anvil", reviewed)).toContain(
       "Anvil gate requires NEXT_PUBLIC_E2E_FIXTURE=1",

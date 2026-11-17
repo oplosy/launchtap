@@ -11,6 +11,46 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getIndexerStatus = `-- name: GetIndexerStatus :one
+SELECT
+    now()::TIMESTAMPTZ AS checked_at,
+    s.observed_number,
+    s.safe_number,
+    s.finalized_number,
+    h.beat_at
+FROM (SELECT 1) AS probe
+LEFT JOIN sync_state AS s
+    ON s.chain_id = $1 AND s.deployment_id = $2
+LEFT JOIN indexer_heartbeats AS h
+    ON h.chain_id = s.chain_id AND h.deployment_id = s.deployment_id
+`
+
+type GetIndexerStatusParams struct {
+	ChainID      int64
+	DeploymentID string
+}
+
+type GetIndexerStatusRow struct {
+	CheckedAt       pgtype.Timestamptz
+	ObservedNumber  pgtype.Int8
+	SafeNumber      pgtype.Int8
+	FinalizedNumber pgtype.Int8
+	BeatAt          pgtype.Timestamptz
+}
+
+func (q *Queries) GetIndexerStatus(ctx context.Context, arg GetIndexerStatusParams) (GetIndexerStatusRow, error) {
+	row := q.db.QueryRow(ctx, getIndexerStatus, arg.ChainID, arg.DeploymentID)
+	var i GetIndexerStatusRow
+	err := row.Scan(
+		&i.CheckedAt,
+		&i.ObservedNumber,
+		&i.SafeNumber,
+		&i.FinalizedNumber,
+		&i.BeatAt,
+	)
+	return i, err
+}
+
 const getSyncState = `-- name: GetSyncState :one
 SELECT
     chain_id, deployment_id,
@@ -83,6 +123,22 @@ SELECT pg_notify('api_refresh', $1::text)
 
 func (q *Queries) NotifyAPIRefresh(ctx context.Context, payload string) error {
 	_, err := q.db.Exec(ctx, notifyAPIRefresh, payload)
+	return err
+}
+
+const touchIndexerHeartbeat = `-- name: TouchIndexerHeartbeat :exec
+INSERT INTO indexer_heartbeats (chain_id, deployment_id, beat_at)
+VALUES ($1, $2, now())
+ON CONFLICT (chain_id, deployment_id) DO UPDATE SET beat_at = EXCLUDED.beat_at
+`
+
+type TouchIndexerHeartbeatParams struct {
+	ChainID      int64
+	DeploymentID string
+}
+
+func (q *Queries) TouchIndexerHeartbeat(ctx context.Context, arg TouchIndexerHeartbeatParams) error {
+	_, err := q.db.Exec(ctx, touchIndexerHeartbeat, arg.ChainID, arg.DeploymentID)
 	return err
 }
 

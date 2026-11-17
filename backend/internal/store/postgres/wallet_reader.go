@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 
@@ -232,7 +233,7 @@ func (r WalletReader) ListTrades(ctx context.Context, q wallet.TradesQuery) (wal
 			args.AfterTransactionIndex = pgtype.Int4{Int32: int32(txIndex), Valid: true}
 			args.AfterLogIndex = pgtype.Int4{Int32: int32(logIndex), Valid: true}
 		}
-		rows, err := a.queries.ListWalletTrades(ctx, args)
+		rows, err := a.listWalletTrades(ctx, args)
 		if err != nil {
 			return err
 		}
@@ -335,17 +336,37 @@ func (r WalletReader) Leaderboard(ctx context.Context, chainID int64, window wal
 				rows = append(rows, rankedRow{common.Address(row.Wallet), row.RealizedPnl, row.TokensTraded, row.Username})
 			}
 		} else {
-			windowed, err := a.queries.ListLeaderboardWindow(ctx, sqlc.ListLeaderboardWindowParams{
-				ChainID: chainID, DeploymentID: r.DeploymentID, PageSize: int32(limit), WindowDays: int32(window),
+			// The refresher's precomputed ranking while it is recent; the live query otherwise
+			// (docs/specs/2026-11-14-windowed-leaderboard-preflight.md).
+			fresh, err := a.queries.LeaderboardWindowFresh(ctx, sqlc.LeaderboardWindowFreshParams{
+				ChainID: chainID, WindowDays: int32(window), MaxAgeSeconds: leaderboardWindowMaxAgeSeconds,
 			})
 			if err != nil {
-				return err
+				return fmt.Errorf("check leaderboard window refresh: %w", err)
 			}
-			for _, row := range windowed {
-				if len(row.Wallet) != common.AddressLength {
-					return fmt.Errorf("leaderboard wallet has %d bytes", len(row.Wallet))
+			if fresh {
+				precomputed, err := a.queries.ListPrecomputedLeaderboardWindow(ctx, sqlc.ListPrecomputedLeaderboardWindowParams{
+					DeploymentID: r.DeploymentID, ChainID: chainID, WindowDays: int32(window), PageSize: int32(limit),
+				})
+				if err != nil {
+					return err
 				}
-				rows = append(rows, rankedRow{common.BytesToAddress(row.Wallet), row.RealizedPnl, row.TokensTraded, row.Username})
+				for _, row := range precomputed {
+					rows = append(rows, rankedRow{common.Address(row.Wallet), row.RealizedPnl, row.TokensTraded, row.Username})
+				}
+			} else {
+				windowed, err := a.queries.ListLeaderboardWindow(ctx, sqlc.ListLeaderboardWindowParams{
+					ChainID: chainID, DeploymentID: r.DeploymentID, PageSize: int32(limit), WindowDays: int32(window),
+				})
+				if err != nil {
+					return err
+				}
+				for _, row := range windowed {
+					if len(row.Wallet) != common.AddressLength {
+						return fmt.Errorf("leaderboard wallet has %d bytes", len(row.Wallet))
+					}
+					rows = append(rows, rankedRow{common.BytesToAddress(row.Wallet), row.RealizedPnl, row.TokensTraded, row.Username})
+				}
 			}
 		}
 		out.Stamp = walletStamp(s)
@@ -365,4 +386,42 @@ func (r WalletReader) Leaderboard(ctx context.Context, chainID int64, window wal
 		return nil
 	})
 	return out, err
+}
+
+// listWalletTrades is ListWalletTrades read through WalletTradePageFloor: the floor bounds the
+// view read so each source reads about one page instead of the wallet's whole history. It falls
+// back to the unbounded query when the wallet has less than a page before the cursor, or when the
+// view dropped base rows (a swap without its Sync, a V4 swap without its graduation) so the
+// bounded page came up short. Mirrors listMarketTrades.
+func (a *Adapter) listWalletTrades(ctx context.Context, args sqlc.ListWalletTradesParams) ([]sqlc.ListWalletTradesRow, error) {
+	before := sqlc.WalletTradePageFloorParams{
+		ChainID: args.ChainID, Wallet: args.Wallet, PageSize: args.PageSize,
+		BeforeBlock: math.MaxInt64, BeforeTransactionIndex: math.MaxInt32, BeforeLogIndex: math.MaxInt32,
+	}
+	if args.AfterBlock.Valid {
+		before.BeforeBlock, before.BeforeTransactionIndex, before.BeforeLogIndex = args.AfterBlock.Int64, args.AfterTransactionIndex.Int32, args.AfterLogIndex.Int32
+	}
+	floor, err := a.queries.WalletTradePageFloor(ctx, before)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return a.queries.ListWalletTrades(ctx, args)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find wallet trade page floor: %w", err)
+	}
+	bounded, err := a.queries.ListWalletTradesFrom(ctx, sqlc.ListWalletTradesFromParams{
+		ChainID: args.ChainID, Wallet: args.Wallet, PageSize: args.PageSize,
+		BeforeBlock: before.BeforeBlock, BeforeTransactionIndex: before.BeforeTransactionIndex, BeforeLogIndex: before.BeforeLogIndex,
+		FloorBlock: floor.BlockNumber, FloorTransactionIndex: floor.TransactionIndex, FloorLogIndex: floor.LogIndex,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(bounded) < int(args.PageSize) {
+		return a.queries.ListWalletTrades(ctx, args)
+	}
+	rows := make([]sqlc.ListWalletTradesRow, len(bounded))
+	for i, row := range bounded {
+		rows[i] = sqlc.ListWalletTradesRow(row)
+	}
+	return rows, nil
 }

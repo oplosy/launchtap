@@ -76,7 +76,16 @@ jobs:
       - name: Verify generated API and contract boundaries
         run: npm run web-api-diff && npm run web-contracts-diff
       - name: Run web static and unit gates
-        run: npm run format:check && npm run lint && npm run typecheck && npm test
+        run: npm run format:check && npm run lint && npm run typecheck && npm run test:coverage
+      - name: Publish unit test coverage
+        if: always()
+        shell: bash
+        run: |
+          if [ ! -f coverage/coverage-summary.json ]; then
+            echo "No coverage summary was produced." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          node scripts/coverage-summary.mjs >> "$GITHUB_STEP_SUMMARY"
       - name: Configure system Chrome for Playwright
         shell: bash
         run: |

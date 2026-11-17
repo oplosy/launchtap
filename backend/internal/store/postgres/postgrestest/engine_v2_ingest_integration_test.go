@@ -92,7 +92,7 @@ func TestEngineV2FixtureIngestsThroughRouter(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, IndexerRole))
 
 	const chainID int64 = 49020
 	block := ledger.IndexedBlock{ChainID: chainID, BlockNumber: 7, BlockHash: common.Hash{0xb7}, ParentHash: common.Hash{0xb6}, BlockTime: time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC), FinalityStatus: "observed"}
@@ -149,6 +149,14 @@ func TestEngineV2FixtureIngestsThroughRouter(t *testing.T) {
 	}
 	if len(identities) != 1 || identities[0].EngineVersion != 2 || identities[0].Pair != (common.Address{}) {
 		t.Fatalf("identities = %+v, want one engine-2 token without a pair", identities)
+	}
+	var graduationBlock int64
+	if err := database.DB.QueryRowContext(ctx, "SELECT graduation_block_number FROM tokens WHERE chain_id=$1", chainID).Scan(&graduationBlock); err != nil {
+		t.Fatalf("read graduation block: %v", err)
+	}
+	// The ordering check rejects a curve trade after this block, so the identity must carry it.
+	if identities[0].GraduationBlock == nil || *identities[0].GraduationBlock != graduationBlock {
+		t.Fatalf("identity graduation block = %v, want %d", identities[0].GraduationBlock, graduationBlock)
 	}
 	if len(pools) != 1 || pools[chain.V4PoolID(identities[0].Token, firstLaunchHook(t, decoded))] != identities[0].Token {
 		t.Fatalf("graduated pools = %v, want the token's V4 pool", pools)

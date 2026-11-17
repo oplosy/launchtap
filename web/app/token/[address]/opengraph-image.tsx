@@ -1,5 +1,7 @@
 import { ImageResponse } from "next/og";
 import { loadCardData, shareCardCacheControl, type CardData } from "@/share/card-data";
+import { notFound } from "next/navigation";
+import { isCanonicalAddressSegment } from "@/share/canonical-address";
 
 export const alt = "Token on Launchpad";
 export const size = { width: 1200, height: 630 };
@@ -197,6 +199,9 @@ async function render(card: CardData) {
 
 export default async function Image({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
+  // A malformed or non-canonically cased address gets a 404 instead of a render: each distinct
+  // path is its own ISR entry, so a render per spelling would be free load (security-audit run-4).
+  if (!isCanonicalAddressSegment(address)) notFound();
   const card = await loadCardData(address);
   try {
     return await render(card);

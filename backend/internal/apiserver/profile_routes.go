@@ -38,20 +38,16 @@ type profileBody struct {
 type profileOutput struct{ Body profileBody }
 
 func (r ProfileRoutes) Register(api huma.API) {
-	huma.Register(api, huma.Operation{OperationID: "getProfile", Method: http.MethodGet, Path: "/profile", Tags: []string{"profile"}}, r.get)
+	huma.Register(api, huma.Operation{OperationID: "getProfile", Method: http.MethodGet, Path: "/profile", Tags: []string{"profile"}, Middlewares: huma.Middlewares{noStore}}, r.get)
 }
 
 func (r ProfileRoutes) get(ctx context.Context, in *profileInput) (*profileOutput, error) {
 	if r.Reader == nil || r.Verifier == nil {
 		return nil, huma.Error503ServiceUnavailable("profile reader unavailable")
 	}
-	access, err := privyauth.ParseBearer(in.Authorization)
+	principal, err := authenticatePrivy(ctx, r.Verifier, WatchlistAuthInput{Authorization: in.Authorization, IdentityToken: in.IdentityToken})
 	if err != nil {
-		return nil, apiProblem(http.StatusUnauthorized, "authentication_failed", "Authentication failed")
-	}
-	principal, err := r.Verifier.Verify(ctx, access, in.IdentityToken)
-	if err != nil {
-		return nil, apiProblem(http.StatusUnauthorized, "authentication_failed", "Authentication failed")
+		return nil, err
 	}
 	page, err := r.Reader.List(ctx, r.ChainID, principal.Wallets)
 	if err != nil {

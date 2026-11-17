@@ -3,6 +3,7 @@ package apiserver
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"image"
 	"image/png"
 	"io"
@@ -113,7 +114,7 @@ func TestMetadataAndImageHTTPContracts(t *testing.T) {
 	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/png" || response.Header().Get("Content-Length") != strconv.Itoa(len(png)) || response.Header().Get("X-Content-Type-Options") != "nosniff" || response.Header().Get("X-Revision") != "0" || response.Header().Get("Cache-Control") != imageCacheControl || !bytes.Equal(response.Body.Bytes(), png) {
 		t.Fatalf("image read status=%d headers=%v body=%x", response.Code, response.Header(), response.Body.Bytes())
 	}
-	if response.Header().Get("Access-Control-Expose-Headers") != "ETag, X-Revision, Retry-After" {
+	if response.Header().Get("Access-Control-Expose-Headers") != "ETag, X-Revision, Retry-After, X-Request-ID" {
 		t.Fatalf("allowed-origin image response does not expose validators: %v", response.Header())
 	}
 	etag := response.Header().Get("ETag")
@@ -158,18 +159,46 @@ func TestMetadataAndImageHTTPContracts(t *testing.T) {
 }
 
 func TestSubjectLimiterBoundsIdentityState(t *testing.T) {
-	limiter := NewSubjectLimiter(1, time.Minute)
+	// A limit of two leaves each one-write subject unthrottled, so a full table can evict.
+	limiter := NewSubjectLimiter(2, time.Minute)
 	now := time.Unix(1_000, 0)
 	for index := 0; index < maxSubjectLimiterEntries; index++ {
 		if !limiter.Allow(strconv.Itoa(index), now) {
 			t.Fatalf("entry %d rejected before capacity", index)
 		}
 	}
-	if limiter.Allow("overflow", now) {
-		t.Fatal("limiter accepted an unbounded identity entry")
+	// A full table admits a new subject by evicting the oldest windows, not by refusing it.
+	if !limiter.Allow("overflow", now) || len(limiter.entries) > maxSubjectLimiterEntries {
+		t.Fatalf("full limiter refused a new subject or grew unbounded: entries=%d", len(limiter.entries))
+	}
+	for index := len(limiter.entries); index < maxSubjectLimiterEntries; index++ {
+		limiter.Allow("refill-"+strconv.Itoa(index), now)
 	}
 	if !limiter.Allow("replacement", now.Add(time.Minute)) || len(limiter.entries) != 1 {
 		t.Fatalf("expired entries were not pruned: entries=%d", len(limiter.entries))
+	}
+}
+
+// Under a principal flood, subjects under their limit are forgotten before throttled ones, so a
+// throttled subject keeps its throttle.
+func TestSubjectLimiterEvictsUnthrottledBeforeThrottled(t *testing.T) {
+	limiter := NewSubjectLimiter(2, time.Minute)
+	now := time.Unix(1_000, 0)
+	for range 2 {
+		if !limiter.Allow("throttled", now) {
+			t.Fatal("throttled subject setup failed")
+		}
+	}
+	for index := 1; index < maxSubjectLimiterEntries; index++ {
+		if !limiter.Allow(strconv.Itoa(index), now.Add(time.Second)) {
+			t.Fatalf("entry %d rejected before capacity", index)
+		}
+	}
+	if !limiter.Allow("newcomer", now.Add(2*time.Second)) {
+		t.Fatal("full limiter refused a new subject")
+	}
+	if limiter.Allow("throttled", now.Add(2*time.Second)) {
+		t.Fatal("eviction reset a throttled subject")
 	}
 }
 
@@ -183,10 +212,22 @@ func TestMetadataAuthenticationAuthorizationAndValidationProblems(t *testing.T) 
 		want     int
 	}{
 		{"authentication", fakeVerifier{err: privyauth.ErrInvalidCredentials}, nil, `{}`, http.StatusUnauthorized},
+		{"empty did", fakeVerifier{principal: privyauth.Principal{}}, nil, `{}`, http.StatusUnauthorized},
+		{"oversized did", fakeVerifier{principal: privyauth.Principal{PrivyDID: strings.Repeat("d", maxPrivyDIDBytes+1)}}, nil, `{}`, http.StatusUnauthorized},
 		{"authorization", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did", Wallets: []common.Address{common.HexToAddress("0x01")}}}, metadata.ErrUnauthorized, `{}`, http.StatusForbidden},
 		{"revision", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, metadata.ErrRevisionConflict, `{}`, http.StatusPreconditionFailed},
 		{"description", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"description":"` + strings.Repeat("x", 2001) + `"}`, http.StatusUnprocessableEntity},
+		{"description nul", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"description":"a\u0000b"}`, http.StatusUnprocessableEntity},
+		{"description control", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"description":"a\u0007b"}`, http.StatusUnprocessableEntity},
+		{"description bidi override", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"description":"a\u202eb"}`, http.StatusUnprocessableEntity},
+		{"description line breaks", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"description":"line one\r\nline\ttwo\n"}`, http.StatusOK},
+		{"url bidi", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"x_url":"https://x.com/a\u2066b"}`, http.StatusUnprocessableEntity},
 		{"url", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"x_url":"http://x.com/test"}`, http.StatusUnprocessableEntity},
+		{"x host", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"x_url":"https://drainer.example/x"}`, http.StatusUnprocessableEntity},
+		{"x lookalike host", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"x_url":"https://x.com.drainer.example/x"}`, http.StatusUnprocessableEntity},
+		{"telegram host", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"telegram_url":"https://x.com/test"}`, http.StatusUnprocessableEntity},
+		{"telegram port", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"telegram_url":"https://t.me:8443/test"}`, http.StatusUnprocessableEntity},
+		{"allowed hosts", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"x_url":"https://Twitter.com/test","telegram_url":"https://telegram.me/test"}`, http.StatusOK},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -204,6 +245,39 @@ func TestMetadataAuthenticationAuthorizationAndValidationProblems(t *testing.T) 
 				t.Fatalf("status=%d want=%d body=%s", response.Code, test.want, body)
 			}
 		})
+	}
+}
+
+// identityVerifier treats the identity token as the Privy DID so one test can act as several users.
+type identityVerifier struct{}
+
+func (identityVerifier) Verify(_ context.Context, _ string, identity string) (privyauth.Principal, error) {
+	return privyauth.Principal{PrivyDID: identity}, nil
+}
+
+func TestMetadataWritesAreRateLimitedPerPrivyDID(t *testing.T) {
+	server := New(DefaultConfig(), ReadyFunc(func(context.Context) error { return nil }), nil)
+	server.RegisterMetadataRoutes(MetadataRoutes{
+		Store: &fakeMetadataStore{}, Verifier: identityVerifier{}, ChainID: 1, Limiter: NewSubjectLimiter(1, time.Minute),
+	})
+	write := func(did string) int {
+		request := httptest.NewRequest(http.MethodPut, "/v1/tokens/0x00000000000000000000000000000000000000bb/metadata", strings.NewReader(`{}`))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Authorization", "Bearer access")
+		request.Header.Set("privy-id-token", did)
+		request.Header.Set("If-Match", "0")
+		response := httptest.NewRecorder()
+		server.Handler.ServeHTTP(response, request)
+		return response.Code
+	}
+	if got := write("did:privy:a"); got != http.StatusOK {
+		t.Fatalf("first write status=%d", got)
+	}
+	if got := write("did:privy:a"); got != http.StatusTooManyRequests {
+		t.Fatalf("second write by the same DID status=%d, want 429", got)
+	}
+	if got := write("did:privy:b"); got != http.StatusOK {
+		t.Fatalf("another DID status=%d, want its own budget", got)
 	}
 }
 
@@ -267,12 +341,12 @@ func testPNG(t *testing.T, width, height int) []byte {
 	return encoded.Bytes()
 }
 
-// riffWebP builds a WebP header: RIFF, a zero size, WEBP, the first chunk tag, a zero chunk
-// size, then the chunk payload.
+// riffWebP builds a WebP header: RIFF, a zero size, WEBP, the first chunk tag, the payload
+// length as the chunk size, then the chunk payload.
 func riffWebP(chunk string, payload ...byte) []byte {
 	content := append([]byte("RIFF"), 0, 0, 0, 0)
 	content = append(content, "WEBP"+chunk...)
-	content = append(content, 0, 0, 0, 0)
+	content = binary.LittleEndian.AppendUint32(content, uint32(len(payload)))
 	return append(content, payload...)
 }
 
@@ -301,5 +375,28 @@ func TestWebPDimensions(t *testing.T) {
 	}
 	if _, _, err := webpDimensions(riffWebP("XXXX", make([]byte, 16)...)); err == nil {
 		t.Fatal("unknown WebP chunk accepted")
+	}
+	short := webpVP8X(640, 480)
+	binary.LittleEndian.PutUint32(short[16:20], 6)
+	if _, _, err := webpDimensions(short); err == nil {
+		t.Fatal("VP8X chunk with a payload size other than 10 accepted")
+	}
+}
+
+// A table full of throttled subjects refuses a new subject rather than resetting a throttle.
+func TestSubjectLimiterRefusesWhenEveryWindowIsThrottled(t *testing.T) {
+	limiter := NewSubjectLimiter(1, time.Minute)
+	now := time.Unix(1_000, 0)
+	for index := 0; index < maxSubjectLimiterEntries; index++ {
+		limiter.Allow(strconv.Itoa(index), now)
+	}
+	if limiter.Allow("newcomer", now) {
+		t.Fatal("a full table of throttled subjects admitted a new subject")
+	}
+	if limiter.Allow("0", now) {
+		t.Fatal("a throttled subject was reset")
+	}
+	if !limiter.Allow("newcomer", now.Add(time.Minute)) {
+		t.Fatal("expired windows were not pruned for a new subject")
 	}
 }

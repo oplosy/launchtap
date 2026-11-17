@@ -860,6 +860,7 @@
             "type": "string"
           },
           "pair": {
+            "description": "Uniswap v2 pair of an engine-1 token; the zero address for an engine-2 token, which graduates into a v4 pool with no pair contract.",
             "type": "string"
           },
           "symbol": {
@@ -1144,6 +1145,65 @@
         },
         "required": [
           "through"
+        ],
+        "type": "object"
+      },
+      "IndexerStatusDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "finalized_block": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "heartbeat_age_seconds": {
+            "description": "Whole seconds since heartbeat_at, or null before the first step.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "heartbeat_at": {
+            "description": "Database time of the last committed indexer step (RFC 3339), or null before the first.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "observed_block": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "safe_block": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "stale": {
+            "description": "True when the indexer has not committed a step within stale_after_seconds, or never has.",
+            "type": "boolean"
+          },
+          "stale_after_seconds": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "stale",
+          "stale_after_seconds",
+          "heartbeat_at",
+          "heartbeat_age_seconds",
+          "observed_block",
+          "safe_block",
+          "finalized_block"
         ],
         "type": "object"
       },
@@ -2056,6 +2116,36 @@
         ],
         "type": "object"
       },
+      "StatusBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/v1/schemas/StatusBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "chain_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deployment_id": {
+            "type": "string"
+          },
+          "indexer": {
+            "$ref": "#/components/schemas/IndexerStatusDTO"
+          }
+        },
+        "required": [
+          "chain_id",
+          "deployment_id",
+          "indexer"
+        ],
+        "type": "object"
+      },
       "TelegramLinkBody": {
         "additionalProperties": false,
         "properties": {
@@ -2239,12 +2329,20 @@
           "description": {
             "type": "string"
           },
+          "details_edited_at": {
+            "description": "When the creator last changed the details or image after the first save (RFC 3339), or null if never.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "engine_version": {
             "format": "int32",
             "minimum": 0,
             "type": "integer"
           },
           "eth_reserve": {
+            "description": "ETH reserve for the curve and pair sources. A v4 pool has no reserves: for reserve_source v4 this is the launch's initial virtual ETH; read pool liquidity from v2.",
             "type": "string"
           },
           "fdv_eth": {
@@ -2321,6 +2419,7 @@
             "type": "string"
           },
           "reserve_source": {
+            "description": "Where the reserves come from: curve, pair (engine-1 Uniswap v2 pair) or v4 (engine-2 Uniswap v4 pool).",
             "type": "string"
           },
           "snapshot": {
@@ -2336,6 +2435,7 @@
             "type": "string"
           },
           "token_reserve": {
+            "description": "Token reserve for the curve and pair sources; for reserve_source v4 this is the launch's initial virtual token reserve.",
             "type": "string"
           },
           "total_supply": {
@@ -2391,6 +2491,7 @@
           "image_url",
           "x_url",
           "telegram_url",
+          "details_edited_at",
           "spot_price_eth",
           "market_cap_eth",
           "fdv_eth",
@@ -4759,6 +4860,43 @@
         },
         "tags": [
           "stats"
+        ]
+      }
+    },
+    "/status": {
+      "get": {
+        "operationId": "getStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "tags": [
+          "system"
         ]
       }
     },

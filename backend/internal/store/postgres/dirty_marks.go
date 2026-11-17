@@ -1,6 +1,11 @@
 package postgres
 
 import (
+	"context"
+	"fmt"
+
+	"github.com/Contictus/launchtap/backend/internal/ledger"
+	"github.com/Contictus/launchtap/backend/internal/store/postgres/sqlc"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -73,4 +78,52 @@ func (adapter *Adapter) remember(marks ...dirtyMark) {
 // deletes the launch-mint position marks.
 func (adapter *Adapter) forgetDirtyMarks() {
 	clear(adapter.marks)
+}
+
+func (adapter *Adapter) markPositionDirty(ctx context.Context, chainID int64, wallet, token common.Address) error {
+	return adapter.markOnce(dirtyMark{kind: markPosition, chainID: chainID, subject: addressSubject(token), wallet: wallet}, func() error {
+		if err := adapter.queries.MarkPositionDirty(ctx, sqlc.MarkPositionDirtyParams{ChainID: chainID, Wallet: wallet[:], TokenAddress: token[:], Factory: adapter.factory[:]}); err != nil {
+			return fmt.Errorf("mark position dirty: %w", err)
+		}
+		return nil
+	})
+}
+
+func (adapter *Adapter) markTokenDirty(ctx context.Context, chainID int64, token common.Address) error {
+	return adapter.markOnce(dirtyMark{kind: markToken, chainID: chainID, subject: addressSubject(token)}, func() error {
+		if err := adapter.queries.MarkTokenDirty(ctx, sqlc.MarkTokenDirtyParams{ChainID: chainID, TokenAddress: sqlc.Address(token)}); err != nil {
+			return fmt.Errorf("mark token dirty: %w", err)
+		}
+		return nil
+	})
+}
+
+func (adapter *Adapter) markPairTokenDirty(ctx context.Context, chainID int64, pair common.Address) error {
+	return adapter.markOnce(dirtyMark{kind: markPairToken, chainID: chainID, subject: addressSubject(pair)}, func() error {
+		if err := adapter.queries.MarkPairTokenDirty(ctx, sqlc.MarkPairTokenDirtyParams{ChainID: chainID, LpPair: addressPointer(pair)}); err != nil {
+			return fmt.Errorf("mark pair token dirty: %w", err)
+		}
+		return nil
+	})
+}
+
+// markTransferPositionsDirty marks both sides of a transfer. With de-duplication a side already
+// marked is skipped; MarkPositionDirty applies the same exclusions as MarkTransferPositionsDirty.
+func (adapter *Adapter) markTransferPositionsDirty(ctx context.Context, event ledger.Transfer) error {
+	from := dirtyMark{kind: markPosition, chainID: event.ChainID, subject: addressSubject(event.Token), wallet: event.From}
+	to := dirtyMark{kind: markPosition, chainID: event.ChainID, subject: addressSubject(event.Token), wallet: event.To}
+	fromDone, toDone := adapter.marked(from), adapter.marked(to)
+	switch {
+	case fromDone && toDone:
+		return nil
+	case fromDone:
+		return adapter.markPositionDirty(ctx, event.ChainID, event.To, event.Token)
+	case toDone:
+		return adapter.markPositionDirty(ctx, event.ChainID, event.From, event.Token)
+	}
+	if err := adapter.queries.MarkTransferPositionsDirty(ctx, sqlc.MarkTransferPositionsDirtyParams{ChainID: event.ChainID, TokenAddress: event.Token[:], FromAddress: event.From[:], ToAddress: event.To[:], Factory: adapter.factory[:]}); err != nil {
+		return fmt.Errorf("mark transfer positions dirty: %w", err)
+	}
+	adapter.remember(from, to)
+	return nil
 }

@@ -12,6 +12,7 @@ import (
 	"image/png"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/Contictus/launchtap/backend/internal/metadata"
 	"github.com/Contictus/launchtap/backend/internal/privyauth"
+	"github.com/Contictus/launchtap/backend/internal/social"
 	"github.com/danielgtaylor/huma/v2"
 )
 
@@ -27,6 +29,9 @@ const (
 	maxImageBytes            = 5 << 20
 	maxImageDimension        = 4096
 	maxSubjectLimiterEntries = 10_000
+	// subjectLimiterEvictBatch is how many windows a full subject limiter drops at once, so a
+	// principal flood pays the eviction sort once per batch.
+	subjectLimiterEvictBatch = maxSubjectLimiterEntries / 10
 	// Image URLs carry no content hash, so browsers revalidate after a short window and the
 	// ETag turns repeat loads into bodiless 304 responses.
 	imageCacheControl = "public, max-age=60, stale-while-revalidate=600"
@@ -108,6 +113,8 @@ func (r MetadataRoutes) Register(api huma.API) {
 	huma.Register(api, huma.Operation{OperationID: "getTokenMetadata", Method: http.MethodGet, Path: "/tokens/{token}/metadata", Tags: []string{"metadata"}}, r.getMetadata)
 	huma.Register(api, huma.Operation{
 		OperationID: "replaceTokenImage", Method: http.MethodPut, Path: "/tokens/{token}/image", Tags: []string{"metadata"},
+		// The raw body has no huma default cap; bound it at the image limit, not the 6 MiB server cap.
+		MaxBodyBytes: maxImageBytes,
 		RequestBody: &huma.RequestBody{Required: true, Content: map[string]*huma.MediaType{
 			"image/png": {Schema: &huma.Schema{Type: "string", Format: "binary"}}, "image/jpeg": {Schema: &huma.Schema{Type: "string", Format: "binary"}}, "image/webp": {Schema: &huma.Schema{Type: "string", Format: "binary"}},
 		}},
@@ -245,13 +252,9 @@ func (r MetadataRoutes) authenticate(ctx context.Context, authorization, identit
 	if r.Verifier == nil || r.Store == nil {
 		return privyauth.Principal{}, apiRequestProblem(ctx, http.StatusInternalServerError, "internal_error", "Request failed")
 	}
-	access, err := privyauth.ParseBearer(authorization)
+	principal, err := authenticatePrivy(ctx, r.Verifier, WatchlistAuthInput{Authorization: authorization, IdentityToken: identity})
 	if err != nil {
-		return privyauth.Principal{}, apiProblem(http.StatusUnauthorized, "authentication_failed", "Authentication failed")
-	}
-	principal, err := r.Verifier.Verify(ctx, access, identity)
-	if err != nil {
-		return privyauth.Principal{}, apiProblem(http.StatusUnauthorized, "authentication_failed", "Authentication failed")
+		return privyauth.Principal{}, err
 	}
 	if !r.Limiter.Allow(principal.PrivyDID, time.Now()) {
 		return privyauth.Principal{}, apiProblem(http.StatusTooManyRequests, "rate_limited", "Write rate limit exceeded")
@@ -268,13 +271,24 @@ func mapMetadataError(ctx context.Context, err error) error {
 	case errors.Is(err, metadata.ErrRevisionConflict):
 		return apiProblem(http.StatusPreconditionFailed, "revision_conflict", "Resource revision changed")
 	default:
-		return apiRequestProblem(ctx, http.StatusInternalServerError, "internal_error", "Request failed")
+		return internalProblem(ctx, err, "internal_error", "Request failed")
 	}
+}
+
+// socialLinkHosts lists the hosts each labelled link may point at. The token page shows these
+// URLs under fixed "X profile" and "Telegram" labels, so any other host would let a creator put
+// an arbitrary site behind a trusted-looking label. Mirrored by web/src/token/image-file.ts.
+var socialLinkHosts = map[string]map[string]bool{
+	"x_url":        {"x.com": true, "www.x.com": true, "twitter.com": true, "www.twitter.com": true},
+	"telegram_url": {"t.me": true, "telegram.me": true, "www.telegram.me": true},
 }
 
 func validateMetadata(value metadataBody) error {
 	if !utf8.ValidString(value.Description) || len([]byte(value.Description)) > 2000 {
 		return apiProblem(http.StatusUnprocessableEntity, "invalid_metadata", "Description must be valid UTF-8 and at most 2000 bytes")
+	}
+	if strings.ContainsFunc(value.Description, social.UnsafeTextRune) {
+		return apiProblem(http.StatusUnprocessableEntity, "invalid_metadata", "Description must not contain control or bidirectional override characters")
 	}
 	for name, value := range map[string]string{"x_url": value.XURL, "telegram_url": value.TelegramURL} {
 		if value == "" {
@@ -283,12 +297,25 @@ func validateMetadata(value metadataBody) error {
 		if len([]byte(value)) > 2048 {
 			return apiProblem(http.StatusUnprocessableEntity, "invalid_metadata", name+" must be at most 2048 bytes")
 		}
+		if !utf8.ValidString(value) || strings.ContainsFunc(value, social.UnsafeTextRune) {
+			return apiProblem(http.StatusUnprocessableEntity, "invalid_metadata", name+" must not contain control or bidirectional override characters")
+		}
 		parsed, err := url.Parse(value)
 		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
 			return apiProblem(http.StatusUnprocessableEntity, "invalid_metadata", name+" must be an HTTPS URL")
 		}
+		if parsed.Port() != "" || !socialLinkHosts[name][strings.ToLower(parsed.Hostname())] {
+			return apiProblem(http.StatusUnprocessableEntity, "invalid_metadata", name+" must link to "+socialLinkLabel(name))
+		}
 	}
 	return nil
+}
+
+func socialLinkLabel(name string) string {
+	if name == "x_url" {
+		return "x.com or twitter.com"
+	}
+	return "t.me or telegram.me"
 }
 
 func detectImage(content []byte) (string, error) {
@@ -337,6 +364,11 @@ func webpDimensions(content []byte) (int, int, error) {
 		bits := binary.LittleEndian.Uint32(content[21:25])
 		return int(bits&0x3fff) + 1, int((bits>>14)&0x3fff) + 1, nil
 	case "VP8X":
+		// RFC 9649 2.7: the VP8X payload is exactly 10 bytes; any other size would make the
+		// canvas fields below read the next chunk's header.
+		if binary.LittleEndian.Uint32(content[16:20]) != 10 {
+			return 0, 0, invalid
+		}
 		width := int(content[24]) | int(content[25])<<8 | int(content[26])<<16
 		height := int(content[27]) | int(content[28])<<8 | int(content[29])<<16
 		return width + 1, height + 1, nil
@@ -389,12 +421,9 @@ func (l *SubjectLimiter) Allow(subject string, now time.Time) bool {
 	defer l.mu.Unlock()
 	entry, exists := l.entries[subject]
 	if !exists && len(l.entries) >= maxSubjectLimiterEntries {
-		for candidate, candidateEntry := range l.entries {
-			if now.Sub(candidateEntry.start) >= l.window {
-				delete(l.entries, candidate)
-			}
-		}
+		l.evict(now)
 		if len(l.entries) >= maxSubjectLimiterEntries {
+			// Every live window is throttled: forgetting one would reset its throttle.
 			return false
 		}
 	}
@@ -408,4 +437,33 @@ func (l *SubjectLimiter) Allow(subject string, now time.Time) bool {
 	entry.count++
 	l.entries[subject] = entry
 	return true
+}
+
+// evict makes room for a new subject instead of refusing every new principal while the table is
+// full (security-audit run-4). It drops expired windows; if verified principals still fill the
+// table, it drops a batch of the oldest windows of subjects under their limit. A throttled
+// subject is never forgotten, so eviction cannot hand it a fresh window.
+func (l *SubjectLimiter) evict(now time.Time) {
+	for candidate, candidateEntry := range l.entries {
+		if now.Sub(candidateEntry.start) >= l.window {
+			delete(l.entries, candidate)
+		}
+	}
+	if len(l.entries) < maxSubjectLimiterEntries {
+		return
+	}
+	type candidate struct {
+		subject string
+		start   time.Time
+	}
+	candidates := make([]candidate, 0, len(l.entries))
+	for subject, entry := range l.entries {
+		if entry.count < l.maximum {
+			candidates = append(candidates, candidate{subject, entry.start})
+		}
+	}
+	slices.SortFunc(candidates, func(a, b candidate) int { return a.start.Compare(b.start) })
+	for _, oldest := range candidates[:min(subjectLimiterEvictBatch, len(candidates))] {
+		delete(l.entries, oldest.subject)
+	}
 }

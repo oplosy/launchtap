@@ -20,7 +20,7 @@ func TestMetadataAndImagesAuthorizeAndUseRevisionsAtomically(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	pool, err := storepostgres.OpenPool(ctx, database.URL, storepostgres.PoolOptions{})
+	pool, err := storepostgres.OpenPool(ctx, database.URLAs(t, APIRole), storepostgres.PoolOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestMetadataAndImageFirstWritesRejectConcurrentExpectedZero(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	pool, err := storepostgres.OpenPool(ctx, database.URL, storepostgres.PoolOptions{})
+	pool, err := storepostgres.OpenPool(ctx, database.URLAs(t, APIRole), storepostgres.PoolOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

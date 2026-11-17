@@ -45,6 +45,12 @@ func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
 	if err != nil {
 		return false, err
 	}
+	if state.Observed != nil && heads.latest.BlockNumber < state.Observed.BlockNumber {
+		// A provider behind the indexed tip (a lagging or newly switched provider) has no
+		// header for the saved block yet; wait for it instead of reading that as a fault. A
+		// reorg to a shorter chain is detected once the new chain passes the saved height.
+		return false, rpcFailure("wait for RPC head", fmt.Errorf("latest block %d is below indexed block %d", heads.latest.BlockNumber, state.Observed.BlockNumber))
+	}
 	if recovered, err := e.verifySavedBlocks(ctx, state); err != nil || recovered {
 		return recovered, err
 	}
@@ -191,7 +197,9 @@ func (e *Engine) verifySavedBlocks(ctx context.Context, state State) (recovered 
 }
 
 // readChunk reads the next chunk's headers up to latest and links each to its parent. A
-// broken link starts reorg recovery and reports recovered.
+// broken link to the saved Observed block starts reorg recovery and reports recovered; a
+// broken link inside the chunk (headers read across a reorg, nothing saved yet) is a
+// canonical mismatch the next step re-reads.
 func (e *Engine) readChunk(ctx context.Context, state State, latest ledger.IndexedBlock) (chunk stepChunk, recovered bool, err error) {
 	from := e.settings.StartBlock
 	if state.Observed != nil {
@@ -222,6 +230,9 @@ func (e *Engine) readChunk(ctx context.Context, state State, latest ledger.Index
 			return stepChunk{}, false, errors.New("RPC header number differs from requested number")
 		}
 		if previous != nil && block.ParentHash != previous.BlockHash {
+			if number > from {
+				return stepChunk{}, false, fmt.Errorf("%w: chunk header %d does not link to unsaved block %d", ErrCanonicalMismatch, number, previous.BlockNumber)
+			}
 			if state.Safe != nil && previous.BlockNumber <= state.Safe.BlockNumber {
 				return stepChunk{}, false, ErrSafeViolation
 			}
@@ -258,6 +269,11 @@ func (e *Engine) decodeChunk(ctx context.Context, chunk stepChunk, identities []
 	}
 	result, err := e.discovery.Discover(ctx, uint64(chunk.from), uint64(chunk.to), emitters)
 	if err != nil {
+		// A provider outage or a failover switch retries the step like a head read; any other
+		// discovery error (a bad log, a failed pair check) still stops the indexer.
+		if chain.IsProviderUnavailable(err) || errors.Is(err, chain.ErrRPCSwitching) {
+			return nil, rpcFailure("discover logs", err)
+		}
 		return nil, err
 	}
 	decoded := make([]chain.DecodedLog, 0)

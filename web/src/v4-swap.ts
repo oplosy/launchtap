@@ -135,10 +135,34 @@ export function encodeV4ExactInSingle(args: {
 
 export type Permit2SellStep = "reset-erc20" | "approve-erc20" | "approve-permit2" | "execute";
 
+/** A Permit2 allowance closer than this to expiry is re-approved rather than reused. */
+export const MIN_PERMIT2_REMAINING_SECONDS = 60n;
+
+/**
+ * The swap deadline for a sell review. After the approvals of a two-step sell the swap is
+ * reviewed again; its deadline must not outlive the exact Permit2 allowance being reused, or
+ * the swap reverts once the allowance expires. An allowance about to expire is not reused:
+ * the full deadline then makes planPermit2Sell re-approve it.
+ */
+export function sellSwapDeadline(args: {
+  amount: bigint;
+  permit2: { amount: bigint; expiration: bigint };
+  nowSeconds: bigint;
+  ttlSeconds: bigint;
+}): bigint {
+  const full = args.nowSeconds + args.ttlSeconds;
+  const reusable =
+    args.permit2.amount === args.amount &&
+    args.permit2.expiration >= args.nowSeconds + MIN_PERMIT2_REMAINING_SECONDS &&
+    args.permit2.expiration < full;
+  return reusable ? args.permit2.expiration : full;
+}
+
 /**
  * The writes a sell still needs (Plan v2-C D3). The ERC-20 allowance to Permit2 and the Permit2
  * allowance to the router must both equal the sell amount, and the Permit2 allowance must
- * expire within the transaction TTL; anything larger or longer-lived is re-approved exactly.
+ * expire within the transaction TTL but not before the swap deadline; anything larger,
+ * longer-lived or shorter-lived is re-approved exactly.
  */
 export function planPermit2Sell(args: {
   amount: bigint;
@@ -146,6 +170,7 @@ export function planPermit2Sell(args: {
   permit2: { amount: bigint; expiration: bigint };
   nowSeconds: bigint;
   ttlSeconds: bigint;
+  deadline: bigint;
 }): Permit2SellStep[] {
   const steps: Permit2SellStep[] = [];
   if (args.erc20Allowance !== args.amount) {
@@ -155,6 +180,7 @@ export function planPermit2Sell(args: {
   const permit2Exact =
     args.permit2.amount === args.amount &&
     args.permit2.expiration > args.nowSeconds &&
+    args.permit2.expiration >= args.deadline &&
     args.permit2.expiration <= args.nowSeconds + args.ttlSeconds;
   if (!permit2Exact) steps.push("approve-permit2");
   steps.push("execute");

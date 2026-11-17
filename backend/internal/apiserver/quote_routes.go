@@ -51,15 +51,15 @@ func (r QuoteRoutes) handle(ctx context.Context, in *quoteInput) (*quoteOutput, 
 		return nil, huma.Error503ServiceUnavailable("quote provider unavailable")
 	}
 	if !common.IsHexAddress(in.Token) {
-		return nil, huma.Error400BadRequest("invalid token address")
+		return nil, apiProblem(http.StatusBadRequest, "invalid_address", "invalid token address")
 	}
 	amount, err := parseCanonicalUint256(in.Body.Amount)
 	if err != nil {
-		return nil, huma.Error400BadRequest("amount must be a canonical uint256")
+		return nil, apiProblem(http.StatusBadRequest, "invalid_amount", "amount must be a canonical uint256")
 	}
 	side := in.Body.Side
 	if side != "buy" && side != "sell" {
-		return nil, huma.Error400BadRequest("side must be buy or sell")
+		return nil, apiProblem(http.StatusBadRequest, "invalid_side", "side must be buy or sell")
 	}
 	q, err := r.Provider.Quote(ctx, common.HexToAddress(in.Token), side == "buy", amount)
 	if err != nil {
@@ -77,7 +77,7 @@ func (r QuoteRoutes) handle(ctx context.Context, in *quoteInput) (*quoteOutput, 
 		case errors.Is(err, curve.ErrZeroOutput):
 			return nil, apiProblem(http.StatusUnprocessableEntity, "zero_output", "Quote output is zero")
 		default:
-			return nil, apiRequestProblem(ctx, http.StatusInternalServerError, "quote_failed", "Quote could not be computed")
+			return nil, internalProblem(ctx, err, "quote_failed", "Quote could not be computed")
 		}
 	}
 	return &quoteOutput{Body: quoteBody{Input: decimal(q.Input), Output: decimal(q.Output), ProtocolFee: decimal(q.ProtocolFee), CreatorFee: decimal(q.CreatorFee), Refund: decimal(q.Refund), Graduates: q.Graduates, NextVirtualETH: decimal(q.NextVirtualETH), NextVirtualToken: decimal(q.NextVirtualToken), AsOfBlock: q.AsOfBlock, Finality: q.Finality, ReserveSourceBlock: q.ReserveSourceBlock, ReserveSourceHash: q.ReserveSourceHash.Hex(), SnipeTax: decimal(q.SnipeTax), TaxBPS: q.TaxBPS, TaxEndsAt: rfc3339OrEmpty(q.TaxEndsAt), Informational: true}}, nil

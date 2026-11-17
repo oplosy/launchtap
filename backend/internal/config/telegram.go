@@ -41,8 +41,8 @@ func LoadTelegram(getenv func(string) string) (TelegramConfig, error) {
 	if !deploymentIDPattern.MatchString(deploymentID) {
 		return TelegramConfig{}, invalidOrMissing("DEPLOYMENT_ID", deploymentID)
 	}
-	databaseURL := get("DATABASE_URL")
-	if err := validateURL("DATABASE_URL", databaseURL, "postgres", "postgresql"); err != nil {
+	databaseURL, err := resolveDatabaseURL(getenv)
+	if err != nil {
 		return TelegramConfig{}, err
 	}
 	logLevel, err := parseLogLevel(get("LOG_LEVEL"))

@@ -5,6 +5,9 @@ Steps to complete before shipping a release to users.
 ## Before release
 
 - [ ] Full test suite green in CI.
+- [ ] Robinhood mainnet fork gate passed on the release commit (contracts workflow, run manually:
+      it needs the archive RPC secret). It checks the live PositionManager against the compiled
+      v4-periphery actions.
 - [ ] Migration status reviewed (forward-only, rollback plan noted if any).
 - [ ] Environment variables documented; `.env.example` updated for new settings.
 - [ ] Breaking API or data changes called out in release notes.

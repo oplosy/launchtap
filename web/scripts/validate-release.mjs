@@ -12,7 +12,21 @@ const required = [
   "NEXT_PUBLIC_API_BASE_URL",
   "NEXT_PUBLIC_RPC_URL",
 ];
-const fixture = /task6|e2e|anvil|localhost|127\.0\.0\.1|test|mock|fixture/i;
+// A fixture word must start a token ("testnet", "e2e-rpc"), so random IDs that merely contain
+// the letters ("cmabe2e9", "latest") are not rejected. Mirrors src/config/release.ts.
+const fixture = /(?:^|[^a-z0-9])(?:task6|e2e|anvil|localhost|test|mock|fixture)|127\.0\.0\.1/i;
+const v4AddressKeys = ["poolManager", "permit2", "universalRouter", "v4Quoter", "hook", "locker"];
+
+// reviewedAddressesComplete checks the addresses the web app needs for the deployment's engine:
+// Uniswap v2 for engine 1, the v4 set for engine 2 (whose v2 fields are null by design).
+function reviewedAddressesComplete(deployment) {
+  if (!deployment.factory) return false;
+  if (deployment.engineVersion === 2)
+    return v4AddressKeys.every((key) => Boolean(deployment.v4?.[key]));
+  return [deployment.weth, deployment.uniswapV2Factory, deployment.uniswapV2Router02].every(
+    Boolean,
+  );
+}
 
 export function readReviewedDeployments(
   generatedPath = path.resolve(process.cwd(), "src/contracts/generated.ts"),
@@ -79,14 +93,7 @@ export function validateReleaseEnvironment(
     );
     if (!deployment) errors.push("deployment ID and chain ID are not in the reviewed manifest");
     else if (!deployment.enabled) errors.push("deployment is disabled in the reviewed manifest");
-    else if (
-      ![
-        deployment.factory,
-        deployment.weth,
-        deployment.uniswapV2Factory,
-        deployment.uniswapV2Router02,
-      ].every(Boolean)
-    )
+    else if (!reviewedAddressesComplete(deployment))
       errors.push("enabled deployment is missing reviewed contract addresses");
   } else if (mode === "anvil" && env.NEXT_PUBLIC_E2E_FIXTURE?.trim() !== "1") {
     errors.push("Anvil gate requires NEXT_PUBLIC_E2E_FIXTURE=1");

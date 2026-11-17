@@ -206,6 +206,12 @@ type IndexedBlock struct {
 	FinalityStatus string
 }
 
+type IndexerHeartbeat struct {
+	ChainID      int64
+	DeploymentID string
+	BeatAt       pgtype.Timestamptz
+}
+
 type IndexerReorg struct {
 	ReorgID              int64
 	ChainID              int64
@@ -241,6 +247,21 @@ type LaunchPauseEvent struct {
 	TxHash           Hash
 	LogIndex         int32
 	Paused           bool
+}
+
+type LeaderboardWindowRank struct {
+	ChainID      int64
+	WindowDays   int32
+	Rank         int32
+	Wallet       Address
+	RealizedPnl  pgtype.Numeric
+	TokensTraded int64
+}
+
+type LeaderboardWindowRefresh struct {
+	ChainID     int64
+	WindowDays  int32
+	RefreshedAt pgtype.Timestamptz
 }
 
 type LpFeeClaim struct {
@@ -388,6 +409,17 @@ type ProtocolDaily struct {
 	LaunchesCount    int32
 	TradesCount      int32
 	GraduationsCount int32
+}
+
+type ProtocolDailyRevenue struct {
+	ChainID             int64
+	Day                 pgtype.Date
+	EngineVersion       int32
+	LaunchFees          Uint256
+	TradeFees           Uint256
+	SnipeTax            Uint256
+	GraduationRemainder Uint256
+	LpFees              Uint256
 }
 
 type ProtocolFeeClaim struct {
@@ -840,13 +872,14 @@ type WalletRealizedLeg struct {
 }
 
 type WalletTotal struct {
-	ChainID          int64
-	Wallet           Address
-	RealizedPnl      pgtype.Numeric
-	TokensTraded     int64
-	HeldCount        int64
-	FirstBlockNumber int64
-	LastBlockNumber  int64
+	ChainID                int64
+	Wallet                 Address
+	RealizedPnl            pgtype.Numeric
+	TokensTraded           int64
+	HeldCount              int64
+	FirstBlockNumber       int64
+	LastBlockNumber        int64
+	LeaderboardRealizedPnl pgtype.Numeric
 }
 
 type WatchlistEntry struct {

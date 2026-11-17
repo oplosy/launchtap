@@ -62,9 +62,9 @@ type tokenDetailDTO struct {
 	GraduationETH         string      `json:"graduation_eth"`
 	TradeFeeBPS           uint16      `json:"trade_fee_bps"`
 	ProtocolShareBPS      uint16      `json:"protocol_share_bps"`
-	ReserveSource         string      `json:"reserve_source"`
-	ETHReserve            string      `json:"eth_reserve"`
-	TokenReserve          string      `json:"token_reserve"`
+	ReserveSource         string      `json:"reserve_source" doc:"Where the reserves come from: curve, pair (engine-1 Uniswap v2 pair) or v4 (engine-2 Uniswap v4 pool)."`
+	ETHReserve            string      `json:"eth_reserve" doc:"ETH reserve for the curve and pair sources. A v4 pool has no reserves: for reserve_source v4 this is the launch's initial virtual ETH; read pool liquidity from v2."`
+	TokenReserve          string      `json:"token_reserve" doc:"Token reserve for the curve and pair sources; for reserve_source v4 this is the launch's initial virtual token reserve."`
 	RealCurveETH          string      `json:"real_curve_eth"`
 	GraduationProgressBPS int32       `json:"graduation_progress_bps"`
 	ReserveBlock          int64       `json:"reserve_block"`
@@ -73,6 +73,7 @@ type tokenDetailDTO struct {
 	ImageURL              string      `json:"image_url"`
 	XURL                  string      `json:"x_url"`
 	TelegramURL           string      `json:"telegram_url"`
+	DetailsEditedAt       *string     `json:"details_edited_at" nullable:"true" doc:"When the creator last changed the details or image after the first save (RFC 3339), or null if never."`
 	SpotPriceETH          string      `json:"spot_price_eth"`
 	MarketCapETH          string      `json:"market_cap_eth"`
 	FDVETH                string      `json:"fdv_eth"`
@@ -211,7 +212,7 @@ func (r PublicRoutes) Register(api huma.API) {
 }
 func address(value string) (common.Address, error) {
 	if !common.IsHexAddress(value) {
-		return common.Address{}, huma.Error400BadRequest("invalid token address")
+		return common.Address{}, apiProblem(http.StatusBadRequest, "invalid_address", "invalid token address")
 	}
 	return common.HexToAddress(value), nil
 }
@@ -231,13 +232,13 @@ func mapReadError(ctx context.Context, err error) error {
 	if errors.Is(err, context.Canceled) {
 		return err
 	}
-	return apiRequestProblem(ctx, http.StatusInternalServerError, "internal_error", "Request failed")
+	return internalProblem(ctx, err, "internal_error", "Request failed")
 }
 func apiProblem(status int, code, detail string) error {
-	return &huma.ErrorModel{Type: "urn:launchpad:problem:" + code, Title: http.StatusText(status), Status: status, Detail: detail}
+	return &huma.ErrorModel{Type: problemTypePrefix + code, Title: http.StatusText(status), Status: status, Detail: detail}
 }
 func apiRequestProblem(ctx context.Context, status int, code, detail string) error {
-	err := &huma.ErrorModel{Type: "urn:launchpad:problem:" + code, Title: http.StatusText(status), Status: status, Detail: detail}
+	err := &huma.ErrorModel{Type: problemTypePrefix + code, Title: http.StatusText(status), Status: status, Detail: detail}
 	if id := RequestID(ctx); id != "" {
 		err.Instance = "urn:launchpad:request:" + id
 	}
@@ -256,6 +257,10 @@ func (r PublicRoutes) detail(ctx context.Context, in *addressInput) (*detailOutp
 		return nil, mapReadError(ctx, e)
 	}
 	d := tokenDetailDTO{Snapshot: snapDTO(v.Snapshot, v.Finality), Address: v.Address.Hex(), Curve: v.Curve.Hex(), Pair: v.Pair.Hex(), WETH: v.WETH.Hex(), Creator: v.Creator.Hex(), ProtocolTreasury: v.ProtocolTreasury.Hex(), Name: v.Name, Symbol: v.Symbol, Phase: v.Phase, EngineVersion: v.EngineVersion, TotalSupply: decimal(v.TotalSupply), InitialVirtualETH: decimal(v.InitialVirtualETH), InitialVirtualToken: decimal(v.InitialVirtualToken), CurveTokens: decimal(v.CurveTokens), LPTokens: decimal(v.LPTokens), GraduationETH: decimal(v.GraduationETH), TradeFeeBPS: v.TradeFeeBPS, ProtocolShareBPS: v.ProtocolShareBPS, ReserveSource: v.ReserveSource, ETHReserve: decimal(v.ETHReserve), TokenReserve: decimal(v.TokenReserve), RealCurveETH: decimal(v.RealCurveETH), GraduationProgressBPS: v.GraduationProgressBPS, ReserveBlock: v.ReserveBlock, ReserveHash: v.ReserveHash.Hex(), Description: v.Description, ImageURL: v.ImageURL, XURL: v.XURL, TelegramURL: v.TelegramURL, SpotPriceETH: decimal(v.SpotPriceETH), MarketCapETH: decimal(v.MarketCapETH), FDVETH: decimal(v.FDVETH), LiquidityETH: decimal(v.LiquidityETH), ATHPriceETH: decimal(v.ATHPriceETH), Volume24hETH: decimal(v.Volume24hETH), ATHAt: v.ATHAt.UTC().Format(time.RFC3339Nano), PriceChange24hBPS: v.PriceChange24hBPS, HolderCount: v.HolderCount, LaunchBlock: v.LaunchBlock, LaunchTime: v.LaunchTime.UTC().Format("2006-01-02T15:04:05.000000Z"), V2: v2DTO(v)}
+	if v.DetailsEditedAt != nil {
+		edited := v.DetailsEditedAt.UTC().Format(time.RFC3339)
+		d.DetailsEditedAt = &edited
+	}
 	return &detailOutput{Body: d}, nil
 }
 func cursor(value string) (*pagination.Cursor, error) {

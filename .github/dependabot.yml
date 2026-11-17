@@ -1,0 +1,29 @@
+# Weekly update PRs into dev. Every PR still has to pass the pinned CI gates; nothing merges
+# without them. GitHub security updates are separate and arrive as soon as an advisory exists.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /backend
+    target-branch: dev
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+  - package-ecosystem: npm
+    directory: /web
+    target-branch: dev
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule: { interval: weekly }
+  - package-ecosystem: docker
+    directory: /backend
+    target-branch: dev
+    schedule: { interval: weekly }
+  - package-ecosystem: docker
+    directory: /web
+    target-branch: dev
+    schedule: { interval: weekly }

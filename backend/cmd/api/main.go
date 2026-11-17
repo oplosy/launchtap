@@ -19,10 +19,17 @@ import (
 	"github.com/Contictus/launchtap/backend/internal/privyauth"
 	"github.com/Contictus/launchtap/backend/internal/quote"
 	"github.com/Contictus/launchtap/backend/internal/realtime"
+	"github.com/Contictus/launchtap/backend/internal/secretenv"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+// apiStatementTimeout bounds every statement the API runs: its public reads (forum ranking,
+// token search, early-buyer clusters) scale with chain data, and a statement past this is
+// cancelled with a 500 instead of holding one of the pool's few connections (security-audit
+// run-4). The slowest measured read is far below it.
+const apiStatementTimeout = 10 * time.Second
 
 func main() {
 	if err := run(); err != nil {
@@ -32,7 +39,11 @@ func main() {
 }
 
 func run() error {
-	c, err := config.Load(os.Getenv)
+	env, err := secretenv.Lookup(os.Getenv, "DATABASE_PASSWORD")
+	if err != nil {
+		return err
+	}
+	c, err := config.Load(env)
 	if err != nil {
 		return err
 	}
@@ -56,7 +67,7 @@ func run() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	pool, err := storepostgres.OpenPool(ctx, c.DatabaseURL, storepostgres.PoolOptions{MaxConns: int32(c.DatabaseMaxConns)})
+	pool, err := storepostgres.OpenPool(ctx, c.DatabaseURL, storepostgres.PoolOptions{MaxConns: int32(c.DatabaseMaxConns), StatementTimeout: apiStatementTimeout})
 	if err != nil {
 		return err
 	}
@@ -106,11 +117,12 @@ func run() error {
 	feedReader := storepostgres.FeedReader{Pool: pool, DeploymentID: c.DeploymentID}
 	server.RegisterFeedRoutes(apiserver.FeedRoutes{Reader: feedReader, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterWalletRoutes(apiserver.WalletRoutes{Reader: storepostgres.WalletReader{Pool: pool, DeploymentID: c.DeploymentID}, ChainID: int64(c.ChainID)})
+	server.RegisterStatusRoutes(apiserver.StatusRoutes{Reader: storepostgres.StatusReader{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterObservationRoutes(apiserver.ObservationRoutes{Reader: storepostgres.ObservationReader{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	references := apiserver.ReferenceRoutes{}
 	if c.ETHUSDSource == config.ETHUSDSourceCoinGecko {
 		apiMetrics.RegisterPriceFeed(metricsRegistry)
-		prices := pricefeed.New(pricefeed.Options{APIKey: c.CoinGeckoAPIKey, Logger: slog.Default(), Observe: apiMetrics.ObservePriceFeed})
+		prices := pricefeed.New(pricefeed.Options{Plan: c.CoinGeckoAPIPlan, APIKey: c.CoinGeckoAPIKey, Logger: slog.Default(), Observe: apiMetrics.ObservePriceFeed})
 		go func() { _ = prices.Run(ctx) }() // stops with the signal context on shutdown
 		references.Prices = prices
 	}

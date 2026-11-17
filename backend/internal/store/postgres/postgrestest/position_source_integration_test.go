@@ -14,6 +14,7 @@ import (
 	"github.com/Contictus/launchtap/backend/internal/indexer"
 	"github.com/Contictus/launchtap/backend/internal/position"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
+	"github.com/Contictus/launchtap/backend/internal/store/postgres/sqlc"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -177,7 +178,7 @@ func mustCompute(t *testing.T, legs ...position.Leg) position.Position {
 func newCurvePositionFixture(t *testing.T, ctx context.Context) walletSchemaFixture {
 	t.Helper()
 	database := NewMigrated(t)
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, IndexerRole))
 	at := time.Date(2026, time.November, 6, 9, 0, 0, 0, time.UTC)
 	hash := hashBytes(0x21)
 	mustInsertBlock(t, ctx, database.DB, walletChainID, 10, hash, hashBytes(0x20), at, "safe")
@@ -521,5 +522,75 @@ func TestRealizedLegsMatchLedger(t *testing.T) {
 	// 0xc1's legs are untouched by another pair's recompute.
 	if rest := readLegs(); len(rest) != len(wantRows) {
 		t.Fatalf("legs after another pair's recompute = %+v", rest)
+	}
+}
+
+// A buy, transfer, sell loop across two wallets realizes the whole sale as profit for the
+// receiver, whose transferred tokens carry zero cost. The wallet page keeps that PnL, but the
+// leaderboards rank only positions that never received tokens by transfer (HIGH-08).
+func TestLeaderboardIgnoresPositionsFundedByTransfer(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	defer cancel()
+	f := newCurvePositionFixture(t, ctx)
+	l := positionLedger{t: t, ctx: ctx, f: f}
+	for block := int64(11); block <= 13; block++ {
+		l.block(block, "safe")
+	}
+	// 0xc1 buys 500 tokens for 1000 wei and passes them to 0xc2, which sells them for 890.
+	l.trade(11, 0, 0x91, 0, 0xc1, true, 1000, 500, 5, 5)
+	l.transfer(11, 0, 0x91, 1, 0x41, 0xc1, 500)
+	l.transfer(12, 0, 0x92, 0, 0xc1, 0xc2, 500)
+	l.trade(13, 0, 0x93, 0, 0xc2, false, 900, 500, 5, 5)
+	l.transfer(13, 0, 0x93, 1, 0xc2, 0x41, 500)
+	// 0xc3 trades honestly: buys 100 for 100 and sells them for 290.
+	l.trade(11, 1, 0x94, 2, 0xc3, true, 100, 100, 0, 0)
+	l.transfer(11, 1, 0x94, 3, 0x41, 0xc3, 100)
+	l.trade(13, 1, 0x95, 2, 0xc3, false, 300, 100, 5, 5)
+	l.transfer(13, 1, 0x95, 3, 0xc3, 0x41, 100)
+	l.mark(0xc1, 0xc2, 0xc3)
+	drainPositions(t, ctx, f)
+
+	receiver, ok := readPosition(t, ctx, f.database.DB, 0xc2, 0x10)
+	if !ok || receiver.transferredIn != "500" || receiver.realizedPnL != "890" {
+		t.Fatalf("receiver position = %+v, want 500 transferred in and 890 realized", receiver)
+	}
+	if totals, ok := readTotals(t, ctx, f.database.DB, 0xc2); !ok || totals.realizedPnL != "890" {
+		t.Fatalf("receiver wallet totals = %+v, want the wallet page to keep 890", totals)
+	}
+	ranked := map[byte]string{}
+	rows, err := f.database.DB.QueryContext(ctx, `SELECT wallet, leaderboard_realized_pnl::text FROM wallet_totals WHERE chain_id = $1`, walletChainID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var wallet []byte
+		var pnl string
+		if err := rows.Scan(&wallet, &pnl); err != nil {
+			t.Fatal(err)
+		}
+		ranked[wallet[len(wallet)-1]] = pnl
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if ranked[0xc2] != "0" || ranked[0xc3] != "190" {
+		t.Fatalf("leaderboard_realized_pnl = %v, want 0xc2 = 0 and 0xc3 = 190", ranked)
+	}
+
+	queries := sqlc.New(f.pool)
+	all, err := queries.ListLeaderboard(ctx, sqlc.ListLeaderboardParams{ChainID: walletChainID, DeploymentID: "transfer-loop", PageSize: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 1 || all[0].Wallet != sqlc.Address(common.BytesToAddress(addressBytes(0xc3))) {
+		t.Fatalf("all-time leaderboard = %+v, want only 0xc3", all)
+	}
+	// The fixture's block times are fixed, so a wide window keeps every leg in range.
+	windowed, err := queries.ListLeaderboardWindow(ctx, sqlc.ListLeaderboardWindowParams{ChainID: walletChainID, DeploymentID: "transfer-loop", PageSize: 10, WindowDays: 36500})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(windowed) != 1 || common.BytesToAddress(windowed[0].Wallet) != common.BytesToAddress(addressBytes(0xc3)) {
+		t.Fatalf("windowed leaderboard = %+v, want only 0xc3", windowed)
 	}
 }

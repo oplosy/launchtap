@@ -18,6 +18,9 @@ import (
 const (
 	commentListCacheControl = "public, max-age=5"
 	commentTimeLayout       = "2006-01-02T15:04:05.000000Z"
+	// votesPerMinute caps vote requests per account. The store's hourly limit counts vote rows,
+	// so flipping or clearing a vote never reaches it; this bounds that write churn.
+	votesPerMinute = 60
 )
 
 // CommentRoutes serves token comments and reports.
@@ -28,6 +31,8 @@ type CommentRoutes struct {
 	DeploymentID string
 	// Logger records unexpected store failures; Server.RegisterCommentRoutes defaults it.
 	Logger *slog.Logger
+	// VoteLimiter caps vote requests per Privy DID; Register defaults it to votesPerMinute.
+	VoteLimiter *SubjectLimiter
 }
 
 type commentAuthorDTO struct {
@@ -108,6 +113,9 @@ type voteBody struct {
 type voteCommentOutput struct{ Body voteBody }
 
 func (r CommentRoutes) Register(api huma.API) {
+	if r.VoteLimiter == nil {
+		r.VoteLimiter = NewSubjectLimiter(votesPerMinute, time.Minute)
+	}
 	private := huma.Middlewares{noStore}
 	huma.Register(api, huma.Operation{OperationID: "listTokenComments", Method: http.MethodGet, Path: "/tokens/{address}/comments", Tags: []string{"comments"}}, r.list)
 	huma.Register(api, huma.Operation{OperationID: "getCommentEligibility", Method: http.MethodGet, Path: "/tokens/{address}/comments/eligibility", Tags: []string{"comments"}, Middlewares: private}, r.eligibility)
@@ -164,7 +172,7 @@ func (r CommentRoutes) fail(ctx context.Context, err error) error {
 	case errors.Is(err, social.ErrWalletNotLinked):
 		return apiProblem(http.StatusForbidden, "wallet_not_linked", "Wallet is not linked to this account")
 	case errors.Is(err, social.ErrNotHolder):
-		return apiProblem(http.StatusForbidden, "not_holder", "Wallet is neither the creator nor a holder of this token")
+		return apiProblem(http.StatusForbidden, "not_holder", "Wallet is neither the creator nor a holder of at least 0.01% of this token")
 	case errors.Is(err, social.ErrBanned):
 		return apiProblem(http.StatusForbidden, "banned", "Account is banned")
 	case errors.Is(err, social.ErrOwnComment):
@@ -290,6 +298,9 @@ func (r CommentRoutes) vote(ctx context.Context, in *voteCommentInput) (*voteCom
 	actor, err := r.actor(ctx, in.WatchlistAuthInput)
 	if err != nil {
 		return nil, err
+	}
+	if !r.VoteLimiter.Allow(actor.PrivyDID, time.Now()) {
+		return nil, r.fail(ctx, &social.RateLimitedError{RetryAfter: time.Minute})
 	}
 	value, err := social.ParseVote(in.Body.Value)
 	if err != nil {

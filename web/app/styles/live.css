@@ -109,9 +109,10 @@ a.live-strip-part:hover {
   margin-left: 2px;
   color: var(--text-3);
 }
-/* Observed (not yet safe) items read as provisional until finality. */
+/* Observed (not yet safe) items read as provisional until finality. A marker instead of dimming
+   keeps the --up/--down text at the contrast contrast.ts pins. */
 .history-row[data-pending] {
-  opacity: 0.65;
+  box-shadow: inset 2px 0 0 var(--hairline-bright);
 }
 /* In the strip the pending state lasts seconds, so it only dims slightly. */
 .live-strip-item[data-pending] .live-strip-link {

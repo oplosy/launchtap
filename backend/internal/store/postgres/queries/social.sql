@@ -16,7 +16,9 @@ WHERE chain_id = sqlc.arg(chain_id)
   AND deployment_id = sqlc.arg(deployment_id)
   AND privy_did = sqlc.arg(privy_did);
 
--- Wallets that are the token creator or hold a positive balance; creator wins.
+-- Wallets that are the token creator or hold at least 0.01 % of the token's supply; creator
+-- wins. The share keeps dust spread over many accounts from voting or commenting
+-- (docs/specs/2026-11-16-owner-decisions-preflight.md, M-2).
 -- deployment_id is accepted for scope uniformity; tokens and balances are chain-scoped.
 -- name: QualifyWallets :many
 SELECT w.wallet::bytea AS wallet,
@@ -27,7 +29,8 @@ LEFT JOIN tokens AS t
 LEFT JOIN holder_balances AS h
   ON h.chain_id = sqlc.arg(chain_id) AND h.token_address = sqlc.arg(token_address)
  AND h.holder_address = w.wallet
-WHERE sqlc.arg(deployment_id)::text <> '' AND (t.creator = w.wallet OR h.balance > 0)
+WHERE sqlc.arg(deployment_id)::text <> ''
+  AND (t.creator = w.wallet OR (h.balance > 0 AND h.balance * 10000 >= t.total_supply))
 ORDER BY w.wallet;
 
 -- Windows are measured on the database clock; window_seconds is a policy constant.

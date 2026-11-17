@@ -15,7 +15,7 @@ func TestReorgPrimitivesDeleteEventsBeforeBlocksAndKeepMetadata(t *testing.T) {
 	database := NewMigrated(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	pool := openPool(t, ctx, database.URL)
+	pool := openPool(t, ctx, database.URLAs(t, IndexerRole))
 	const chainID int64 = 49012
 	base := time.Date(2026, 9, 6, 14, 0, 0, 0, time.UTC)
 	for number := int64(1); number <= 3; number++ {

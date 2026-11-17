@@ -3,3 +3,4 @@ node_modules
 src/api/generated.ts
 src/contracts/generated.ts
 next-env.d.ts
+coverage

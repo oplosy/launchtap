@@ -125,6 +125,15 @@ SELECT t.token_address, t.curve_address, t.lp_pair, t.weth, t.creator,
        COALESCE(r.source_block_hash, t.launch_block_hash) AS reserve_block_hash,
        COALESCE(r.source_block_time, t.launch_block_time) AS reserve_block_time,
        m.description, m.image_url, m.x_url, m.telegram_url,
+       -- Revision 1 is the first save at launch; a later revision of the details or the image
+       -- is an edit, shown on the token page (docs/specs/2026-11-16-owner-decisions-preflight.md, L-3).
+       GREATEST(
+           CASE WHEN m.revision > 1 THEN m.updated_at END,
+           (SELECT i.updated_at FROM token_images AS i
+            WHERE i.chain_id = t.chain_id AND i.token_address = t.token_address
+              AND i.launch_tx_hash = t.launch_tx_hash AND i.launch_log_index = t.launch_log_index
+              AND i.revision > 1)
+       )::timestamptz AS details_edited_at,
        COALESCE(s.spot_price_eth_wad, 0::numeric) AS spot_price_eth_wad,
        COALESCE(s.market_cap_eth_wad, 0::numeric) AS market_cap_eth_wad,
        COALESCE(s.fdv_eth_wad, 0::numeric) AS fdv_eth_wad,
@@ -229,6 +238,66 @@ WHERE chain_id = sqlc.arg(chain_id)
 ORDER BY block_number DESC, transaction_index DESC, log_index DESC
 LIMIT sqlc.arg(page_size)::integer;
 
+-- name: MarketTradePageFloor :one
+-- The key of the page_size-th newest event before the cursor across the token's base tables
+-- (curve trades, its V2 pair's swaps, its V4 pool's swaps), each read newest first from its own
+-- index. No row means fewer events than one page. The market_trades view keeps a subset of these
+-- rows, so the view's page lies at or above this key unless the view dropped one of them.
+SELECT candidate.block_number, candidate.transaction_index, candidate.log_index
+FROM (
+    (SELECT trade.block_number, trade.transaction_index, trade.log_index
+     FROM trades AS trade
+     WHERE trade.chain_id = sqlc.arg(chain_id) AND trade.token_address = sqlc.arg(token_address)
+       AND (trade.block_number, trade.transaction_index, trade.log_index) <
+           (sqlc.arg(before_block)::bigint, sqlc.arg(before_transaction_index)::integer, sqlc.arg(before_log_index)::integer)
+     ORDER BY trade.block_number DESC, trade.transaction_index DESC, trade.log_index DESC
+     LIMIT sqlc.arg(page_size)::integer)
+    UNION ALL
+    (SELECT swap.block_number, swap.transaction_index, swap.log_index
+     FROM pool_swaps AS swap
+     WHERE swap.chain_id = sqlc.arg(chain_id)
+       AND swap.pair_address = (SELECT token.lp_pair FROM tokens AS token
+                                WHERE token.chain_id = sqlc.arg(chain_id) AND token.token_address = sqlc.arg(token_address))
+       AND (swap.block_number, swap.transaction_index, swap.log_index) <
+           (sqlc.arg(before_block)::bigint, sqlc.arg(before_transaction_index)::integer, sqlc.arg(before_log_index)::integer)
+     ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+     LIMIT sqlc.arg(page_size)::integer)
+    UNION ALL
+    (SELECT swap.block_number, swap.transaction_index, swap.log_index
+     FROM v4_swaps AS swap
+     WHERE swap.chain_id = sqlc.arg(chain_id)
+       AND swap.pool_id = (SELECT graduation.pool_id FROM graduations AS graduation
+                           WHERE graduation.chain_id = sqlc.arg(chain_id) AND graduation.token_address = sqlc.arg(token_address)
+                             AND graduation.pool_id IS NOT NULL
+                           ORDER BY graduation.block_number DESC, graduation.transaction_index DESC, graduation.log_index DESC
+                           LIMIT 1)
+       AND (swap.block_number, swap.transaction_index, swap.log_index) <
+           (sqlc.arg(before_block)::bigint, sqlc.arg(before_transaction_index)::integer, sqlc.arg(before_log_index)::integer)
+     ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+     LIMIT sqlc.arg(page_size)::integer)
+) AS candidate
+ORDER BY candidate.block_number DESC, candidate.transaction_index DESC, candidate.log_index DESC
+OFFSET sqlc.arg(page_size)::integer - 1
+LIMIT 1;
+
+-- name: ListMarketTradesFrom :many
+-- ListMarketTrades bounded below by MarketTradePageFloor: the bound becomes an index condition in
+-- every branch of the view, so a page reads about page_size rows per source instead of the
+-- token's whole history.
+SELECT source, COALESCE(encode(trader, 'hex'), '')::text AS trader_hex,
+       side_buy, execution_price_wad, spot_price_wad,
+       gross_eth_volume, token_volume, block_number, transaction_index,
+       tx_hash, log_index, block_time, finality
+FROM market_trades
+WHERE chain_id = sqlc.arg(chain_id)
+  AND token_address = sqlc.arg(token_address)
+  AND (block_number, transaction_index, log_index) <
+      (sqlc.arg(before_block)::bigint, sqlc.arg(before_transaction_index)::integer, sqlc.arg(before_log_index)::integer)
+  AND (block_number, transaction_index, log_index) >=
+      (sqlc.arg(floor_block)::bigint, sqlc.arg(floor_transaction_index)::integer, sqlc.arg(floor_log_index)::integer)
+ORDER BY block_number DESC, transaction_index DESC, log_index DESC
+LIMIT sqlc.arg(page_size)::integer;
+
 -- name: ListTokenHolders :many
 SELECT h.holder_address, h.balance, h.first_acquired_block_number
 FROM holder_balances AS h
@@ -279,6 +348,18 @@ WITH legs AS (
     FROM pool_swaps AS swap
     JOIN tokens AS token
       ON token.chain_id = swap.chain_id AND token.lp_pair = swap.pair_address
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    WHERE swap.chain_id = sqlc.arg(chain_id)
+      AND swap.block_time >= sqlc.arg(window_start)::timestamptz
+    UNION ALL
+    -- V4 deltas are the swapper's: amount0 < 0 means ETH paid in, a buy. The buyer is the
+    -- transaction sender (the swap's sender is the router); NULL until attributed.
+    SELECT graduation.token_address, abs(swap.amount0_delta) AS volume, swap.block_time,
+           CASE WHEN swap.amount0_delta < 0 THEN swap.tx_from END AS buyer
+    FROM v4_swaps AS swap
+    JOIN graduations AS graduation
+      ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
     JOIN indexed_blocks AS block
       ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
     WHERE swap.chain_id = sqlc.arg(chain_id)
@@ -387,10 +468,28 @@ WITH curve AS (
           (sqlc.arg(after_block)::bigint, sqlc.arg(after_transaction_index)::integer, sqlc.arg(after_log_index)::integer)
     ORDER BY swap.block_number ASC, swap.transaction_index ASC, swap.log_index ASC
     LIMIT sqlc.arg(page_size)::integer
+), v4 AS (
+    -- Mirrors the V4 branch of the market_trades view; ordered and limited per base table.
+    SELECT graduation.token_address, swap.block_number, swap.block_time, swap.transaction_index,
+           swap.tx_hash, swap.log_index, 'dex'::TEXT AS source, swap.amount0_delta < 0 AS side_buy,
+           swap.tx_from AS trader, abs(swap.amount0_delta)::NUMERIC(78,0) AS gross_eth_volume,
+           abs(swap.amount1_delta)::NUMERIC(78,0) AS token_volume, block.finality_status AS finality
+    FROM v4_swaps AS swap
+    JOIN graduations AS graduation
+      ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    WHERE swap.chain_id = sqlc.arg(chain_id)
+      AND (swap.block_number, swap.transaction_index, swap.log_index) >
+          (sqlc.arg(after_block)::bigint, sqlc.arg(after_transaction_index)::integer, sqlc.arg(after_log_index)::integer)
+    ORDER BY swap.block_number ASC, swap.transaction_index ASC, swap.log_index ASC
+    LIMIT sqlc.arg(page_size)::integer
 ), page AS (
     SELECT * FROM curve
     UNION ALL
     SELECT * FROM dex
+    UNION ALL
+    SELECT * FROM v4
     ORDER BY block_number ASC, transaction_index ASC, log_index ASC
     LIMIT sqlc.arg(page_size)::integer
 )
@@ -443,10 +542,26 @@ WITH curve AS (
     WHERE swap.chain_id = sqlc.arg(chain_id)
     ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
     LIMIT sqlc.arg(page_size)::integer
+), v4 AS (
+    -- Mirrors the V4 branch of the market_trades view; ordered and limited per base table.
+    SELECT graduation.token_address, swap.block_number, swap.block_time, swap.transaction_index,
+           swap.tx_hash, swap.log_index, 'dex'::TEXT AS source, swap.amount0_delta < 0 AS side_buy,
+           swap.tx_from AS trader, abs(swap.amount0_delta)::NUMERIC(78,0) AS gross_eth_volume,
+           abs(swap.amount1_delta)::NUMERIC(78,0) AS token_volume, block.finality_status AS finality
+    FROM v4_swaps AS swap
+    JOIN graduations AS graduation
+      ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    WHERE swap.chain_id = sqlc.arg(chain_id)
+    ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+    LIMIT sqlc.arg(page_size)::integer
 ), page AS (
     SELECT * FROM curve
     UNION ALL
     SELECT * FROM dex
+    UNION ALL
+    SELECT * FROM v4
     ORDER BY block_number DESC, transaction_index DESC, log_index DESC
     LIMIT sqlc.arg(page_size)::integer
 )
@@ -518,10 +633,26 @@ WITH curve AS (
     WHERE swap.chain_id = sqlc.arg(chain_id)
     ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
     LIMIT 1
+), v4 AS (
+    -- Mirrors the V4 branch of the market_trades view; ordered and limited per base table.
+    SELECT graduation.token_address, swap.block_number, swap.block_time, swap.transaction_index,
+           swap.tx_hash, swap.log_index, 'dex'::TEXT AS source, swap.amount0_delta < 0 AS side_buy,
+           swap.tx_from AS trader, abs(swap.amount0_delta)::NUMERIC(78,0) AS gross_eth_volume,
+           abs(swap.amount1_delta)::NUMERIC(78,0) AS token_volume, block.finality_status AS finality
+    FROM v4_swaps AS swap
+    JOIN graduations AS graduation
+      ON graduation.chain_id = swap.chain_id AND graduation.pool_id = swap.pool_id
+    JOIN indexed_blocks AS block
+      ON block.chain_id = swap.chain_id AND block.block_number = swap.block_number
+    WHERE swap.chain_id = sqlc.arg(chain_id)
+    ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+    LIMIT 1
 ), page AS (
     SELECT * FROM curve
     UNION ALL
     SELECT * FROM dex
+    UNION ALL
+    SELECT * FROM v4
     ORDER BY block_number DESC, transaction_index DESC, log_index DESC
     LIMIT 1
 )
@@ -558,10 +689,13 @@ SELECT realized_pnl, tokens_traded, held_count, first_block_number, last_block_n
 FROM wallet_totals
 WHERE chain_id = sqlc.arg(chain_id) AND wallet = sqlc.arg(wallet);
 
--- R5: attribution is chain-wide. Backed by the partial index pool_swaps_tx_from_null_idx.
+-- R5: attribution is chain-wide. Backed by the partial indexes pool_swaps_tx_from_null_idx and
+-- v4_swaps_tx_from_null_idx.
 -- name: WalletAttributionComplete :one
 SELECT NOT EXISTS (
-    SELECT 1 FROM pool_swaps WHERE chain_id = sqlc.arg(chain_id) AND tx_from IS NULL
+    SELECT 1 FROM pool_swaps AS v2 WHERE v2.chain_id = sqlc.arg(chain_id) AND v2.tx_from IS NULL
+    UNION ALL
+    SELECT 1 FROM v4_swaps AS v4 WHERE v4.chain_id = sqlc.arg(chain_id) AND v4.tx_from IS NULL
 ) AS complete;
 
 -- The only username a wallet read may show: from public_wallet_usernames (published wallet of an
@@ -643,6 +777,60 @@ WHERE m.chain_id = sqlc.arg(chain_id)
 ORDER BY m.block_number DESC, m.transaction_index DESC, m.log_index DESC
 LIMIT sqlc.arg(page_size)::integer;
 
+-- name: WalletTradePageFloor :one
+-- The key of the page_size-th newest event before the cursor across the wallet's base-table rows
+-- (curve trades by trader, V2 and V4 swaps by transaction sender), each read newest first from its
+-- own index. No row means fewer events than one page. The market_trades view keeps a subset of
+-- these rows (a swap needs its Sync, a V4 swap its graduation), so the view's page lies at or
+-- above this key unless the view dropped one of them. Mirrors MarketTradePageFloor.
+SELECT candidate.block_number, candidate.transaction_index, candidate.log_index
+FROM (
+    (SELECT trade.block_number, trade.transaction_index, trade.log_index
+     FROM trades AS trade
+     WHERE trade.chain_id = sqlc.arg(chain_id) AND trade.trader = sqlc.arg(wallet)::bytea
+       AND (trade.block_number, trade.transaction_index, trade.log_index) <
+           (sqlc.arg(before_block)::bigint, sqlc.arg(before_transaction_index)::integer, sqlc.arg(before_log_index)::integer)
+     ORDER BY trade.block_number DESC, trade.transaction_index DESC, trade.log_index DESC
+     LIMIT sqlc.arg(page_size)::integer)
+    UNION ALL
+    (SELECT swap.block_number, swap.transaction_index, swap.log_index
+     FROM pool_swaps AS swap
+     WHERE swap.chain_id = sqlc.arg(chain_id) AND swap.tx_from = sqlc.arg(wallet)::bytea
+       AND (swap.block_number, swap.transaction_index, swap.log_index) <
+           (sqlc.arg(before_block)::bigint, sqlc.arg(before_transaction_index)::integer, sqlc.arg(before_log_index)::integer)
+     ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+     LIMIT sqlc.arg(page_size)::integer)
+    UNION ALL
+    (SELECT swap.block_number, swap.transaction_index, swap.log_index
+     FROM v4_swaps AS swap
+     WHERE swap.chain_id = sqlc.arg(chain_id) AND swap.tx_from = sqlc.arg(wallet)::bytea
+       AND (swap.block_number, swap.transaction_index, swap.log_index) <
+           (sqlc.arg(before_block)::bigint, sqlc.arg(before_transaction_index)::integer, sqlc.arg(before_log_index)::integer)
+     ORDER BY swap.block_number DESC, swap.transaction_index DESC, swap.log_index DESC
+     LIMIT sqlc.arg(page_size)::integer)
+) AS candidate
+ORDER BY candidate.block_number DESC, candidate.transaction_index DESC, candidate.log_index DESC
+OFFSET sqlc.arg(page_size)::integer - 1
+LIMIT 1;
+
+-- name: ListWalletTradesFrom :many
+-- ListWalletTrades bounded below by WalletTradePageFloor: the bound becomes an index condition in
+-- every branch of the view, so a page reads about page_size rows per source instead of the
+-- wallet's whole history.
+SELECT m.token_address, t.name, t.symbol, m.source, m.side_buy, m.execution_price_wad, m.spot_price_wad,
+       m.gross_eth_volume, m.token_volume, m.block_number, m.transaction_index,
+       m.tx_hash, m.log_index, m.block_time, m.finality
+FROM market_trades AS m
+JOIN tokens AS t ON t.chain_id = m.chain_id AND t.token_address = m.token_address
+WHERE m.chain_id = sqlc.arg(chain_id)
+  AND m.trader = sqlc.arg(wallet)::bytea
+  AND (m.block_number, m.transaction_index, m.log_index) <
+      (sqlc.arg(before_block)::bigint, sqlc.arg(before_transaction_index)::integer, sqlc.arg(before_log_index)::integer)
+  AND (m.block_number, m.transaction_index, m.log_index) >=
+      (sqlc.arg(floor_block)::bigint, sqlc.arg(floor_transaction_index)::integer, sqlc.arg(floor_log_index)::integer)
+ORDER BY m.block_number DESC, m.transaction_index DESC, m.log_index DESC
+LIMIT sqlc.arg(page_size)::integer;
+
 -- name: ListWalletCreated :many
 SELECT t.token_address, t.name, t.symbol, t.phase, t.launch_block_number,
        COALESCE(s.market_cap_eth_wad, 0::numeric) AS market_cap_eth_wad
@@ -660,30 +848,37 @@ LIMIT sqlc.arg(page_size)::integer;
 -- totals.
 -- name: ListLeaderboard :many
 -- Only wallets with a positive realized PnL rank; fewer than page_size rows is normal. Ties are
--- broken by wallet address, so the order is deterministic.
-SELECT w.wallet, w.realized_pnl, w.tokens_traded, pu.username
+-- broken by wallet address, so the order is deterministic. The ranked PnL leaves out positions
+-- that received tokens by transfer (zero cost basis, AUDIT_REPORT_TR HIGH-08).
+SELECT w.wallet, w.leaderboard_realized_pnl AS realized_pnl, w.tokens_traded, pu.username
 FROM wallet_totals AS w
 LEFT JOIN public_wallet_usernames AS pu
   ON pu.chain_id = w.chain_id AND pu.deployment_id = sqlc.arg(deployment_id)::text AND pu.wallet = w.wallet
 WHERE w.chain_id = sqlc.arg(chain_id)
-  AND w.realized_pnl > 0
+  AND w.leaderboard_realized_pnl > 0
   AND w.wallet <> decode(repeat('00', 20), 'hex')
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.curve_address = w.wallet)
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.lp_pair = w.wallet)
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = w.chain_id AND t.locker = w.wallet)
   AND NOT EXISTS (SELECT 1 FROM v4_pool_managers AS m WHERE m.chain_id = w.chain_id AND m.pool_manager = w.wallet)
-ORDER BY w.realized_pnl DESC, w.wallet
+ORDER BY w.leaderboard_realized_pnl DESC, w.wallet
 LIMIT sqlc.arg(page_size)::integer;
 
 -- name: ListLeaderboardWindow :many
 -- Rolling-window variant of ListLeaderboard: sums the realized PnL of legs whose block time is
--- within window_days of the transaction's clock (now()). Same exclusions, positive-only rule and
--- tie-break. tokens_traded counts distinct tokens with a realized leg in the window.
+-- within window_days of the transaction's clock (now()). Same exclusions (including positions
+-- that received tokens by transfer), positive-only rule and tie-break. tokens_traded counts
+-- distinct tokens with a realized leg in the window.
 WITH windowed AS (
     SELECT l.wallet, sum(l.realized_pnl) AS realized_pnl, count(DISTINCT l.token_address) AS tokens_traded
     FROM wallet_realized_legs AS l
     WHERE l.chain_id = sqlc.arg(chain_id)
       AND l.block_time >= now() - make_interval(days => sqlc.arg(window_days)::integer)
+      AND NOT EXISTS (
+          SELECT 1 FROM wallet_positions AS p
+          WHERE p.chain_id = l.chain_id AND p.wallet = l.wallet AND p.token_address = l.token_address
+            AND p.transferred_in > 0
+      )
     GROUP BY l.wallet
 )
 SELECT w.wallet::bytea AS wallet, w.realized_pnl::numeric AS realized_pnl,
@@ -698,6 +893,26 @@ WHERE w.realized_pnl > 0
   AND NOT EXISTS (SELECT 1 FROM tokens AS t WHERE t.chain_id = sqlc.arg(chain_id) AND t.locker = w.wallet)
   AND NOT EXISTS (SELECT 1 FROM v4_pool_managers AS m WHERE m.chain_id = sqlc.arg(chain_id) AND m.pool_manager = w.wallet)
 ORDER BY w.realized_pnl DESC, w.wallet
+LIMIT sqlc.arg(page_size)::integer;
+
+-- Whether the window's precomputed ranking was refreshed within max_age_seconds of the
+-- transaction's clock. No row (never refreshed) reads as not fresh.
+-- name: LeaderboardWindowFresh :one
+SELECT EXISTS (
+    SELECT 1 FROM leaderboard_window_refreshes AS f
+    WHERE f.chain_id = sqlc.arg(chain_id) AND f.window_days = sqlc.arg(window_days)::integer
+      AND f.refreshed_at >= now() - make_interval(secs => sqlc.arg(max_age_seconds)::integer)
+) AS fresh;
+
+-- The precomputed ranking of ListLeaderboardWindow (docs/specs/2026-11-14-windowed-leaderboard-preflight.md),
+-- usernames joined at read time.
+-- name: ListPrecomputedLeaderboardWindow :many
+SELECT r.wallet, r.realized_pnl, r.tokens_traded, pu.username
+FROM leaderboard_window_ranks AS r
+LEFT JOIN public_wallet_usernames AS pu
+  ON pu.chain_id = r.chain_id AND pu.deployment_id = sqlc.arg(deployment_id)::text AND pu.wallet = r.wallet
+WHERE r.chain_id = sqlc.arg(chain_id) AND r.window_days = sqlc.arg(window_days)::integer
+ORDER BY r.rank
 LIMIT sqlc.arg(page_size)::integer;
 
 -- Early-buyer clusters (docs/specs/2026-11-12-early-buyer-clusters-design.md). The token's
@@ -752,39 +967,15 @@ WHERE chain_id = sqlc.arg(chain_id) AND token_address = sqlc.arg(token_address)
 
 -- name: ListProtocolRevenueByEngine :many
 -- ETH the contracts credit to the protocol, per engine, earned basis
--- (docs/specs/2026-11-12-protocol-revenue-design.md). The LP share mirrors
--- LpFeeLocker._credit: the creator gets floor(eth * bps / 10000), the protocol the rest.
-WITH engines AS (
-    SELECT DISTINCT engine_version FROM token_launches WHERE chain_id = sqlc.arg(chain_id)::bigint
-), launch_fees AS (
-    SELECT engine_version, SUM(launch_fee_paid) AS amount
-    FROM token_launches WHERE chain_id = sqlc.arg(chain_id)::bigint GROUP BY engine_version
-), trade_fees AS (
-    SELECT l.engine_version, SUM(t.protocol_fee) AS fee, SUM(t.snipe_tax) AS tax
-    FROM trades t
-    JOIN token_launches l ON l.chain_id = t.chain_id AND l.token_address = t.token_address
-    WHERE t.chain_id = sqlc.arg(chain_id)::bigint GROUP BY l.engine_version
-), remainders AS (
-    SELECT l.engine_version, SUM(g.eth_remainder) AS amount
-    FROM graduations g
-    JOIN token_launches l ON l.chain_id = g.chain_id AND l.token_address = g.token_address
-    WHERE g.chain_id = sqlc.arg(chain_id)::bigint GROUP BY l.engine_version
-), lp_fees AS (
-    SELECT l.engine_version,
-           SUM(c.eth_amount - div(c.eth_amount * COALESCE(l.lp_creator_share_bps, 0), 10000)) AS amount
-    FROM lp_fee_collections c
-    JOIN token_launches l ON l.chain_id = c.chain_id AND l.token_address = c.token_address
-    WHERE c.chain_id = sqlc.arg(chain_id)::bigint GROUP BY l.engine_version
-)
-SELECT e.engine_version::integer AS engine_version,
-       COALESCE(lf.amount, 0)::text AS launch_fees,
-       COALESCE(tf.fee, 0)::text AS trade_fees,
-       COALESCE(tf.tax, 0)::text AS snipe_tax,
-       COALESCE(r.amount, 0)::text AS graduation_remainder,
-       COALESCE(lp.amount, 0)::text AS lp_fees
-FROM engines e
-LEFT JOIN launch_fees lf ON lf.engine_version = e.engine_version
-LEFT JOIN trade_fees tf ON tf.engine_version = e.engine_version
-LEFT JOIN remainders r ON r.engine_version = e.engine_version
-LEFT JOIN lp_fees lp ON lp.engine_version = e.engine_version
-ORDER BY e.engine_version;
+-- (docs/specs/2026-11-12-protocol-revenue-design.md), summed from the protocol_daily_revenue
+-- rollup the stats worker keeps current (RecomputeProtocolDailyRevenue).
+SELECT r.engine_version::integer AS engine_version,
+       sum(r.launch_fees)::text AS launch_fees,
+       sum(r.trade_fees)::text AS trade_fees,
+       sum(r.snipe_tax)::text AS snipe_tax,
+       sum(r.graduation_remainder)::text AS graduation_remainder,
+       sum(r.lp_fees)::text AS lp_fees
+FROM protocol_daily_revenue AS r
+WHERE r.chain_id = sqlc.arg(chain_id)::bigint
+GROUP BY r.engine_version
+ORDER BY r.engine_version;

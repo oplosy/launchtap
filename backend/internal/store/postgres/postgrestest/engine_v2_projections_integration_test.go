@@ -260,7 +260,37 @@ func TestEngineV2Projections(t *testing.T) {
 	assertRebuildMatchesIncremental(t, ctx, database, adapter, chainID, token)
 
 	// The engine-1 projection schema cannot hold these rows, so the migration's Down refuses (after
-	// the V4 swap sender index, which rolls back freely).
+	// the candle, revenue, leaderboard and V4 swap migrations, which roll back freely).
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the indexer heartbeat: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the service roles: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the audit follow-ups: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the candles ATH index: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the protocol daily revenue rollup: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the leaderboard ranked PnL column: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the V4 swap chain order index: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the V4 swap sender order index: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the leaderboard windows: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the tokens locker index: %v", err)
+	}
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
 		t.Fatalf("roll back the incremental protocol aggregates: %v", err)
 	}

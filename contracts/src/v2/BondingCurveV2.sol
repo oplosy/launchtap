@@ -117,6 +117,11 @@ contract BondingCurveV2 is BondingCurveV2Storage, IBondingCurveV2 {
         if (initialization.lpCreatorShareBps > BPS_DENOMINATOR) {
             revert InvalidLpCreatorShareBps(initialization.lpCreatorShareBps);
         }
+        if (parameters.tradeFeeBps > LaunchTypesV2.MAX_TRADE_FEE_BPS) {
+            revert TradeFeeAboveCap(parameters.tradeFeeBps);
+        }
+        // Graduation must open the pool at the curve's final price (within 1 bp).
+        GraduationMath.validatePriceContinuity(parameters);
         // Fail at launch, not at graduation, if the opening price is out of v4's range.
         // forge-lint: disable-next-line(unused-return)
         GraduationMath.sqrtPriceX96(parameters.graduationEth, parameters.lpTokens);
@@ -623,13 +628,19 @@ contract BondingCurveV2 is BondingCurveV2Storage, IBondingCurveV2 {
             .approve(_token, _positionManager, SafeCast.toUint160(tokenMax), expiration);
 
         uint256 ethBefore = address(this).balance;
+        // SWEEP returns the PositionManager's whole native balance, not just our unsettled
+        // part, and anyone can leave ETH there. Count that pre-existing balance as swept in so
+        // it neither underflows the subtraction below nor shrinks the reported ethSpent.
+        uint256 positionManagerEthBefore = _positionManager.balance;
         uint256 tokensBefore = launchToken.balanceOf(address(this));
         // The PositionManager is a launch snapshot validated by the fork gate.
         bytes memory unlockData = _mintData(key, liquidity, ethMax, tokenMax);
         IPositionManager positionManager_ = IPositionManager(_positionManager);
         // forge-lint: disable-next-line(arbitrary-send-eth)
         positionManager_.modifyLiquidities{ value: ethMax }(unlockData, block.timestamp);
-        ethSpent = ethBefore - address(this).balance;
+        // The swept-in balance stays here unbooked, like any other forced ETH: booking it would
+        // move protocol fees without an event the indexer could reconcile.
+        ethSpent = ethBefore + positionManagerEthBefore - address(this).balance;
         tokensSpent = tokensBefore - launchToken.balanceOf(address(this));
     }
 

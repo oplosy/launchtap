@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/layout";
 import { Skeleton } from "@/components/primitives";
 import { apiInternalBaseUrl } from "@/config/server";
 import {
+  LEADERBOARD_WINDOW_LABELS,
   loadLeaderboard,
   parseLeaderboardWindow,
   type LeaderboardWindow,
@@ -25,12 +26,6 @@ async function Board({ period }: { period: LeaderboardWindow }) {
   return <LeaderboardView items={board.items ?? []} period={period} />;
 }
 
-const HEADINGS: Record<LeaderboardWindow, string> = {
-  all: "Top realized PnL.",
-  "7d": "Top realized PnL, last 7 days.",
-  "30d": "Top realized PnL, last 30 days.",
-};
-
 export default async function LeaderboardPage({
   searchParams,
 }: {
@@ -40,14 +35,21 @@ export default async function LeaderboardPage({
   const period = parseLeaderboardWindow(query?.window);
   return (
     <div className="page-stack leaderboard-page">
+      {/* One heading for every window: a per-window heading wrapped to a second line on mobile
+          and pushed the whole board down on each switch. The active tab names the window. */}
       <PageHeader
-        title={HEADINGS[period]}
+        title="Top realized PnL."
         summary="Wallets ranked by realized profit in ETH. Pool trades are attributed to the transaction sender. Windows count profit booked by sells inside the period."
       />
-      <section className="leaderboard-board" aria-label="Ranking">
+      <section
+        className="leaderboard-board"
+        aria-label={`Ranking, ${LEADERBOARD_WINDOW_LABELS[period].toLowerCase()}`}
+      >
         <LeaderboardWindowTabs active={period} />
+        {/* Not keyed by period: a window switch is a router transition, so React keeps the
+            current table until the new one streams instead of collapsing to the skeleton,
+            which shifted the page footer (CLS 0.9 measured on a window switch). */}
         <Suspense
-          key={period}
           fallback={
             <div className="history-state">
               <Skeleton />

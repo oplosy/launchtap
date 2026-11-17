@@ -11,8 +11,9 @@ import (
 )
 
 type Querier interface {
-	// Moves the cursor forward only, and only while the account is still bound to the same chat.
-	AdvanceTelegramCursor(ctx context.Context, arg AdvanceTelegramCursorParams) error
+	// Moves the cursor forward only, and only while the account is still bound to the same chat. Zero
+	// rows means the link was removed or re-bound (or the cursor is already past this event).
+	AdvanceTelegramCursor(ctx context.Context, arg AdvanceTelegramCursorParams) (int64, error)
 	AffectedTokensAbove(ctx context.Context, arg AffectedTokensAboveParams) ([]Address, error)
 	// Applies one event's owed-balance deltas (creator_fee_deltas). Callers apply it only when the
 	// ledger row was newly inserted, so a replay never double-counts.
@@ -38,6 +39,10 @@ type Querier interface {
 	ClaimPositionDirty(ctx context.Context, arg ClaimPositionDirtyParams) ([]ClaimPositionDirtyRow, error)
 	// R10: publishing a wallet another user published moves it to the caller.
 	ClaimPublicWallet(ctx context.Context, arg ClaimPublicWalletParams) error
+	// A read position inside the orphaned blocks moves back to the end of the ancestor block, so an
+	// event re-mined at or before the old position on the new branch shows as unread
+	// (AUDIT_REPORT_TR MED-10). Positions at or below the ancestor are canonical and stay.
+	ClampNotificationReadsAbove(ctx context.Context, arg ClampNotificationReadsAboveParams) (int64, error)
 	// The launch mint Transfer(0 -> curve) is ingested before the tokens row exists (the token
 	// constructor logs it before TokenLaunched), so the exclusion lookup could not see the curve.
 	// Drop the curve and pair marks once the row is written (R4).
@@ -45,6 +50,8 @@ type Querier interface {
 	ClearOrphanProjections(ctx context.Context, arg ClearOrphanProjectionsParams) error
 	// from_day '-infinity' clears every day of the chain.
 	ClearProtocolDaily(ctx context.Context, arg ClearProtocolDailyParams) error
+	// from_day '-infinity' clears every day of the chain.
+	ClearProtocolDailyRevenue(ctx context.Context, arg ClearProtocolDailyRevenueParams) error
 	// Windows are measured on the database clock; window_seconds is a policy constant.
 	// release_at is the hourly_limit-th newest comment inside the window: once it leaves the window
 	// fewer than hourly_limit remain, so it is the exact end of an hourly block even when the
@@ -81,6 +88,7 @@ type Querier interface {
 	DeleteIndexedBlocksAbove(ctx context.Context, arg DeleteIndexedBlocksAboveParams) (int64, error)
 	DeleteLaunchFeeClaimsAbove(ctx context.Context, arg DeleteLaunchFeeClaimsAboveParams) (int64, error)
 	DeleteLaunchPauseEventsAbove(ctx context.Context, arg DeleteLaunchPauseEventsAboveParams) (int64, error)
+	DeleteLeaderboardWindowRanks(ctx context.Context, arg DeleteLeaderboardWindowRanksParams) error
 	DeleteLpFeeClaimsAbove(ctx context.Context, arg DeleteLpFeeClaimsAboveParams) (int64, error)
 	DeleteLpFeeCollectionsAbove(ctx context.Context, arg DeleteLpFeeCollectionsAboveParams) (int64, error)
 	DeletePoolBurnsAbove(ctx context.Context, arg DeletePoolBurnsAboveParams) (int64, error)
@@ -131,6 +139,7 @@ type Querier interface {
 	GetFundingFinalizedHead(ctx context.Context, arg GetFundingFinalizedHeadParams) (pgtype.Int8, error)
 	GetIndexedBlockByHash(ctx context.Context, arg GetIndexedBlockByHashParams) (IndexedBlock, error)
 	GetIndexedBlockByNumber(ctx context.Context, arg GetIndexedBlockByNumberParams) (IndexedBlock, error)
+	GetIndexerStatus(ctx context.Context, arg GetIndexerStatusParams) (GetIndexerStatusRow, error)
 	GetKingOfTheHill(ctx context.Context, chainID int64) (GetKingOfTheHillRow, error)
 	GetNewestFeedCursors(ctx context.Context, chainID int64) (GetNewestFeedCursorsRow, error)
 	GetProfileState(ctx context.Context, arg GetProfileStateParams) (GetProfileStateRow, error)
@@ -148,7 +157,7 @@ type Querier interface {
 	GetSyncState(ctx context.Context, arg GetSyncStateParams) (SyncState, error)
 	GetSyncWatermarks(ctx context.Context, arg GetSyncWatermarksParams) (GetSyncWatermarksRow, error)
 	GetTelegramLink(ctx context.Context, arg GetTelegramLinkParams) (GetTelegramLinkRow, error)
-	GetTokenCreatorForUpdate(ctx context.Context, arg GetTokenCreatorForUpdateParams) (Address, error)
+	GetTokenCreator(ctx context.Context, arg GetTokenCreatorParams) (Address, error)
 	GetTokenDetail(ctx context.Context, arg GetTokenDetailParams) (GetTokenDetailRow, error)
 	GetTokenImage(ctx context.Context, arg GetTokenImageParams) (GetTokenImageRow, error)
 	GetTokenMetadata(ctx context.Context, arg GetTokenMetadataParams) (GetTokenMetadataRow, error)
@@ -184,6 +193,10 @@ type Querier interface {
 	InsertGraduationV2(ctx context.Context, arg InsertGraduationV2Params) (int64, error)
 	InsertLaunchFeeClaim(ctx context.Context, arg InsertLaunchFeeClaimParams) (int64, error)
 	InsertLaunchPauseEvent(ctx context.Context, arg InsertLaunchPauseEventParams) (int64, error)
+	// The top 100 of ListLeaderboardWindow (read.sql), ranked 1..n: the same window, aggregation,
+	// positive-only rule, exclusions and tie-break. TestPrecomputedLeaderboardMatchesLiveQuery keeps
+	// the two in step.
+	InsertLeaderboardWindowRanks(ctx context.Context, arg InsertLeaderboardWindowRanksParams) (int64, error)
 	InsertLpFeeClaim(ctx context.Context, arg InsertLpFeeClaimParams) (int64, error)
 	InsertLpFeeCollection(ctx context.Context, arg InsertLpFeeCollectionParams) (int64, error)
 	InsertModerationAction(ctx context.Context, arg InsertModerationActionParams) error
@@ -210,11 +223,16 @@ type Querier interface {
 	InsertV4Swap(ctx context.Context, arg InsertV4SwapParams) (int64, error)
 	// Rows are immutable: a second resolution of the same wallet keeps the first.
 	InsertWalletFunding(ctx context.Context, arg InsertWalletFundingParams) error
-	InsertWalletRealizedLeg(ctx context.Context, arg InsertWalletRealizedLegParams) error
+	// All of one position's realized legs in one statement; the arrays are aligned by index. One
+	// round trip per position instead of one per leg (AUDIT_REPORT_TR HIGH-14).
+	InsertWalletRealizedLegs(ctx context.Context, arg InsertWalletRealizedLegsParams) (int64, error)
 	InsertWatchlistEntry(ctx context.Context, arg InsertWatchlistEntryParams) (int64, error)
 	IsPublicWallet(ctx context.Context, arg IsPublicWalletParams) (bool, error)
 	LaunchFeeClaimMatchesEvent(ctx context.Context, arg LaunchFeeClaimMatchesEventParams) (pgtype.Bool, error)
 	LaunchPauseEventMatchesEvent(ctx context.Context, arg LaunchPauseEventMatchesEventParams) (pgtype.Bool, error)
+	// Whether the window's precomputed ranking was refreshed within max_age_seconds of the
+	// transaction's clock. No row (never refreshed) reads as not fresh.
+	LeaderboardWindowFresh(ctx context.Context, arg LeaderboardWindowFreshParams) (bool, error)
 	ListAuthorCommentTokens(ctx context.Context, arg ListAuthorCommentTokensParams) ([]Address, error)
 	// Each row is keyed by its UTC-aligned group start (not the first stored source bucket), so
 	// sparse groups report a stable timestamp and the next-page cursor can skip a whole group.
@@ -249,15 +267,21 @@ type Querier interface {
 	// chain's V4 PoolManager are never ranked. The factory is never marked dirty, so it never has
 	// totals.
 	// Only wallets with a positive realized PnL rank; fewer than page_size rows is normal. Ties are
-	// broken by wallet address, so the order is deterministic.
+	// broken by wallet address, so the order is deterministic. The ranked PnL leaves out positions
+	// that received tokens by transfer (zero cost basis, AUDIT_REPORT_TR HIGH-08).
 	ListLeaderboard(ctx context.Context, arg ListLeaderboardParams) ([]ListLeaderboardRow, error)
 	// Rolling-window variant of ListLeaderboard: sums the realized PnL of legs whose block time is
-	// within window_days of the transaction's clock (now()). Same exclusions, positive-only rule and
-	// tie-break. tokens_traded counts distinct tokens with a realized leg in the window.
+	// within window_days of the transaction's clock (now()). Same exclusions (including positions
+	// that received tokens by transfer), positive-only rule and tie-break. tokens_traded counts
+	// distinct tokens with a realized leg in the window.
 	ListLeaderboardWindow(ctx context.Context, arg ListLeaderboardWindowParams) ([]ListLeaderboardWindowRow, error)
 	ListLockerOwed(ctx context.Context, arg ListLockerOwedParams) ([]ListLockerOwedRow, error)
 	ListMarketTrades(ctx context.Context, arg ListMarketTradesParams) ([]ListMarketTradesRow, error)
 	ListMarketTradesAfter(ctx context.Context, arg ListMarketTradesAfterParams) ([]ListMarketTradesAfterRow, error)
+	// ListMarketTrades bounded below by MarketTradePageFloor: the bound becomes an index condition in
+	// every branch of the view, so a page reads about page_size rows per source instead of the
+	// token's whole history.
+	ListMarketTradesFrom(ctx context.Context, arg ListMarketTradesFromParams) ([]ListMarketTradesFromRow, error)
 	// Comments with open reports, newest open report first. Policy: none; limit is the caller's.
 	ListOpenReportedComments(ctx context.Context, arg ListOpenReportedCommentsParams) ([]ListOpenReportedCommentsRow, error)
 	ListOwnPublicWallets(ctx context.Context, arg ListOwnPublicWalletsParams) ([]Address, error)
@@ -270,16 +294,32 @@ type Querier interface {
 	// inner join drops nothing; it supplies the block time the windowed leaderboard filters on.
 	ListPositionLegs(ctx context.Context, arg ListPositionLegsParams) ([]ListPositionLegsRow, error)
 	// Run before DeleteCanonicalAbove: the rows (and a launched token's own row) are still present.
-	// Excluded wallets (R4) are dropped here because a deleted token's curve and pair are not
-	// resolvable afterwards.
+	// Excluded wallets (R4: curve, pair, locker, V4 PoolManager) are dropped here because a deleted
+	// token's curve and pair are not resolvable afterwards.
 	ListPositionPairsAbove(ctx context.Context, arg ListPositionPairsAboveParams) ([]ListPositionPairsAboveRow, error)
+	// The precomputed ranking of ListLeaderboardWindow (docs/specs/2026-11-14-windowed-leaderboard-preflight.md),
+	// usernames joined at read time.
+	ListPrecomputedLeaderboardWindow(ctx context.Context, arg ListPrecomputedLeaderboardWindowParams) ([]ListPrecomputedLeaderboardWindowRow, error)
+	// Curve claims the signed-in wallets can make. Engine 1: the creator is owed every trade's
+	// creator fee less its claims. Engine 2: the fee recipient can change (FeeRecipientAccepted), so
+	// read each account's curve balance (creator_fee_balances.curve_eth_owed, mirroring the curve's
+	// creatorFeesOwed). LpFeeLocker fees are claimed from the locker, not the curve, so they are not
+	// a curve action here.
 	ListProfileActions(ctx context.Context, arg ListProfileActionsParams) ([]ListProfileActionsRow, error)
 	ListProtocolDaily(ctx context.Context, arg ListProtocolDailyParams) ([]ListProtocolDailyRow, error)
 	// ETH the contracts credit to the protocol, per engine, earned basis
-	// (docs/specs/2026-11-12-protocol-revenue-design.md). The LP share mirrors
-	// LpFeeLocker._credit: the creator gets floor(eth * bps / 10000), the protocol the rest.
+	// (docs/specs/2026-11-12-protocol-revenue-design.md), summed from the protocol_daily_revenue
+	// rollup the stats worker keeps current (RecomputeProtocolDailyRevenue).
 	ListProtocolRevenueByEngine(ctx context.Context, chainID int64) ([]ListProtocolRevenueByEngineRow, error)
 	ListRecentMarketTrades(ctx context.Context, arg ListRecentMarketTradesParams) ([]ListRecentMarketTradesRow, error)
+	// Reads for the indexed-state reconciliation pass
+	// (docs/specs/2026-11-14-state-reconciliation-preflight.md). Amounts are read as text so the
+	// comparison parses them into *big.Int without a float on the way.
+	// Two samples of up to row_limit tokens each: the tokens whose reserves changed most recently
+	// (where trading, and therefore drift, happens), and a rotating sample over every token, starting
+	// at rotation_start and wrapping around, so a token that never trades or has left the recent set
+	// is still compared on some pass (security-audit run-4).
+	ListReconcileTokens(ctx context.Context, arg ListReconcileTokensParams) ([]ListReconcileTokensRow, error)
 	// Keyset page of the chain's launched tokens for the chunked position seed. Every ledger row
 	// (trades, transfers) references token_launches, so these pages cover the whole ledger.
 	ListSeedTokens(ctx context.Context, arg ListSeedTokensParams) ([]Address, error)
@@ -304,6 +344,7 @@ type Querier interface {
 	// Transfers of the token touching one of the given wallets, between two non-infrastructure
 	// wallets.
 	ListTokenTransfersTouching(ctx context.Context, arg ListTokenTransfersTouchingParams) ([]ListTokenTransfersTouchingRow, error)
+	ListTopHolders(ctx context.Context, arg ListTopHoldersParams) ([]ListTopHoldersRow, error)
 	ListTrendingTokens(ctx context.Context, arg ListTrendingTokensParams) ([]ListTrendingTokensRow, error)
 	// Backfill cursor: distinct transactions that still have a v1 pool swap or a V4 swap without a
 	// sender, in blocks at or below through_block, in (block_number, tx_hash) order, strictly after
@@ -320,6 +361,10 @@ type Querier interface {
 	// value, so the reader asks for MaxOpenPositions+1 rows and reports truncation.
 	ListWalletOpenPositions(ctx context.Context, arg ListWalletOpenPositionsParams) ([]ListWalletOpenPositionsRow, error)
 	ListWalletTrades(ctx context.Context, arg ListWalletTradesParams) ([]ListWalletTradesRow, error)
+	// ListWalletTrades bounded below by WalletTradePageFloor: the bound becomes an index condition in
+	// every branch of the view, so a page reads about page_size rows per source instead of the
+	// wallet's whole history.
+	ListWalletTradesFrom(ctx context.Context, arg ListWalletTradesFromParams) ([]ListWalletTradesFromRow, error)
 	// Early wallets of any token (same rule as ListEarlyCurveDeliveries) with no funding row yet,
 	// whose first early delivery is at or below the finalized head, oldest first. skip holds wallets
 	// the worker is backing off.
@@ -327,11 +372,17 @@ type Querier interface {
 	// Token columns are NULL when the token row is gone (no FK); the casts keep sqlc from
 	// applying the non-nullable Address/Uint256/Hash overrides to them.
 	ListWatchlist(ctx context.Context, arg ListWatchlistParams) ([]ListWatchlistRow, error)
+	// Leaderboard window refresh (docs/specs/2026-11-14-windowed-leaderboard-preflight.md). Serializes
+	// refreshes of one chain so two refreshers never interleave a window's delete and insert.
+	LockLeaderboardWindows(ctx context.Context, chainID int64) error
 	// Serializes protocol aggregate refreshes of one chain, so a refresh reads the watermark only
 	// after any concurrent refresh (including a reorg's full rebuild) has committed.
 	LockProtocolAggregates(ctx context.Context, chainID int64) error
 	// Serializes per-subject social writes (rate limits, username changes). The key is built in SQL.
 	LockSocialSubject(ctx context.Context, arg LockSocialSubjectParams) error
+	// Holds the launch row FOR SHARE until commit through a SECURITY DEFINER function (migration
+	// 00039): a row lock needs UPDATE privilege, which the API role must not have on token_launches.
+	LockTokenLaunch(ctx context.Context, arg LockTokenLaunchParams) error
 	// Serializes the wallet_totals recompute of one wallet across concurrent position computes, so
 	// each recompute reads every committed position of the wallet.
 	LockWalletTotals(ctx context.Context, arg LockWalletTotalsParams) error
@@ -344,7 +395,8 @@ type Querier interface {
 	MarkPairTokenDirty(ctx context.Context, arg MarkPairTokenDirtyParams) error
 	// A NULL tx_from (sender not yet known) is a no-op.
 	MarkPoolSwapPositionDirty(ctx context.Context, arg MarkPoolSwapPositionDirtyParams) error
-	// Excluded wallets (R4): the zero address, the factory, and any token's curve or pair.
+	// Excluded wallets (R4): the zero address, the factory, any token's curve, pair or locker, and
+	// the chain's V4 PoolManager (it takes the other side of every engine-2 graduation and swap).
 	MarkPositionDirty(ctx context.Context, arg MarkPositionDirtyParams) error
 	// Reorg re-mark: pairs were already filtered at collection time, so no exclusion lookup here
 	// (the token row of a pair may no longer exist).
@@ -361,6 +413,11 @@ type Querier interface {
 	// A NULL tx_from (sender not yet known) is a no-op; the zero address, the factory, the curve, the
 	// locker and the PoolManager never get a position (token_holder_excluded).
 	MarkV4SwapPositionDirty(ctx context.Context, arg MarkV4SwapPositionDirtyParams) error
+	// The key of the page_size-th newest event before the cursor across the token's base tables
+	// (curve trades, its V2 pair's swaps, its V4 pool's swaps), each read newest first from its own
+	// index. No row means fewer events than one page. The market_trades view keeps a subset of these
+	// rows, so the view's page lies at or above this key unless the view dropped one of them.
+	MarketTradePageFloor(ctx context.Context, arg MarketTradePageFloorParams) (MarketTradePageFloorRow, error)
 	NotifyAPIRefresh(ctx context.Context, payload string) error
 	PoolBurnMatchesEvent(ctx context.Context, arg PoolBurnMatchesEventParams) (pgtype.Bool, error)
 	PoolMintMatchesEvent(ctx context.Context, arg PoolMintMatchesEventParams) (pgtype.Bool, error)
@@ -372,7 +429,9 @@ type Querier interface {
 	// R10: drop the caller's published wallets that are no longer linked. keep_wallets is the
 	// principal's current wallet list.
 	PrunePublicWallets(ctx context.Context, arg PrunePublicWalletsParams) error
-	// Wallets that are the token creator or hold a positive balance; creator wins.
+	// Wallets that are the token creator or hold at least 0.01 % of the token's supply; creator
+	// wins. The share keeps dust spread over many accounts from voting or commenting
+	// (docs/specs/2026-11-16-owner-decisions-preflight.md, M-2).
 	// deployment_id is accepted for scope uniformity; tokens and balances are chain-scoped.
 	QualifyWallets(ctx context.Context, arg QualifyWalletsParams) ([]QualifyWalletsRow, error)
 	ReadOperationalHealth(ctx context.Context, arg ReadOperationalHealthParams) (ReadOperationalHealthRow, error)
@@ -381,12 +440,20 @@ type Querier interface {
 	// UTC calendar days regardless of the session TimeZone. Only days >= from_day are rebuilt;
 	// from_day '-infinity' rebuilds the whole history.
 	RecomputeProtocolDaily(ctx context.Context, arg RecomputeProtocolDailyParams) error
+	// ETH credited to the protocol per UTC day and engine, earned basis
+	// (docs/specs/2026-11-12-protocol-revenue-design.md). The LP share mirrors LpFeeLocker._credit:
+	// the creator gets floor(eth * bps / 10000), the protocol the rest. Every launch writes a row for
+	// its engine and day, so ListProtocolRevenueByEngine lists each launched engine. Only days >=
+	// from_day are rebuilt; from_day '-infinity' rebuilds the whole history.
+	RecomputeProtocolDailyRevenue(ctx context.Context, arg RecomputeProtocolDailyRevenueParams) error
 	// The all-time columns are the sums of protocol_daily, which the caller has just brought up to
 	// daily_through_block; the 24h columns read the sources by block_time range.
 	RecomputeProtocolStats(ctx context.Context, arg RecomputeProtocolStatsParams) error
-	// Every trade is bucketed into all four candle intervals; ATH, baseline, latest, and volume
-	// read only the finest ('1m') series so each trade is counted once.
-	RecomputeTokenStats(ctx context.Context, arg RecomputeTokenStatsParams) error
+	// Recomputes token_stats for every listed token of one chain in one statement (pre-flight
+	// 2026-11-13-batch-token-stats-recompute). Unknown tokens are skipped; duplicates are collapsed
+	// because ON CONFLICT cannot update the same row twice.
+	// A fixed row order keeps concurrent multi-token upserts from locking rows in opposite orders.
+	RecomputeTokensStats(ctx context.Context, arg RecomputeTokensStatsParams) error
 	// Rebuilds one wallet's totals from its positions; the row is deleted when none remain.
 	RecomputeWalletTotals(ctx context.Context, arg RecomputeWalletTotalsParams) error
 	RecordIndexerReorg(ctx context.Context, arg RecordIndexerReorgParams) (int64, error)
@@ -398,6 +465,9 @@ type Querier interface {
 	ReplaceTokenMetadata(ctx context.Context, arg ReplaceTokenMetadataParams) (int64, error)
 	// release_at: the hourly_limit-th newest report in the window (see CommentRateState).
 	ReportRateState(ctx context.Context, arg ReportRateStateParams) (ReportRateStateRow, error)
+	// Drops the wallets resolved as unknown so the worker resolves them again with the current rule
+	// (docs/specs/2026-11-16-owner-decisions-preflight.md). unknown is "not resolved", never a fact.
+	RequeueUnknownWalletFunding(ctx context.Context, chainID int64) (int64, error)
 	ResolveAuthorReports(ctx context.Context, arg ResolveAuthorReportsParams) (int64, error)
 	ResolveCommentReports(ctx context.Context, arg ResolveCommentReportsParams) (int64, error)
 	// One chunk of the seed for ledger history that predates the position queue: every distinct
@@ -417,9 +487,11 @@ type Querier interface {
 	SnipeTaxClaimMatchesEvent(ctx context.Context, arg SnipeTaxClaimMatchesEventParams) (pgtype.Bool, error)
 	// True when the DID has a user row or at least one comment in scope.
 	SocialDIDKnown(ctx context.Context, arg SocialDIDKnownParams) (bool, error)
+	SumHolderBalances(ctx context.Context, arg SumHolderBalancesParams) (string, error)
 	TokenExists(ctx context.Context, arg TokenExistsParams) (bool, error)
 	TokenLaunchMatchesEvent(ctx context.Context, arg TokenLaunchMatchesEventParams) (pgtype.Bool, error)
 	TokenLaunchV2MatchesEvent(ctx context.Context, arg TokenLaunchV2MatchesEventParams) (pgtype.Bool, error)
+	TouchIndexerHeartbeat(ctx context.Context, arg TouchIndexerHeartbeatParams) error
 	TradeMatchesEvent(ctx context.Context, arg TradeMatchesEventParams) (pgtype.Bool, error)
 	TradeV2MatchesEvent(ctx context.Context, arg TradeV2MatchesEventParams) (pgtype.Bool, error)
 	TradingPauseEventMatchesEvent(ctx context.Context, arg TradingPauseEventMatchesEventParams) (pgtype.Bool, error)
@@ -434,6 +506,8 @@ type Querier interface {
 	// Multi-row form of UpsertIndexedBlock with the same conflict rule: a row whose identity
 	// differs from the stored one is skipped, so fewer affected rows than given means a conflict.
 	UpsertIndexedBlocks(ctx context.Context, arg UpsertIndexedBlocksParams) (int64, error)
+	// Stamps the refresh with the transaction's clock, the same now() the window was computed from.
+	UpsertLeaderboardWindowRefresh(ctx context.Context, arg UpsertLeaderboardWindowRefreshParams) error
 	UpsertSyncState(ctx context.Context, arg UpsertSyncStateParams) (SyncState, error)
 	// Binds the chat to the account. A new or moved link starts its cursor at the safe head, so no
 	// backlog is sent; settings survive a re-link.
@@ -451,8 +525,15 @@ type Querier interface {
 	V4SwapMatchesEvent(ctx context.Context, arg V4SwapMatchesEventParams) (pgtype.Bool, error)
 	// release_at: the hourly_limit-th newest vote set in the window (see CommentRateState).
 	VoteRateState(ctx context.Context, arg VoteRateStateParams) (VoteRateStateRow, error)
-	// R5: attribution is chain-wide. Backed by the partial index pool_swaps_tx_from_null_idx.
+	// R5: attribution is chain-wide. Backed by the partial indexes pool_swaps_tx_from_null_idx and
+	// v4_swaps_tx_from_null_idx.
 	WalletAttributionComplete(ctx context.Context, chainID int64) (bool, error)
+	// The key of the page_size-th newest event before the cursor across the wallet's base-table rows
+	// (curve trades by trader, V2 and V4 swaps by transaction sender), each read newest first from its
+	// own index. No row means fewer events than one page. The market_trades view keeps a subset of
+	// these rows (a swap needs its Sync, a V4 swap its graduation), so the view's page lies at or
+	// above this key unless the view dropped one of them. Mirrors MarketTradePageFloor.
+	WalletTradePageFloor(ctx context.Context, arg WalletTradePageFloorParams) (WalletTradePageFloorRow, error)
 }
 
 var _ Querier = (*Queries)(nil)
