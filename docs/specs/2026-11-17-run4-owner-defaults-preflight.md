@@ -20,10 +20,11 @@ magnitude.
 ## Locked decisions
 
 1. **Write limiter (full in-memory table).** A full `SubjectLimiter` no longer refuses every new
-   principal. It drops expired windows, then a batch of the oldest windows, subjects under their
-   limit before throttled ones. *Rationale:* refusal let any set of verified principals block
-   everyone's metadata writes; eviction bounds memory the same way and costs an attacker only
-   its own throttle state.
+   principal. It drops expired windows, then a batch of the oldest windows of subjects still
+   under their limit. A throttled window is never evicted (that would reset its throttle); only
+   when every live window is throttled does a new principal get refused until one expires.
+   *Rationale:* refusal let any set of verified principals block everyone's metadata writes;
+   eviction bounds memory the same way and never lifts a throttle early.
 2. **CALLCODE frames.** Funding resolution ignores CALLCODE frames like DELEGATECALL and
    STATICCALL: the value never leaves the caller. *Rationale:* the source fact is settled by the
    EVM; no provider trace is needed to know the frame moves no ETH to `to`.
@@ -53,9 +54,9 @@ magnitude.
    `curl -H 'X-Forwarded-For: 1.2.3.4' http://127.0.0.1:8080/` answers with the peer address only.
 7. **OG image routes.** A malformed address segment on the token and wallet OG routes returns
    404 instead of rendering the generic card. *Rationale:* each distinct path is its own ISR
-   entry, so a render per random string was free load. Casing variants of a valid address still
-   render once each (accepted: each costs the attacker a distinct valid-address request, bounded
-   by the edge limit in decision 9).
+   entry, so a render per random string was free load. Only the lowercase or EIP-55 spelling
+   renders; any other casing of a valid address is a 404 too, so one address has at most two
+   cache entries.
 8. **M-3 RPC load.** `INDEXER_LOG_ADDRESS_BATCH_SIZE` defaults to 1000 (the 2026-09-11 probe
    recorded 1,000-address arrays accepted on both official endpoints). Known-token `Transfer`
    logs use one topic-only query filtered to the known tokens when the step covers at most 10
@@ -86,3 +87,13 @@ magnitude.
      exists. Waivers stay visible in `web/audit-allowlist.json` with a reason and a review date.
    - *Remaining M-3 facts* (provider plan limits, fallback provider choice): operator inputs at
      deployment time; the defaults above are safe without them.
+
+## Review follow-ups closed with this change
+
+- *Duplicate startup RPC checks with a fallback* (PR #93 review): `dialIndexerRPC` already runs
+  the chain-id, bytecode and timelock checks on the provider it starts on, so
+  `initializeIndexerResources` skips them when a fallback is configured; without one it still
+  runs them before the database opens.
+- *Background readers across a switch-back* (PR #93 review): no change. A sender-backfill or
+  reconciliation pass that straddles a switch fails one call and retries on its next interval;
+  neither commits ledger state, so no wrong data can result (failover spec decision 5).
