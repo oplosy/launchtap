@@ -57,7 +57,7 @@ func TestInitializeIndexerResourcesFailsBeforeDatabaseOrOwnership(t *testing.T) 
 			defer client.Close()
 
 			poolOpened, ownershipAcquired := false, false
-			_, _, err = initializeIndexerResources(context.Background(), client, deployment.ChainID, deployment,
+			_, _, err = initializeIndexerResources(context.Background(), client, true, deployment.ChainID, deployment,
 				func() (*pgxpool.Pool, error) {
 					poolOpened = true
 					return &pgxpool.Pool{}, nil
@@ -92,6 +92,33 @@ func TestInitializeIndexerResourcesFailsBeforeDatabaseOrOwnership(t *testing.T) 
 	}
 }
 
+func TestInitializeIndexerResourcesSkipsChecksAlreadyRun(t *testing.T) {
+	deployment, code := startupDeployment()
+	methods := make([]string, 0, 1)
+	var methodsMu sync.Mutex
+	// The server would fail every check; with verifyRPC false it must not be called at all.
+	server := startupRPCServer(t, "0x1234", code, common.Address{}, "", &methods, &methodsMu)
+	defer server.Close()
+	client, err := chain.Dial(context.Background(), server.URL, chain.RPCConfig{Timeout: time.Second, RetryBackoff: time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	openErr := errors.New("pool unavailable")
+	_, _, err = initializeIndexerResources(context.Background(), client, false, deployment.ChainID, deployment,
+		func() (*pgxpool.Pool, error) { return nil, openErr },
+		func() (*storepostgres.Ownership, error) { return &storepostgres.Ownership{}, nil },
+	)
+	if !errors.Is(err, openErr) {
+		t.Fatalf("initializeIndexerResources() error = %v, want the pool error", err)
+	}
+	methodsMu.Lock()
+	defer methodsMu.Unlock()
+	if len(methods) != 0 {
+		t.Fatalf("RPC calls = %v, want none when the caller already verified", methods)
+	}
+}
+
 func TestInitializeIndexerResourcesVerifiesBeforeOpeningAndAcquiring(t *testing.T) {
 	deployment, code := startupDeployment()
 	methods := make([]string, 0, 7)
@@ -105,7 +132,7 @@ func TestInitializeIndexerResourcesVerifiesBeforeOpeningAndAcquiring(t *testing.
 	defer client.Close()
 
 	order := make([]string, 0, 2)
-	pool, owner, err := initializeIndexerResources(context.Background(), client, deployment.ChainID, deployment,
+	pool, owner, err := initializeIndexerResources(context.Background(), client, true, deployment.ChainID, deployment,
 		func() (*pgxpool.Pool, error) {
 			order = append(order, "open-pool")
 			return &pgxpool.Pool{}, nil

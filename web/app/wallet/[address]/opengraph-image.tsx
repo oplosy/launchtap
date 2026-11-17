@@ -1,7 +1,7 @@
 import { renderWalletCard } from "@/share/wallet-card";
 import { loadWalletCardData } from "@/share/wallet-card-data";
 import { notFound } from "next/navigation";
-import { parseTokenAddress } from "@/token/address";
+import { isCanonicalAddressSegment } from "@/share/canonical-address";
 
 export const alt = "Wallet on Launchpad";
 export const size = { width: 1200, height: 630 };
@@ -16,9 +16,9 @@ export function generateStaticParams() {
 
 export default async function Image({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
-  // A malformed address gets a 404 instead of a rendered generic card: each distinct path is
-  // its own ISR entry, so a render per random string would be free load (security-audit run-4).
-  if (!parseTokenAddress(address)) notFound();
+  // A malformed or non-canonically cased address gets a 404 instead of a render: each distinct
+  // path is its own ISR entry, so a render per spelling would be free load (security-audit run-4).
+  if (!isCanonicalAddressSegment(address)) notFound();
   const card = await loadWalletCardData(address);
   try {
     return await renderWalletCard(card);

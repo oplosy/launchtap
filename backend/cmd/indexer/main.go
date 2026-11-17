@@ -69,7 +69,8 @@ func run() error {
 		return err
 	}
 	defer source.Close()
-	pool, owner, err := initializeIndexerResources(ctx, source, c.ChainID, deployment,
+	// With a fallback, dialIndexerRPC already ran the identity checks on the provider started on.
+	pool, owner, err := initializeIndexerResources(ctx, source, !fallback.Enabled(), c.ChainID, deployment,
 		func() (*pgxpool.Pool, error) {
 			return storepostgres.OpenPool(ctx, c.DatabaseURL, storepostgres.PoolOptions{MaxConns: int32(c.DatabaseMaxConns)})
 		},
@@ -273,15 +274,19 @@ func run() error {
 	return runErr
 }
 
-func initializeIndexerResources(ctx context.Context, source chain.RuntimeVerifier, configuredChainID uint64, deployment deployments.Deployment, openPool func() (*pgxpool.Pool, error), acquireOwnership func() (*storepostgres.Ownership, error)) (*pgxpool.Pool, *storepostgres.Ownership, error) {
-	if err := chain.VerifyRPCChainID(ctx, source, configuredChainID, deployment); err != nil {
-		return nil, nil, fmt.Errorf("verify indexer RPC chain identity before database startup: %w", err)
-	}
-	if err := chain.VerifyDeploymentBytecode(ctx, source, deployment); err != nil {
-		return nil, nil, fmt.Errorf("verify indexer deployment bytecode before database startup: %w", err)
-	}
-	if err := chain.VerifyGovernanceTimelock(ctx, source, deployment); err != nil {
-		return nil, nil, fmt.Errorf("verify governance timelock before database startup: %w", err)
+// initializeIndexerResources verifies the RPC identity (unless verifyRPC is false because the
+// caller already did) and then opens the database pool and writer ownership.
+func initializeIndexerResources(ctx context.Context, source chain.RuntimeVerifier, verifyRPC bool, configuredChainID uint64, deployment deployments.Deployment, openPool func() (*pgxpool.Pool, error), acquireOwnership func() (*storepostgres.Ownership, error)) (*pgxpool.Pool, *storepostgres.Ownership, error) {
+	if verifyRPC {
+		if err := chain.VerifyRPCChainID(ctx, source, configuredChainID, deployment); err != nil {
+			return nil, nil, fmt.Errorf("verify indexer RPC chain identity before database startup: %w", err)
+		}
+		if err := chain.VerifyDeploymentBytecode(ctx, source, deployment); err != nil {
+			return nil, nil, fmt.Errorf("verify indexer deployment bytecode before database startup: %w", err)
+		}
+		if err := chain.VerifyGovernanceTimelock(ctx, source, deployment); err != nil {
+			return nil, nil, fmt.Errorf("verify governance timelock before database startup: %w", err)
+		}
 	}
 	pool, err := openPool()
 	if err != nil {
@@ -335,8 +340,8 @@ func dialIndexerRPC(ctx context.Context, primaryURL string, fallback config.RPCF
 	return combined, nil
 }
 
-// verifyPrimaryRPC runs the identity checks initializeIndexerResources repeats on the active
-// provider; here it only decides which provider the indexer starts on.
+// verifyPrimaryRPC runs the identity checks on the primary and decides which provider the
+// indexer starts on; initializeIndexerResources does not repeat them when a fallback is set.
 func verifyPrimaryRPC(ctx context.Context, source chain.RuntimeVerifier, chainID uint64, deployment deployments.Deployment) error {
 	if err := chain.VerifyRPCChainID(ctx, source, chainID, deployment); err != nil {
 		return err

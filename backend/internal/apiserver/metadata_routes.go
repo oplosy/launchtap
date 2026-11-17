@@ -422,6 +422,10 @@ func (l *SubjectLimiter) Allow(subject string, now time.Time) bool {
 	entry, exists := l.entries[subject]
 	if !exists && len(l.entries) >= maxSubjectLimiterEntries {
 		l.evict(now)
+		if len(l.entries) >= maxSubjectLimiterEntries {
+			// Every live window is throttled: forgetting one would reset its throttle.
+			return false
+		}
 	}
 	if entry.start.IsZero() || now.Sub(entry.start) >= l.window {
 		l.entries[subject] = subjectWindow{start: now, count: 1}
@@ -437,8 +441,8 @@ func (l *SubjectLimiter) Allow(subject string, now time.Time) bool {
 
 // evict makes room for a new subject instead of refusing every new principal while the table is
 // full (security-audit run-4). It drops expired windows; if verified principals still fill the
-// table, it drops a batch of the oldest windows, subjects under their limit before throttled
-// ones, so a throttled subject loses its throttle only when nothing else is left to forget.
+// table, it drops a batch of the oldest windows of subjects under their limit. A throttled
+// subject is never forgotten, so eviction cannot hand it a fresh window.
 func (l *SubjectLimiter) evict(now time.Time) {
 	for candidate, candidateEntry := range l.entries {
 		if now.Sub(candidateEntry.start) >= l.window {
@@ -449,23 +453,16 @@ func (l *SubjectLimiter) evict(now time.Time) {
 		return
 	}
 	type candidate struct {
-		subject   string
-		throttled bool
-		start     time.Time
+		subject string
+		start   time.Time
 	}
 	candidates := make([]candidate, 0, len(l.entries))
 	for subject, entry := range l.entries {
-		candidates = append(candidates, candidate{subject, entry.count >= l.maximum, entry.start})
-	}
-	slices.SortFunc(candidates, func(a, b candidate) int {
-		if a.throttled != b.throttled {
-			if a.throttled {
-				return 1
-			}
-			return -1
+		if entry.count < l.maximum {
+			candidates = append(candidates, candidate{subject, entry.start})
 		}
-		return a.start.Compare(b.start)
-	})
+	}
+	slices.SortFunc(candidates, func(a, b candidate) int { return a.start.Compare(b.start) })
 	for _, oldest := range candidates[:min(subjectLimiterEvictBatch, len(candidates))] {
 		delete(l.entries, oldest.subject)
 	}
