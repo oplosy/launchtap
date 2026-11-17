@@ -117,6 +117,11 @@ contract BondingCurveV2 is BondingCurveV2Storage, IBondingCurveV2 {
         if (initialization.lpCreatorShareBps > BPS_DENOMINATOR) {
             revert InvalidLpCreatorShareBps(initialization.lpCreatorShareBps);
         }
+        if (parameters.tradeFeeBps > LaunchTypesV2.MAX_TRADE_FEE_BPS) {
+            revert TradeFeeAboveCap(parameters.tradeFeeBps);
+        }
+        // Graduation must open the pool at the curve's final price (within 1 bp).
+        GraduationMath.validatePriceContinuity(parameters);
         // Fail at launch, not at graduation, if the opening price is out of v4's range.
         // forge-lint: disable-next-line(unused-return)
         GraduationMath.sqrtPriceX96(parameters.graduationEth, parameters.lpTokens);

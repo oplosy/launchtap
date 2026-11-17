@@ -6,6 +6,7 @@ import { IPositionManager } from "@uniswap/v4-periphery/src/interfaces/IPosition
 import { BondingCurveV1 } from "../../src/BondingCurveV1.sol";
 import { ILaunchErrors } from "../../src/interfaces/ILaunchErrors.sol";
 import { CurveMath } from "../../src/libraries/CurveMath.sol";
+import { GraduationMath } from "../../src/libraries/GraduationMath.sol";
 import { LaunchTypes } from "../../src/types/LaunchTypes.sol";
 import { BondingCurveV2 } from "../../src/v2/BondingCurveV2.sol";
 import { GraduationGuardHook } from "../../src/v2/GraduationGuardHook.sol";
@@ -127,6 +128,49 @@ contract LaunchFactoryV2Test is V4TestBase {
             )
         );
         factory.setFutureDefaults(defaults);
+        vm.stopPrank();
+    }
+
+    /// @dev Owner decision L-1: fee ceilings and curve-end/pool-open price continuity.
+    function test_setFutureDefaults_enforcesFeeCapsAndPriceContinuity() public {
+        LaunchTypesV2.FactoryDefaultsV2 memory defaults = _defaults();
+        vm.startPrank(TIMELOCK);
+
+        defaults.parameters.tradeFeeBps = LaunchTypesV2.MAX_TRADE_FEE_BPS + 1;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IBondingCurveV2.TradeFeeAboveCap.selector, LaunchTypesV2.MAX_TRADE_FEE_BPS + 1
+            )
+        );
+        factory.setFutureDefaults(defaults);
+
+        defaults.parameters.tradeFeeBps = LaunchTypesV2.MAX_TRADE_FEE_BPS;
+        defaults.launchFee = LaunchTypesV2.MAX_LAUNCH_FEE + 1;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILaunchFactoryV2.LaunchFeeAboveCap.selector, LaunchTypesV2.MAX_LAUNCH_FEE + 1
+            )
+        );
+        factory.setFutureDefaults(defaults);
+
+        // 30,000 extra LP tokens open the pool 1.5 bp below the curve's final price.
+        defaults.launchFee = LaunchTypesV2.MAX_LAUNCH_FEE;
+        defaults.parameters.lpTokens = LP_TOKENS + 30_000 ether;
+        defaults.parameters.totalSupply = TOTAL_SUPPLY + 30_000 ether;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                GraduationMath.GraduationPriceDiscontinuity.selector,
+                (INITIAL_VIRTUAL_ETH + GRADUATION_ETH) * (LP_TOKENS + 30_000 ether),
+                GRADUATION_ETH * (INITIAL_VIRTUAL_TOKEN - CURVE_TOKENS)
+            )
+        );
+        factory.setFutureDefaults(defaults);
+
+        // At the caps and 0.5 bp apart: accepted.
+        defaults.parameters.lpTokens = LP_TOKENS + 10_000 ether;
+        defaults.parameters.totalSupply = TOTAL_SUPPLY + 10_000 ether;
+        factory.setFutureDefaults(defaults);
+        assertEq(factory.launchFee(), LaunchTypesV2.MAX_LAUNCH_FEE);
         vm.stopPrank();
     }
 
