@@ -29,42 +29,31 @@
   token page shows when details were last edited) are done (PR #91). L-1 (V2 caps:
   `tradeFeeBps` <= 500, `launchFee` <= 0.05 ETH, pool opens within 1 bp of the curve's final
   price) is done (PR #92). Open:
-  1. **M-3 RPC load grows with token count.** Design written:
-     `docs/specs/2026-11-16-rpc-scale-design.md`. The RPC failover part is done
-     (`task/rpc-failover`, `docs/specs/2026-11-17-rpc-failover-preflight.md`: opt-in
-     `RPC_FALLBACK_URL`; the operator still has to pick and configure the fallback provider).
-     Still open, needing owner facts before code: raising `INDEXER_LOG_ADDRESS_BATCH_SIZE` and
-     adaptive topic-only fetching need the provider's `eth_getLogs` limits and chain-wide
-     `Transfer` and PoolManager log volume per block.
+  1. **M-3 RPC load grows with token count.** Code done: RPC failover (PR #93), default address
+     batch 1000 and topic-only known-token transfers near the tip
+     (`docs/specs/2026-11-17-run4-owner-defaults-preflight.md` decision 8). Left for the operator:
+     pick and configure `RPC_FALLBACK_URL`, and confirm the production provider's `eth_getLogs`
+     limits are at least the probed ones (1,000 addresses, 10-block topic-only reads).
 - **Related files:** `deploy/compose.yaml`, `deploy/backend.env.example`,
   `backend/internal/store/postgres/migrations/`, `backend/cmd/api/main.go`,
   `backend/internal/store/postgres/queries/social.sql`, `backend/internal/chain/discovery_v2.go`,
   `contracts/src/libraries/CurveMath.sol`, `contracts/src/v2/LaunchTokenV2.sol`.
-- **Resume (next step):** get the M-3 provider facts.
+- **Resume (next step):** operator inputs for M-3 at deployment time (see item 1).
 - **Pitfalls / notes:** none of these closes a scorecard "Path to 9" item; those need the external
   audit, the Privy 3 upgrade, a production CDN, test-deployment measurements and live Telegram/USD
   keys (see "Production release, governance, and audit inputs" and the scorecard).
 
 ### Security-audit run-4 open leads (needs_validation)
 
-- **Date:** 2026-11-16
-- **Reason:** scope decision (each lead needs an owner fact or a toolchain the audit sandbox lacks)
-- **Where it stopped:** Run-4 is complete and every confirmed finding is fixed
-  (`docs/audits/2026-11-16-security-audit-run-4.md`). 25 needs_validation leads stay open; full
-  trace, blocker and plan for each are in `~/security-audit-skill/launchpad/run-4/NEEDS-VALIDATION.md`.
-- **Related files:** `contracts/src/v2/BondingCurveV2.sol` (`_mintPosition`), `deploy/Caddyfile`,
-  `deploy/compose.yaml`, `backend/internal/chain/discovery.go`, `web/src/transactions-panel/`.
-- **Resume (next step):**
-  1. Done: the V2 graduation ETH-delta underflow (both leads) was confirmed and fixed in #82
-     (`docs/specs/2026-11-16-v2-graduation-sweep-preflight.md`). The four web leads are fixed on
-     `task/run4-web-leads`: a review prepared before a side, amount or slippage change no longer
-     reopens (generation check in all three trade panels); a curve sell no longer skips the
-     unresolved-submission guard; launch details are kept per token (a vitest run on the old code
-     saved the edited and the later launch's description); the sign-time launch requote re-reads
-     `futureDefaults` and refuses a changed profile.
-  2. Owner facts: Caddy XFF append at the pinned image, effective rate-limit env and edge
-     limits, Privy one-DID-per-wallet policy, RPC provider eth_getLogs limits.
-- **Pitfalls / notes:** Do not send live traffic to validate; the plans are configuration-only.
+- **Date:** 2026-11-16, closed 2026-11-17
+- **Reason:** scope decision (each lead needed an owner fact)
+- **Where it stopped:** every lead is fixed or accepted in writing; the owner delegated the
+  choices. Decisions and evidence: `docs/specs/2026-11-17-run4-owner-defaults-preflight.md`
+  (write-limiter eviction, CALLCODE frames, API statement timeout, rotating reconciliation sample,
+  Caddy X-Forwarded-For verified on the pinned image, OG 404 for malformed addresses, fork gate on
+  the release checklist; SSE capacity, web read bucket, funding pass, identity token lifetime,
+  ClaimPublicWallet and same-PR waivers accepted).
+- **Resume (next step):** move this entry to Done once its PR merges.
 
 ### AUDIT_REPORT_TR follow-ups after the P0 pass
 
