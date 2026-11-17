@@ -32,10 +32,20 @@ type RPCConfig struct {
 	Observer RPCObserver
 }
 
+// endpoint is one JSON-RPC provider. role is "primary" or "fallback" and is the only provider
+// identity that may appear in logs (URLs carry API keys).
+type endpoint struct {
+	role string
+	rpc  *rpc.Client
+	eth  *ethclient.Client
+}
+
+// Client is the chain RPC client. It talks to one provider, or to a primary and a fallback when
+// built with WithFallback (rpc_failover.go).
 type Client struct {
-	rpc    *rpc.Client
-	eth    *ethclient.Client
-	config RPCConfig
+	config    RPCConfig
+	endpoints []*endpoint
+	failover  *failover
 }
 
 func Dial(ctx context.Context, rawURL string, config RPCConfig) (*Client, error) {
@@ -47,12 +57,17 @@ func Dial(ctx context.Context, rawURL string, config RPCConfig) (*Client, error)
 	if err != nil {
 		return nil, fmt.Errorf("dial chain RPC: %w", err)
 	}
-	return &Client{rpc: rpcClient, eth: ethclient.NewClient(rpcClient), config: config}, nil
+	return &Client{config: config, endpoints: []*endpoint{{role: rolePrimary, rpc: rpcClient, eth: ethclient.NewClient(rpcClient)}}}, nil
 }
 
 func (c *Client) Close() {
-	if c != nil && c.rpc != nil {
-		c.rpc.Close()
+	if c == nil {
+		return
+	}
+	for _, ep := range c.endpoints {
+		if ep != nil && ep.rpc != nil {
+			ep.rpc.Close()
+		}
 	}
 }
 
@@ -64,13 +79,13 @@ func (c *Client) HeaderByNumber(ctx context.Context, number uint64) (*types.Head
 // failed batch element fails the whole call, so callers never see a partial range.
 func (c *Client) HeadersByNumbers(ctx context.Context, numbers []uint64) ([]*types.Header, error) {
 	headers := make([]*types.Header, len(numbers))
-	err := c.retry(ctx, "eth_getBlockByNumber", false, func(callContext context.Context) error {
+	err := c.retry(ctx, "eth_getBlockByNumber", false, func(callContext context.Context, ep *endpoint) error {
 		batch := make([]rpc.BatchElem, len(numbers))
 		for index, number := range numbers {
 			headers[index] = nil
 			batch[index] = rpc.BatchElem{Method: "eth_getBlockByNumber", Args: []any{hexutil.EncodeUint64(number), false}, Result: &headers[index]}
 		}
-		if err := c.rpc.BatchCallContext(callContext, batch); err != nil {
+		if err := ep.rpc.BatchCallContext(callContext, batch); err != nil {
 			return err
 		}
 		for index, element := range batch {
@@ -103,13 +118,13 @@ func (c *Client) TransactionSenders(ctx context.Context, hashes []common.Hash) (
 			From *common.Address `json:"from"`
 		}, len(chunk))
 		var batch []rpc.BatchElem
-		err := c.retry(ctx, "eth_getTransactionByHash", false, func(callContext context.Context) error {
+		err := c.retry(ctx, "eth_getTransactionByHash", false, func(callContext context.Context, ep *endpoint) error {
 			batch = make([]rpc.BatchElem, len(chunk))
 			for index, hash := range chunk {
 				results[index] = nil
 				batch[index] = rpc.BatchElem{Method: "eth_getTransactionByHash", Args: []any{hash}, Result: &results[index]}
 			}
-			return c.rpc.BatchCallContext(callContext, batch)
+			return ep.rpc.BatchCallContext(callContext, batch)
 		})
 		if err != nil {
 			return nil, err
@@ -126,9 +141,9 @@ func (c *Client) TransactionSenders(ctx context.Context, hashes []common.Hash) (
 
 func (c *Client) HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error) {
 	var result *types.Header
-	err := c.retry(ctx, "eth_getBlockByHash", false, func(callContext context.Context) error {
+	err := c.retry(ctx, "eth_getBlockByHash", false, func(callContext context.Context, ep *endpoint) error {
 		var callErr error
-		result, callErr = c.eth.HeaderByHash(callContext, hash)
+		result, callErr = ep.eth.HeaderByHash(callContext, hash)
 		return callErr
 	})
 	return result, err
@@ -140,17 +155,26 @@ type Heads struct{ Latest, Safe, Finalized *types.Header }
 // element, in that order, decides the error: "read latest head" for latest, and a
 // FinalityTagError for an unsupported or missing safe/finalized tag.
 func (c *Client) Heads(ctx context.Context) (Heads, error) {
+	if c.failover != nil {
+		return c.failoverHeads(ctx)
+	}
+	return c.headsOn(ctx, c.endpoints[0])
+}
+
+// headsOn reads the three heads from one provider without the failover gate; the caller records
+// the outcome.
+func (c *Client) headsOn(ctx context.Context, ep *endpoint) (Heads, error) {
 	tags := [3]string{"latest", "safe", "finalized"}
 	var headers [3]*types.Header
 	failed := -1
-	err := c.retry(ctx, "eth_getBlockByNumber", false, func(callContext context.Context) error {
+	err := c.call(ctx, "eth_getBlockByNumber", false, ep, func(callContext context.Context, ep *endpoint) error {
 		failed = -1
 		batch := make([]rpc.BatchElem, len(tags))
 		for index, tag := range tags {
 			headers[index] = nil
 			batch[index] = rpc.BatchElem{Method: "eth_getBlockByNumber", Args: []any{tag, false}, Result: &headers[index]}
 		}
-		if err := c.rpc.BatchCallContext(callContext, batch); err != nil {
+		if err := ep.rpc.BatchCallContext(callContext, batch); err != nil {
 			return err
 		}
 		for index, element := range batch {
@@ -192,9 +216,9 @@ func isUnsupportedTag(err error) bool {
 
 func (c *Client) header(ctx context.Context, number *big.Int) (*types.Header, error) {
 	var result *types.Header
-	err := c.retry(ctx, "eth_getBlockByNumber", false, func(callContext context.Context) error {
+	err := c.retry(ctx, "eth_getBlockByNumber", false, func(callContext context.Context, ep *endpoint) error {
 		var callErr error
-		result, callErr = c.eth.HeaderByNumber(callContext, number)
+		result, callErr = ep.eth.HeaderByNumber(callContext, number)
 		return callErr
 	})
 	return result, err
@@ -202,9 +226,9 @@ func (c *Client) header(ctx context.Context, number *big.Int) (*types.Header, er
 
 func (c *Client) CodeAt(ctx context.Context, address common.Address) ([]byte, error) {
 	var result []byte
-	err := c.retry(ctx, "eth_getCode", false, func(callContext context.Context) error {
+	err := c.retry(ctx, "eth_getCode", false, func(callContext context.Context, ep *endpoint) error {
 		var callErr error
-		result, callErr = c.eth.CodeAt(callContext, address, nil)
+		result, callErr = ep.eth.CodeAt(callContext, address, nil)
 		return callErr
 	})
 	return result, err
@@ -212,9 +236,9 @@ func (c *Client) CodeAt(ctx context.Context, address common.Address) ([]byte, er
 
 func (c *Client) ChainID(ctx context.Context) (*big.Int, error) {
 	var result *big.Int
-	err := c.retry(ctx, "eth_chainId", false, func(callContext context.Context) error {
+	err := c.retry(ctx, "eth_chainId", false, func(callContext context.Context, ep *endpoint) error {
 		var callErr error
-		result, callErr = c.eth.ChainID(callContext)
+		result, callErr = ep.eth.ChainID(callContext)
 		return callErr
 	})
 	return result, err
@@ -222,9 +246,9 @@ func (c *Client) ChainID(ctx context.Context) (*big.Int, error) {
 
 func (c *Client) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
 	var result []types.Log
-	err := c.retry(ctx, "eth_getLogs", true, func(callContext context.Context) error {
+	err := c.retry(ctx, "eth_getLogs", true, func(callContext context.Context, ep *endpoint) error {
 		var callErr error
-		result, callErr = c.eth.FilterLogs(callContext, query)
+		result, callErr = ep.eth.FilterLogs(callContext, query)
 		return callErr
 	})
 	return result, err
@@ -234,9 +258,9 @@ func (c *Client) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]
 func (c *Client) CallContractAt(ctx context.Context, message ethereum.CallMsg, block uint64) ([]byte, error) {
 	var result []byte
 	number := new(big.Int).SetUint64(block)
-	err := c.retry(ctx, "eth_call", false, func(callContext context.Context) error {
+	err := c.retry(ctx, "eth_call", false, func(callContext context.Context, ep *endpoint) error {
 		var callErr error
-		result, callErr = c.eth.CallContract(callContext, message, number)
+		result, callErr = ep.eth.CallContract(callContext, message, number)
 		return callErr
 	})
 	return result, err
@@ -244,18 +268,30 @@ func (c *Client) CallContractAt(ctx context.Context, message ethereum.CallMsg, b
 
 func (c *Client) CallContract(ctx context.Context, message ethereum.CallMsg) ([]byte, error) {
 	var result []byte
-	err := c.retry(ctx, "eth_call", false, func(callContext context.Context) error {
+	err := c.retry(ctx, "eth_call", false, func(callContext context.Context, ep *endpoint) error {
 		var callErr error
-		result, callErr = c.eth.CallContract(callContext, message, nil)
+		result, callErr = ep.eth.CallContract(callContext, message, nil)
 		return callErr
 	})
 	return result, err
 }
 
-// retry runs operation with the configured retry policy and reports the final
-// outcome to the observer once, whatever the number of attempts.
-func (c *Client) retry(ctx context.Context, method string, capacitySensitive bool, operation func(context.Context) error) error {
-	err := c.retryAttempts(ctx, capacitySensitive, operation)
+// retry runs operation on the active provider with the configured retry policy, reports the
+// final outcome to the observer once, whatever the number of attempts, and feeds it to the
+// failover policy. While a provider switch is still gated it fails with ErrRPCSwitching.
+func (c *Client) retry(ctx context.Context, method string, capacitySensitive bool, operation func(context.Context, *endpoint) error) error {
+	ep, err := c.activeEndpoint(false)
+	if err != nil {
+		return err
+	}
+	err = c.call(ctx, method, capacitySensitive, ep, operation)
+	c.recordOutcome(ctx, method, ep, err)
+	return err
+}
+
+// call runs operation on ep with the retry policy and observes the final outcome.
+func (c *Client) call(ctx context.Context, method string, capacitySensitive bool, ep *endpoint, operation func(context.Context, *endpoint) error) error {
+	err := c.retryAttempts(ctx, capacitySensitive, func(callContext context.Context) error { return operation(callContext, ep) })
 	// A parent-context cancel is shutdown, not an RPC failure; do not observe it.
 	if c.config.Observer != nil && !errors.Is(err, context.Canceled) {
 		c.config.Observer.ObserveRPC(method, rpcOutcome(err))

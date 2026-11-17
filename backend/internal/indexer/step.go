@@ -45,6 +45,12 @@ func (e *Engine) Step(ctx context.Context) (advanced bool, err error) {
 	if err != nil {
 		return false, err
 	}
+	if state.Observed != nil && heads.latest.BlockNumber < state.Observed.BlockNumber {
+		// A provider behind the indexed tip (a lagging or newly switched provider) has no
+		// header for the saved block yet; wait for it instead of reading that as a fault. A
+		// reorg to a shorter chain is detected once the new chain passes the saved height.
+		return false, rpcFailure("wait for RPC head", fmt.Errorf("latest block %d is below indexed block %d", heads.latest.BlockNumber, state.Observed.BlockNumber))
+	}
 	if recovered, err := e.verifySavedBlocks(ctx, state); err != nil || recovered {
 		return recovered, err
 	}
@@ -263,6 +269,11 @@ func (e *Engine) decodeChunk(ctx context.Context, chunk stepChunk, identities []
 	}
 	result, err := e.discovery.Discover(ctx, uint64(chunk.from), uint64(chunk.to), emitters)
 	if err != nil {
+		// A provider outage or a failover switch retries the step like a head read; any other
+		// discovery error (a bad log, a failed pair check) still stops the indexer.
+		if chain.IsProviderUnavailable(err) || errors.Is(err, chain.ErrRPCSwitching) {
+			return nil, rpcFailure("discover logs", err)
+		}
 		return nil, err
 	}
 	decoded := make([]chain.DecodedLog, 0)
