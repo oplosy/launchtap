@@ -25,6 +25,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// apiStatementTimeout bounds every statement the API runs: its public reads (forum ranking,
+// token search, early-buyer clusters) scale with chain data, and a statement past this is
+// cancelled with a 500 instead of holding one of the pool's few connections (security-audit
+// run-4). The slowest measured read is far below it.
+const apiStatementTimeout = 10 * time.Second
+
 func main() {
 	if err := run(); err != nil {
 		slog.Error("api stopped", "error", err)
@@ -61,7 +67,7 @@ func run() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	pool, err := storepostgres.OpenPool(ctx, c.DatabaseURL, storepostgres.PoolOptions{MaxConns: int32(c.DatabaseMaxConns)})
+	pool, err := storepostgres.OpenPool(ctx, c.DatabaseURL, storepostgres.PoolOptions{MaxConns: int32(c.DatabaseMaxConns), StatementTimeout: apiStatementTimeout})
 	if err != nil {
 		return err
 	}

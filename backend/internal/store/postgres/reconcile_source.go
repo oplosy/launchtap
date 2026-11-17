@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"math/big"
@@ -19,6 +20,9 @@ type ReconcileSource struct {
 	Pool         *pgxpool.Pool
 	ChainID      int64
 	DeploymentID string
+	// RotationStart is optional; tests set it. It picks where each pass's rotating sample over
+	// every token starts; by default a random address.
+	RotationStart func() common.Address
 }
 
 // Snapshot implements reconcile.Store. ok is false while the deployment has no observed block.
@@ -30,7 +34,7 @@ func (s ReconcileSource) Snapshot(ctx context.Context, tokens, holders int) (rec
 		}
 		snapshot.Block = uint64(read.State.ObservedNumber.Int64)
 		snapshot.BlockHash = common.Hash(*read.State.ObservedHash)
-		rows, err := adapter.queries.ListReconcileTokens(ctx, sqlc.ListReconcileTokensParams{ChainID: s.ChainID, RowLimit: int32(tokens)})
+		rows, err := adapter.queries.ListReconcileTokens(ctx, sqlc.ListReconcileTokensParams{ChainID: s.ChainID, RowLimit: int32(tokens), RotationStart: s.rotationStart().Bytes()})
 		if err != nil {
 			return fmt.Errorf("list reconcile tokens: %w", err)
 		}
@@ -85,6 +89,15 @@ func (s ReconcileSource) token(ctx context.Context, adapter *Adapter, row sqlc.L
 		token.TopHolders = append(token.TopHolders, reconcile.Holder{Address: common.Address(holder.HolderAddress), Balance: balance})
 	}
 	return token, nil
+}
+
+func (s ReconcileSource) rotationStart() common.Address {
+	if s.RotationStart != nil {
+		return s.RotationStart()
+	}
+	var start common.Address
+	_, _ = rand.Read(start[:]) // crypto/rand.Read never fails
+	return start
 }
 
 // parseAmount parses a NUMERIC(78,0) read as text.

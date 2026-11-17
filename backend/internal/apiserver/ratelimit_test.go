@@ -47,7 +47,7 @@ func TestClientAddressOnlyTrustsForwardedForFromProxies(t *testing.T) {
 	if got := clientAddress(cdn, withCDN).String(); got != "203.0.113.7" {
 		t.Errorf("CDN edge trusted: client=%s, want 203.0.113.7", got)
 	}
-	if got := clientKeyFor(netip.MustParseAddr("2001:db8:1:2:3:4:5:6")); got != "2001:db8:1:2::/64" {
+	if got := clientKeyFor(netip.MustParseAddr("2001:db8:1:2:3:4:5:6")); got != "2001:db8:1::/56" {
 		t.Fatalf("IPv6 key=%s", got)
 	}
 }

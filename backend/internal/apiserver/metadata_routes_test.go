@@ -166,11 +166,38 @@ func TestSubjectLimiterBoundsIdentityState(t *testing.T) {
 			t.Fatalf("entry %d rejected before capacity", index)
 		}
 	}
-	if limiter.Allow("overflow", now) {
-		t.Fatal("limiter accepted an unbounded identity entry")
+	// A full table admits a new subject by evicting the oldest windows, not by refusing it.
+	if !limiter.Allow("overflow", now) || len(limiter.entries) > maxSubjectLimiterEntries {
+		t.Fatalf("full limiter refused a new subject or grew unbounded: entries=%d", len(limiter.entries))
+	}
+	for index := len(limiter.entries); index < maxSubjectLimiterEntries; index++ {
+		limiter.Allow("refill-"+strconv.Itoa(index), now)
 	}
 	if !limiter.Allow("replacement", now.Add(time.Minute)) || len(limiter.entries) != 1 {
 		t.Fatalf("expired entries were not pruned: entries=%d", len(limiter.entries))
+	}
+}
+
+// Under a principal flood, subjects under their limit are forgotten before throttled ones, so a
+// throttled subject keeps its throttle.
+func TestSubjectLimiterEvictsUnthrottledBeforeThrottled(t *testing.T) {
+	limiter := NewSubjectLimiter(2, time.Minute)
+	now := time.Unix(1_000, 0)
+	for range 2 {
+		if !limiter.Allow("throttled", now) {
+			t.Fatal("throttled subject setup failed")
+		}
+	}
+	for index := 1; index < maxSubjectLimiterEntries; index++ {
+		if !limiter.Allow(strconv.Itoa(index), now.Add(time.Second)) {
+			t.Fatalf("entry %d rejected before capacity", index)
+		}
+	}
+	if !limiter.Allow("newcomer", now.Add(2*time.Second)) {
+		t.Fatal("full limiter refused a new subject")
+	}
+	if limiter.Allow("throttled", now.Add(2*time.Second)) {
+		t.Fatal("eviction reset a throttled subject")
 	}
 }
 

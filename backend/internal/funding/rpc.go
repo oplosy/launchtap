@@ -111,12 +111,14 @@ func (r RPC) TracedTransfers(ctx context.Context, block uint64) ([]Transfer, err
 }
 
 // appendFrame walks a call tree depth-first in execution order. A reverted frame and everything
-// under it moved no value. DELEGATECALL and STATICCALL frames carry no transfer of their own.
+// under it moved no value. DELEGATECALL and STATICCALL frames carry no transfer of their own, and
+// a CALLCODE frame's value stays with the caller (it runs To's code in the caller's context), so
+// none of them credits To.
 func appendFrame(out []Transfer, tx common.Hash, f callFrame) []Transfer {
 	if f.Error != "" {
 		return out
 	}
-	if f.To != nil && f.Value != nil && f.Value.ToInt().Sign() > 0 && f.Type != "DELEGATECALL" && f.Type != "STATICCALL" {
+	if f.To != nil && f.Value != nil && f.Value.ToInt().Sign() > 0 && f.Type != "DELEGATECALL" && f.Type != "STATICCALL" && f.Type != "CALLCODE" {
 		out = append(out, Transfer{TxHash: tx, From: f.From, To: *f.To, Value: f.Value.ToInt()})
 	}
 	for _, c := range f.Calls {

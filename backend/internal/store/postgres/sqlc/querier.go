@@ -315,7 +315,10 @@ type Querier interface {
 	// Reads for the indexed-state reconciliation pass
 	// (docs/specs/2026-11-14-state-reconciliation-preflight.md). Amounts are read as text so the
 	// comparison parses them into *big.Int without a float on the way.
-	// The tokens whose reserves changed most recently: where trading, and therefore drift, happens.
+	// Two samples of up to row_limit tokens each: the tokens whose reserves changed most recently
+	// (where trading, and therefore drift, happens), and a rotating sample over every token, starting
+	// at rotation_start and wrapping around, so a token that never trades or has left the recent set
+	// is still compared on some pass (security-audit run-4).
 	ListReconcileTokens(ctx context.Context, arg ListReconcileTokensParams) ([]ListReconcileTokensRow, error)
 	// Keyset page of the chain's launched tokens for the chunked position seed. Every ledger row
 	// (trades, transfers) references token_launches, so these pages cover the whole ledger.
