@@ -204,8 +204,8 @@ func TestLoadUsesBoundedDefaults(t *testing.T) {
 	if got.IndexerReorgSearchDepth != 128 || got.IndexerReorgRecoveryMode {
 		t.Errorf("reorg search settings = %d/%v, want 128/false", got.IndexerReorgSearchDepth, got.IndexerReorgRecoveryMode)
 	}
-	if got.IndexerLogAddressBatchSize != 500 {
-		t.Errorf("IndexerLogAddressBatchSize = %d, want 500", got.IndexerLogAddressBatchSize)
+	if got.IndexerLogAddressBatchSize != 1000 {
+		t.Errorf("IndexerLogAddressBatchSize = %d, want 1000", got.IndexerLogAddressBatchSize)
 	}
 	if got.IndexerLogFetchConcurrency != 4 {
 		t.Errorf("IndexerLogFetchConcurrency = %d, want 4", got.IndexerLogFetchConcurrency)

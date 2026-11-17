@@ -151,7 +151,7 @@ func (d *Discoverer) discoverV2(ctx context.Context, from, to uint64, known Emit
 		})
 	}
 	jobs = append(jobs, func(ctx context.Context) ([]types.Log, error) {
-		logs, fetchErr := d.fetch(ctx, from, to, addressesFor(known, EmitterToken), d.decoder.Topics(EmitterToken))
+		logs, fetchErr := d.fetchKnownTokens(ctx, from, to, known.Tokens)
 		if fetchErr != nil {
 			return nil, fmt.Errorf("fetch known token logs: %w", fetchErr)
 		}
@@ -220,6 +220,40 @@ func (d *Discoverer) discoverV2(ctx context.Context, from, to uint64, known Emit
 		return DiscoveryResult{}, err
 	}
 	return DiscoveryResult{Logs: deduplicated, LaunchesV2: launches, Emitters: emitters}, nil
+}
+
+const (
+	// tokenTopicOnlyMaxBlocks bounds the range fetchKnownTokens reads by topic only. Every ERC-20
+	// and ERC-721 Transfer on the chain matches the topic; the 2026-09-11 mainnet probe measured
+	// about 94 logs (83 kB) per block for all events together, so 10 blocks stay far below any
+	// response limit while a catch-up chunk of 100 blocks (7.5 MB unfiltered) does not.
+	tokenTopicOnlyMaxBlocks = 10
+	// tokenTopicOnlyCooldownSteps is how many steps use the address batches after a failed
+	// topic-only query, so a busy chain costs one failed call per cooldown, not one per step.
+	tokenTopicOnlyCooldownSteps = 100
+)
+
+// fetchKnownTokens reads the known tokens' Transfer logs. Near the chain tip, once the tokens
+// need more than one address batch, one topic-only query filtered to the known tokens replaces
+// ceil(tokens / batch) calls (docs/specs/2026-11-16-rpc-scale-design.md, option 2). Any failure
+// of that query falls back to the address batches, which impostor logs cannot inflate.
+func (d *Discoverer) fetchKnownTokens(ctx context.Context, from, to uint64, tokens AddressSet) ([]types.Log, error) {
+	topics := d.decoder.Topics(EmitterToken)
+	if len(tokens) > d.addressBatchSize && to-from < tokenTopicOnlyMaxBlocks {
+		if d.tokenTopicCooldown.Load() > 0 {
+			d.tokenTopicCooldown.Add(-1)
+		} else {
+			logs, err := d.fetchTopicOnly(ctx, from, to, topics, tokens)
+			if err == nil || !errors.Is(err, errTopicOnlyFailed) {
+				return logs, err
+			}
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			d.tokenTopicCooldown.Store(tokenTopicOnlyCooldownSteps)
+		}
+	}
+	return d.fetch(ctx, from, to, setAddresses(tokens), topics)
 }
 
 // registerPool admits a graduation's pool only when its id is the one derived from the token and
