@@ -228,7 +228,8 @@ const (
 	// about 94 logs (83 kB) per block for all events together, so 10 blocks stay far below any
 	// response limit while a catch-up chunk of 100 blocks (7.5 MB unfiltered) does not.
 	tokenTopicOnlyMaxBlocks = 10
-	// tokenTopicOnlyCooldownSteps is how many steps use the address batches after a failed
+	// tokenTopicOnlyCooldownSteps is how many eligible discovery calls (one per indexer step at
+	// the tip, more when a failed step is retried) use the address batches after a failed
 	// topic-only query, so a busy chain costs one failed call per cooldown, not one per step.
 	tokenTopicOnlyCooldownSteps = 100
 )

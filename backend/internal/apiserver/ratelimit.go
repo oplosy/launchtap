@@ -57,14 +57,13 @@ func trustedAddress(address netip.Addr, trusted []netip.Prefix) bool {
 	return false
 }
 
-// clientKeyFor groups IPv6 clients by /56, the block an ISP usually assigns one customer, so one
-// customer cannot spread over 256 /64 keys to exhaust the shared SSE capacity (security-audit run-4).
+// clientKeyFor groups IPv6 clients by /64, the smallest block an end user normally controls.
 func clientKeyFor(address netip.Addr) string {
 	if !address.IsValid() {
 		return "unknown"
 	}
 	if address.Is6() {
-		prefix, err := address.Prefix(56)
+		prefix, err := address.Prefix(64)
 		if err == nil {
 			return prefix.String()
 		}

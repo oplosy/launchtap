@@ -27,7 +27,7 @@ type Config struct {
 	MaxBodyBytes                                                               int64
 	MaxHeaderBytes                                                             int
 	// TrustedProxies may supply X-Forwarded-For; RateLimitPerMinute and RateLimitBurst bound
-	// requests per client IP (IPv6 per /56).
+	// requests per client IP (IPv6 per /64).
 	TrustedProxies                     []netip.Prefix
 	RateLimitPerMinute, RateLimitBurst uint64
 	// Metrics receives request, rejection and stream telemetry; nil disables it.

@@ -27,10 +27,12 @@ magnitude.
 2. **CALLCODE frames.** Funding resolution ignores CALLCODE frames like DELEGATECALL and
    STATICCALL: the value never leaves the caller. *Rationale:* the source fact is settled by the
    EVM; no provider trace is needed to know the frame moves no ETH to `to`.
-3. **SSE capacity across client keys.** IPv6 clients are keyed by /56 (the usual per-customer
-   allocation) instead of /64, for the rate limits and the per-client stream cap. *Rationale:* one
-   /56 holder could take 256 keys, enough to fill a quarter of the 1000 SSE slots; IPv4 still
-   needs about 250 addresses, which is accepted (best-effort freshness only, REST unaffected).
+3. **SSE capacity across client keys: accepted.** IPv6 clients stay keyed by /64. Keying by /56
+   was tried and rejected in review: mobile carriers hand out a /64 per device from shared pools,
+   so unrelated customers would share one rate-limit bucket and one 4-stream cap. Filling the
+   1000 slots needs about 250 IPv4 addresses or one /56 held open; the effect is best-effort
+   freshness only (REST and every authorization are unaffected) and ends when the connections
+   close. A per-prefix connection limit belongs at the edge (decision 9).
 4. **Shared database work from public reads.** The API pool sets `statement_timeout` to 10 s.
    Early-buyer clusters, forum `top`/`best` and token search keep their result semantics; a read
    past the timeout fails with a 500 instead of holding one of the pool's connections.
@@ -60,7 +62,9 @@ magnitude.
    blocks and the tokens need more than one address batch; any failure falls back to the address
    batches and disables the fast path for 100 steps. *Rationale:* the probe measured about 94 logs
    (83 kB) per block for all events chain-wide, so a 10-block topic-only read stays small, while a
-   100-block catch-up chunk (7.5 MB) keeps the batches. Engine 2 only; engine 1 is not deployed.
+   100-block catch-up chunk (7.5 MB) keeps the batches. Engine 2 only: the engine-1 testnet
+   deployment keeps the address batches until its planned engine switch (backlog "Operator
+   actions").
 9. **Accepted in writing (fact changes magnitude, not the fix).**
    - *Web-originated reads share the web container's rate-limit bucket.* Forwarding the visitor
      address would force `headers()` into the ISR routes and make them dynamic, which costs more
@@ -73,8 +77,8 @@ magnitude.
      The effect is limited to publishing or claiming a wallet the principal linked within the
      token's lifetime.
    - *ClaimPublicWallet takeover.* Intended by design (`2026-11-09-p0c2-comments-usernames-design.md`):
-     a user who proves current linkage may take the publication. Privy links an address to one
-     user at a time.
+     a user who proves current linkage may take the publication. Linking a wallet in Privy needs
+     a signature from that wallet, so any user who can claim it controls its key.
    - *Live PositionManager action encoding.* The fork lifecycle gate (`check-fork.ps1`) is now a
      step of `docs/release-checklist.md` on the release commit; it needs the archive RPC secret,
      so it cannot run on every push.
