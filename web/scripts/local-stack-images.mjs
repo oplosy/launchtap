@@ -1,10 +1,14 @@
-// Demo token artwork for the local stack (web/scripts/local-stack.ps1): prints SQL that stores a
-// generated 512x512 PNG for each token address given on the command line. The art is abstract
-// (a two-hue gradient with soft discs) and deterministic per address. Stdlib only.
+// Demo token artwork for the local stack (web/scripts/local-stack.ps1): prints SQL that stores an
+// image for each `0x<address>[:SYMBOL]` given on the command line. Seeded symbols get their
+// editorial artwork from local-stack-art.mjs, rasterised to WebP in Playwright's Chromium; any other
+// token, or every token when Chromium cannot start, gets an abstract gradient PNG (a two-hue
+// gradient with soft discs) that is deterministic per address.
 import { createHash } from "node:crypto";
 import { crc32, deflateSync } from "node:zlib";
+import { tokenArtSvg } from "./local-stack-art.mjs";
 
 const SIZE = 512;
+const ART_SIZE = 640;
 const CHAIN_ID = 31337;
 
 function chunk(type, data) {
@@ -78,14 +82,71 @@ function art(address) {
   return png(SIZE, SIZE, rgb);
 }
 
-const addresses = process.argv.slice(2).filter((value) => /^0x[0-9a-fA-F]{40}$/.test(value));
-if (addresses.length === 0) {
-  console.error("usage: node local-stack-images.mjs 0x<address> [...]");
+/** Rasterises each SVG to WebP in one headless Chromium session. */
+async function renderWebp(svgs) {
+  const { chromium } = await import("@playwright/test");
+  // Playwright's own Chromium when installed, else an installed Edge or Chrome.
+  let browser;
+  const failures = [];
+  for (const channel of [undefined, "msedge", "chrome"]) {
+    try {
+      browser = await chromium.launch(channel ? { channel } : {});
+      break;
+    } catch (error) {
+      failures.push(`${channel ?? "chromium"}: ${error.message.split("\n")[0]}`);
+    }
+  }
+  if (!browser) throw new Error(failures.join("; "));
+  try {
+    const page = await browser.newPage();
+    const images = [];
+    for (const svg of svgs) {
+      const base64 = await page.evaluate(
+        async ({ svg, size }) => {
+          const image = new Image();
+          image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+          await image.decode();
+          const canvas = document.createElement("canvas");
+          canvas.width = canvas.height = size;
+          canvas.getContext("2d").drawImage(image, 0, 0, size, size);
+          return canvas.toDataURL("image/webp", 0.86).split(",")[1];
+        },
+        { svg, size: ART_SIZE },
+      );
+      const webp = Buffer.from(base64, "base64");
+      // A browser without a WebP encoder silently returns PNG; the stored type must match the bytes.
+      if (webp.toString("ascii", 0, 4) !== "RIFF" || webp.toString("ascii", 8, 12) !== "WEBP")
+        throw new Error("Chromium did not encode WebP");
+      images.push(webp);
+    }
+    return images;
+  } finally {
+    await browser.close();
+  }
+}
+
+const tokens = process.argv
+  .slice(2)
+  .map((value) => /^(0x[0-9a-fA-F]{40})(?::(.*))?$/.exec(value))
+  .filter(Boolean)
+  .map(([, address, symbol]) => ({ address, svg: symbol ? tokenArtSvg(symbol) : null }));
+if (tokens.length === 0) {
+  console.error("usage: node local-stack-images.mjs 0x<address>[:SYMBOL] [...]");
   process.exit(1);
 }
+const withArt = tokens.filter((token) => token.svg);
+if (withArt.length > 0) {
+  try {
+    const images = await renderWebp(withArt.map((token) => token.svg));
+    withArt.forEach((token, i) => (token.image = { bytes: images[i], type: "image/webp" }));
+  } catch (error) {
+    console.error(`Artwork rendering unavailable, using gradients: ${error.message}`);
+  }
+}
 console.log("BEGIN;");
-for (const address of addresses) {
-  const image = art(address);
+for (const token of tokens) {
+  const { address } = token;
+  const { bytes: image, type } = token.image ?? { bytes: art(address), type: "image/png" };
   const hex = address.slice(2).toLowerCase();
   const sha = createHash("sha256").update(image).digest("hex");
   // The image is bound to the launch event, as the API's read query joins on it.
@@ -94,7 +155,7 @@ for (const address of addresses) {
   );
   console.log(
     `INSERT INTO token_images (chain_id, token_address, launch_tx_hash, launch_log_index, content_type, ` +
-      `content, byte_size, sha256, updated_at) SELECT chain_id, token_address, tx_hash, log_index, 'image/png', ` +
+      `content, byte_size, sha256, updated_at) SELECT chain_id, token_address, tx_hash, log_index, '${type}', ` +
       `decode('${image.toString("base64")}', 'base64'), ${image.length}, decode('${sha}', 'hex'), now() ` +
       `FROM token_launches WHERE chain_id = ${CHAIN_ID} AND token_address = decode('${hex}', 'hex');`,
   );

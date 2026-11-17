@@ -284,7 +284,7 @@ try {
             & docker exec -i $postgresContainer psql -v ON_ERROR_STOP=1 -U postgres -d $databaseName | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Forum seed failed" }
         Write-Host "Seeding token artwork..."
-        $addresses = @(& docker exec $postgresContainer psql -U postgres -d $databaseName -Atc "SELECT '0x' || encode(token_address, 'hex') FROM tokens")
+        $addresses = @(& docker exec $postgresContainer psql -U postgres -d $databaseName -Atc "SELECT '0x' || encode(token_address, 'hex') || ':' || symbol FROM tokens")
         & node (Join-Path $PSScriptRoot "local-stack-images.mjs") @addresses |
             & docker exec -i $postgresContainer psql -v ON_ERROR_STOP=1 -U postgres -d $databaseName | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Artwork seed failed" }
