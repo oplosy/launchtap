@@ -2428,6 +2428,22 @@ export const browserAbis = {
     },
     {
       "type": "error",
+      "name": "GraduationPriceDiscontinuity",
+      "inputs": [
+        {
+          "name": "curveEndCross",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "poolOpenCross",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "GraduationPriceOutOfRange",
       "inputs": []
     },
@@ -2646,6 +2662,17 @@ export const browserAbis = {
     },
     {
       "type": "error",
+      "name": "LaunchFeeAboveCap",
+      "inputs": [
+        {
+          "name": "launchFee",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "LaunchValueMismatch",
       "inputs": [
         {
@@ -2816,6 +2843,17 @@ export const browserAbis = {
           "name": "amount",
           "type": "uint256",
           "internalType": "uint256"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "TradeFeeAboveCap",
+      "inputs": [
+        {
+          "name": "tradeFeeBps",
+          "type": "uint16",
+          "internalType": "uint16"
         }
       ]
     },
@@ -3537,6 +3575,22 @@ export const browserAbis = {
     },
     {
       "type": "error",
+      "name": "GraduationPriceDiscontinuity",
+      "inputs": [
+        {
+          "name": "curveEndCross",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "poolOpenCross",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "GraduationPriceOutOfRange",
       "inputs": []
     },
@@ -3898,6 +3952,17 @@ export const browserAbis = {
           "name": "amount",
           "type": "uint256",
           "internalType": "uint256"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "TradeFeeAboveCap",
+      "inputs": [
+        {
+          "name": "tradeFeeBps",
+          "type": "uint16",
+          "internalType": "uint16"
         }
       ]
     },

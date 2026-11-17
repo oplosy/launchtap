@@ -10,6 +10,7 @@ import { ILaunchEventsV2 } from "./ILaunchEventsV2.sol";
 interface IBondingCurveV2 is IFeeRecipientSource, ILaunchErrors, ILaunchEventsV2 {
     error InvalidAntiSnipeProfile(uint16 startBps, uint32 durationSeconds);
     error InvalidLpCreatorShareBps(uint16 lpCreatorShareBps);
+    error TradeFeeAboveCap(uint16 tradeFeeBps);
     error UnauthorizedFeeRecipient(address caller, address feeRecipient);
     error UnauthorizedPendingFeeRecipient(address caller, address pendingFeeRecipient);
     error UnexpectedEthSender(address sender);

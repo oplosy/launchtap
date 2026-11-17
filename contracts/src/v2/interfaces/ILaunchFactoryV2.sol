@@ -23,6 +23,7 @@ interface ILaunchFactoryV2 is
     error DependenciesAlreadySet();
     error UnauthorizedDeployer(address caller, address deployer);
     error InvalidDependency(bytes32 field, address dependency);
+    error LaunchFeeAboveCap(uint256 launchFee);
 
     // Factory administration events, unchanged from v1 `ILaunchEvents`.
     event LaunchFeesClaimed(address indexed treasury, uint256 amount);

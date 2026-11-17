@@ -26,10 +26,10 @@
   stale-data banner) are done. The owner decisions are locked in
   `docs/specs/2026-11-16-owner-decisions-preflight.md`: M-2 (comment/vote needs the creator or
   >= 0.01% of supply), L-2 and L-4 (accepted, documented), L-3 (creator keeps authority; the
-  token page shows when details were last edited) are done on `task/owner-decisions`. Open:
-  1. **L-1 V2 caps** (`tradeFeeBps` <= 500, `launchFee` <= 0.05 ETH, curve-end vs pool-open
-     price within 1 bp in `LaunchFactoryV2` / `BondingCurveV2`): separate high-risk contract PR.
-  2. **M-3 RPC load grows with token count.** Design written:
+  token page shows when details were last edited) are done (PR #91). L-1 (V2 caps:
+  `tradeFeeBps` <= 500, `launchFee` <= 0.05 ETH, pool opens within 1 bp of the curve's final
+  price) is done (PR #92). Open:
+  1. **M-3 RPC load grows with token count.** Design written:
      `docs/specs/2026-11-16-rpc-scale-design.md` (raise `INDEXER_LOG_ADDRESS_BATCH_SIZE` first,
      then adaptive topic-only fetching; cold-token tier rejected; RPC failover guards). Needs
      owner facts before code: the provider's `eth_getLogs` limits, chain-wide `Transfer` and
@@ -38,7 +38,7 @@
   `backend/internal/store/postgres/migrations/`, `backend/cmd/api/main.go`,
   `backend/internal/store/postgres/queries/social.sql`, `backend/internal/chain/discovery_v2.go`,
   `contracts/src/libraries/CurveMath.sol`, `contracts/src/v2/LaunchTokenV2.sol`.
-- **Resume (next step):** land the L-1 contract PR; get the M-3 provider facts.
+- **Resume (next step):** get the M-3 provider facts.
 - **Pitfalls / notes:** none of these closes a scorecard "Path to 9" item; those need the external
   audit, the Privy 3 upgrade, a production CDN, test-deployment measurements and live Telegram/USD
   keys (see "Production release, governance, and audit inputs" and the scorecard).

@@ -43,9 +43,9 @@
     "check": "unused-return",
     "impact": "Medium",
     "confidence": "Medium",
-    "description": "BondingCurveV2._graduate() (src/v2/BondingCurveV2.sol#556-605) ignores return value by IPoolManager(_poolManager).initialize(key,result.sqrtPriceX96) (src/v2/BondingCurveV2.sol#565)\n",
-    "id": "4ca8f97ccc19c8d7aa63e4b2b54a73e2e1d34d14fc11877289360f1c1ff67273",
-    "first_markdown_element": "src/v2/BondingCurveV2.sol#L556-L605"
+    "description": "BondingCurveV2._graduate() (src/v2/BondingCurveV2.sol#561-610) ignores return value by IPoolManager(_poolManager).initialize(key,result.sqrtPriceX96) (src/v2/BondingCurveV2.sol#570)\n",
+    "id": "f3b43d23abfa14c2747ea1f5c9a45fe732e305d195eb9397901ccf3239b24c83",
+    "first_markdown_element": "src/v2/BondingCurveV2.sol#L561-L610"
   },
   {
     "check": "uninitialized-local",
@@ -59,41 +59,41 @@
     "check": "incorrect-equality",
     "impact": "Medium",
     "confidence": "High",
-    "description": "BondingCurveV2._creditCreatorFees(uint256) (src/v2/BondingCurveV2.sol#682-687) uses a dangerous strict equality:\n\t- amount == 0 (src/v2/BondingCurveV2.sol#683)\n",
-    "id": "792d7dbb167f562d909485c5f4401d7816d63876c1546f45bf022eff89ce1424",
-    "first_markdown_element": "src/v2/BondingCurveV2.sol#L682-L687"
+    "description": "BondingCurveV2._creditCreatorFees(uint256) (src/v2/BondingCurveV2.sol#687-692) uses a dangerous strict equality:\n\t- amount == 0 (src/v2/BondingCurveV2.sol#688)\n",
+    "id": "8070f2244683d83ad8421e3201c3cd939f6b73d8a86d22662331d641056ea0cf",
+    "first_markdown_element": "src/v2/BondingCurveV2.sol#L687-L692"
   },
   {
     "check": "incorrect-equality",
     "impact": "Medium",
     "confidence": "High",
-    "description": "BondingCurveV2._takeCreatorFees(address) (src/v2/BondingCurveV2.sol#689-696) uses a dangerous strict equality:\n\t- amount == 0 (src/v2/BondingCurveV2.sol#691)\n",
-    "id": "0b01f2b80b74f3a1078ed1ce764ecee358920966984813712de1d63827ef2e33",
-    "first_markdown_element": "src/v2/BondingCurveV2.sol#L689-L696"
+    "description": "BondingCurveV2._takeCreatorFees(address) (src/v2/BondingCurveV2.sol#694-701) uses a dangerous strict equality:\n\t- amount == 0 (src/v2/BondingCurveV2.sol#696)\n",
+    "id": "9886d0f8cca7db2a4da1ed14dc2df1ec43f1f908a5e1d2c207960f620c9a23be",
+    "first_markdown_element": "src/v2/BondingCurveV2.sol#L694-L701"
   },
   {
     "check": "incorrect-equality",
     "impact": "Medium",
     "confidence": "High",
-    "description": "BondingCurveV2._takeRefund(address) (src/v2/BondingCurveV2.sol#698-705) uses a dangerous strict equality:\n\t- amount == 0 (src/v2/BondingCurveV2.sol#700)\n",
-    "id": "735050840455b922298b2e01f6ede09f7f05eca73941a3ff942a504389ab4860",
-    "first_markdown_element": "src/v2/BondingCurveV2.sol#L698-L705"
+    "description": "BondingCurveV2._takeRefund(address) (src/v2/BondingCurveV2.sol#703-710) uses a dangerous strict equality:\n\t- amount == 0 (src/v2/BondingCurveV2.sol#705)\n",
+    "id": "a1570f48ede0015fd70d6268be5f4da0685a8f33fe022207452106870d224a8f",
+    "first_markdown_element": "src/v2/BondingCurveV2.sol#L703-L710"
   },
   {
     "check": "incorrect-equality",
     "impact": "Medium",
     "confidence": "High",
-    "description": "BondingCurveV2._sendOrCredit(address,uint256) (src/v2/BondingCurveV2.sol#707-722) uses a dangerous strict equality:\n\t- amount == 0 (src/v2/BondingCurveV2.sol#708)\n",
-    "id": "725098b9d05e99dbf743e54eb285c78fcbb022bac5bb06d0c6f4288418dac5c5",
-    "first_markdown_element": "src/v2/BondingCurveV2.sol#L707-L722"
+    "description": "BondingCurveV2._sendOrCredit(address,uint256) (src/v2/BondingCurveV2.sol#712-727) uses a dangerous strict equality:\n\t- amount == 0 (src/v2/BondingCurveV2.sol#713)\n",
+    "id": "7baba2cf05b78c136a5a0e27102b5eab38e1bda00364bc86f4f8351e4402c081",
+    "first_markdown_element": "src/v2/BondingCurveV2.sol#L712-L727"
   },
   {
     "check": "unused-return",
     "impact": "Medium",
     "confidence": "Medium",
-    "description": "BondingCurveV2.initialize(LaunchTypesV2.CurveInitializationV2) (src/v2/BondingCurveV2.sol#83-157) ignores return value by GraduationMath.sqrtPriceX96(parameters.graduationEth,parameters.lpTokens) (src/v2/BondingCurveV2.sol#122)\n",
-    "id": "00335391cb4af953b460610de71f6496b226213af0934e9b4fe90ab2f8b52392",
-    "first_markdown_element": "src/v2/BondingCurveV2.sol#L83-L157"
+    "description": "BondingCurveV2.initialize(LaunchTypesV2.CurveInitializationV2) (src/v2/BondingCurveV2.sol#83-162) ignores return value by GraduationMath.sqrtPriceX96(parameters.graduationEth,parameters.lpTokens) (src/v2/BondingCurveV2.sol#127)\n",
+    "id": "50750d106a2df0601cf92e250e715718bda09575219bcbb127f7d87d18d68a96",
+    "first_markdown_element": "src/v2/BondingCurveV2.sol#L83-L162"
   },
   {
     "check": "arbitrary-send-eth",
@@ -107,9 +107,9 @@
     "check": "unused-return",
     "impact": "Medium",
     "confidence": "Medium",
-    "description": "LaunchFactoryV2._setFutureDefaults(LaunchTypesV2.FactoryDefaultsV2) (src/v2/LaunchFactoryV2.sol#422-443) ignores return value by GraduationMath.sqrtPriceX96(defaults.parameters.graduationEth,defaults.parameters.lpTokens) (src/v2/LaunchFactoryV2.sol#437)\n",
-    "id": "34408261c5bb09be36c6a858d2b56c2da66555d121cb5d9a0454f46fe3db6cd0",
-    "first_markdown_element": "src/v2/LaunchFactoryV2.sol#L422-L443"
+    "description": "LaunchFactoryV2._setFutureDefaults(LaunchTypesV2.FactoryDefaultsV2) (src/v2/LaunchFactoryV2.sol#422-451) ignores return value by GraduationMath.sqrtPriceX96(parameters.graduationEth,parameters.lpTokens) (src/v2/LaunchFactoryV2.sol#445)\n",
+    "id": "cf251959b29939de83dfcadaaf2b13dd895189f27c96368839d8543d8a2334ea",
+    "first_markdown_element": "src/v2/LaunchFactoryV2.sol#L422-L451"
   },
   {
     "check": "incorrect-equality",

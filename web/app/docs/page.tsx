@@ -336,10 +336,12 @@ export default function DocsPage() {
             </p>
             <p>
               Changes to defaults for future launches, such as fees or treasury, go through a
-              timelock. Nothing can change an existing launch: its parameters, curve, pool, creator,
-              and fee recipients are fixed when it is created. There is no upgrade, rescue, token
-              sweep, or reserve withdrawal function, and no one can force a graduation or redirect
-              its liquidity.
+              timelock, and the engine-2 contracts cap them: the trade fee can never exceed 5%, the
+              launch fee can never exceed 0.05 ETH, and graduation must open the pool at the
+              curve&apos;s final price. Nothing can change an existing launch: its parameters,
+              curve, pool, creator, and fee recipients are fixed when it is created. There is no
+              upgrade, rescue, token sweep, or reserve withdrawal function, and no one can force a
+              graduation or redirect its liquidity.
             </p>
           </section>
 
