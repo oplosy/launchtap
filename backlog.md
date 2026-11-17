@@ -30,10 +30,12 @@
   `tradeFeeBps` <= 500, `launchFee` <= 0.05 ETH, pool opens within 1 bp of the curve's final
   price) is done (PR #92). Open:
   1. **M-3 RPC load grows with token count.** Design written:
-     `docs/specs/2026-11-16-rpc-scale-design.md` (raise `INDEXER_LOG_ADDRESS_BATCH_SIZE` first,
-     then adaptive topic-only fetching; cold-token tier rejected; RPC failover guards). Needs
-     owner facts before code: the provider's `eth_getLogs` limits, chain-wide `Transfer` and
-     PoolManager log volume per block, and the fallback provider.
+     `docs/specs/2026-11-16-rpc-scale-design.md`. The RPC failover part is done
+     (`task/rpc-failover`, `docs/specs/2026-11-17-rpc-failover-preflight.md`: opt-in
+     `RPC_FALLBACK_URL`; the operator still has to pick and configure the fallback provider).
+     Still open, needing owner facts before code: raising `INDEXER_LOG_ADDRESS_BATCH_SIZE` and
+     adaptive topic-only fetching need the provider's `eth_getLogs` limits and chain-wide
+     `Transfer` and PoolManager log volume per block.
 - **Related files:** `deploy/compose.yaml`, `deploy/backend.env.example`,
   `backend/internal/store/postgres/migrations/`, `backend/cmd/api/main.go`,
   `backend/internal/store/postgres/queries/social.sql`, `backend/internal/chain/discovery_v2.go`,

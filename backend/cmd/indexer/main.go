@@ -28,7 +28,7 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		slog.Error("indexer stopped", "error", redact.Error(err, os.Getenv("RPC_URL"), os.Getenv("DATABASE_URL")))
+		slog.Error("indexer stopped", "error", redact.Error(err, os.Getenv("RPC_URL"), os.Getenv("RPC_FALLBACK_URL"), os.Getenv("DATABASE_URL")))
 		os.Exit(indexer.ExitCode(err))
 	}
 }
@@ -54,10 +54,17 @@ func run() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	health := &indexer.HealthTracker{Render: func(err error) string { return redact.Error(err, c.RPCURL, c.DatabaseURL) }}
+	fallback, err := config.LoadRPCFallback(env, c.RPCURL)
+	if err != nil {
+		return err
+	}
+	health := &indexer.HealthTracker{Render: func(err error) string { return redact.Error(err, c.RPCURL, fallback.URL, c.DatabaseURL) }}
 	metricsRegistry := metrics.NewRegistry(metrics.ComponentIndexer)
 	indexerMetrics := metrics.NewIndexer(metricsRegistry, health.Snapshot)
-	source, err := chain.Dial(ctx, c.RPCURL, chain.RPCConfig{Timeout: c.RPCTimeout, MaxRetries: c.RPCMaxRetries, RetryBackoff: c.RPCRetryBackoff, Observer: indexerMetrics})
+	rpcConfig := chain.RPCConfig{Timeout: c.RPCTimeout, MaxRetries: c.RPCMaxRetries, RetryBackoff: c.RPCRetryBackoff, Observer: indexerMetrics}
+	source, err := dialIndexerRPC(ctx, c.RPCURL, fallback, rpcConfig, c.ChainID, deployment, func(ctx context.Context, client *chain.Client) error {
+		return verifyFallbackRPC(ctx, client, c.ChainID, deployment)
+	})
 	if err != nil {
 		return err
 	}
@@ -210,7 +217,7 @@ func run() error {
 		Interval: c.IndexerSenderBackfillInterval, Batch: swapbackfill.DefaultBatch, MaxTransactions: int(c.IndexerSenderBackfillMaxTxs),
 		SafeBlock: backfillStore.SafeBlock, Backlog: backfillStore.CountUnattributed, OnBacklog: indexerMetrics.SenderBackfillPending,
 		OnFilled: indexerMetrics.SenderBackfillFilled, OnError: indexerMetrics.SenderBackfillFailed,
-		Secrets: []string{c.RPCURL, c.DatabaseURL},
+		Secrets: []string{c.RPCURL, fallback.URL, c.DatabaseURL},
 	}
 	// Joined on return, before the deferred pool.Close, so no pass uses a closed pool.
 	senderBackfillDone := make(chan struct{})
@@ -230,7 +237,7 @@ func run() error {
 			}
 		},
 		OnError: func(err error) {
-			slog.Warn("state reconciliation pass failed; retrying next interval", "error", redact.Error(err, c.RPCURL, c.DatabaseURL))
+			slog.Warn("state reconciliation pass failed; retrying next interval", "error", redact.Error(err, c.RPCURL, fallback.URL, c.DatabaseURL))
 		},
 	}
 	reconcilerDone := make(chan struct{})
@@ -286,6 +293,79 @@ func initializeIndexerResources(ctx context.Context, source chain.RuntimeVerifie
 		return nil, nil, fmt.Errorf("acquire indexer writer ownership: %w", err)
 	}
 	return pool, owner, nil
+}
+
+// dialIndexerRPC dials the primary provider and, when configured, a fallback that must pass the
+// same chain-id, bytecode, governance and finality-tag checks before the indexer starts
+// (docs/specs/2026-11-17-rpc-failover-preflight.md).
+func dialIndexerRPC(ctx context.Context, primaryURL string, fallback config.RPCFallbackConfig, rpcConfig chain.RPCConfig, chainID uint64, deployment deployments.Deployment, verifyFallback func(context.Context, *chain.Client) error) (*chain.Client, error) {
+	primary, err := chain.Dial(ctx, primaryURL, rpcConfig)
+	if err != nil || !fallback.Enabled() {
+		return primary, err
+	}
+	secondary, err := chain.Dial(ctx, fallback.URL, rpcConfig)
+	if err != nil {
+		primary.Close()
+		return nil, fmt.Errorf("dial fallback RPC: %w", err)
+	}
+	if err := verifyFallback(ctx, secondary); err != nil {
+		primary.Close()
+		secondary.Close()
+		return nil, fmt.Errorf("verify fallback RPC before database startup: %w", err)
+	}
+	// An unreachable primary starts the indexer on the fallback; a primary that answers with the
+	// wrong chain or bytecode is a misconfiguration and still refuses to start.
+	startOnFallback := false
+	if err := verifyPrimaryRPC(ctx, primary, chainID, deployment); err != nil {
+		if !chain.IsProviderUnavailable(err) {
+			primary.Close()
+			secondary.Close()
+			return nil, fmt.Errorf("verify indexer RPC before database startup: %w", err)
+		}
+		startOnFallback = true
+		slog.Warn("primary RPC unreachable at startup; starting on the fallback", "error", redact.Error(err, primaryURL, fallback.URL))
+	}
+	combined, err := chain.WithFallback(primary, secondary, chain.FailoverConfig{ChainID: chainID, AfterFailures: fallback.AfterFailures, ProbeInterval: fallback.ProbeInterval, StartOnFallback: startOnFallback})
+	if err != nil {
+		primary.Close()
+		secondary.Close()
+		return nil, err
+	}
+	slog.Info("RPC failover enabled", "after_failures", fallback.AfterFailures, "probe_interval", fallback.ProbeInterval)
+	return combined, nil
+}
+
+// verifyPrimaryRPC runs the identity checks initializeIndexerResources repeats on the active
+// provider; here it only decides which provider the indexer starts on.
+func verifyPrimaryRPC(ctx context.Context, source chain.RuntimeVerifier, chainID uint64, deployment deployments.Deployment) error {
+	if err := chain.VerifyRPCChainID(ctx, source, chainID, deployment); err != nil {
+		return err
+	}
+	if err := chain.VerifyDeploymentBytecode(ctx, source, deployment); err != nil {
+		return err
+	}
+	return chain.VerifyGovernanceTimelock(ctx, source, deployment)
+}
+
+type fallbackVerifier interface {
+	chain.RuntimeVerifier
+	Heads(context.Context) (chain.Heads, error)
+}
+
+func verifyFallbackRPC(ctx context.Context, source fallbackVerifier, chainID uint64, deployment deployments.Deployment) error {
+	if err := chain.VerifyRPCChainID(ctx, source, chainID, deployment); err != nil {
+		return err
+	}
+	if err := chain.VerifyDeploymentBytecode(ctx, source, deployment); err != nil {
+		return err
+	}
+	if err := chain.VerifyGovernanceTimelock(ctx, source, deployment); err != nil {
+		return err
+	}
+	if _, err := source.Heads(ctx); err != nil {
+		return fmt.Errorf("read fallback finality heads: %w", err)
+	}
+	return nil
 }
 
 func loadDeploymentRegistry() (*deployments.Registry, error) {

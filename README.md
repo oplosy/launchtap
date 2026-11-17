@@ -487,6 +487,9 @@ requires `DATABASE_URL`.
 | `RPC_TIMEOUT`                    | `10s`                              | Positive per-RPC timeout; defaults to 10 seconds                                                    |
 | `RPC_MAX_RETRIES`                | `3`                                | Retry count; defaults to 3, accepted range 0–20                                                     |
 | `RPC_RETRY_BACKOFF`              | `250ms`                            | Positive retry backoff; defaults to 250 milliseconds                                                |
+| `RPC_FALLBACK_URL`               | unset                              | Optional second indexer RPC (secret); empty disables failover                                       |
+| `RPC_FALLBACK_AFTER_FAILURES`    | `3`                                | Consecutive provider failures before switching, 1-100                                               |
+| `RPC_FALLBACK_PROBE_INTERVAL`    | `30s`                              | How often the fallback probes the primary, 1s-1h                                                    |
 | `INDEXER_WORKER_ID`              | `indexer-1` in example             | Required non-empty identity for the indexer writer process                                          |
 | `INDEXER_CONFIRMATIONS`          | Blank                              | Optional local-only finality override; do not use as production finality or on a non-local manifest |
 | `ETH_USD_SOURCE`                 | Blank                              | Configuration placeholder only; provider runtime adapter is not implemented                         |
