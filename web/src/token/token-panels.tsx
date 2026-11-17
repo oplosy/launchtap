@@ -11,7 +11,7 @@ import { shortAddress } from "./address";
 import { safeSocialLink } from "./image-file";
 import type { TokenCollection } from "./pagination";
 import type { marketLinks } from "./market-links";
-import { finalityTone, finalityLabel } from "./token-format";
+import { detailsEditedLabel, finalityTone, finalityLabel } from "./token-format";
 import { Trades, Holders, CreatorLine, EarlyBuyers } from "./token-activity";
 import type { Tab } from "./use-token-page-data";
 
@@ -141,12 +141,17 @@ export function AboutPanel({
   market: ReturnType<typeof marketLinks>;
   configuration: Configuration;
 }) {
+  // The creator can change these details at any time; say when they last did.
+  const edited = detailsEditedLabel(token.details_edited_at);
   return (
     <section className="token-metadata" aria-labelledby="metadata-title">
       <div className="token-section-head">
         <div>
           <h2 id="metadata-title">About this token</h2>
-          <p className="section-description">Supplied by the creator, not verified.</p>
+          <p className="section-description">
+            Supplied by the creator, not verified.
+            {edited ? ` ${edited}.` : null}
+          </p>
         </div>
       </div>
       <p className="token-description">{token.description.trim() || "No description supplied."}</p>

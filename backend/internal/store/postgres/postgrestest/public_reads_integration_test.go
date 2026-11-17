@@ -47,6 +47,50 @@ func TestPublicReadsUseOneCanonicalSnapshot(t *testing.T) {
 	if detail.Snapshot.BlockNumber != 100 || detail.Finality != "safe" || detail.ETHReserve.String() != "110" {
 		t.Fatalf("detail=%+v", detail)
 	}
+	if detail.DetailsEditedAt != nil {
+		t.Fatalf("details edited at %v with no metadata", detail.DetailsEditedAt)
+	}
+	// L-3: the first save at launch is revision 1 and is not an edit; a later revision of the
+	// details or the image is, and the latest of the two is reported.
+	saveDetails := func(table string, revision int, updatedAt time.Time) {
+		t.Helper()
+		query := `INSERT INTO token_metadata (chain_id, token_address, launch_tx_hash, launch_log_index, description, revision, updated_at)
+			VALUES ($1, $2, $3, 0, 'about', $4, $5)
+			ON CONFLICT (chain_id, token_address, launch_tx_hash, launch_log_index) WHERE launch_tx_hash IS NOT NULL AND launch_log_index IS NOT NULL
+			DO UPDATE SET revision = EXCLUDED.revision, updated_at = EXCLUDED.updated_at`
+		args := []any{chainID, tokenBytes, hashBytes(0x63), revision, updatedAt}
+		if table == "token_images" {
+			query = `INSERT INTO token_images (chain_id, token_address, launch_tx_hash, launch_log_index, content_type, content, byte_size, sha256, revision, updated_at)
+				VALUES ($1, $2, $3, 0, 'image/png', decode('00', 'hex'), 1, $6, $4, $5)
+				ON CONFLICT (chain_id, token_address, launch_tx_hash, launch_log_index) WHERE launch_tx_hash IS NOT NULL AND launch_log_index IS NOT NULL
+				DO UPDATE SET revision = EXCLUDED.revision, updated_at = EXCLUDED.updated_at`
+			args = append(args, make([]byte, 32))
+		}
+		if _, err := database.DB.ExecContext(ctx, query, args...); err != nil {
+			t.Fatalf("save %s revision %d: %v", table, revision, err)
+		}
+	}
+	editedAt := func() *time.Time {
+		t.Helper()
+		got, err := tokens.Get(ctx, chainID, common.BytesToAddress(tokenBytes))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.DetailsEditedAt
+	}
+	saveDetails("token_metadata", 1, at.Add(time.Minute))
+	saveDetails("token_images", 1, at.Add(time.Minute))
+	if got := editedAt(); got != nil {
+		t.Fatalf("first save reported as an edit at %v", got)
+	}
+	saveDetails("token_metadata", 2, at.Add(time.Hour))
+	if got := editedAt(); got == nil || !got.Equal(at.Add(time.Hour)) {
+		t.Fatalf("edited details at %v, want %v", got, at.Add(time.Hour))
+	}
+	saveDetails("token_images", 2, at.Add(2*time.Hour))
+	if got := editedAt(); got == nil || !got.Equal(at.Add(2*time.Hour)) {
+		t.Fatalf("edited image at %v, want %v", got, at.Add(2*time.Hour))
+	}
 	for _, sort := range []string{"newest", "oldest", "market_cap", "volume_24h"} {
 		page, err := tokens.List(ctx, token.ListQuery{ChainID: chainID, Phase: "curve", Sort: sort, Limit: 20})
 		if err != nil {

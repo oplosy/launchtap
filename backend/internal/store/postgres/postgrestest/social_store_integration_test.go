@@ -41,7 +41,7 @@ func seedSocialToken(t *testing.T, ctx context.Context, database *Database, tag 
 	callRebuild(t, ctx, database.DB, socialChainID, fixture.token)
 	mustExecSocial(t, ctx, database.DB, `
 		INSERT INTO holder_balances (chain_id, token_address, holder_address, balance, first_acquired_block_number)
-		VALUES ($1, $2, $3, 5, $4)`, socialChainID, fixture.token, socialHolder.Bytes(), block)
+		VALUES ($1, $2, $3, 100, $4)`, socialChainID, fixture.token, socialHolder.Bytes(), block)
 	return common.BytesToAddress(fixture.token)
 }
 

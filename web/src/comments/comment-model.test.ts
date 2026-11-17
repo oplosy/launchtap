@@ -105,7 +105,9 @@ describe("votes", () => {
   });
 
   it("explains vote refusals in vote terms", () => {
-    expect(voteProblemMessage("not_holder")).toBe("Hold this token to vote on its comments.");
+    expect(voteProblemMessage("not_holder")).toBe(
+      "Hold at least 0.01% of this token to vote on its comments.",
+    );
     expect(voteProblemMessage("own_comment")).toBe("You cannot vote on your own comment.");
     expect(voteProblemMessage("rate_limited")).toBe("You are voting too fast. Try again shortly.");
     expect(voteProblemMessage("banned")).toBe("Your account cannot vote on comments.");

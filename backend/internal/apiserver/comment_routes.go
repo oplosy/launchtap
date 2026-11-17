@@ -172,7 +172,7 @@ func (r CommentRoutes) fail(ctx context.Context, err error) error {
 	case errors.Is(err, social.ErrWalletNotLinked):
 		return apiProblem(http.StatusForbidden, "wallet_not_linked", "Wallet is not linked to this account")
 	case errors.Is(err, social.ErrNotHolder):
-		return apiProblem(http.StatusForbidden, "not_holder", "Wallet is neither the creator nor a holder of this token")
+		return apiProblem(http.StatusForbidden, "not_holder", "Wallet is neither the creator nor a holder of at least 0.01% of this token")
 	case errors.Is(err, social.ErrBanned):
 		return apiProblem(http.StatusForbidden, "banned", "Account is banned")
 	case errors.Is(err, social.ErrOwnComment):

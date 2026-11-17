@@ -59,6 +59,10 @@ func (r TokenReader) Get(ctx context.Context, chainID int64, address common.Addr
 			FDVETH: row.FdvEthWad.BigInt(), LiquidityETH: row.LiquidityEthWad.BigInt(), ATHPriceETH: row.AthPriceEthWad.BigInt(),
 			ATHAt: row.AthAt.Time, PriceChange24hBPS: row.PriceChange24hBps,
 		}
+		if row.DetailsEditedAt.Valid {
+			edited := row.DetailsEditedAt.Time
+			out.DetailsEditedAt = &edited
+		}
 		out.Snapshot = s.Identity
 		out.Finality = finality(s.State, s.Identity.BlockNumber)
 		if out.EngineVersion == 2 {

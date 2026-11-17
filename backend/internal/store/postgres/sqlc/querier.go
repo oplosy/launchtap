@@ -426,7 +426,9 @@ type Querier interface {
 	// R10: drop the caller's published wallets that are no longer linked. keep_wallets is the
 	// principal's current wallet list.
 	PrunePublicWallets(ctx context.Context, arg PrunePublicWalletsParams) error
-	// Wallets that are the token creator or hold a positive balance; creator wins.
+	// Wallets that are the token creator or hold at least 0.01 % of the token's supply; creator
+	// wins. The share keeps dust spread over many accounts from voting or commenting
+	// (docs/specs/2026-11-16-owner-decisions-preflight.md, M-2).
 	// deployment_id is accepted for scope uniformity; tokens and balances are chain-scoped.
 	QualifyWallets(ctx context.Context, arg QualifyWalletsParams) ([]QualifyWalletsRow, error)
 	ReadOperationalHealth(ctx context.Context, arg ReadOperationalHealthParams) (ReadOperationalHealthRow, error)
@@ -460,6 +462,9 @@ type Querier interface {
 	ReplaceTokenMetadata(ctx context.Context, arg ReplaceTokenMetadataParams) (int64, error)
 	// release_at: the hourly_limit-th newest report in the window (see CommentRateState).
 	ReportRateState(ctx context.Context, arg ReportRateStateParams) (ReportRateStateRow, error)
+	// Drops the wallets resolved as unknown so the worker resolves them again with the current rule
+	// (docs/specs/2026-11-16-owner-decisions-preflight.md). unknown is "not resolved", never a fact.
+	RequeueUnknownWalletFunding(ctx context.Context, chainID int64) (int64, error)
 	ResolveAuthorReports(ctx context.Context, arg ResolveAuthorReportsParams) (int64, error)
 	ResolveCommentReports(ctx context.Context, arg ResolveCommentReportsParams) (int64, error)
 	// One chunk of the seed for ledger history that predates the position queue: every distinct

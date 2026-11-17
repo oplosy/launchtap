@@ -47,3 +47,9 @@ SELECT wf.wallet, wf.status, wf.funder,
        ))::boolean AS funder_ignored
 FROM wallet_funding AS wf
 WHERE wf.chain_id = sqlc.arg(chain_id) AND wf.wallet = ANY(sqlc.arg(wallets)::bytea[]);
+
+-- Drops the wallets resolved as unknown so the worker resolves them again with the current rule
+-- (docs/specs/2026-11-16-owner-decisions-preflight.md). unknown is "not resolved", never a fact.
+-- name: RequeueUnknownWalletFunding :execrows
+DELETE FROM wallet_funding
+WHERE chain_id = sqlc.arg(chain_id) AND status = 'unknown';
