@@ -341,6 +341,15 @@ SELECT t.token_address, t.curve_address, t.lp_pair, t.weth, t.creator,
        COALESCE(r.source_block_hash, t.launch_block_hash) AS reserve_block_hash,
        COALESCE(r.source_block_time, t.launch_block_time) AS reserve_block_time,
        m.description, m.image_url, m.x_url, m.telegram_url,
+       -- Revision 1 is the first save at launch; a later revision of the details or the image
+       -- is an edit, shown on the token page (docs/specs/2026-11-16-owner-decisions-preflight.md, L-3).
+       GREATEST(
+           CASE WHEN m.revision > 1 THEN m.updated_at END,
+           (SELECT i.updated_at FROM token_images AS i
+            WHERE i.chain_id = t.chain_id AND i.token_address = t.token_address
+              AND i.launch_tx_hash = t.launch_tx_hash AND i.launch_log_index = t.launch_log_index
+              AND i.revision > 1)
+       )::timestamptz AS details_edited_at,
        COALESCE(s.spot_price_eth_wad, 0::numeric) AS spot_price_eth_wad,
        COALESCE(s.market_cap_eth_wad, 0::numeric) AS market_cap_eth_wad,
        COALESCE(s.fdv_eth_wad, 0::numeric) AS fdv_eth_wad,
@@ -398,6 +407,7 @@ type GetTokenDetailRow struct {
 	ImageUrl              pgtype.Text
 	XUrl                  pgtype.Text
 	TelegramUrl           pgtype.Text
+	DetailsEditedAt       pgtype.Timestamptz
 	SpotPriceEthWad       Uint256
 	MarketCapEthWad       Uint256
 	FdvEthWad             Uint256
@@ -445,6 +455,7 @@ func (q *Queries) GetTokenDetail(ctx context.Context, arg GetTokenDetailParams) 
 		&i.ImageUrl,
 		&i.XUrl,
 		&i.TelegramUrl,
+		&i.DetailsEditedAt,
 		&i.SpotPriceEthWad,
 		&i.MarketCapEthWad,
 		&i.FdvEthWad,

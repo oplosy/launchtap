@@ -44,7 +44,7 @@ export const apiMessages: Readonly<Record<string, string>> = {
   invalid_interval: "That chart interval is not supported. Pick another one.",
   // Comments, votes, reports and profiles
   comment_not_found: "That comment is no longer available.",
-  not_holder: "Only holders and the creator of this token can do this.",
+  not_holder: "Only the creator and wallets holding at least 0.01% of this token can do this.",
   own_comment: "You cannot do this on your own comment.",
   invalid_comment: "This comment breaks a posting rule. Check its length and content.",
   invalid_vote: "Choose up or down.",
@@ -128,7 +128,7 @@ export const contextMessages: Readonly<
     wallet_not_linked: "That wallet is not linked to your account.",
     token_not_found: "This token is no longer available.",
     invalid_comment: "This comment breaks a posting rule.",
-    not_holder: "Only holders and the creator of this token can comment.",
+    not_holder: "Only the creator and wallets holding at least 0.01% of this token can comment.",
     banned: "Your account cannot post or report comments.",
     rate_limited: "You are posting too fast. Try again shortly.",
     invalid_cursor: "The comment list changed. Refresh to continue.",
@@ -137,7 +137,7 @@ export const contextMessages: Readonly<
     fallback: "Something went wrong. Try again.",
   },
   vote: {
-    not_holder: "Hold this token to vote on its comments.",
+    not_holder: "Hold at least 0.01% of this token to vote on its comments.",
     own_comment: "You cannot vote on your own comment.",
     rate_limited: "You are voting too fast. Try again shortly.",
     banned: "Your account cannot vote on comments.",

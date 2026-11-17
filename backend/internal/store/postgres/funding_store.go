@@ -75,3 +75,13 @@ func (s FundingStore) Save(ctx context.Context, wallet common.Address, r funding
 	}
 	return nil
 }
+
+// RequeueUnknown deletes the chain's unknown funding rows so the worker resolves those wallets
+// again, and returns how many it deleted.
+func (s FundingStore) RequeueUnknown(ctx context.Context) (int64, error) {
+	deleted, err := sqlc.New(s.Pool).RequeueUnknownWalletFunding(ctx, s.ChainID)
+	if err != nil {
+		return 0, fmt.Errorf("requeue unknown wallet funding: %w", err)
+	}
+	return deleted, nil
+}

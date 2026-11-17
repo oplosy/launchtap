@@ -43,7 +43,7 @@ type graduationFeedEvent struct {
 	Token        string `json:"token"`
 	Name         string `json:"name"`
 	Symbol       string `json:"symbol"`
-	Pair         string `json:"pair"`
+	Pair         string `json:"pair" doc:"Uniswap v2 pair of an engine-1 token; the zero address for an engine-2 token, which graduates into a v4 pool with no pair contract."`
 	TxHash       string `json:"tx_hash"`
 	BlockNumber  int64  `json:"block_number"`
 }

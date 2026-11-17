@@ -23,25 +23,22 @@
   Fixed on `task/audit-scorecard-9`: H-1 (indexer topic-spam halt), L-6 (Slither on every PR,
   stale triage entries refreshed), L-7 (HSTS), Dependabot.
   M-1 (per-service Postgres roles, PR #89) and L-5 (indexer heartbeat, `GET /v1/status`, web
-  stale-data banner) are done. Open, in priority order:
-  1. **M-2 comment/vote sybil.** Holder means `balance > 0` (`queries/social.sql:21-31`).
-     Product decision needed: minimum balance (share of supply) and/or minimum holding age.
+  stale-data banner) are done. The owner decisions are locked in
+  `docs/specs/2026-11-16-owner-decisions-preflight.md`: M-2 (comment/vote needs the creator or
+  >= 0.01% of supply), L-2 and L-4 (accepted, documented), L-3 (creator keeps authority; the
+  token page shows when details were last edited) are done on `task/owner-decisions`. Open:
+  1. **L-1 V2 caps** (`tradeFeeBps` <= 500, `launchFee` <= 0.05 ETH, curve-end vs pool-open
+     price within 1 bp in `LaunchFactoryV2` / `BondingCurveV2`): separate high-risk contract PR.
   2. **M-3 RPC load grows with token count.** Design written:
      `docs/specs/2026-11-16-rpc-scale-design.md` (raise `INDEXER_LOG_ADDRESS_BATCH_SIZE` first,
      then adaptive topic-only fetching; cold-token tier rejected; RPC failover guards). Needs
      owner facts before code: the provider's `eth_getLogs` limits, chain-wide `Transfer` and
      PoolManager log volume per block, and the fallback provider.
-  3. **L-1 to L-4 contract and product items** (need a contract pre-flight before the external
-     audit): on-chain caps for `tradeFeeBps` and `launchFee`; enforce curve-end price equal to
-     pool-open price in `CurveMath.validateParameters`; decide whether pre-graduation transfers
-     into third-party AMM pairs are acceptable; metadata authority following the fee recipient
-     and a public metadata change history; treasury migration for existing launches.
 - **Related files:** `deploy/compose.yaml`, `deploy/backend.env.example`,
   `backend/internal/store/postgres/migrations/`, `backend/cmd/api/main.go`,
   `backend/internal/store/postgres/queries/social.sql`, `backend/internal/chain/discovery_v2.go`,
   `contracts/src/libraries/CurveMath.sol`, `contracts/src/v2/LaunchTokenV2.sol`.
-- **Resume (next step):** get the owner decisions for M-2 and L-1 to L-4 and the M-3 provider
-  facts; each then needs its own pre-flight.
+- **Resume (next step):** land the L-1 contract PR; get the M-3 provider facts.
 - **Pitfalls / notes:** none of these closes a scorecard "Path to 9" item; those need the external
   audit, the Privy 3 upgrade, a production CDN, test-deployment measurements and live Telegram/USD
   keys (see "Production release, governance, and audit inputs" and the scorecard).
@@ -137,13 +134,13 @@
      gitignored) are done on `task/audit-report-2-fixes`
      (`docs/specs/2026-11-16-audit-report-2-fixes-preflight.md`); L-2, L-3 and L-5 rejected; the
      rest were already covered by the P0/P1/MED passes.
-  3. `wallet_funding` rows already written `unknown` by the old same-block rule are not
-     re-resolved (`ON CONFLICT DO NOTHING`); re-resolving them is a data change, ask first.
-- **Pitfalls / notes:** Deliberately left: HIGH-12 (V4 `eth_reserve` falls back to initial
-  virtual reserves; the web already hides reserves when liquidity is not indexed, so fixing it
-  is a public API change to nullable fields) and the SSE graduation `pair` of engine-2 tokens
-  (zero address; same API-shape decision). The report's HIGH-01 fix (drop SWEEP) is wrong; see the
-  spec above.
+  3. **Operator, once per deployment:** run `go run ./cmd/funding requeue-unknown` (with the
+     funding service's environment) so `wallet_funding` rows written `unknown` by the old
+     same-block rule are deleted and the worker re-resolves them.
+- **Pitfalls / notes:** HIGH-12 (V4 reserve fields return the initial virtual reserves when
+  `reserve_source` is not indexed) and the engine-2 SSE graduation `pair` (zero address) are now
+  documented in the OpenAPI schema instead of changing the `/v1` shape. The report's HIGH-01 fix
+  (drop SWEEP) is wrong; see the spec above.
 
 ### P0-A external inputs: CoinGecko key and market-link identifiers
 

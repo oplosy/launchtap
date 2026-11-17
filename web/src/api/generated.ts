@@ -948,6 +948,7 @@ export interface components {
             chain_id: number;
             deployment_id: string;
             name: string;
+            /** @description Uniswap v2 pair of an engine-1 token; the zero address for an engine-2 token, which graduates into a v4 pool with no pair contract. */
             pair: string;
             symbol: string;
             token: string;
@@ -1443,8 +1444,11 @@ export interface components {
             curve: string;
             curve_tokens: string;
             description: string;
+            /** @description When the creator last changed the details or image after the first save (RFC 3339), or null if never. */
+            details_edited_at: string | null;
             /** Format: int32 */
             engine_version: number;
+            /** @description ETH reserve for the curve and pair sources. A v4 pool has no reserves: for reserve_source v4 this is the launch's initial virtual ETH; read pool liquidity from v2. */
             eth_reserve: string;
             fdv_eth: string;
             graduation_eth: string;
@@ -1476,11 +1480,13 @@ export interface components {
             /** Format: int64 */
             reserve_block: number;
             reserve_hash: string;
+            /** @description Where the reserves come from: curve, pair (engine-1 Uniswap v2 pair) or v4 (engine-2 Uniswap v4 pool). */
             reserve_source: string;
             snapshot: components["schemas"]["SnapshotDTO"];
             spot_price_eth: string;
             symbol: string;
             telegram_url: string;
+            /** @description Token reserve for the curve and pair sources; for reserve_source v4 this is the launch's initial virtual token reserve. */
             token_reserve: string;
             total_supply: string;
             /** Format: int32 */

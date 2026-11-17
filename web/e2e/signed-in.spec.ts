@@ -261,7 +261,9 @@ test("a holder votes on a comment, switches and clears the vote, and sees refusa
 
   const second = rows.filter({ hasText: "comment 6" });
   await second.getByRole("button", { name: "Upvote" }).click();
-  await expect(second.getByRole("alert")).toHaveText("Hold this token to vote on its comments.");
+  await expect(second.getByRole("alert")).toHaveText(
+    "Hold at least 0.01% of this token to vote on its comments.",
+  );
   await expect(second.getByRole("group", { name: "Vote, 3 points" })).toBeVisible();
   expect(unauthenticated).toEqual([]);
 });
