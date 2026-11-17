@@ -25,7 +25,9 @@ a missed log range or a manual database edit would stay silent.
    *Rationale:* the projections are only meaningful at the block they were indexed through.
 
 3. **What is compared.** The 25 tokens with the most recent reserve update (where trading happens)
-   are sampled each pass. For each:
+   are sampled each pass, plus a rotating sample of up to 25 tokens over every token (random
+   start, wrapping), so a token that never traded or left the recent set is compared on some
+   pass (amended 2026-11-17, `2026-11-17-run4-owner-defaults-preflight.md`). For each:
    - `phase` against the curve's `phase()`;
    - in the curve phase, the curve reserves (`token_reserves`, source `curve`) against
      `virtualEthReserve()` and `virtualTokenReserve()`;
@@ -37,7 +39,7 @@ a missed log range or a manual database edit would stay silent.
    gates, and the sum check already catches a missed transfer anywhere.
 
 4. **Cadence and cost.** Every 10 minutes, first pass one minute after start; at most
-   25 × (1 + 2 + 1 + 5) + 2 = 227 calls per pass. Constants, no new configuration.
+   50 × (1 + 2 + 1 + 5) + 2 = 452 calls per pass. Constants, no new configuration.
 
 5. **Signals.** Metrics `launchpad_indexer_reconciliation_runs_total{outcome}` (`ok`, `drift`,
    `reorg`, `error`), `launchpad_indexer_reconciliation_mismatches` (last completed pass),
