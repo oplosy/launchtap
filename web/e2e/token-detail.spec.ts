@@ -362,17 +362,23 @@ test("GET /token/<known>/opengraph-image returns 200 image/png 1200x630", async 
 });
 
 test("unknown token returns 200 generic card", async ({ request }) => {
-  for (const [address, cacheControl] of [
-    // The API answered 404 (maybe a token seconds after launch): cached downstream only briefly.
-    ["0x00000000000000000000000000000000000000ff", "public, s-maxage=30"],
-    // An invalid address is a stable answer: the normal lifetime.
-    ["not-an-address", "public, s-maxage=300, stale-while-revalidate=300"],
-  ]) {
-    const response = await request.get(`/token/${address}/opengraph-image`);
-    expect(response.status()).toBe(200);
-    expect(response.headers()["content-type"]).toContain("image/png");
-    expect(response.headers()["cache-control"]).toBe(cacheControl);
-    expect(pngSize(await response.body())).toEqual({ width: 1200, height: 630 });
+  // The API answered 404 (maybe a token seconds after launch): cached downstream only briefly.
+  const response = await request.get(
+    "/token/0x00000000000000000000000000000000000000ff/opengraph-image",
+  );
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toContain("image/png");
+  expect(response.headers()["cache-control"]).toBe("public, s-maxage=30");
+  expect(pngSize(await response.body())).toEqual({ width: 1200, height: 630 });
+});
+
+test("a malformed or non-canonical address segment is a 404, not a card", async ({ request }) => {
+  // docs/specs/2026-11-17-run4-owner-defaults-preflight.md decision 7: one cache entry per spelling.
+  for (const segment of ["not-an-address", "0x00000000000000000000000000000000000000FF"]) {
+    for (const route of ["opengraph-image", "twitter-image"]) {
+      const response = await request.get(`/token/${segment}/${route}`);
+      expect(response.status()).toBe(404);
+    }
   }
 });
 
