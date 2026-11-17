@@ -993,3 +993,62 @@ func TestEngineCountsSenderMissesOnlyAfterCommit(t *testing.T) {
 		t.Fatalf("log = %q, want one warning", logs.String())
 	}
 }
+
+type failingDiscovery struct{ err error }
+
+func (d failingDiscovery) Discover(context.Context, uint64, uint64, chain.Emitters) (chain.DiscoveryResult, error) {
+	return chain.DiscoveryResult{}, d.err
+}
+
+// Provider outages and failover switches during log discovery retry the step; other discovery
+// errors still stop the indexer (docs/specs/2026-11-17-rpc-failover-preflight.md).
+func TestDiscoveryProviderFailuresAreRetryableRPCFailures(t *testing.T) {
+	for name, test := range map[string]struct {
+		err       error
+		retryable bool
+	}{
+		"switching": {err: fmt.Errorf("fetch logs: %w", chain.ErrRPCSwitching), retryable: true},
+		"timeout":   {err: fmt.Errorf("fetch logs: %w", context.DeadlineExceeded), retryable: true},
+		"bad log":   {err: errors.New("decode log: malformed topic"), retryable: false},
+		"capacity":  {err: errors.New("query returned more than 10000 results"), retryable: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e, _, _ := newTestEngine(t)
+			e.discovery = failingDiscovery{err: test.err}
+			_, err := e.Step(t.Context())
+			if err == nil || !errors.Is(err, test.err) {
+				t.Fatalf("Step() error = %v, want it to wrap %v", err, test.err)
+			}
+			if got := errors.Is(err, ErrRPCUnhealthy); got != test.retryable {
+				t.Fatalf("Step() error %v: RPC-unhealthy = %v, want %v", err, got, test.retryable)
+			}
+		})
+	}
+}
+
+// A provider behind the indexed tip (lagging, or just switched to) makes the step wait as a
+// retryable RPC failure instead of reading the missing saved header as a fault or a reorg.
+func TestStepWaitsWhileTheRPCHeadIsBelowTheIndexedTip(t *testing.T) {
+	e, store, source := newTestEngine(t)
+	for range 2 {
+		if _, err := e.Step(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if store.unit.state.Observed.BlockNumber != 4 {
+		t.Fatalf("observed = %+v, want block 4", store.unit.state.Observed)
+	}
+	source.heads = chain.Heads{Latest: source.headers[3], Safe: source.headers[2], Finalized: source.headers[1]}
+	before := len(source.requests)
+	advanced, err := e.Step(t.Context())
+	if advanced || !errors.Is(err, ErrRPCUnhealthy) {
+		t.Fatalf("Step() = %t, %v, want a retryable RPC failure", advanced, err)
+	}
+	if len(source.requests) != before || len(store.unit.reorgs) != 0 || store.unit.state.Observed.BlockNumber != 4 {
+		t.Fatalf("lagging head read headers or wrote state: requests %d -> %d, reorgs %+v, observed %+v", before, len(source.requests), store.unit.reorgs, store.unit.state.Observed)
+	}
+	source.heads = chain.Heads{Latest: source.headers[5], Safe: source.headers[4], Finalized: source.headers[3]}
+	if advanced, err := e.Step(t.Context()); err != nil || !advanced || store.unit.state.Observed.BlockNumber != 5 {
+		t.Fatalf("Step() after catch-up = %t, %v; observed %+v", advanced, err, store.unit.state.Observed)
+	}
+}
