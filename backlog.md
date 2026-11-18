@@ -42,6 +42,10 @@
      - review and enable the manifest;
      - the full journey through graduation and LP-fee claims.
      The live dry run passed on 2026-11-18.
+  1c. **Incident-response rehearsal (gap G8):** run `docs/runbooks/incident-response.md` §8 on
+     the testnet factory with the testnet pause-authority keystore: pause, verify, unpause, and
+     log the row. Repeat the Safe dry run once the mainnet multisig exists (step 6). Also
+     confirm the §2 response targets and the status channel in the production sheet.
   2. **Archive RPC secret:** replace `ROBINHOOD_MAINNET_ARCHIVE_RPC_URL` (fails the TLS handshake
      since contracts run `37326499597`) and re-run the `contracts` workflow via
      `workflow_dispatch`; the fork gate on the release checklist needs it too.

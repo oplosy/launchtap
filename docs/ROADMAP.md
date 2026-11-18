@@ -73,26 +73,51 @@ opt-in Compose `monitoring` profile with Prometheus and Alertmanager
   `main` in milestone PR #21.
 
 
-### Frontend rebuild — in review
+### Frontend rebuild — complete
 
 The web UI is rebuilt around a centred composition, a pure-black dark theme with a light theme,
 a monochrome interface with colour reserved for data, and a new information architecture
 (`/explore` replaces the old discovery routes, which redirect)
 ([spec](specs/2026-11-10-frontend-rebuild-design.md), [plan](plans/2026-11-10-frontend-rebuild.md)).
-All nine plan tasks are on `task/frontend-rebuild`, opened as a PR into `dev`.
+Merged in PR #23.
+
+### Launch engine 2 — code complete; external audit and live run externally gated
+
+A second, separately deployed engine, the one planned for mainnet. It adds an anti-snipe tax,
+graduation into a Uniswap v4 pool whose position is locked forever in an LP-fee locker that shares
+fees between creator and protocol, and a two-step creator fee-recipient handover
+([spec](specs/2026-11-11-v2-engine-design.md); contracts, backend and web plans dated
+2026-11-11/12).
+- Contracts, backend and web delivered in PRs #26–#31, then hardened through #52, #71 and #92 and
+  the audit passes.
+- A pinned mainnet fork suite and a deep fuzz and invariant campaign cover it.
+- The external audit package is `audits/external-audit-package.md`.
+- Robinhood testnet has no Uniswap v4. PR #114 adds a rehearsal path there on a self-deployed,
+  pinned v4 stack ([pre-flight](specs/2026-11-18-v2-testnet-path-preflight.md)).
 
 ## Next
 
-No new feature scope is decided. Signed-in e2e coverage (a fixture-only test session) landed on
-`dev` and goes to `main` with the next milestone PR. The only open feature work in
-[`backlog.md`](../backlog.md) → Active is the forum ticker tape and votes, which need an owner
-decision.
+No new feature scope is decided. What stands between the repository and mainnet, with owners and
+order, is in the [gap assessment](audits/2026-11-18-project-gap-assessment.md). Almost all of it
+is owner-held:
+- the external audit;
+- the live testnet runs of both engines;
+- governance;
+- hosting;
+- a legal position.
+
+The code-side items are the legal pages, after the legal opinion, and anything the audit finds.
 
 ## Deferred operational work
 
-Tracked in [`backlog.md`](../backlog.md): the production CoinGecko key and market-link
-identifiers, the Privy 3 upgrade, the testnet engine switch and fork RPC secret, and the
-production release, governance, monitoring-owner and external-audit inputs.
+Tracked in [`backlog.md`](../backlog.md) → "Operator-only inputs":
+- the testnet engine switch and the engine 2 testnet rehearsal;
+- the archive fork RPC secret and a second RPC provider;
+- the CoinGecko and Telegram keys;
+- an incident-response rehearsal;
+- the production release, governance, monitoring-owner, external-audit and legal inputs.
+
+The Privy 3 upgrade is a separate backlog item.
 
 ## Delivery rule
 

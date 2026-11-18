@@ -81,7 +81,10 @@ signer set. Record:
 Do not accept mainnet funds until the external audit and governance owners have signed off.
 Contract rollback is not a database rollback: the contracts are non-upgradeable. The planned
 emergency action is an approved pause/governance procedure, followed by a forward contract or
-application release if required.
+application release if required. The procedure is
+[`incident-response.md`](incident-response.md): triggers, the Safe signing path, verification,
+user communication, unpause criteria, and the rehearsal log the pause-handoff evidence above
+points to.
 
 ## Release, health, rollback, and monitoring
 

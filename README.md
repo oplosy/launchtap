@@ -3,7 +3,10 @@
 Launchpad is a non-custodial, fixed-supply token launchpad for Robinhood Chain. A creator
 launches a token through the on-chain factory; users trade it against an integer bonding curve;
 once the curve reaches its configured threshold, the curve closes and its launch liquidity moves
-to a Uniswap v2 pair. The initial LP position is sent to the fixed burn address. Wallets sign
+to a Uniswap pool. Engine 1 graduates into a Uniswap v2 pair and burns the initial LP position.
+Engine 2, the engine planned for mainnet, graduates into a Uniswap v4 pool and locks the position
+forever in a fee locker that shares its LP fees between creator and protocol
+([engine 2 below](#launch-engine-2)). Wallets sign
 their own transactions. Contracts hold and account for on-chain assets; the Go backend indexes
 chain data and serves reads but never holds user trading funds or signs trades.
 
@@ -36,33 +39,35 @@ acceptance.
 
 ## Project status and release boundary
 
-The checkout's active development branch is `dev`. `main` contains milestone PR #7 at
-`37fb6ee`. Docs and small, low-risk changes land linearly on `dev`, while high-risk or large
-work goes through a short-lived `task/<slug>` branch and a PR back into `dev`.
-See [CLAUDE.md](CLAUDE.md) for the working and Git rules.
+The checkout's active development branch is `dev`. `main` holds the last verified milestone
+(PR #95 at `feabe07`). Docs and small, low-risk changes land linearly on `dev`, while high-risk or
+large work goes through a short-lived `task/<slug>` branch and a PR back into `dev`.
+See [CLAUDE.md](CLAUDE.md) for the working and Git rules. The per-area delivery view is
+[`docs/ROADMAP.md`](docs/ROADMAP.md). Code-quality scores are in
+[`docs/quality-scorecard.md`](docs/quality-scorecard.md), currently 8.6 / 10 overall. What still
+stands between the repository and a mainnet launch is in the
+[gap assessment](docs/audits/2026-11-18-project-gap-assessment.md).
 
-| Area                                                 | Repository status                                                               | What that status does not establish                                                       |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Contract Foundations, Tasks 1–12                     | Complete                                                                        | An external audit or production authorization                                             |
-| Backend Foundations, Tasks 1–12                      | Complete                                                                        | A running hosted service                                                                  |
-| Backend Indexer, Plan 2, Tasks 1–5                   | Implementation, deterministic gates, and reviewed chain-46630 manifest complete | Live testnet product acceptance                                                           |
-| API and identity, Plan 3, Tasks 1–7                  | Implementation complete                                                         | A configured production Privy organization or hosted API                                  |
-| Web client, Plan 4, Tasks 1–8                        | Implementation and deterministic CI gates complete on `dev`                     | A live release, hosted API, configured Privy application, or production acceptance        |
-| Full codebase audit and hardening, Plan 5, Tasks 1–8 | Repository remediation and available deterministic gates complete on `dev`      | A new Slither detector run, archive-RPC fork run, external audit, or production readiness |
+| Area | Repository status | What that status does not establish |
+| ---- | ----------------- | ----------------------------------- |
+| Engine 1 contracts (Uniswap v2 graduation) | Complete. Deployed and reviewed on Robinhood testnet (`robinhood-testnet-v1`). | A live product acceptance run |
+| Engine 2 contracts (Uniswap v4 graduation, LP-fee locker, anti-snipe tax) | Complete, with a pinned mainnet fork suite and a deep fuzz and invariant campaign. A testnet path on a self-deployed v4 stack is merged. | An external audit, a live run on any network, or production authorization |
+| Backend: indexer, API, identity, observability | Complete for both engines: reorg-safe indexing, on-chain reconciliation, a frozen `/v1` contract, Prometheus alerts. | A running hosted service |
+| Product surfaces (P0 parity package) | Complete: market data and ETH/USD reference price, live feed, notifications, wallet pages and PnL, leaderboards, comments, usernames, and the forum (Memestock). | Live keys for CoinGecko and Telegram |
+| Web client | Rebuilt UI with deterministic CI, browser and Anvil gates. Lighthouse accessibility, best practices and SEO are 100 on the local stack. | A live release, hosted API, configured Privy application, or a signed-in pass with a real wallet |
+| Internal audits | Plan 5 hardening and several later audit passes. Every confirmed finding is fixed or accepted in writing. | An independent external audit |
 
-The reviewed Robinhood Chain Testnet dependency and Launchpad manifests are active. Deployment
-receipts, runtime bytecode hashes, and LaunchFactory configuration were verified, but the first
-live product acceptance run with separate creator and trader wallets remains open. The
-production runbook still has external inputs to be supplied by the product, infrastructure,
-security, Privy, and governance owners. Current open work is listed under
-[Current active backlog](#current-active-backlog) and in [backlog.md](backlog.md).
+Every remaining release blocker needs an owner-held input:
+- an external audit of engine 2;
+- the live testnet runs of both engines;
+- governance addresses (pause multisig, timelock, treasury);
+- hosting and the production Privy app;
+- a legal position.
 
-The source-selection decision for optional ETH/USD enrichment is documented, but the runtime
-provider adapter, production key, timestamps, and UI attribution are not implemented. ETH-native
-amounts, quotes, and execution remain authoritative. The Forum/Memestock surface has no route,
-API, or canonical data model and is a later product plan. The Plan 5 closeout and exclusions are
-recorded in [the audit dossier](docs/audits/plan-5/README.md); that dossier is an internal code
-audit record, not an independent external audit.
+Open work is listed under [Current active backlog](#current-active-backlog) and in
+[backlog.md](backlog.md). ETH-native amounts, quotes and execution are always authoritative. The
+ETH/USD line is a display reference only. The internal audit records under
+[`docs/audits/`](docs/audits/) are not an independent external audit.
 
 ## Token lifecycle and v1 economics
 
@@ -137,6 +142,21 @@ has no Launchpad fee hook. The detailed state transitions and event ABI are auth
 the [contract specification](docs/specs/2026-09-01-contract-core-design.md) and
 [`ILaunchEvents.sol`](contracts/src/interfaces/ILaunchEvents.sol).
 
+### Launch engine 2
+
+Engine 2 (`contracts/src/v2/`) is a separately deployed factory. Engine 1 contracts and tokens
+are untouched. On top of the engine 1 rules it adds three things:
+- an anti-snipe tax on early curve buys, paid to the protocol treasury;
+- graduation into a native-ETH Uniswap v4 pool. The pool has a minimal hook that only guards
+  initialization, and the full-range position is held forever by `LpFeeLocker`, whose LP fees
+  are split between the creator and the protocol;
+- a two-step creator fee-recipient handover.
+
+The normative design is [the v2 engine spec](docs/specs/2026-11-11-v2-engine-design.md). The scope
+for the external audit is in [`docs/audits/external-audit-package.md`](docs/audits/external-audit-package.md).
+Robinhood testnet has no Uniswap v4, so engine 2 is rehearsed there on a self-deployed v4 stack
+([runbook](docs/runbooks/robinhood-testnet-deployment.md#engine-2-on-testnet-self-deployed-uniswap-v4)).
+
 ## System architecture and data flow
 
 The chain is the execution authority. The backend provides a queryable, reorg-aware view of
@@ -147,7 +167,7 @@ transaction to a backend signer.
 flowchart LR
     Creator[Creator or trader] -->|signs launch, trade, claim| Wallet[Privy or connected wallet]
     Wallet -->|signed transaction| RPC[Robinhood Chain RPC]
-    RPC --> Contracts[LaunchFactory, curve clones, tokens, Uniswap v2]
+    RPC --> Contracts[Launch factories, curve clones, tokens, Uniswap v2 and v4]
     RPC -->|blocks, logs, finality| Indexer[Go indexer]
     Indexer -->|atomic canonical writes and rebuilds| DB[(PostgreSQL)]
     DB -->|snapshot reads and LISTEN/NOTIFY hints| API[Go API]
@@ -164,7 +184,10 @@ graduation, and pull claims. `CurveMath` contains the checked integer arithmetic
 interfaces and events in `contracts/src/interfaces/` define the contracts consumed by the
 backend and web client. Deployed contracts are not upgradeable; a future engine version routes
 new launches to a new implementation while existing launches keep their original code and
-parameters.
+parameters. Engine 2 adds `LaunchFactoryV2`, `BondingCurveV2`, `LaunchTokenV2`,
+`GraduationGuardHook` and `LpFeeLocker` under `contracts/src/v2/`. The only emergency controls
+are each factory's launch and trading pause flags
+([incident response](docs/runbooks/incident-response.md)).
 
 ### Indexer, canonical ledger, and derived data
 
@@ -253,19 +276,23 @@ below explains this expected state.
 
 ### Web routes
 
-| Route              | Current responsibility                                                                |
-| ------------------ | ------------------------------------------------------------------------------------- |
-| `/`                | Explore indexed curve-phase tokens with search, sorting, pagination, and launch entry |
-| `/graduated`       | Browse indexed graduated tokens                                                       |
-| `/token/[address]` | Token phase/detail, market chart, trades, holders, trade UI, and metadata             |
-| `/create`          | Launch form and factory configuration, including optional developer buy               |
-| `/analytics`       | Protocol summary and indexed daily protocol history where available                   |
-| `/profile`         | Privy identity and linked wallets; claim/refund summaries linking to token detail     |
-| `/docs`            | Product concepts, launch lifecycle, economics, and user guidance                      |
+| Route | Current responsibility |
+| ----- | ---------------------- |
+| `/` | Home: live trade strip, launch and explore entry points, and a live feed. Old `/?view=…` links redirect to `/explore`. |
+| `/explore` | Curve-phase and graduated tokens with views, search, sorting and pagination. `/graduated` redirects here. |
+| `/token/[address]` | Token detail: phase, chart, trades, holders, early buyers, comments, the curve or pool trade panel, claims, and creator metadata. |
+| `/create` | Launch form with factory configuration, image and description, and an optional developer buy. |
+| `/forum` | Memestock: a cross-token comment feed and hot and top communities. |
+| `/leaderboard` | Realized-PnL leaderboards (all time, 7d, 30d). |
+| `/wallet/[address]` | Public wallet page: positions, PnL, created tokens and trades. |
+| `/analytics` | Protocol summary, revenue, and indexed daily history. |
+| `/notifications` | Signed-in notification inbox and Telegram alert link. |
+| `/profile` | Privy identity, linked wallets, username and published wallet, and claim and refund summaries. |
+| `/docs` | Product concepts, launch lifecycle, economics, and user guidance. |
 
 Unknown token addresses resolve to a stable not-found experience. UI features consume indexed
-backend data; there is no fabricated production token list, protocol history, social feed, or USD
-market value.
+backend data. There is no fabricated production token list, protocol history or social feed.
+USD values appear only next to ETH amounts, from the ETH/USD reference price when it is configured.
 
 ### Backend API surface
 
@@ -273,29 +300,28 @@ Routes below are under `/v1` unless identified as process health endpoints. The 
 operations are available at both the versioned and root paths. The canonical request/response
 contract is [`backend/openapi/v1.json`](backend/openapi/v1.json).
 
-| Method and path                                        | Access and purpose                                                                      |
-| ------------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| `GET /tokens`                                          | Public token discovery with phase, query, sort, cursor, limit, snapshot, and finality   |
-| `GET /tokens/{token}`                                  | Public indexed token detail                                                             |
-| `POST /tokens/{token}/quote`                           | Informational integer curve quote; contract remains execution authority                 |
-| `GET /tokens/{token}/trades`                           | Public cursor-paged indexed curve and pair trades                                       |
-| `GET /tokens/{token}/holders`                          | Public indexed holder projection                                                        |
-| `GET /tokens/{token}/candles`                          | Public indexed candles and snapshot metadata                                            |
-| `GET /stats/protocol` and `GET /stats/protocol/daily`  | Public protocol aggregates and daily history                                            |
-| `GET /transactions/{tx_hash}`                          | Public canonical indexed transaction events and finality                                |
-| `GET /events`                                          | SSE refresh/invalidation hints for the selected chain/deployment                        |
-| `GET /profile`                                         | Authenticated wallet-linked profile and claim/refund summary                            |
-| `GET`, `PUT /tokens/{token}/metadata`                  | Public metadata read; creator-authorized, revision-checked replacement                  |
-| `GET`, `PUT /tokens/{token}/image`                     | Public image read; creator-authorized image replacement                                 |
-| `GET`, `PUT`, `DELETE /me/telegram`, `POST /me/telegram/link` | Authenticated Telegram alert link, settings and unlink                           |
-| `GET /healthz`, `/readyz`, `/v1/healthz`, `/v1/readyz` | Process liveness and readiness; see [Operations](#operations-health-and-reorg-recovery) |
+| Group | Routes | Access and purpose |
+| ----- | ------ | ------------------ |
+| Tokens | `GET /tokens`, `/tokens/highlights`, `/tokens/{token}`, `/tokens/{token}/trades`, `/holders`, `/candles`, `/early-buyers`, `/watchers`; `POST /tokens/{token}/quote` | Public discovery, detail and market data with snapshot and finality metadata. The quote is informational; the contract stays the execution authority. |
+| Token metadata | `GET`, `PUT /tokens/{token}/metadata` and `/image` | Public reads; creator-authorized, revision-checked replacement. |
+| Comments and forum | `GET`, `POST /tokens/{address}/comments`, `GET /tokens/{address}/comments/eligibility`, `PUT /comments/{id}/vote` and `/report`, `GET /forum/posts`, `/forum/communities` | Holder- and creator-gated comments with rate limits, votes and reports. The forum is a cross-token view over them. |
+| Wallets and leaderboard | `GET /wallets/{address}`, `/positions`, `/trades`, `/created`, `GET /leaderboard`, `GET /trades/recent` | Public positions, realized PnL and rankings, recomputed from the ledger. |
+| Protocol | `GET /stats/protocol`, `/stats/protocol/daily`, `/stats/protocol/revenue`, `GET /transactions/{tx_hash}`, `GET /reference/eth-usd` | Aggregates, daily history, revenue, indexed transaction events, and the ETH/USD reference price. |
+| Signed in | `GET /profile`, `/me/public-profile`, `/me/watchlist`, `/me/notifications`, `/me/telegram` (and their writes) | Privy-authenticated profile, username, watchlist, inbox and Telegram alerts. |
+| Live and status | `GET /events`, `GET /status` | SSE refresh hints and the live feed; indexer freshness for the site-wide stale-data notice. |
+| Health | `GET /healthz`, `/readyz` (also at the root) | Process liveness and readiness; see [Operations](#operations-health-and-reorg-recovery). |
 
 ### Not implemented or not release-enabled
 
-- There is no Forum/Memestock page, forum API, posts/reactions/moderation model, or social data
-  pipeline. Do not interpret `/profile` or token metadata as forum functionality.
-- There is no market heatmap or protocol USD chart series. ETH/USD source selection alone does
-  not implement an adapter or prove fresh USD values.
+- The forum ticker tape and the clusters Level 2 view are out of scope by product decision
+  ([decision](docs/specs/2026-11-14-product-scope-decisions.md)). Comment moderation is CLI only
+  (`cmd/moderate`).
+- There is no market heatmap or protocol USD chart series. The ETH/USD reference price needs
+  `ETH_USD_SOURCE=coingecko` and a key. Without them the USD line is simply absent.
+- Engine 2 has no live deployment yet. Its manifests appear only after the operator has deployed
+  and reviewed them.
+- Legal pages (terms, privacy, risk disclosure) and any regional restrictions do not exist yet;
+  they wait on a legal opinion (gap G5).
 - Robinhood Chain Testnet is selectable only when the browser has the complete reviewed
   chain-46630 API, RPC, Privy, and deployment configuration. An active source manifest alone
   does not mean the site is operated or the live product acceptance run has passed.
@@ -492,7 +518,9 @@ requires `DATABASE_URL`.
 | `RPC_FALLBACK_PROBE_INTERVAL`    | `30s`                              | How often the fallback probes the primary, 1s-1h                                                    |
 | `INDEXER_WORKER_ID`              | `indexer-1` in example             | Required non-empty identity for the indexer writer process                                          |
 | `INDEXER_CONFIRMATIONS`          | Blank                              | Optional local-only finality override; do not use as production finality or on a non-local manifest |
-| `ETH_USD_SOURCE`                 | Blank                              | Configuration placeholder only; provider runtime adapter is not implemented                         |
+| `ETH_USD_SOURCE`                 | Blank                              | `coingecko` enables the ETH/USD reference price (needs `COINGECKO_API_KEY`); blank disables it      |
+| `COINGECKO_API_KEY`              | Blank                              | CoinGecko key, a secret; required with `ETH_USD_SOURCE=coingecko`, rejected otherwise               |
+| `COINGECKO_API_PLAN`             | `pro` when enabled                 | `pro` or `demo` (the free Demo plan); must stay blank while `ETH_USD_SOURCE` is blank               |
 | `TELEGRAM_BOT_USERNAME`          | Blank                              | Telegram alert bot username (no `@`); blank turns the API's `/me/telegram` routes off (503)         |
 | `TELEGRAM_BOT_TOKEN`             | Blank                              | `cmd/telegram` only; BotFather token, a secret kept in the backend env file                         |
 | `TELEGRAM_WEB_ORIGIN`            | Blank                              | `cmd/telegram` only; public web origin for alert links (https, or http on localhost)                |
@@ -728,9 +756,12 @@ requires a rehearsed backup/restore, an approved RPC source, an isolated recover
 and a temporary explicit recovery mode/depth. It does not provide a dry-run bypass. Finalized
 data is not automatically removed.
 
-ETH/USD enrichment source selection and its limits are in
-[`docs/runbooks/eth-usd-enrichment.md`](docs/runbooks/eth-usd-enrichment.md). It is optional;
-do not infer USD prices from a selected source when no runtime adapter has been configured.
+The ETH/USD reference price source, plan and limits are in
+[`docs/runbooks/eth-usd-enrichment.md`](docs/runbooks/eth-usd-enrichment.md). It is optional and
+display-only; the `EthUsdStale` alert fires when it stops updating.
+
+Contract incidents (when to pause launches or trading, who signs, how to tell users) follow
+[`docs/runbooks/incident-response.md`](docs/runbooks/incident-response.md).
 
 ## Documentation map
 
@@ -755,23 +786,32 @@ do not infer USD prices from a selected source when no runtime adapter has been 
 | [Web release runbook](docs/runbooks/web-release.md)                                | Public web configuration, CSP, release, browser, and rollback checks                 |
 | [Production readiness runbook](docs/runbooks/production-readiness.md)              | Human-owned production inputs, governance, audit, health, and release approval       |
 | [Deep-reorg recovery runbook](docs/runbooks/indexer-deep-reorg-recovery.md)        | Safe operator recovery beyond the normal reorg search window                         |
-| [ETH/USD enrichment runbook](docs/runbooks/eth-usd-enrichment.md)                  | Optional source decision, attribution, and unimplemented adapter boundary            |
+| [ETH/USD enrichment runbook](docs/runbooks/eth-usd-enrichment.md)                  | ETH/USD reference price source, plan, attribution, and freshness                     |
+| [Incident response runbook](docs/runbooks/incident-response.md)                    | Pause triggers, signing path, user communication, unpause, and post-mortems          |
+| [V2 engine spec](docs/specs/2026-11-11-v2-engine-design.md)                        | Engine 2 behavior: anti-snipe tax, v4 graduation, LP-fee locker, recipient handover  |
+| [External audit package](docs/audits/external-audit-package.md)                    | Engine 2 audit scope, roles, invariants, focus areas, and accepted risks             |
+| [Gap assessment](docs/audits/2026-11-18-project-gap-assessment.md)                 | What still stands between the repository and a mainnet launch                       |
+| [Quality scorecard](docs/quality-scorecard.md)                                     | Per-category code-quality scores, evidence, and the path to 9                        |
 | [Plan 5 audit dossier](docs/audits/plan-5/README.md)                               | Baseline provenance, audit method, exclusions, findings, and closeout evidence       |
 | [Active backlog](backlog.md)                                                       | Current blocked/deferred work and exact next actions                                 |
 
 ## Current active backlog
 
-There are exactly **2 active items** in [`backlog.md`](backlog.md):
+[`backlog.md`](backlog.md) → Active is the source of truth. At the time of writing it holds two
+items:
 
-1. **Robinhood testnet live acceptance.** Use separate funded test-only creator and trader
-   wallets to exercise create, buy, sell, and graduation against the active chain-46630 manifest,
-   then record the transaction, API/indexer health, finality, and reorg observations required by
-   [`docs/runbooks/robinhood-testnet-deployment.md`](docs/runbooks/robinhood-testnet-deployment.md).
-2. **Production release, governance, and audit inputs.** The responsible human owners must
-   complete the pending rows and evidence in
-   [`docs/runbooks/production-readiness.md`](docs/runbooks/production-readiness.md), then run
-   the production release checks. Do not invent addresses, credentials, signer policy, hosting,
-   monitoring, or auditor approval.
+1. **Operator-only inputs.** Steps that need an account, keystore, secret or signature only the
+   owner holds:
+   - the testnet engine switch and the engine 2 testnet rehearsal;
+   - the archive RPC secret and a second RPC provider;
+   - the CoinGecko and Telegram keys;
+   - the production input sheet in
+     [`docs/runbooks/production-readiness.md`](docs/runbooks/production-readiness.md), covering
+     hosting, Privy, governance, the external audit and legal.
+
+   Do not invent addresses, credentials, signer policy, hosting, monitoring or auditor approval.
+2. **Privy 3 upgrade.** It is blocked upstream. Re-check before the dependency advisory waiver
+   expires on 2027-02-01.
 
 ## Troubleshooting
 
