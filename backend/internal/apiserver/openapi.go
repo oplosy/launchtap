@@ -29,6 +29,7 @@ func GenerateOpenAPI() ([]byte, error) {
 	s.RegisterTelegramRoutes(TelegramRoutes{})
 	s.RegisterForumRoutes(ForumRoutes{})
 	s.RegisterPublicProfileRoutes(PublicProfileRoutes{})
+	s.RegisterClientEventRoutes(ClientEventRoutes{})
 	b, err := json.MarshalIndent(s.API.OpenAPI(), "", "  ")
 	if err != nil {
 		return nil, err

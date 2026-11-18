@@ -145,6 +145,7 @@ func (s *Server) RegisterEventRoutes(r EventRoutes) {
 	r.Register(s.API)
 }
 func (s *Server) RegisterFeedRoutes(r FeedRoutes)               { r.Register(s.API) }
+func (s *Server) RegisterClientEventRoutes(r ClientEventRoutes) { r.Register(s.API) }
 func (s *Server) RegisterWalletRoutes(r WalletRoutes)           { r.Register(s.API) }
 func (s *Server) RegisterObservationRoutes(r ObservationRoutes) { r.Register(s.API) }
 func (s *Server) RegisterProfileRoutes(r ProfileRoutes)         { r.Register(s.API) }
@@ -245,7 +246,8 @@ func middleware(mux *http.ServeMux, cfg Config, limiter *RateLimiter, logger *sl
 				logger.Error("panic recovered", "request_id", id, "panic", redact.Error(fmt.Errorf("%v", v)), "stack", string(debug.Stack()))
 			}
 			metrics.ObserveRequest(route, r.Method, status, time.Since(started))
-			if reason, ok := rejectionReason(r.Method, status); ok {
+			// Telemetry beacons are not user writes; their rejections must not move WriteRejectionSpike.
+			if reason, ok := rejectionReason(r.Method, status); ok && route != clientEventsPattern {
 				metrics.WriteRejected(reason)
 			}
 			logger.Info("http request", "request_id", id, "method", r.Method, "path", r.URL.Path, "status", status, "duration_ms", time.Since(started).Milliseconds())

@@ -115,6 +115,7 @@ func run() error {
 	server.RegisterPublicProfileRoutes(apiserver.PublicProfileRoutes{Verifier: verifier, Store: storepostgres.ProfileStore{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterEventRoutes(apiserver.EventRoutes{Hub: hub, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, Streams: apiserver.NewStreamLimiter(int(c.APISSEMaxPerClient))})
 	feedReader := storepostgres.FeedReader{Pool: pool, DeploymentID: c.DeploymentID}
+	server.RegisterClientEventRoutes(apiserver.ClientEventRoutes{Telemetry: apiMetrics, AllowedOrigins: c.APIAllowedOrigins})
 	server.RegisterFeedRoutes(apiserver.FeedRoutes{Reader: feedReader, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
 	server.RegisterWalletRoutes(apiserver.WalletRoutes{Reader: storepostgres.WalletReader{Pool: pool, DeploymentID: c.DeploymentID}, ChainID: int64(c.ChainID)})
 	server.RegisterStatusRoutes(apiserver.StatusRoutes{Reader: storepostgres.StatusReader{Pool: pool}, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID})
