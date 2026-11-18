@@ -223,8 +223,12 @@
           "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$"
         },
         "chainId": {
+          "$comment": "Robinhood mainnet (4663) runs only on the upstream Uniswap v4 deployment.",
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "not": {
+            "const": 4663
+          }
         },
         "reviewed": {
           "const": true

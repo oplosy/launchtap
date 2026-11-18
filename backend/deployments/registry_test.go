@@ -418,6 +418,9 @@ func TestLoadAcceptsSelfDeployedV4RecordAndKeepsBranchesApart(t *testing.T) {
 		"unknown provenance": func(record map[string]any) {
 			record["provenance"] = "guessed"
 		},
+		"mainnet must use the upstream deployment": func(record map[string]any) {
+			record["chainId"] = float64(4663)
+		},
 	}
 	for name, mutate := range cases {
 		if err := load(mutateManifest(t, selfDeployedV4Record, mutate)); err == nil {

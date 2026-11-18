@@ -25,6 +25,7 @@ $candidatePath = Join-Path $deploymentsRoot ".generated/robinhood-testnet-v4.jso
 $utf8WithoutBom = New-Object System.Text.UTF8Encoding($false)
 $chainId = 46630
 $permit2Address = "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+$publicRpcUrl = "https://rpc.testnet.chain.robinhood.com"
 # The pinned Permit2 helper runtime was compiled on chain 31337; these are its two immutables.
 $helperChainIdWord = "0000000000000000000000000000000000000000000000000000000000007a69"
 $helperDomainSeparatorWord = "d5a17abc3865df5c1400c0299bd4ce2eefc8114aec5f9d3dded1745783e57b98"
@@ -71,12 +72,26 @@ function Get-CreationReceipt([object] $Record, [string] $ContractAddress) {
     return $found[0]
 }
 
+# Byte-aligned search: a match at an odd hex index would straddle two bytes.
 function Get-SingleIndex([string] $Haystack, [string] $Needle, [string] $Label) {
-    $first = $Haystack.IndexOf($Needle, [StringComparison]::Ordinal)
-    if ($first -lt 0 -or $Haystack.IndexOf($Needle, $first + 1, [StringComparison]::Ordinal) -ge 0) {
-        Fail "the pinned Permit2 runtime must contain the $Label immutable exactly once"
+    $matchIndexes = @()
+    $index = $Haystack.IndexOf($Needle, [StringComparison]::Ordinal)
+    while ($index -ge 0) {
+        if ($index % 2 -eq 0) { $matchIndexes += $index }
+        $index = $Haystack.IndexOf($Needle, $index + 1, [StringComparison]::Ordinal)
     }
-    return $first
+    if ($matchIndexes.Count -ne 1) {
+        Fail "the pinned Permit2 runtime must contain the $Label immutable exactly once, found $($matchIndexes.Count)"
+    }
+    return $matchIndexes[0]
+}
+
+# Names the RPC that produced the evidence without recording a private URL's path or key.
+function Get-RpcProviderLabel([string] $Url) {
+    if ($Url.TrimEnd("/") -ieq $publicRpcUrl) { return "Robinhood Public RPC" }
+    $parsed = $null
+    if (-not [Uri]::TryCreate($Url, [UriKind]::Absolute, [ref] $parsed)) { Fail "RPC URL is not an absolute URI" }
+    return "operator RPC at $($parsed.Host)"
 }
 
 # The live Permit2 must be the pinned canonical runtime with only its own chain id and
@@ -199,6 +214,13 @@ try {
 
     $blockNumber = [uint64] (Invoke-Cast @("block-number"))
     $blockHash = (Invoke-Cast @("block", [string] $blockNumber, "--field", "hash")).ToLowerInvariant()
+    $rpcProvider = Get-RpcProviderLabel $RpcUrl
+    $v4CoreCommit = (& git -C (Join-Path $contractsRoot "lib/v4-periphery/lib/v4-core") rev-parse HEAD).Trim()
+    $v4PeripheryCommit = (& git -C (Join-Path $contractsRoot "lib/v4-periphery") rev-parse HEAD).Trim()
+    $universalRouterCommit = (& git -C (Join-Path $contractsRoot "lib/universal-router") rev-parse HEAD).Trim()
+    foreach ($commit in @($v4CoreCommit, $v4PeripheryCommit, $universalRouterCommit)) {
+        if ($commit -notmatch "^[0-9a-f]{40}$") { Fail "could not read a pinned submodule commit (got '$commit')" }
+    }
 
     $candidate = [ordered]@{
         schemaVersion = 1
@@ -231,22 +253,22 @@ try {
         forkVerification = [ordered]@{
             blockNumber = $blockNumber
             blockHash = $blockHash
-            observedRpcProvider = "Robinhood Public RPC"
-            archiveRpcProvider = "Robinhood Public RPC"
+            observedRpcProvider = $rpcProvider
+            archiveRpcProvider = $rpcProvider
             rpcEnvironmentVariable = "ROBINHOOD_TESTNET_RPC_URL"
             archiveRequired = $false
         }
         evidence = [ordered]@{
-            poolManager = "deployed by DeployTestnetV4 from the pinned out-v4 build (v4-core 59d3ecf5); owner is the testnet deployer"
-            positionManager = "deployed by DeployTestnetV4 from the pinned out-v4 build (v4-periphery c6e4754d); no descriptor, reviewed testnet WETH9"
+            poolManager = "deployed by DeployTestnetV4 from the pinned out-v4 build (v4-core $($v4CoreCommit.Substring(0, 8))); owner is the testnet deployer"
+            positionManager = "deployed by DeployTestnetV4 from the pinned out-v4 build (v4-periphery $($v4PeripheryCommit.Substring(0, 8))); no descriptor, reviewed testnet WETH9"
             permit2 = "pre-existing canonical Permit2: pinned runtime with the chain 46630 id and EIP-712 domain separator immutables, verified by bootstrap-testnet-v4.ps1"
-            universalRouter = "deployed by DeployTestnetV4 from the pinned out-router build (2.1.2); unused protocols map to UnsupportedProtocol"
-            v4Quoter = "deployed by DeployTestnetV4 from the pinned out-v4 build (v4-periphery c6e4754d)"
+            universalRouter = "deployed by DeployTestnetV4 from the pinned out-router build (universal-router $($universalRouterCommit.Substring(0, 8))); unused protocols map to UnsupportedProtocol"
+            v4Quoter = "deployed by DeployTestnetV4 from the pinned out-v4 build (v4-periphery $($v4PeripheryCommit.Substring(0, 8)))"
         }
         sources = [ordered]@{
-            v4Core = (& git -C (Join-Path $contractsRoot "lib/v4-periphery/lib/v4-core") rev-parse HEAD).Trim()
-            v4Periphery = (& git -C (Join-Path $contractsRoot "lib/v4-periphery") rev-parse HEAD).Trim()
-            universalRouter = (& git -C (Join-Path $contractsRoot "lib/universal-router") rev-parse HEAD).Trim()
+            v4Core = $v4CoreCommit
+            v4Periphery = $v4PeripheryCommit
+            universalRouter = $universalRouterCommit
             permit2Runtime = "lib/v4-periphery/lib/permit2/test/utils/DeployPermit2.sol"
             chainRpc = "https://docs.robinhood.com/chain/connecting/"
         }
