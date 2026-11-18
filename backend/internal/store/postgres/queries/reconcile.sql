@@ -37,10 +37,16 @@ SELECT
     -- (token_reserves_source_shape), so each source reads only its own columns.
     COALESCE(r.eth_reserve, 0)::text AS eth_reserve_text,
     COALESCE(r.token_reserve, 0)::text AS token_reserve_text,
-    COALESCE(r.sqrt_price_x96, 0)::text AS sqrt_price_x96_text
+    COALESCE(r.sqrt_price_x96, 0)::text AS sqrt_price_x96_text,
+    -- Engine 2 only, empty without a pool registry row: the graduated pool's coordinates
+    -- (docs/specs/2026-11-18-pool-reconciliation-preflight.md).
+    COALESCE(vp.pool_id, ''::bytea)::bytea AS v4_pool_id,
+    COALESCE(vm.pool_manager, ''::bytea)::bytea AS v4_pool_manager
 FROM picked p
 JOIN tokens t ON t.chain_id = sqlc.arg(chain_id) AND t.token_address = p.token_address
 LEFT JOIN token_reserves r ON r.chain_id = t.chain_id AND r.token_address = t.token_address
+LEFT JOIN v4_pools vp ON vp.chain_id = t.chain_id AND vp.token_address = t.token_address
+LEFT JOIN v4_pool_managers vm ON vm.chain_id = t.chain_id AND vp.pool_id IS NOT NULL
 ORDER BY t.token_address;
 
 -- name: SumHolderBalances :one
@@ -54,10 +60,3 @@ FROM holder_balances
 WHERE chain_id = sqlc.arg(chain_id) AND token_address = sqlc.arg(token_address) AND balance > 0
 ORDER BY balance DESC, holder_address
 LIMIT sqlc.arg(row_limit);
-
--- name: GetReconcileV4Pool :one
--- The pool id and PoolManager of a graduated engine-2 token (docs/specs/2026-11-18-pool-reconciliation-preflight.md).
-SELECT p.pool_id, m.pool_manager
-FROM v4_pools p
-JOIN v4_pool_managers m ON m.chain_id = p.chain_id
-WHERE p.chain_id = sqlc.arg(chain_id) AND p.token_address = sqlc.arg(token_address);

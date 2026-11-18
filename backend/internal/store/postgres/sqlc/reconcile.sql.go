@@ -9,31 +9,6 @@ import (
 	"context"
 )
 
-const getReconcileV4Pool = `-- name: GetReconcileV4Pool :one
-SELECT p.pool_id, m.pool_manager
-FROM v4_pools p
-JOIN v4_pool_managers m ON m.chain_id = p.chain_id
-WHERE p.chain_id = $1 AND p.token_address = $2
-`
-
-type GetReconcileV4PoolParams struct {
-	ChainID      int64
-	TokenAddress Address
-}
-
-type GetReconcileV4PoolRow struct {
-	PoolID      Hash
-	PoolManager Address
-}
-
-// The pool id and PoolManager of a graduated engine-2 token (docs/specs/2026-11-18-pool-reconciliation-preflight.md).
-func (q *Queries) GetReconcileV4Pool(ctx context.Context, arg GetReconcileV4PoolParams) (GetReconcileV4PoolRow, error) {
-	row := q.db.QueryRow(ctx, getReconcileV4Pool, arg.ChainID, arg.TokenAddress)
-	var i GetReconcileV4PoolRow
-	err := row.Scan(&i.PoolID, &i.PoolManager)
-	return i, err
-}
-
 const listReconcileTokens = `-- name: ListReconcileTokens :many
 
 WITH recent AS (
@@ -66,10 +41,16 @@ SELECT
     -- (token_reserves_source_shape), so each source reads only its own columns.
     COALESCE(r.eth_reserve, 0)::text AS eth_reserve_text,
     COALESCE(r.token_reserve, 0)::text AS token_reserve_text,
-    COALESCE(r.sqrt_price_x96, 0)::text AS sqrt_price_x96_text
+    COALESCE(r.sqrt_price_x96, 0)::text AS sqrt_price_x96_text,
+    -- Engine 2 only, empty without a pool registry row: the graduated pool's coordinates
+    -- (docs/specs/2026-11-18-pool-reconciliation-preflight.md).
+    COALESCE(vp.pool_id, ''::bytea)::bytea AS v4_pool_id,
+    COALESCE(vm.pool_manager, ''::bytea)::bytea AS v4_pool_manager
 FROM picked p
 JOIN tokens t ON t.chain_id = $1 AND t.token_address = p.token_address
 LEFT JOIN token_reserves r ON r.chain_id = t.chain_id AND r.token_address = t.token_address
+LEFT JOIN v4_pools vp ON vp.chain_id = t.chain_id AND vp.token_address = t.token_address
+LEFT JOIN v4_pool_managers vm ON vm.chain_id = t.chain_id AND vp.pool_id IS NOT NULL
 ORDER BY t.token_address
 `
 
@@ -89,6 +70,8 @@ type ListReconcileTokensRow struct {
 	EthReserveText   string
 	TokenReserveText string
 	SqrtPriceX96Text string
+	V4PoolID         []byte
+	V4PoolManager    []byte
 }
 
 // Reads for the indexed-state reconciliation pass
@@ -117,6 +100,8 @@ func (q *Queries) ListReconcileTokens(ctx context.Context, arg ListReconcileToke
 			&i.EthReserveText,
 			&i.TokenReserveText,
 			&i.SqrtPriceX96Text,
+			&i.V4PoolID,
+			&i.V4PoolManager,
 		); err != nil {
 			return nil, err
 		}

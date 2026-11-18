@@ -118,12 +118,19 @@ type Mismatch struct {
 	Check   string
 	Token   common.Address
 	Subject common.Address
+	// Pool is the v4 pool id of a v4_sqrt_price mismatch, whose Subject is the shared PoolManager;
+	// zero otherwise.
+	Pool    common.Hash
 	Indexed string
 	Chain   string
 }
 
 func (m Mismatch) String() string {
-	return fmt.Sprintf("%s token=%s subject=%s indexed=%s chain=%s", m.Check, m.Token.Hex(), m.Subject.Hex(), m.Indexed, m.Chain)
+	pool := ""
+	if m.Pool != (common.Hash{}) {
+		pool = " pool=" + m.Pool.Hex()
+	}
+	return fmt.Sprintf("%s token=%s subject=%s%s indexed=%s chain=%s", m.Check, m.Token.Hex(), m.Subject.Hex(), pool, m.Indexed, m.Chain)
 }
 
 // Outcome is how a pass ended.
@@ -269,7 +276,11 @@ func comparePool(ctx context.Context, chain Chain, block uint64, token Token, ch
 		if err != nil {
 			return fmt.Errorf("read pool price of %s: %w", token.Address.Hex(), err)
 		}
+		before := len(result.Mismatches)
 		compare(CheckV4Price, token.Address, token.V4.PoolManager, token.V4.SqrtPriceX96, price)
+		for i := before; i < len(result.Mismatches); i++ {
+			result.Mismatches[i].Pool = token.V4.PoolID
+		}
 	default:
 		result.Checks++
 		sourceMismatch(SourcePair + " or " + SourceV4 + " pool state")

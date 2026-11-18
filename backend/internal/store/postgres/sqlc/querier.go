@@ -148,8 +148,6 @@ type Querier interface {
 	// The earliest UTC day of the blocks indexed after the watermark; NULL when there are none.
 	GetProtocolDailyRefreshDay(ctx context.Context, arg GetProtocolDailyRefreshDayParams) (pgtype.Date, error)
 	GetProtocolStats(ctx context.Context, chainID int64) (GetProtocolStatsRow, error)
-	// The pool id and PoolManager of a graduated engine-2 token (docs/specs/2026-11-18-pool-reconciliation-preflight.md).
-	GetReconcileV4Pool(ctx context.Context, arg GetReconcileV4PoolParams) (GetReconcileV4PoolRow, error)
 	// No row when the comment is missing in this scope, hidden, or its author is banned. Every author
 	// has a social_users row (post creates it before inserting a comment). FOR SHARE locks the comment
 	// and the author row, so a report waits for an in-flight hide or ban and then re-checks the

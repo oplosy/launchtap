@@ -192,8 +192,12 @@ func TestGraduatedV4PriceIsCompared(t *testing.T) {
 	}
 	chain.sqrtPrice = big.NewInt(1)
 	result, err = Pass(t.Context(), fakeStore{snapshot: snapshot, ok: true}, chain, Limits{})
-	if err != nil || result.Outcome != OutcomeDrift || len(result.Mismatches) != 1 || result.Mismatches[0].Check != CheckV4Price || result.Mismatches[0].Subject != manager {
-		t.Fatalf("moved price: result = %+v, err = %v; want one %s mismatch", result, err, CheckV4Price)
+	if err != nil || result.Outcome != OutcomeDrift || len(result.Mismatches) != 1 || result.Mismatches[0].Check != CheckV4Price ||
+		result.Mismatches[0].Subject != manager || result.Mismatches[0].Pool != poolA {
+		t.Fatalf("moved price: result = %+v, err = %v; want one %s mismatch on pool %s", result, err, CheckV4Price, poolA)
+	}
+	if s := result.Mismatches[0].String(); !strings.Contains(s, "pool="+poolA.Hex()) {
+		t.Fatalf("String() = %q, want the pool id", s)
 	}
 }
 

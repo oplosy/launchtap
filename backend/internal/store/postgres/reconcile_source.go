@@ -11,7 +11,6 @@ import (
 	"github.com/Contictus/launchtap/backend/internal/reconcile"
 	"github.com/Contictus/launchtap/backend/internal/store/postgres/sqlc"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -81,14 +80,13 @@ func (s ReconcileSource) token(ctx context.Context, adapter *Adapter, row sqlc.L
 		if err != nil {
 			return reconcile.Token{}, err
 		}
-		pool, err := adapter.queries.GetReconcileV4Pool(ctx, sqlc.GetReconcileV4PoolParams{ChainID: s.ChainID, TokenAddress: row.TokenAddress})
 		switch {
-		case errors.Is(err, pgx.ErrNoRows):
-			// No pool registry row: the pass reports the missing coordinates as drift.
-		case err != nil:
-			return reconcile.Token{}, fmt.Errorf("read v4 pool of %s: %w", address.Hex(), err)
+		case len(row.V4PoolID) == 0 || len(row.V4PoolManager) == 0:
+			// No pool registry or PoolManager row: the pass reports the missing coordinates as drift.
+		case len(row.V4PoolID) != common.HashLength || len(row.V4PoolManager) != common.AddressLength:
+			return reconcile.Token{}, fmt.Errorf("indexed v4 pool of %s has a %d-byte id and a %d-byte PoolManager", address.Hex(), len(row.V4PoolID), len(row.V4PoolManager))
 		default:
-			token.V4 = &reconcile.V4State{PoolManager: common.Address(pool.PoolManager), PoolID: common.Hash(pool.PoolID), SqrtPriceX96: price}
+			token.V4 = &reconcile.V4State{PoolManager: common.BytesToAddress(row.V4PoolManager), PoolID: common.BytesToHash(row.V4PoolID), SqrtPriceX96: price}
 		}
 	}
 	total, err := adapter.queries.SumHolderBalances(ctx, sqlc.SumHolderBalancesParams{ChainID: s.ChainID, TokenAddress: row.TokenAddress})
