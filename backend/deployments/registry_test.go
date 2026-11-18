@@ -339,3 +339,109 @@ func TestLoadValidatesV4DependencyRecordWithItsOwnSchema(t *testing.T) {
 		t.Fatal("Load() error = nil for invalid v4 dependency record")
 	}
 }
+
+// selfDeployedV4Record is a self-deployed testnet v4 record in the shape
+// scripts/bootstrap-testnet-v4.ps1 writes; the values are fixtures, not a deployment.
+const selfDeployedV4Record = `{
+  "schemaVersion": 1,
+  "provenance": "self-deployed",
+  "target": "robinhood-testnet",
+  "chainId": 46630,
+  "reviewed": true,
+  "poolManager": "0x1000000000000000000000000000000000000001",
+  "positionManager": "0x1000000000000000000000000000000000000002",
+  "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+  "universalRouter": "0x1000000000000000000000000000000000000003",
+  "positionDescriptor": null,
+  "stateView": null,
+  "v4Quoter": "0x1000000000000000000000000000000000000004",
+  "weth9": "0xcc02c43352422cc5ce27d8f222302050aeecbd6f",
+  "poolManagerOwner": "0x1000000000000000000000000000000000000005",
+  "deployTransactions": {
+    "poolManager": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "positionManager": "0x0000000000000000000000000000000000000000000000000000000000000002",
+    "v4Quoter": "0x0000000000000000000000000000000000000000000000000000000000000003",
+    "universalRouter": "0x0000000000000000000000000000000000000000000000000000000000000004"
+  },
+  "bytecodeHashes": {
+    "poolManager": "0x0000000000000000000000000000000000000000000000000000000000000011",
+    "positionManager": "0x0000000000000000000000000000000000000000000000000000000000000012",
+    "permit2": "0x0000000000000000000000000000000000000000000000000000000000000013",
+    "universalRouter": "0x0000000000000000000000000000000000000000000000000000000000000014",
+    "v4Quoter": "0x0000000000000000000000000000000000000000000000000000000000000015"
+  },
+  "forkVerification": {
+    "blockNumber": 155072263,
+    "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000021",
+    "observedRpcProvider": "Robinhood Public RPC",
+    "archiveRpcProvider": "Robinhood Public RPC",
+    "rpcEnvironmentVariable": "ROBINHOOD_TESTNET_RPC_URL",
+    "archiveRequired": false
+  },
+  "evidence": {
+    "poolManager": "deployed from the pinned out-v4 build",
+    "positionManager": "deployed from the pinned out-v4 build",
+    "permit2": "canonical runtime with the testnet chain id and domain separator",
+    "universalRouter": "deployed from the pinned out-router build",
+    "v4Quoter": "deployed from the pinned out-v4 build"
+  },
+  "sources": {
+    "v4Core": "59d3ecf53afa9264a16bba0e38f4c5d2231f80bc",
+    "v4Periphery": "c6e4754dab11bd38c6f08ac51c3c868569e93d64",
+    "universalRouter": "8580368c32e649a939af4c306d5f6d7010822680",
+    "permit2Runtime": "permit2/test/utils/DeployPermit2.sol",
+    "chainRpc": "https://docs.robinhood.com/chain/connecting/"
+  }
+}`
+
+func TestLoadAcceptsSelfDeployedV4RecordAndKeepsBranchesApart(t *testing.T) {
+	load := func(body string) error {
+		files := manifestFS(t, nil)
+		files["config/robinhood-testnet-v4.json"] = &fstest.MapFile{Data: []byte(body)}
+		_, err := Load(files)
+		return err
+	}
+	if err := load(selfDeployedV4Record); err != nil {
+		t.Fatalf("Load() error = %v for a self-deployed v4 record", err)
+	}
+
+	cases := map[string]func(map[string]any){
+		"self-deployed StateView must be null": func(record map[string]any) {
+			record["stateView"] = "0x1000000000000000000000000000000000000006"
+		},
+		"self-deployed record needs its deploy transactions": func(record map[string]any) {
+			delete(record, "deployTransactions")
+		},
+		"self-deployed record must stay reviewed": func(record map[string]any) {
+			record["reviewed"] = false
+		},
+		"unknown provenance": func(record map[string]any) {
+			record["provenance"] = "guessed"
+		},
+		"mainnet must use the upstream deployment": func(record map[string]any) {
+			record["chainId"] = float64(4663)
+		},
+	}
+	for name, mutate := range cases {
+		if err := load(mutateManifest(t, selfDeployedV4Record, mutate)); err == nil {
+			t.Errorf("%s: Load() error = nil", name)
+		}
+	}
+
+	upstream, err := fs.ReadFile(embeddedArtifacts, "testdata/config/robinhood-mainnet-v4.json")
+	if err != nil {
+		t.Fatalf("read mainnet v4 record: %v", err)
+	}
+	withProvenance := mutateManifest(t, string(upstream), func(record map[string]any) {
+		record["provenance"] = "self-deployed"
+	})
+	if err := load(withProvenance); err == nil {
+		t.Error("Load() error = nil for an upstream record that claims self-deployed provenance")
+	}
+	nonArchive := mutateManifest(t, string(upstream), func(record map[string]any) {
+		record["forkVerification"].(map[string]any)["archiveRequired"] = false
+	})
+	if err := load(nonArchive); err == nil {
+		t.Error("Load() error = nil for an upstream record without archive fork evidence")
+	}
+}

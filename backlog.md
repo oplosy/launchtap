@@ -33,6 +33,15 @@
      `configureEngine(1, <new impl>, true)` from the timelock keystore, then record
      `curveImplementation` and `bytecodeHashes.bondingCurveV1` in the manifest and its backend
      testdata copy and run `cd web && npm run web-contracts-sync`. Existing clones cannot be fixed.
+  1b. **Engine 2 testnet rehearsal (gap G2):** the tooling is merged
+     (`docs/specs/2026-11-18-v2-testnet-path-preflight.md`). Run the runbook section "Engine 2 on
+     testnet" in `docs/runbooks/robinhood-testnet-deployment.md`:
+     - `bootstrap-testnet-v4.ps1` with the deployer keystore (about 0.001 testnet ETH);
+     - review and commit the v4 record;
+     - `deploy-v2-testnet.ps1`;
+     - review and enable the manifest;
+     - the full journey through graduation and LP-fee claims.
+     The live dry run passed on 2026-11-18.
   2. **Archive RPC secret:** replace `ROBINHOOD_MAINNET_ARCHIVE_RPC_URL` (fails the TLS handshake
      since contracts run `37326499597`) and re-run the `contracts` workflow via
      `workflow_dispatch`; the fork gate on the release checklist needs it too.
