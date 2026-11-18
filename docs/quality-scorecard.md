@@ -32,7 +32,8 @@ named in it.
 
 1. **Documentation and process (9.0 → 9.5):** an architecture overview that names every component
    and data flow, kept current with the system-design record; an operator runbook rehearsed once
-   end to end (log the rehearsal).
+   end to end (log the rehearsal). Overview met: `docs/architecture.md`, recorded as system-design
+   step 34; the rehearsal is still open (backlog step 1c).
 2. **Backend architecture (9.0 → 9.5):** keep the contract gate and file-size limit without
    exemptions. Already met: documented public API contract with versioning and a compatibility
    test (#72); no file over ~600 lines outside generated code (#70).
@@ -93,3 +94,4 @@ named in it.
 | 2026-11-16 | 8.6 | No change (Application security 8.5) | #85, #86: audit MED findings and the second audit pass closed; the Path to 9 item (Privy 3 upgrade) is still blocked upstream |
 | 2026-11-16 | 8.6 | No change (Application security 8.5, Indexer and data correctness 9.0) | #89 per-service Postgres roles (M-1), #90 indexer heartbeat and stale-data notice (L-5); neither closes a Path to 9 item (Privy 3 upgrade; rotating-sample reconciliation on a live test deployment) |
 | 2026-11-17 | 8.6 | No change (Application security 8.5, Indexer and data correctness 9.0, Smart contracts 8.0) | #91 owner decisions, #92 V2 parameter caps, #93 indexer RPC failover, #94 run-4 leads and M-3 RPC load; no Path to 9 item closes (Privy 3 still blocked upstream, external audit, live test-deployment reconciliation) |
+| 2026-11-18 | 8.6 | No change (Documentation and process 9.0) | Architecture overview (`docs/architecture.md`) closes half of the Path to 9.5 item; the rehearsed runbook half is still open |

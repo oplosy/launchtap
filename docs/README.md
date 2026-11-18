@@ -7,6 +7,7 @@ Start with the [repository README](../README.md) for product boundaries, current
 - [Product definition](../PRODUCT.md)
 - [Design system](../DESIGN.md)
 - [Feature notes](../notes.md)
+- [Architecture overview](architecture.md)
 - [Roadmap](ROADMAP.md)
 - [Specifications](specs/)
 

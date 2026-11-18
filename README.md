@@ -161,7 +161,8 @@ Robinhood testnet has no Uniswap v4, so engine 2 is rehearsed there on a self-de
 
 The chain is the execution authority. The backend provides a queryable, reorg-aware view of
 chain history and metadata. The browser never writes to PostgreSQL and never delegates a user
-transaction to a backend signer.
+transaction to a backend signer. The [architecture overview](docs/architecture.md) names every
+component, worker and data flow against the system-design record.
 
 ```mermaid
 flowchart LR
@@ -769,6 +770,7 @@ Contract incidents (when to pause launches or trading, who signs, how to tell us
 | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | [CLAUDE.md](CLAUDE.md)                                                             | Source-of-truth project instructions, language, workflow, Git, and review boundaries |
 | [notes.md](notes.md)                                                               | Product framing, token lifecycle, economic rationale, and design decisions           |
+| [Architecture overview](docs/architecture.md)                                      | Every component and data flow, named against the system-design record                |
 | [Roadmap](docs/ROADMAP.md)                                                         | Plans, milestone progress, and dependency order                                      |
 | [Contract core spec](docs/specs/2026-09-01-contract-core-design.md)                | V1 contract behavior, exact economic/math decisions, event interface, and invariants |
 | [Backend core spec](docs/specs/2026-09-01-backend-core-design.md)                  | Backend boundaries, ledger, schema, transactions, projections, and API-read rules    |
