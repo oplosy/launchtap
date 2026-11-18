@@ -56,7 +56,10 @@ Backend metrics cannot see any of it.
    `WriteRejectionSpike`.
    The alerts below are `ticket` severity and only tell an operator to look, never act
    automatically. *Trade-off:* a determined attacker with many IPs can still raise a false
-   ticket. That is accepted for advisory telemetry.
+   ticket. The attacker can also dilute the signals, by posting TTFB samples that lower the
+   error ratio or fast LCP samples that pull p75 down, and so hide a real regression. That is
+   accepted for advisory telemetry: no control depends on these series, and the backend's own
+   alerts (5xx, latency, indexer) are unaffected.
 
 5. **Series and alerts.**
    - `launchpad_web_client_errors_total{source,route,class}`;
