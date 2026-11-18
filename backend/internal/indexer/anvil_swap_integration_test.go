@@ -14,6 +14,7 @@ import (
 
 	"github.com/Contictus/launchtap/backend/internal/chain"
 	"github.com/Contictus/launchtap/backend/internal/indexer"
+	"github.com/Contictus/launchtap/backend/internal/reconcile"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/Contictus/launchtap/backend/internal/store/postgres/postgrestest"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -153,6 +154,10 @@ func TestAnvilPoolSwapSenderAndReorg(t *testing.T) {
 	if swaps != 1 || !bytes.Equal(txFrom, trader.Bytes()) {
 		t.Fatalf("pool_swaps rows=%d tx_from=%x; want 1 row from %x", swaps, txFrom, trader.Bytes())
 	}
+	// Reconciliation agrees with the pair after the swap and catches a wrong indexed reserve.
+	const deploymentID = "anvil-indexer-e2e"
+	assertReconciled(t, ctx, pool, source, chainID, deploymentID)
+	assertPoolDriftDetected(t, ctx, database.DB, pool, source, chainID, deploymentID, tokenAddress, reconcile.CheckPairETH)
 
 	var reverted bool
 	if err := rpcClient.CallContext(ctx, &reverted, "evm_revert", snapshotID); err != nil || !reverted {
@@ -168,4 +173,6 @@ func TestAnvilPoolSwapSenderAndReorg(t *testing.T) {
 	if err := database.DB.QueryRowContext(ctx, `SELECT count(*) FROM pool_swaps WHERE chain_id=$1`, chainID).Scan(&swaps); err != nil || swaps != 0 {
 		t.Fatalf("pool_swaps rows after reorg = %d, err = %v; want 0", swaps, err)
 	}
+	// The reorg rolled the pair back to its graduation reserves; the projection must follow.
+	assertReconciled(t, ctx, pool, source, chainID, deploymentID)
 }
