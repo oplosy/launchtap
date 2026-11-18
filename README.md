@@ -43,10 +43,8 @@ The checkout's active development branch is `dev`. `main` holds the last verifie
 (PR #95 at `feabe07`). Docs and small, low-risk changes land linearly on `dev`, while high-risk or
 large work goes through a short-lived `task/<slug>` branch and a PR back into `dev`.
 See [CLAUDE.md](CLAUDE.md) for the working and Git rules. The per-area delivery view is
-[`docs/ROADMAP.md`](docs/ROADMAP.md). Code-quality scores are in
-[`docs/quality-scorecard.md`](docs/quality-scorecard.md), currently 8.6 / 10 overall. What still
-stands between the repository and a mainnet launch is in the
-[gap assessment](docs/audits/2026-11-18-project-gap-assessment.md).
+[`docs/ROADMAP.md`](docs/ROADMAP.md). The maintainer tracks code-quality scores (currently
+8.6 / 10 overall), the launch gap assessment and the work backlog outside the repository.
 
 | Area | Repository status | What that status does not establish |
 | ---- | ----------------- | ----------------------------------- |
@@ -64,10 +62,10 @@ Every remaining release blocker needs an owner-held input:
 - hosting and the production Privy app;
 - a legal position.
 
-Open work is listed under [Current active backlog](#current-active-backlog) and in
-[backlog.md](backlog.md). ETH-native amounts, quotes and execution are always authoritative. The
-ETH/USD line is a display reference only. The internal audit records under
-[`docs/audits/`](docs/audits/) are not an independent external audit.
+Open work is listed under [Current active backlog](#current-active-backlog). ETH-native
+amounts, quotes and execution are always authoritative. The ETH/USD line is a display reference
+only. The internal audit records under [`docs/audits/`](docs/audits/) are not an independent
+external audit.
 
 ## Token lifecycle and v1 economics
 
@@ -264,12 +262,8 @@ below explains this expected state.
 | `web/app/`                                                                                              | App Router pages and route-level boundaries                                           |
 | `web/src/`                                                                                              | UI, discovery, wallet, API client, transaction state, chart, profile, and config code |
 | `web/e2e/`                                                                                              | Playwright browser and full transaction-flow specifications                           |
-| `docs/specs/`                                                                                           | Normative product, contract, backend, web, and threat-model specifications            |
-| `docs/plans/`                                                                                           | Task scope, milestones, and acceptance criteria                                       |
 | `docs/runbooks/`                                                                                        | Testnet deployment, production readiness, release, health, and recovery procedures    |
-| `docs/audits/plan-5/`                                                                                   | Internal source-backed audit record and remediation closeout                          |
-| `notes.md`                                                                                              | Product/domain decisions and design rationale                                         |
-| `backlog.md`                                                                                            | Source of truth for the two externally blocked active items                           |
+| `docs/specs/`, `docs/audits/`                                                                           | External audit package and the specifications it cites                                |
 | `.github/workflows/`                                                                                    | Contract, backend, web, and cross-stack CI workflows                                  |
 | `scripts/verify-release.mjs`                                                                            | Cross-stack local/CI validation orchestrator                                          |
 
@@ -314,8 +308,8 @@ contract is [`backend/openapi/v1.json`](backend/openapi/v1.json).
 
 ### Not implemented or not release-enabled
 
-- The forum ticker tape and the clusters Level 2 view are out of scope by product decision
-  ([decision](docs/specs/2026-11-14-product-scope-decisions.md)). Comment moderation is CLI only
+- The forum ticker tape and the clusters Level 2 view are out of scope by product decision.
+  Comment moderation is CLI only
   (`cmd/moderate`).
 - There is no market heatmap or protocol USD chart series. The ETH/USD reference price needs
   `ETH_USD_SOURCE=coingecko` and a key. Without them the USD line is simply absent.
@@ -365,8 +359,7 @@ contract is [`backend/openapi/v1.json`](backend/openapi/v1.json).
   credentialed RPC URLs, Privy verification keys, bearer/identity tokens, or signatures. Never
   place them in `NEXT_PUBLIC_*` values, client bundles, URLs, or logs.
 
-The backend boundaries and database rules are detailed in
-[`backend-core-design.md`](docs/specs/2026-09-01-backend-core-design.md), the contract-specific
+The contract-specific
 rounding and lifecycle rules in
 [`contract-core-design.md`](docs/specs/2026-09-01-contract-core-design.md), and the source-backed
 security review in the [threat model](docs/specs/2026-09-11-security-threat-model.md).
@@ -769,19 +762,10 @@ Contract incidents (when to pause launches or trading, who signs, how to tell us
 | Document                                                                           | Use it for                                                                           |
 | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | [CLAUDE.md](CLAUDE.md)                                                             | Source-of-truth project instructions, language, workflow, Git, and review boundaries |
-| [notes.md](notes.md)                                                               | Product framing, token lifecycle, economic rationale, and design decisions           |
 | [Architecture overview](docs/architecture.md)                                      | Every component and data flow, named against the system-design record                |
 | [Roadmap](docs/ROADMAP.md)                                                         | Plans, milestone progress, and dependency order                                      |
 | [Contract core spec](docs/specs/2026-09-01-contract-core-design.md)                | V1 contract behavior, exact economic/math decisions, event interface, and invariants |
-| [Backend core spec](docs/specs/2026-09-01-backend-core-design.md)                  | Backend boundaries, ledger, schema, transactions, projections, and API-read rules    |
-| [Web design spec](docs/specs/2026-09-09-web-client-design.md)                      | UI scope, routes, data authority, wallet flow, and client behavior                   |
 | [Security threat model](docs/specs/2026-09-11-security-threat-model.md)            | Assets, trust boundaries, attacker capabilities, and review hypotheses               |
-| [Contract Foundations plan](docs/plans/2026-09-01-contract-foundations.md)         | Contract tasks and release evidence                                                  |
-| [Backend Foundations plan](docs/plans/2026-09-01-backend-foundations.md)           | Backend substrate and PostgreSQL foundation tasks                                    |
-| [Backend Indexer plan](docs/plans/2026-09-05-backend-indexer.md)                   | RPC ingestion, canonical events, finality, reorg handling, and aggregation tasks     |
-| [API and identity plan](docs/plans/2026-09-08-backend-api-identity.md)             | API, OpenAPI, Privy verification, metadata, and profile work                         |
-| [Web client plan](docs/plans/2026-09-09-web-client.md)                             | Web route, accessibility, browser, and Anvil acceptance criteria                     |
-| [Audit and hardening plan](docs/plans/2026-09-11-full-codebase-audit-hardening.md) | Plan 5 scope, finding triage, and remediation closeout                               |
 | [Testnet deployment runbook](docs/runbooks/robinhood-testnet-deployment.md)        | Testnet dependency and Launchpad manifest evidence path                              |
 | [Testnet user journey](docs/runbooks/robinhood-testnet-user-journey.md)             | Wallet setup, faucet funding, first launch/trade, graduation, and acceptance evidence |
 | [RPC probe](docs/runbooks/robinhood-rpc-probe.md)                                  | Recorded read-only endpoint/finality/log-capacity observations                       |
@@ -792,15 +776,10 @@ Contract incidents (when to pause launches or trading, who signs, how to tell us
 | [Incident response runbook](docs/runbooks/incident-response.md)                    | Pause triggers, signing path, user communication, unpause, and post-mortems          |
 | [V2 engine spec](docs/specs/2026-11-11-v2-engine-design.md)                        | Engine 2 behavior: anti-snipe tax, v4 graduation, LP-fee locker, recipient handover  |
 | [External audit package](docs/audits/external-audit-package.md)                    | Engine 2 audit scope, roles, invariants, focus areas, and accepted risks             |
-| [Gap assessment](docs/audits/2026-11-18-project-gap-assessment.md)                 | What still stands between the repository and a mainnet launch                       |
-| [Quality scorecard](docs/quality-scorecard.md)                                     | Per-category code-quality scores, evidence, and the path to 9                        |
-| [Plan 5 audit dossier](docs/audits/plan-5/README.md)                               | Baseline provenance, audit method, exclusions, findings, and closeout evidence       |
-| [Active backlog](backlog.md)                                                       | Current blocked/deferred work and exact next actions                                 |
 
 ## Current active backlog
 
-[`backlog.md`](backlog.md) → Active is the source of truth. At the time of writing it holds two
-items:
+At the time of writing two items are open:
 
 1. **Operator-only inputs.** Steps that need an account, keystore, secret or signature only the
    owner holds:

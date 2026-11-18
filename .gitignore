@@ -48,3 +48,21 @@ pnpm-debug.log*
 
 # Local, unreviewed audit drafts; findings are tracked in backlog.md and docs/specs.
 AUDIT_REPORT*.md
+
+# Internal working notes: kept on the maintainer's machine, not published.
+# The external audit package and the documents it cites stay published for the auditor.
+/docs/specs/*
+!/docs/specs/2026-09-01-contract-core-design.md
+!/docs/specs/2026-09-11-security-threat-model.md
+!/docs/specs/2026-11-11-v2-engine-design.md
+!/docs/specs/2026-11-16-owner-decisions-preflight.md
+!/docs/specs/2026-11-16-v2-graduation-sweep-preflight.md
+/docs/plans/
+/docs/audits/*
+!/docs/audits/external-audit-package.md
+!/docs/audits/2026-11-14-deep-property-campaign.md
+!/docs/audits/2026-11-16-security-audit-run-4.md
+/docs/quality-scorecard.md
+/contracts/coverage/
+/backlog.md
+/notes.md

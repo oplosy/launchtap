@@ -1,8 +1,7 @@
 # Launchpad roadmap
 
-This roadmap is a delivery view of the normative specifications and task plans. The plans
-remain the acceptance authority; this file explains what is currently usable and what comes
-next. Unfinished, externally gated work is tracked in [`backlog.md`](../backlog.md).
+This roadmap explains what is currently usable and what comes next. Unfinished, externally
+gated work is tracked by the maintainer.
 
 ## Delivered
 
@@ -35,8 +34,7 @@ see [`docs/runbooks/robinhood-testnet-deployment.md`](runbooks/robinhood-testnet
 ### API and identity (Plan 3) — code complete
 
 Huma REST endpoints, finality and `asOfBlock` response metadata, Privy access-token and
-linked-wallet verification, quote DTOs, pagination, and SSE streams
-([`docs/plans/2026-09-08-backend-api-identity.md`](plans/2026-09-08-backend-api-identity.md)).
+linked-wallet verification, quote DTOs, pagination, and SSE streams.
 
 ### Web delivery (Plan 4) — code complete; live release externally gated
 
@@ -47,29 +45,26 @@ boundary is documented in [`docs/runbooks/production-readiness.md`](runbooks/pro
 ### Observability — complete
 
 Prometheus metrics on internal listeners for the API and indexer, tested alert rules, and an
-opt-in Compose `monitoring` profile with Prometheus and Alertmanager
-([`docs/specs/2026-11-06-observability-design.md`](specs/2026-11-06-observability-design.md)).
+opt-in Compose `monitoring` profile with Prometheus and Alertmanager.
 
 ### P0 parity package
 
 - **P0-A market data and discovery — complete.** ETH/USD reference price (CoinGecko adapter;
   the production key is an external input), trending, king of the hill, and a server-side
-  watchlist ([spec](specs/2026-11-05-p0-market-data-discovery-design.md)).
+  watchlist.
 - **P0-B live feed, notifications, share cards — complete.** Live trade feed over SSE with
-  burst folding and reconnect recovery, in-app notifications, and token share cards
-  ([spec](specs/2026-11-06-p0b-live-feed-notifications-share-design.md)).
+  burst folding and reconnect recovery, in-app notifications, and token share cards.
 - **P0-C1 wallet page, PnL, leaderboard — complete.** Per-wallet positions and realized PnL
   recomputed from the ledger, public wallet pages, the leaderboard, wallet share cards, and
-  holdings-based notifications ([spec](specs/2026-11-06-p0c1-wallet-page-pnl-design.md)).
+  holdings-based notifications.
 - **P0-C2 comments, usernames, moderation — complete.** Holder/creator-gated token comments with
-  rate limits, reports, an operator moderation CLI, and usernames with opt-in published wallets
-  ([spec](specs/2026-11-09-p0c2-comments-usernames-design.md)).
+  rate limits, reports, an operator moderation CLI, and usernames with opt-in published wallets.
 - **P0-C3 watch counts and windowed leaderboards — complete.** Public watcher counts and 7d/30d
-  realized-PnL leaderboards ([spec](specs/2026-11-10-p0c3-watch-counts-windowed-leaderboards-design.md)).
+  realized-PnL leaderboards.
 - **P0-C4 notification inbox — complete.** Server-side inbox with unread counts and cross-device
-  read positions ([spec](specs/2026-11-10-p0c4-notification-inbox-design.md)).
+  read positions.
 - **P0-C5 forum (Memestock) — complete.** Cross-token feed and hot/top communities over token
-  comments ([spec](specs/2026-11-10-p0c5-forum-memestock-design.md)). The P0-C package merged to
+  comments. The P0-C package merged to
   `main` in milestone PR #21.
 
 
@@ -77,8 +72,7 @@ opt-in Compose `monitoring` profile with Prometheus and Alertmanager
 
 The web UI is rebuilt around a centred composition, a pure-black dark theme with a light theme,
 a monochrome interface with colour reserved for data, and a new information architecture
-(`/explore` replaces the old discovery routes, which redirect)
-([spec](specs/2026-11-10-frontend-rebuild-design.md), [plan](plans/2026-11-10-frontend-rebuild.md)).
+(`/explore` replaces the old discovery routes, which redirect).
 Merged in PR #23.
 
 ### Launch engine 2 — code complete; external audit and live run externally gated
@@ -93,12 +87,12 @@ fees between creator and protocol, and a two-step creator fee-recipient handover
 - A pinned mainnet fork suite and a deep fuzz and invariant campaign cover it.
 - The external audit package is `audits/external-audit-package.md`.
 - Robinhood testnet has no Uniswap v4. PR #114 adds a rehearsal path there on a self-deployed,
-  pinned v4 stack ([pre-flight](specs/2026-11-18-v2-testnet-path-preflight.md)).
+  pinned v4 stack.
 
 ## Next
 
 No new feature scope is decided. What stands between the repository and mainnet, with owners and
-order, is in the [gap assessment](audits/2026-11-18-project-gap-assessment.md). Almost all of it
+order, is tracked by the maintainer. Almost all of it
 is owner-held:
 - the external audit;
 - the live testnet runs of both engines;
@@ -110,7 +104,7 @@ The code-side items are the legal pages, after the legal opinion, and anything t
 
 ## Deferred operational work
 
-Tracked in [`backlog.md`](../backlog.md) → "Operator-only inputs":
+Operator-only inputs:
 - the testnet engine switch and the engine 2 testnet rehearsal;
 - the archive fork RPC secret and a second RPC provider;
 - the CoinGecko and Telegram keys;
