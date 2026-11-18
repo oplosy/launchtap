@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { UnavailableState } from "@/components/primitives";
 import { scrubTelemetry, safeLog } from "@/security/logging";
+import { reportBoundaryError } from "@/telemetry/client-events";
 
 /**
  * Shown only when the leaderboard has no good render to fall back on: the page throws on an API
@@ -18,6 +19,7 @@ export default function LeaderboardError({
 }) {
   useEffect(() => {
     safeLog("route_error", { digest: error.digest, error: scrubTelemetry(error) });
+    reportBoundaryError("route_boundary", error);
   }, [error]);
   return (
     // `retry` (Next 16.3+) refetches the server content; `reset` would only re-render it.

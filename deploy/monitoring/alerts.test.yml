@@ -414,3 +414,96 @@ tests:
       - eval_time: 110m
         alertname: IndexerReconciliationStale
         exp_alerts: []
+
+  # WebClientErrorsHigh
+  - name: WebClientErrorsHigh fires when errors exceed 5% of page loads
+    interval: 1m
+    input_series:
+      - series: 'launchpad_web_client_errors_total{source="window_error",route="token",class="TypeError"}'
+        values: "0+2x60"
+      - series: 'launchpad_web_vital_seconds_count{name="TTFB",route="token"}'
+        values: "0+10x60"
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: WebClientErrorsHigh
+        exp_alerts:
+          - exp_labels: {severity: ticket}
+            exp_annotations: {summary: "browser errors exceed 5% of page loads over 30 minutes"}
+  - name: WebClientErrorsHigh fires without any page-load samples
+    interval: 1m
+    input_series:
+      - series: 'launchpad_web_client_errors_total{source="global_boundary",route="home",class="ChunkLoadError"}'
+        values: "0+2x60"
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: WebClientErrorsHigh
+        exp_alerts:
+          - exp_labels: {severity: ticket}
+            exp_annotations: {summary: "browser errors exceed 5% of page loads over 30 minutes"}
+  - name: WebClientErrorsHigh quiet under 5% of page loads
+    interval: 1m
+    input_series:
+      - series: 'launchpad_web_client_errors_total{source="window_error",route="token",class="TypeError"}'
+        values: "0+2x60"
+      - series: 'launchpad_web_vital_seconds_count{name="TTFB",route="token"}'
+        values: "0+100x60"
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: WebClientErrorsHigh
+        exp_alerts: []
+  - name: WebClientErrorsHigh quiet under 20 errors
+    interval: 1m
+    input_series:
+      - series: 'launchpad_web_client_errors_total{source="window_error",route="token",class="TypeError"}'
+        values: "0+0.2x60"
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: WebClientErrorsHigh
+        exp_alerts: []
+
+  # WebLCPSlow
+  - name: WebLCPSlow fires when p75 LCP is above 2.5 s
+    interval: 1m
+    input_series:
+      - series: 'launchpad_web_vital_seconds_bucket{name="LCP",route="token",le="2.5"}'
+        values: "0+0.5x120"
+      - series: 'launchpad_web_vital_seconds_bucket{name="LCP",route="token",le="4"}'
+        values: "0+2x120"
+      - series: 'launchpad_web_vital_seconds_bucket{name="LCP",route="token",le="+Inf"}'
+        values: "0+2x120"
+      - series: 'launchpad_web_vital_seconds_count{name="LCP",route="token"}'
+        values: "0+2x120"
+    alert_rule_test:
+      - eval_time: 100m
+        alertname: WebLCPSlow
+        exp_alerts:
+          - exp_labels: {severity: ticket}
+            exp_annotations: {summary: "p75 LCP reported by browsers is above the 2.5 s target"}
+  - name: WebLCPSlow quiet when p75 LCP meets the target
+    interval: 1m
+    input_series:
+      - series: 'launchpad_web_vital_seconds_bucket{name="LCP",route="token",le="2.5"}'
+        values: "0+1.8x120"
+      - series: 'launchpad_web_vital_seconds_bucket{name="LCP",route="token",le="4"}'
+        values: "0+2x120"
+      - series: 'launchpad_web_vital_seconds_bucket{name="LCP",route="token",le="+Inf"}'
+        values: "0+2x120"
+      - series: 'launchpad_web_vital_seconds_count{name="LCP",route="token"}'
+        values: "0+2x120"
+    alert_rule_test:
+      - eval_time: 100m
+        alertname: WebLCPSlow
+        exp_alerts: []
+  - name: WebLCPSlow quiet with too few samples
+    interval: 1m
+    input_series:
+      - series: 'launchpad_web_vital_seconds_bucket{name="LCP",route="token",le="4"}'
+        values: "0+0.1x120"
+      - series: 'launchpad_web_vital_seconds_bucket{name="LCP",route="token",le="+Inf"}'
+        values: "0+0.1x120"
+      - series: 'launchpad_web_vital_seconds_count{name="LCP",route="token"}'
+        values: "0+0.1x120"
+    alert_rule_test:
+      - eval_time: 100m
+        alertname: WebLCPSlow
+        exp_alerts: []

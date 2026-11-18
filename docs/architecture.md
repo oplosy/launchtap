@@ -18,6 +18,7 @@ flowchart LR
   proxy --> api[Go API]
   web -- SSR / OG images --> api
   web -- login --> privy[Privy]
+  web -- errors, Web Vitals --> api
   wallet -- signed txs --> chain[(Robinhood Chain)]
   web -- reads, quotes --> rpc[RPC]
   rpc --- chain
@@ -109,6 +110,9 @@ see `docs/api/README.md`), kept current and backward compatible by `check-openap
   content sniffing, size bounds and EXIF stripping.
 - **Live updates** (`trade-tail`): a feed tail polls new trades into an in-memory hub and
   `LISTEN api_refresh` turns indexer commits into refresh hints, served to browsers over SSE.
+- **Client telemetry** (`client-telemetry`): `POST /v1/client-events` takes closed-set browser
+  error and Web Vitals events and turns them into Prometheus series only
+  (`docs/specs/2026-11-18-client-telemetry-preflight.md`).
 - **ETH/USD price feed** (`pricefeed`): optional CoinGecko poller (`coingecko`), see
   `docs/runbooks/eth-usd-enrichment.md`.
 - Metrics on a separate `API_METRICS_ADDR`, never on the public listener.
@@ -152,7 +156,9 @@ browser:
 - logs in with Privy (`privy`) and signs with the user's `wallet` (embedded or injected);
 - reads chain state and quotes through the public RPC, and sends launches, curve trades and
   graduated swaps (v2 pairs directly, v4 through `universal-router` and `permit2`);
-- shows the stale-data banner (`stale-data-banner`) when the status endpoint reports lag.
+- shows the stale-data banner (`stale-data-banner`) when the status endpoint reports lag;
+- reports uncaught errors, error-boundary hits and Web Vitals to the API (`web-reporter`,
+  `web/src/telemetry/`), with no URL, message or identifier.
 
 A `preflight` container validates the public build configuration before `web` starts. Design:
 `docs/specs/2026-11-10-frontend-rebuild-design.md`.
