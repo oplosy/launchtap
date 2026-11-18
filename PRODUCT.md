@@ -63,7 +63,6 @@ and invented market values or commercial claims.
 
 - `docs/specs/2026-09-09-web-client-design.md` defines route, data, wallet, finality, visual,
   and security requirements.
-- `docs/plans/2026-09-09-web-client.md` defines Plan 4 task boundaries and acceptance criteria.
 - Task 1 generated a fail-closed public configuration helper and a minimal browser ABI bundle.
 - No verified production Privy values, testnet deployment manifest, API/RPC URLs, or ETH/USD source
   are available yet.
