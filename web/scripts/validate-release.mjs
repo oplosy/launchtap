@@ -46,6 +46,35 @@ export function readReviewedDeployments(
   }
 }
 
+/**
+ * Legal documents (src/legal/documents.json) must be approved by counsel before a production
+ * release (docs/specs/2026-11-18-legal-pages-preflight.md).
+ */
+export function readLegalDocuments(
+  documentsPath = path.resolve(process.cwd(), "src/legal/documents.json"),
+) {
+  try {
+    return JSON.parse(fs.readFileSync(documentsPath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+export function legalDocumentErrors(documents) {
+  if (!documents || typeof documents !== "object") return ["legal documents status is unreadable"];
+  const errors = [];
+  for (const id of ["terms", "privacy"]) {
+    const document = documents[id];
+    if (document?.status !== "approved")
+      errors.push(
+        `legal document ${id} is not approved by counsel (status ${document?.status ?? "missing"})`,
+      );
+    else if (!/^\d{4}-\d{2}-\d{2}$/.test(document.effectiveDate ?? ""))
+      errors.push(`legal document ${id} needs an effective date (YYYY-MM-DD)`);
+  }
+  return errors;
+}
+
 function validateUrl(value, key, { allowHttp = false, originOnly = false } = {}) {
   if (!value?.trim()) return `${key} is required`;
   try {
@@ -65,6 +94,7 @@ export function validateReleaseEnvironment(
   env = process.env,
   mode = production ? "production" : anvil ? "anvil" : "unknown",
   deployments = readReviewedDeployments().deployments,
+  legalDocuments = readLegalDocuments(),
 ) {
   const errors = [];
   if (mode !== "production" && mode !== "anvil")
@@ -91,6 +121,7 @@ export function validateReleaseEnvironment(
         candidate.deploymentId === env.NEXT_PUBLIC_DEPLOYMENT_ID &&
         String(candidate.chainId) === env.NEXT_PUBLIC_CHAIN_ID,
     );
+    errors.push(...legalDocumentErrors(legalDocuments));
     if (!deployment) errors.push("deployment ID and chain ID are not in the reviewed manifest");
     else if (!deployment.enabled) errors.push("deployment is disabled in the reviewed manifest");
     else if (!reviewedAddressesComplete(deployment))

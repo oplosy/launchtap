@@ -6,6 +6,7 @@ import "./globals.css";
 import { AppShell } from "@/components/app-shell";
 import { RouteTransition } from "@/components/route-transition";
 import { THEME_COOKIE } from "@/components/theme-cookie";
+import { RISK_ACK_COOKIE } from "@/legal/documents";
 import { Providers, WalletRouteGate } from "./providers";
 
 const sans = localFont({
@@ -39,7 +40,9 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   // Script nonces are issued per request by proxy.ts, so every document renders dynamically.
   await connection();
-  const saved = (await cookies()).get(THEME_COOKIE)?.value;
+  const jar = await cookies();
+  const saved = jar.get(THEME_COOKIE)?.value;
+  const riskAcknowledged = jar.get(RISK_ACK_COOKIE)?.value === "1";
   const theme = saved === "light" || saved === "dark" ? saved : undefined;
   return (
     <html
@@ -50,7 +53,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     >
       <body>
         <Providers>
-          <AppShell>
+          <AppShell riskNoticeOpen={!riskAcknowledged}>
             <RouteTransition>
               <WalletRouteGate>{children}</WalletRouteGate>
             </RouteTransition>

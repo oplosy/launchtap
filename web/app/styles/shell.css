@@ -685,3 +685,35 @@
   padding: 10px 16px;
   font-size: 13.5px;
 }
+
+/* First-visit risk notice (src/legal/risk-notice.tsx). Server-rendered, so no layout shift. */
+.risk-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  width: calc(100% - 2 * var(--gutter));
+  max-width: var(--measure-page);
+  margin: 8px auto 0;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-media);
+  padding: 10px 16px;
+  font-size: 13.5px;
+}
+
+.risk-notice p {
+  flex: 1 1 320px;
+  margin: 0;
+}
+
+.risk-notice a {
+  text-decoration: underline;
+}
+
+/* Legal routes (app/terms, app/privacy). */
+.legal-draft {
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-media);
+  padding: 10px 16px;
+}

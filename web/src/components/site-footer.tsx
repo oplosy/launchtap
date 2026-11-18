@@ -85,6 +85,11 @@ export function SiteFooter() {
             <Link href={"/docs#token" as never}>Token rules</Link>
             <Link href={"/docs#governance" as never}>Pauses and governance</Link>
           </FooterSection>
+          <FooterSection label="Legal">
+            <Link href={"/terms" as never}>Terms of Service</Link>
+            <Link href={"/privacy" as never}>Privacy Policy</Link>
+            <Link href={"/docs#risk" as never}>Risk disclosure</Link>
+          </FooterSection>
           <FooterSection label="Account">
             <Link href="/profile">Profile</Link>
             <Link href={"/explore?view=watchlist" as never}>Watchlist</Link>
