@@ -83,6 +83,15 @@
   them: re-checked 2026-11-17, the newest `@privy-io/react-auth` 3.51.4 still depends on
   `x402` ^0.7.1, and the newest `x402` (1.2.0) still requires wagmi ^2.15.6 and zod ^3.24.2.
   Trial lockfile evidence: `docs/audits/runtime-advisory-review-2026-11-06.md`.
+  Re-checked 2026-11-18 with a trial lockfile: `@privy-io/react-auth` 3.52.0 moved to
+  `@x402/core`/`@x402/evm` 2.31 (zod 4). Together with `@privy-io/wagmi` 4.0.20, wagmi 3.7.11
+  and viem 2.57.17, the runtime audit drops from 46 advisories to 15. decode-uri-component and
+  every low and moderate advisory are gone (wagmi 2's `@wagmi/connectors` pins WalletConnect
+  2.21.1, which pulls query-string 7). zod 3 still remains: Privy pins
+  `@walletconnect/ethereum-provider` 2.26.0 → `@reown/appkit` 1.8.19, whose `appkit-wallet`
+  pins zod 3.22.4 (still pinned in its newest 2.0.0), and `@coinbase/cdp-sdk` 1.62.0 (newest)
+  requires zod ^3.25.76. The zod entry stays blocked upstream. Only the decode-uri-component
+  entry could be removed now, at the cost of three major upgrades on the wallet surface.
 - **Related files:** `web/package.json`, `web/package-lock.json`, `web/audit-allowlist.json`,
   `web/src/wallet/`, `web/src/providers.tsx`
 - **Resume (next step):** before 2027-02-01, run `npm view @privy-io/react-auth@latest
