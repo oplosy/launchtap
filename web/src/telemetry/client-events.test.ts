@@ -50,6 +50,10 @@ describe("errorClass", () => {
     const chunk = new Error("Loading chunk 7 failed");
     chunk.name = "ChunkLoadError";
     expect(errorClass(chunk)).toBe("ChunkLoadError");
+    expect(errorClass(new Error("Failed to load chunk /_next/static/chunks/a.js"))).toBe(
+      "ChunkLoadError",
+    );
+    expect(errorClass(new Error("Loading chunk 12 failed."))).toBe("ChunkLoadError");
     const custom = new Error("x");
     custom.name = "UserRejectedRequestError";
     expect(errorClass(custom)).toBe("other");
@@ -164,7 +168,7 @@ describe("client telemetry helpers", () => {
   it("ignores errors from other origins and extensions", () => {
     const origin = "https://launch.example";
     expect(sameOriginError({ filename: `${origin}/_next/static/chunk.js` }, origin)).toBe(true);
-    expect(sameOriginError({ filename: "" }, origin)).toBe(true);
+    expect(sameOriginError({ filename: "" }, origin)).toBe(false);
     expect(sameOriginError({ filename: "chrome-extension://abc/inject.js" }, origin)).toBe(false);
     expect(sameOriginError({ filename: `${origin}.evil.example/x.js` }, origin)).toBe(false);
   });

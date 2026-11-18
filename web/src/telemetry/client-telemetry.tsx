@@ -24,9 +24,12 @@ function reportWebVital(metric: ReportedMetric) {
   }
 }
 
-/** True for errors thrown by this origin's scripts; extension and cross-origin noise is ignored. */
+/**
+ * True for errors thrown by this origin's scripts. Extension and cross-origin errors are ignored,
+ * including sanitized "Script error." events, which carry no filename.
+ */
 export function sameOriginError(event: Pick<ErrorEvent, "filename">, origin: string) {
-  return !event.filename || event.filename.startsWith(`${origin}/`);
+  return event.filename.startsWith(`${origin}/`);
 }
 
 /** Mounts once in the root layout: Web Vitals, uncaught errors and unhandled rejections. */

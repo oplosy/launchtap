@@ -28,9 +28,15 @@ export const FLUSH_DELAY_MS = 5_000;
 const MAX_TIMING_MS = 60_000;
 const MAX_CLS = 10;
 
+/** Webpack names a failed chunk load ChunkLoadError; Turbopack throws a plain Error. */
+const CHUNK_LOAD_MESSAGE = /loading (?:css )?chunk .* failed|failed to load chunk/i;
+
 export function errorClass(error: unknown): string {
-  const name = error instanceof Error ? error.name : undefined;
-  return name && ERROR_CLASSES.has(name) ? name : "other";
+  if (!(error instanceof Error)) return "other";
+  // The message is only matched here; it never leaves the browser.
+  if (error.name === "ChunkLoadError" || CHUNK_LOAD_MESSAGE.test(error.message))
+    return "ChunkLoadError";
+  return ERROR_CLASSES.has(error.name) ? error.name : "other";
 }
 
 export type ReporterOptions = {

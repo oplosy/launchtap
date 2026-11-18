@@ -94,7 +94,7 @@ func (r ClientEventRoutes) Register(api huma.API) {
 }
 
 func (r ClientEventRoutes) post(ctx context.Context, in *clientEventsInput) (*clientEventsOutput, error) {
-	if !r.originAllowed(in.Origin) {
+	if !originAllowed(r.AllowedOrigins, in.Origin) {
 		return nil, apiRequestProblem(ctx, http.StatusForbidden, "origin_not_allowed", "origin not allowed")
 	}
 	if !r.Limiter.Allow(ClientKey(ctx), time.Now()) {
@@ -114,18 +114,6 @@ func (r ClientEventRoutes) post(ctx context.Context, in *clientEventsInput) (*cl
 		}
 	}
 	return &clientEventsOutput{Status: http.StatusNoContent}, nil
-}
-
-func (r ClientEventRoutes) originAllowed(origin string) bool {
-	if origin == "" {
-		return false
-	}
-	for _, allowed := range r.AllowedOrigins {
-		if allowed == origin && allowed != "*" {
-			return true
-		}
-	}
-	return false
 }
 
 // parseClientEvents decodes and validates a whole batch; any bad event rejects all of them.

@@ -120,8 +120,8 @@ func TestClientEventsRejectsOversizedBody(t *testing.T) {
 	telemetry := &recordingTelemetry{}
 	body := `{"events":[{"type":"error","source":"window_error","route":"token","class":"` + strings.Repeat("x", maxClientEventBytes) + `"}]}`
 	w := postClientEvents(newClientEventServer(t, telemetry, nil, nil), testOrigin, "text/plain", body)
-	if w.Code != http.StatusRequestEntityTooLarge && w.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 413 or 400", w.Code)
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413", w.Code)
 	}
 	if len(telemetry.events) != 0 {
 		t.Fatalf("events = %+v", telemetry.events)
@@ -152,8 +152,9 @@ func TestClientEventsAreRateLimitedWithoutCountingWriteRejections(t *testing.T) 
 	if w := postClientEvents(s, testOrigin, "text/plain", body); w.Code != http.StatusTooManyRequests {
 		t.Fatalf("third request: status = %d, want 429", w.Code)
 	}
-	if w := postClientEvents(s, testOrigin, "text/plain", `bad`); w.Code != http.StatusTooManyRequests && w.Code != http.StatusBadRequest {
-		t.Fatalf("bad request: status = %d", w.Code)
+	// The limiter runs before parsing, so a malformed batch also spends the client's budget.
+	if w := postClientEvents(s, testOrigin, "text/plain", `bad`); w.Code != http.StatusTooManyRequests {
+		t.Fatalf("bad request: status = %d, want 429", w.Code)
 	}
 	if len(telemetry.events) != 2 {
 		t.Fatalf("events = %d, want 2", len(telemetry.events))
@@ -165,5 +166,25 @@ func TestClientEventsAreRateLimitedWithoutCountingWriteRejections(t *testing.T) 
 	}
 	if got := metrics.requests[len(metrics.requests)-1].route; got != clientEventsPattern {
 		t.Fatalf("route label = %q, want %q", got, clientEventsPattern)
+	}
+}
+
+func TestGlobalRateLimitOnClientEventsIsNotAWriteRejection(t *testing.T) {
+	metrics := &recordingMetrics{}
+	cfg := DefaultConfig()
+	cfg.AllowedOrigins = []string{testOrigin}
+	cfg.Metrics = metrics
+	cfg.RateLimitPerMinute, cfg.RateLimitBurst = 1, 1
+	s := New(cfg, ReadyFunc(func(context.Context) error { return nil }), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s.RegisterClientEventRoutes(ClientEventRoutes{Telemetry: &recordingTelemetry{}, AllowedOrigins: cfg.AllowedOrigins})
+	body := `{"events":[{"type":"vital","name":"TTFB","route":"home","value":10}]}`
+	postClientEvents(s, testOrigin, "text/plain", body)
+	if w := postClientEvents(s, testOrigin, "text/plain", body); w.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want the global limiter's 429", w.Code)
+	}
+	metrics.mu.Lock()
+	defer metrics.mu.Unlock()
+	if len(metrics.rejected) != 0 {
+		t.Fatalf("write rejections = %v, want none for telemetry", metrics.rejected)
 	}
 }
