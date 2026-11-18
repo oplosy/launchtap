@@ -98,12 +98,15 @@ func agreeing() *fakeChain {
 
 func TestAgreementIsOK(t *testing.T) {
 	chain := agreeing()
-	result, err := Pass(t.Context(), fakeStore{snapshot: indexed(), ok: true}, chain, Limits{})
+	snapshot := indexed()
+	snapshot.Tokens[0].ReserveSource = SourceCurve
+	result, err := Pass(t.Context(), fakeStore{snapshot: snapshot, ok: true}, chain, Limits{})
 	if err != nil || result.Outcome != OutcomeOK || len(result.Mismatches) != 0 {
 		t.Fatalf("result = %+v, err = %v", result, err)
 	}
-	if result.Checks != 6 || result.Block != 42 || result.Tokens != 1 {
-		t.Fatalf("checks = %d block = %d tokens = %d, want 6, 42, 1", result.Checks, result.Block, result.Tokens)
+	// phase, source, 2 curve reserves, supply, 2 holders
+	if result.Checks != 7 || result.Block != 42 || result.Tokens != 1 {
+		t.Fatalf("checks = %d block = %d tokens = %d, want 7, 42, 1", result.Checks, result.Block, result.Tokens)
 	}
 	for _, block := range chain.blocks {
 		if block != 42 {
@@ -206,8 +209,14 @@ func TestGraduatedTokenWithoutPoolStateIsDrift(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			chain := agreeing()
-			chain.phase = 1
-			result, err := Pass(t.Context(), fakeStore{snapshot: graduated(tc.source, nil, nil), ok: true}, chain, Limits{})
+			// A curve read on a graduated token would fail the pass.
+			chain.phase, chain.failOn = 1, "reserves"
+			snapshot := graduated(tc.source, nil, nil)
+			if tc.source == SourceCurve {
+				// ReconcileSource keeps the curve reserves of a curve-sourced row.
+				snapshot.Tokens[0].CurveReserves = &Reserves{ETH: big.NewInt(1000), Token: big.NewInt(2000)}
+			}
+			result, err := Pass(t.Context(), fakeStore{snapshot: snapshot, ok: true}, chain, Limits{})
 			if err != nil || result.Outcome != OutcomeDrift || len(result.Mismatches) != 1 ||
 				result.Mismatches[0].Check != CheckPoolSource || result.Mismatches[0].Indexed != tc.indexed {
 				t.Fatalf("result = %+v, err = %v; want one %s mismatch with indexed %q", result, err, CheckPoolSource, tc.indexed)

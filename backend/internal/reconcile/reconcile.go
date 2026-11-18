@@ -229,14 +229,18 @@ func Pass(ctx context.Context, store Store, chain Chain, limits Limits) (Result,
 // comparePool checks the indexed reserve source against the phase and, for a graduated token,
 // the indexed pool state against the pool (docs/specs/2026-11-18-pool-reconciliation-preflight.md).
 func comparePool(ctx context.Context, chain Chain, block uint64, token Token, chainPhase string, result *Result, compare func(string, common.Address, common.Address, *big.Int, *big.Int)) error {
+	// The source check is counted whenever it is evaluated, like every other check; a graduated
+	// token with pool state is checked through its pool comparisons instead.
 	sourceMismatch := func(expected string) {
-		result.Checks++
 		result.Mismatches = append(result.Mismatches, Mismatch{Check: CheckPoolSource, Token: token.Address, Subject: token.Address, Indexed: sourceText(token), Chain: expected})
 	}
 	switch token.Phase {
 	case PhaseCurve:
-		if token.ReserveSource == SourcePair || token.ReserveSource == SourceV4 {
-			sourceMismatch(SourceCurve)
+		if token.ReserveSource != "" {
+			result.Checks++
+			if token.ReserveSource != SourceCurve {
+				sourceMismatch(SourceCurve)
+			}
 		}
 		return nil
 	case PhaseGraduated:
@@ -267,6 +271,7 @@ func comparePool(ctx context.Context, chain Chain, block uint64, token Token, ch
 		}
 		compare(CheckV4Price, token.Address, token.V4.PoolManager, token.V4.SqrtPriceX96, price)
 	default:
+		result.Checks++
 		sourceMismatch(SourcePair + " or " + SourceV4 + " pool state")
 	}
 	return nil

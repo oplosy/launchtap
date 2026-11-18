@@ -60,8 +60,9 @@ func assertPoolDriftDetected(t *testing.T, ctx context.Context, db *sql.DB, pool
 		}
 	}
 	shift(1)
+	// Restore even when the pass fails the test, so a later assertion sees the real row.
+	defer shift(-1)
 	result := reconcileOnce(t, ctx, pool, source, chainID, deploymentID)
-	shift(-1)
 	if result.Outcome != reconcile.OutcomeDrift || len(result.Mismatches) != 1 || result.Mismatches[0].Check != check || result.Mismatches[0].Token != token {
 		t.Fatalf("corrupted pool state: outcome %s, mismatches %v; want exactly %s on %s", result.Outcome, result.Mismatches, check, token.Hex())
 	}
