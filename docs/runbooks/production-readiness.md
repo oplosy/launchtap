@@ -44,6 +44,7 @@ and evidence link before the release gate is run.
 | Protocol treasury | address, custody owner, and transfer verification | `<owner>` / `<pending>` |
 | External audit | signed report, scope, commit/artifact digest, and accepted findings | `<owner>` / `<pending>` |
 | Legal/geo policy | approved jurisdiction policy and enforcement owner | `<owner>` / `<pending>` |
+| Legal pages | counsel-approved Terms and Privacy text in `web/app/terms`, `web/app/privacy`, with `web/src/legal/documents.json` set to `approved` and an effective date; `npm run verify:release` and the Compose `preflight` refuse a draft | `<counsel>` / `<pending>` |
 
 Never put private keys, seed phrases, bearer tokens, database passwords, credentialed RPC URLs,
 or Privy verification keys in this repository or in browser-visible `NEXT_PUBLIC_*` variables.
