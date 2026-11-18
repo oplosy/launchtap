@@ -36,11 +36,13 @@ named in it.
 2. **Backend architecture (9.0 → 9.5):** keep the contract gate and file-size limit without
    exemptions. Already met: documented public API contract with versioning and a compatibility
    test (#72); no file over ~600 lines outside generated code (#70).
-3. **Indexer and data correctness (9.0 → 9.5):** reconcile every token over a rotating sample and
-   graduated pool reserves too; the reconciliation run on a test deployment against a live chain,
-   recorded. Already met: deep-reorg soak compared with a fresh re-index (#73), reconciliation job
-   with drift alerts (#74), the 2026-11-16 audit's indexer defects fixed with regression tests
-   (#82, #83).
+3. **Indexer and data correctness (9.0 → 9.5):** the reconciliation run on a test deployment
+   against a live chain, recorded. Already met:
+   - deep-reorg soak compared with a fresh re-index (#73);
+   - reconciliation job with drift alerts (#74);
+   - the 2026-11-16 audit's indexer defects fixed with regression tests (#82, #83);
+   - a rotating sample over every token (#94);
+   - graduated pool state reconciled: engine-1 pair reserves and the engine-2 v4 pool price (#115).
 4. **Tests and verification (9.0 → 9.5):** the load probe run against a test deployment.
    Already met:
    - rendered transaction-hook tests with a mocked wallet and coverage in CI (#71);
