@@ -264,6 +264,60 @@ $timelockAccount = "<named Foundry keystore account for the timelock>"
    Record the implementation creation and `configureEngine` transaction hashes in the
    change description. Restart any running indexer after the manifest change.
 
+## Engine 2 on testnet (self-deployed Uniswap v4)
+
+Engine 2 is the mainnet engine. Robinhood testnet has no Uniswap v4, so this section deploys a
+pinned v4 stack first and then engine 2 against it. Decisions and their reasons are in
+`docs/specs/2026-11-18-v2-testnet-path-preflight.md`. Run the commands from `contracts/` with a
+Foundry keystore account (`cast wallet import`). Never pass a raw key. The operator account
+needs about 0.001 testnet ETH for the v4 stack, plus gas for engine 2.
+
+1. **Simulate the v4 stack.** This first verifies that the canonical Permit2 on testnet is the
+   pinned runtime. Then it simulates `script/v2/DeployTestnetV4.s.sol`. Nothing is sent.
+
+   ```powershell
+   ./scripts/bootstrap-testnet-v4.ps1 -RpcUrl $env:ROBINHOOD_TESTNET_RPC_URL -Sender $deployer
+   ```
+
+2. **Broadcast it.** The script writes the unreviewed candidate
+   `deployments/.generated/robinhood-testnet-v4.json`.
+
+   ```powershell
+   ./scripts/bootstrap-testnet-v4.ps1 -RpcUrl $env:ROBINHOOD_TESTNET_RPC_URL -Sender $deployer -Broadcast -Account $account
+   ```
+
+3. **Review the candidate.** Check every address, deploy transaction and code hash in the
+   explorer. Confirm that `poolManagerOwner` is the deployer and that `weth9` is the reviewed
+   testnet WETH. Set `reviewed` to `true` and save it, formatted with two-space indentation, as
+   `deployments/config/robinhood-testnet-v4.json`. Copy it byte for byte to
+   `backend/deployments/testdata/config/`, then run
+   `cd ../backend; go run ./cmd/check-deployments; go test ./deployments/`. Commit the record on
+   its own.
+4. **Deploy engine 2.** Use separate pause, timelock and treasury accounts. They must not be the
+   deployer. First simulate (no `-Broadcast`), then broadcast. The script writes the unreviewed
+   candidate manifest `deployments/.generated/<DeploymentId>.json`.
+
+   ```powershell
+   ./scripts/deploy-v2-testnet.ps1 -RpcUrl $env:ROBINHOOD_TESTNET_RPC_URL -DeploymentId robinhood-testnet-v2 `
+     -Sender $deployer -PauseAuthority $pause -Timelock $timelock -ProtocolTreasury $treasury -Broadcast -Account $account
+   ```
+
+5. **Review and enable the manifest.**
+   1. Review the candidate like the engine-1 manifest (Phase 3).
+   2. Commit it as `deployments/robinhood-testnet-v2.json` with its backend copy.
+   3. Add it and `config/robinhood-testnet-v4.json` to the lists in
+      `web/scripts/generate-contracts.mjs`.
+   4. Run `npm run web-contracts-sync` and the gates.
+6. **Rehearse the journey.** Run `docs/runbooks/robinhood-testnet-user-journey.md` on the engine-2
+   deployment:
+   1. a launch with the anti-snipe window;
+   2. buys to graduation;
+   3. a pool swap through the web;
+   4. `collect` and `claim` on the locker.
+
+   Record the transactions as evidence for gap G2 in
+   `docs/audits/2026-11-18-project-gap-assessment.md`.
+
 ## Stop conditions
 
 Stop and keep the chain disabled when the RPC is not chain 46630, either dependency has no

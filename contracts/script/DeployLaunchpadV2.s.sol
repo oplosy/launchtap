@@ -22,12 +22,16 @@ interface IPermit2Holder {
 /// @notice Deploys the v2 engine: curve implementation, factory, mined guard hook and LP fee
 /// locker, then wires hook and locker into the factory once.
 /// @dev Fail-closed: runs only on a chain with a reviewed Uniswap v4 dependency record whose
-/// pinned runtime code hashes still match (spec §10, §11.1). Robinhood testnet has none, so it
-/// is refused. Signing goes through `--account`/hardware wallet; no raw keys are accepted.
+/// pinned runtime code hashes still match (spec §10, §11.1). Mainnet uses Uniswap's own
+/// deployment; Robinhood testnet uses the self-deployed stack once its reviewed record exists
+/// (`docs/specs/2026-11-18-v2-testnet-path-preflight.md`). Every other chain is refused. Signing
+/// goes through `--account`/hardware wallet; no raw keys are accepted.
 contract DeployLaunchpadV2 is Script {
     uint16 private constant ENGINE_VERSION = 2;
     uint256 private constant ROBINHOOD_MAINNET = 4663;
+    uint256 private constant ROBINHOOD_TESTNET = 46_630;
     string private constant ROBINHOOD_MAINNET_V4 = "deployments/config/robinhood-mainnet-v4.json";
+    string private constant ROBINHOOD_TESTNET_V4 = "deployments/config/robinhood-testnet-v4.json";
     address private constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
     uint256 private constant TOTAL_SUPPLY = 1_000_000_000 ether;
@@ -64,17 +68,23 @@ contract DeployLaunchpadV2 is Script {
     }
 
     function run() external returns (DeploymentResult memory result) {
-        V4Dependencies memory dependencies = _verifiedDependencies(block.chainid);
+        (string memory recordPath, DeploymentValidation.Target target) =
+            _dependencyRecord(block.chainid);
+        return _deploy(_verifiedDependencies(recordPath, block.chainid), target);
+    }
+
+    /// @dev Everything after the dependency record is chosen and verified, so tests can run the
+    /// deployment against a locally built v4 stack.
+    function _deploy(V4Dependencies memory dependencies, DeploymentValidation.Target target)
+        internal
+        returns (DeploymentResult memory result)
+    {
         result.deployer = vm.envAddress("DEPLOYER");
         result.pauseAuthority = vm.envAddress("PAUSE_AUTHORITY");
         result.timelock = vm.envAddress("TIMELOCK");
         result.protocolTreasury = vm.envAddress("PROTOCOL_TREASURY");
         DeploymentValidation.validateAuthorities(
-            DeploymentValidation.Target.RobinhoodMainnet,
-            result.deployer,
-            result.pauseAuthority,
-            result.timelock,
-            result.protocolTreasury
+            target, result.deployer, result.pauseAuthority, result.timelock, result.protocolTreasury
         );
         result.poolManager = address(dependencies.poolManager);
         result.positionManager = address(dependencies.positionManager);
@@ -117,13 +127,29 @@ contract DeployLaunchpadV2 is Script {
         _assertDeployment(result, factory);
     }
 
-    function _verifiedDependencies(uint256 chainId)
+    /// @return recordPath The reviewed v4 dependency record for `chainId`.
+    /// @return target The authority rules that apply on that chain.
+    function _dependencyRecord(uint256 chainId)
+        private
+        view
+        returns (string memory recordPath, DeploymentValidation.Target target)
+    {
+        if (chainId == ROBINHOOD_MAINNET) {
+            return (ROBINHOOD_MAINNET_V4, DeploymentValidation.Target.RobinhoodMainnet);
+        }
+        // The testnet record exists only after a human reviewed the self-deployed stack.
+        if (chainId == ROBINHOOD_TESTNET && vm.isFile(ROBINHOOD_TESTNET_V4)) {
+            return (ROBINHOOD_TESTNET_V4, DeploymentValidation.Target.RobinhoodTestnet);
+        }
+        revert("no reviewed Uniswap v4 dependencies for this chain");
+    }
+
+    function _verifiedDependencies(string memory recordPath, uint256 chainId)
         private
         view
         returns (V4Dependencies memory dependencies)
     {
-        require(chainId == ROBINHOOD_MAINNET, "no reviewed Uniswap v4 dependencies for this chain");
-        string memory json = vm.readFile(ROBINHOOD_MAINNET_V4);
+        string memory json = vm.readFile(recordPath);
         require(vm.parseJsonUint(json, ".chainId") == chainId, "dependency record chain mismatch");
         require(vm.parseJsonBool(json, ".reviewed"), "dependency record not reviewed");
 
