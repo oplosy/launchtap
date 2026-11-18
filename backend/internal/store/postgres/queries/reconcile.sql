@@ -29,10 +29,15 @@ SELECT
     t.token_address,
     t.curve_address,
     t.phase,
+    -- Engine 1 only (NULL for engine 2): the pair and WETH pick the pair's reserve order.
+    t.lp_pair,
+    t.weth,
     COALESCE(r.reserve_source, '')::text AS reserve_source,
-    -- V4 reserve rows carry no ETH/token reserve (NULL); only curve rows are compared.
+    -- V4 rows carry sqrt_price_x96 instead of reserves; curve and pair rows the reverse
+    -- (token_reserves_source_shape), so each source reads only its own columns.
     COALESCE(r.eth_reserve, 0)::text AS eth_reserve_text,
-    COALESCE(r.token_reserve, 0)::text AS token_reserve_text
+    COALESCE(r.token_reserve, 0)::text AS token_reserve_text,
+    COALESCE(r.sqrt_price_x96, 0)::text AS sqrt_price_x96_text
 FROM picked p
 JOIN tokens t ON t.chain_id = sqlc.arg(chain_id) AND t.token_address = p.token_address
 LEFT JOIN token_reserves r ON r.chain_id = t.chain_id AND r.token_address = t.token_address
@@ -49,3 +54,10 @@ FROM holder_balances
 WHERE chain_id = sqlc.arg(chain_id) AND token_address = sqlc.arg(token_address) AND balance > 0
 ORDER BY balance DESC, holder_address
 LIMIT sqlc.arg(row_limit);
+
+-- name: GetReconcileV4Pool :one
+-- The pool id and PoolManager of a graduated engine-2 token (docs/specs/2026-11-18-pool-reconciliation-preflight.md).
+SELECT p.pool_id, m.pool_manager
+FROM v4_pools p
+JOIN v4_pool_managers m ON m.chain_id = p.chain_id
+WHERE p.chain_id = sqlc.arg(chain_id) AND p.token_address = sqlc.arg(token_address);

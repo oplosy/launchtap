@@ -20,6 +20,7 @@ import (
 	"github.com/Contictus/launchtap/backend/internal/chain"
 	"github.com/Contictus/launchtap/backend/internal/indexer"
 	"github.com/Contictus/launchtap/backend/internal/quote"
+	"github.com/Contictus/launchtap/backend/internal/reconcile"
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/Contictus/launchtap/backend/internal/store/postgres/postgrestest"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -385,6 +386,7 @@ func TestAnvilV2LifecycleAndReorg(t *testing.T) {
 	if result := assertReconciled(t, ctx, pool, source, chainID, deploymentID); result.Tokens == 0 {
 		t.Fatal("reconciliation sampled no token")
 	}
+	assertPoolDriftDetected(t, ctx, database.DB, pool, source, chainID, deploymentID, token, reconcile.CheckV4Price)
 
 	// The public API serves the same facts.
 	tokens := storepostgres.TokenReader{Pool: pool, DeploymentID: deploymentID}

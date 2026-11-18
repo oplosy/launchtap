@@ -11,6 +11,7 @@ import (
 	"github.com/Contictus/launchtap/backend/internal/reconcile"
 	"github.com/Contictus/launchtap/backend/internal/store/postgres/sqlc"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -58,8 +59,9 @@ func (s ReconcileSource) Snapshot(ctx context.Context, tokens, holders int) (rec
 
 func (s ReconcileSource) token(ctx context.Context, adapter *Adapter, row sqlc.ListReconcileTokensRow, holders int) (reconcile.Token, error) {
 	address := common.Address(row.TokenAddress)
-	token := reconcile.Token{Address: address, Curve: common.Address(row.CurveAddress), Phase: row.Phase}
-	if row.ReserveSource == "curve" {
+	token := reconcile.Token{Address: address, Curve: common.Address(row.CurveAddress), Phase: row.Phase, ReserveSource: row.ReserveSource}
+	switch row.ReserveSource {
+	case reconcile.SourceCurve, reconcile.SourcePair:
 		eth, err := parseAmount("eth_reserve", row.EthReserveText)
 		if err != nil {
 			return reconcile.Token{}, err
@@ -68,7 +70,26 @@ func (s ReconcileSource) token(ctx context.Context, adapter *Adapter, row sqlc.L
 		if err != nil {
 			return reconcile.Token{}, err
 		}
-		token.CurveReserves = &reconcile.Reserves{ETH: eth, Token: tokens}
+		if row.ReserveSource == reconcile.SourceCurve {
+			token.CurveReserves = &reconcile.Reserves{ETH: eth, Token: tokens}
+		} else if row.LpPair != nil && row.Weth != nil {
+			// Without a pair or WETH the pass reports the missing coordinates as drift.
+			token.Pair = &reconcile.PairState{Pair: common.Address(*row.LpPair), WETH: common.Address(*row.Weth), ETH: eth, Token: tokens}
+		}
+	case reconcile.SourceV4:
+		price, err := parseAmount("sqrt_price_x96", row.SqrtPriceX96Text)
+		if err != nil {
+			return reconcile.Token{}, err
+		}
+		pool, err := adapter.queries.GetReconcileV4Pool(ctx, sqlc.GetReconcileV4PoolParams{ChainID: s.ChainID, TokenAddress: row.TokenAddress})
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			// No pool registry row: the pass reports the missing coordinates as drift.
+		case err != nil:
+			return reconcile.Token{}, fmt.Errorf("read v4 pool of %s: %w", address.Hex(), err)
+		default:
+			token.V4 = &reconcile.V4State{PoolManager: common.Address(pool.PoolManager), PoolID: common.Hash(pool.PoolID), SqrtPriceX96: price}
+		}
 	}
 	total, err := adapter.queries.SumHolderBalances(ctx, sqlc.SumHolderBalancesParams{ChainID: s.ChainID, TokenAddress: row.TokenAddress})
 	if err != nil {

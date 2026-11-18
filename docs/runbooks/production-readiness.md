@@ -155,7 +155,7 @@ Alert rules (`deploy/monitoring/alerts.yml`, unit-tested in `alerts.test.yml`):
 | `DatabaseDown` | indexer DB check down, or API pool had to make acquires wait (empty acquires rising) with no idle connection | 2m | page |
 | `WriteRejectionSpike` | 5m rejection rate > 10x the 1h average ending 15m ago, and > 0.05/s | 15m | ticket |
 | `EthUsdStale` | last ETH/USD refresh older than 600s (absent series: price source disabled, no alert) | 10m | ticket |
-| `IndexerStateDrift` | the last reconciliation pass found indexed values that differ from the chain | 25m | page |
+| `IndexerStateDrift` | the last reconciliation pass found indexed values that differ from the chain (phase, curve reserves, graduated pair reserves or v4 pool price, holder balances; the indexer log names each check) | 25m | page |
 | `IndexerReconciliationStale` | no reconciliation pass has completed its comparison for 3600s | 10m | ticket |
 
 - `IndexerObservedLagHigh` fires during the initial backfill from `StartBlock`; silence it

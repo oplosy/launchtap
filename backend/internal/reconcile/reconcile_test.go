@@ -16,7 +16,13 @@ var (
 	curveA  = common.HexToAddress("0x00000000000000000000000000000000000000c1")
 	holder1 = common.HexToAddress("0x00000000000000000000000000000000000000b1")
 	holder2 = common.HexToAddress("0x00000000000000000000000000000000000000b2")
+	pairA   = common.HexToAddress("0x00000000000000000000000000000000000000d1")
+	manager = common.HexToAddress("0x00000000000000000000000000000000000000e1")
+	poolA   = common.HexToHash("0xfeed")
 	pinned  = common.HexToHash("0x01")
+	// WETH addresses on either side of tokenA, so both pair orders are exercised.
+	wethAbove = common.HexToAddress("0x00000000000000000000000000000000000000f0")
+	wethBelow = common.HexToAddress("0x0000000000000000000000000000000000000001")
 )
 
 type fakeStore struct {
@@ -35,8 +41,12 @@ type fakeChain struct {
 	supply     *big.Int
 	balances   map[common.Address]*big.Int
 	hash       common.Hash
-	failOn     string
-	blocks     []uint64
+	// reserve0 and reserve1 answer getReserves; sqrtPrice answers the v4 slot0 read.
+	reserve0, reserve1 *big.Int
+	sqrtPrice          *big.Int
+	pools              []common.Hash
+	failOn             string
+	blocks             []uint64
 }
 
 func (c *fakeChain) fail(method string, block uint64) error {
@@ -57,6 +67,13 @@ func (c *fakeChain) TotalSupply(_ context.Context, _ common.Address, block uint6
 }
 func (c *fakeChain) BalanceOf(_ context.Context, _, holder common.Address, block uint64) (*big.Int, error) {
 	return c.balances[holder], c.fail("balance", block)
+}
+func (c *fakeChain) PairReserves(_ context.Context, _ common.Address, block uint64) (*big.Int, *big.Int, error) {
+	return c.reserve0, c.reserve1, c.fail("pair", block)
+}
+func (c *fakeChain) PoolSqrtPrice(_ context.Context, _ common.Address, poolID common.Hash, block uint64) (*big.Int, error) {
+	c.pools = append(c.pools, poolID)
+	return c.sqrtPrice, c.fail("pool", block)
 }
 func (c *fakeChain) BlockHash(_ context.Context, block uint64) (common.Hash, error) {
 	return c.hash, c.fail("hash", block)
@@ -119,14 +136,102 @@ func TestEachMismatchIsReported(t *testing.T) {
 	}
 }
 
-func TestGraduatedTokenSkipsCurveReserves(t *testing.T) {
+// graduated turns the indexed curve token into a graduated one with the given pool state.
+func graduated(source string, pair *PairState, v4 *V4State) Snapshot {
 	snapshot := indexed()
-	snapshot.Tokens[0].Phase = PhaseGraduated
+	token := &snapshot.Tokens[0]
+	token.Phase, token.ReserveSource, token.CurveReserves, token.Pair, token.V4 = PhaseGraduated, source, nil, pair, v4
+	return snapshot
+}
+
+func indexedPair(weth common.Address) *PairState {
+	return &PairState{Pair: pairA, WETH: weth, ETH: big.NewInt(5000), Token: big.NewInt(7000)}
+}
+
+func TestGraduatedPairReservesFollowTokenOrder(t *testing.T) {
+	cases := []struct {
+		name               string
+		weth               common.Address
+		reserve0, reserve1 int64
+	}{
+		// tokenA sorts below wethAbove, so it is token0 and holds reserve0.
+		{"token is token0", wethAbove, 7000, 5000},
+		{"token is token1", wethBelow, 5000, 7000},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			chain := agreeing()
+			chain.phase, chain.reserve0, chain.reserve1 = 1, big.NewInt(tc.reserve0), big.NewInt(tc.reserve1)
+			snapshot := graduated(SourcePair, indexedPair(tc.weth), nil)
+			result, err := Pass(t.Context(), fakeStore{snapshot: snapshot, ok: true}, chain, Limits{})
+			if err != nil || result.Outcome != OutcomeOK || result.Checks != 6 {
+				t.Fatalf("result = %+v, err = %v; want ok with 6 checks", result, err)
+			}
+			// Swapping the reserves on chain must surface both sides.
+			chain.reserve0, chain.reserve1 = chain.reserve1, chain.reserve0
+			result, err = Pass(t.Context(), fakeStore{snapshot: snapshot, ok: true}, chain, Limits{})
+			if err != nil || result.Outcome != OutcomeDrift || len(result.Mismatches) != 2 ||
+				result.Mismatches[0].Check != CheckPairETH || result.Mismatches[1].Check != CheckPairToken ||
+				result.Mismatches[0].Subject != pairA {
+				t.Fatalf("swapped reserves: result = %+v, err = %v; want eth and token pair mismatches", result, err)
+			}
+		})
+	}
+}
+
+func TestGraduatedV4PriceIsCompared(t *testing.T) {
 	chain := agreeing()
-	chain.phase, chain.eth = 1, big.NewInt(0)
+	chain.phase, chain.sqrtPrice = 1, big.NewInt(79228162514264337)
+	snapshot := graduated(SourceV4, nil, &V4State{PoolManager: manager, PoolID: poolA, SqrtPriceX96: big.NewInt(79228162514264337)})
 	result, err := Pass(t.Context(), fakeStore{snapshot: snapshot, ok: true}, chain, Limits{})
-	if err != nil || result.Outcome != OutcomeOK || result.Checks != 4 {
-		t.Fatalf("result = %+v, err = %v; want ok with 4 checks", result, err)
+	if err != nil || result.Outcome != OutcomeOK || result.Checks != 5 || len(chain.pools) != 1 || chain.pools[0] != poolA {
+		t.Fatalf("result = %+v, err = %v, pools read %v; want ok with 5 checks reading pool %s", result, err, chain.pools, poolA)
+	}
+	chain.sqrtPrice = big.NewInt(1)
+	result, err = Pass(t.Context(), fakeStore{snapshot: snapshot, ok: true}, chain, Limits{})
+	if err != nil || result.Outcome != OutcomeDrift || len(result.Mismatches) != 1 || result.Mismatches[0].Check != CheckV4Price || result.Mismatches[0].Subject != manager {
+		t.Fatalf("moved price: result = %+v, err = %v; want one %s mismatch", result, err, CheckV4Price)
+	}
+}
+
+func TestGraduatedTokenWithoutPoolStateIsDrift(t *testing.T) {
+	cases := []struct {
+		name, source, indexed string
+	}{
+		{"curve row left behind", SourceCurve, SourceCurve},
+		{"no reserve row", "", "missing"},
+		{"pair row without coordinates", SourcePair, "pair without pool coordinates"},
+		{"v4 row without pool registry", SourceV4, "v4 without pool coordinates"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			chain := agreeing()
+			chain.phase = 1
+			result, err := Pass(t.Context(), fakeStore{snapshot: graduated(tc.source, nil, nil), ok: true}, chain, Limits{})
+			if err != nil || result.Outcome != OutcomeDrift || len(result.Mismatches) != 1 ||
+				result.Mismatches[0].Check != CheckPoolSource || result.Mismatches[0].Indexed != tc.indexed {
+				t.Fatalf("result = %+v, err = %v; want one %s mismatch with indexed %q", result, err, CheckPoolSource, tc.indexed)
+			}
+		})
+	}
+}
+
+func TestCurveTokenWithPoolSourceIsDrift(t *testing.T) {
+	snapshot := indexed()
+	snapshot.Tokens[0].ReserveSource = SourceV4
+	result, err := Pass(t.Context(), fakeStore{snapshot: snapshot, ok: true}, agreeing(), Limits{})
+	if err != nil || result.Outcome != OutcomeDrift || len(result.Mismatches) != 1 || result.Mismatches[0].Check != CheckPoolSource {
+		t.Fatalf("result = %+v, err = %v; want one %s mismatch", result, err, CheckPoolSource)
+	}
+}
+
+func TestPhaseDisagreementSkipsPoolState(t *testing.T) {
+	// Indexed graduated, chain still curve: only the phase is reported, no pool read is attempted.
+	chain := agreeing()
+	chain.failOn = "pair"
+	result, err := Pass(t.Context(), fakeStore{snapshot: graduated(SourcePair, indexedPair(wethAbove), nil), ok: true}, chain, Limits{})
+	if err != nil || result.Outcome != OutcomeDrift || len(result.Mismatches) != 1 || result.Mismatches[0].Check != CheckPhase {
+		t.Fatalf("result = %+v, err = %v; want only a phase mismatch", result, err)
 	}
 }
 
@@ -145,6 +250,18 @@ func TestReadFailuresAreErrorsNotDrift(t *testing.T) {
 		chain := agreeing()
 		chain.failOn = method
 		result, err := Pass(t.Context(), fakeStore{snapshot: indexed(), ok: true}, chain, Limits{})
+		if err == nil || result.Outcome != OutcomeError || len(result.Mismatches) != 0 {
+			t.Fatalf("%s: result = %+v, err = %v; want an error outcome", method, result, err)
+		}
+	}
+	pools := map[string]Snapshot{
+		"pair": graduated(SourcePair, indexedPair(wethAbove), nil),
+		"pool": graduated(SourceV4, nil, &V4State{PoolManager: manager, PoolID: poolA, SqrtPriceX96: big.NewInt(1)}),
+	}
+	for method, snapshot := range pools {
+		chain := agreeing()
+		chain.phase, chain.failOn = 1, method
+		result, err := Pass(t.Context(), fakeStore{snapshot: snapshot, ok: true}, chain, Limits{})
 		if err == nil || result.Outcome != OutcomeError || len(result.Mismatches) != 0 {
 			t.Fatalf("%s: result = %+v, err = %v; want an error outcome", method, result, err)
 		}

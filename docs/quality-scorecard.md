@@ -41,10 +41,12 @@ named in it.
    recorded. Already met: deep-reorg soak compared with a fresh re-index (#73), reconciliation job
    with drift alerts (#74), the 2026-11-16 audit's indexer defects fixed with regression tests
    (#82, #83).
-4. **Tests and verification (9.0 → 9.5):** a coverage floor enforced in CI for the transaction and
-   API client modules; the load probe run against a test deployment. Already met: rendered
-   transaction-hook tests with a mocked wallet and coverage in CI (#71), a recorded load test of the
-   public read API (`cmd/loadprobe`, #68).
+4. **Tests and verification (9.0 → 9.5):** the load probe run against a test deployment.
+   Already met:
+   - rendered transaction-hook tests with a mocked wallet and coverage in CI (#71);
+   - a coverage floor enforced in CI for the transaction and API client modules
+     (`web/vitest.config.ts` thresholds, #75);
+   - a recorded load test of the public read API (`cmd/loadprobe`, #68).
 5. **Smart contracts (8.0 → 9):** an external audit with every finding fixed or accepted in
    writing. Already met: invariant/fuzz suites for curve math and graduation with recorded run
    parameters (`docs/audits/2026-11-14-deep-property-campaign.md`, `[profile.deep]`, #68).
