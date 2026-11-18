@@ -7,6 +7,7 @@ import { AppShell } from "@/components/app-shell";
 import { RouteTransition } from "@/components/route-transition";
 import { THEME_COOKIE } from "@/components/theme-cookie";
 import { RISK_ACK_COOKIE } from "@/legal/documents";
+import { ClientTelemetry } from "@/telemetry/client-telemetry";
 import { Providers, WalletRouteGate } from "./providers";
 
 const sans = localFont({
@@ -52,6 +53,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       className={`${sans.variable} ${mono.variable}`}
     >
       <body>
+        <ClientTelemetry />
         <Providers>
           <AppShell riskNoticeOpen={!riskAcknowledged}>
             <RouteTransition>

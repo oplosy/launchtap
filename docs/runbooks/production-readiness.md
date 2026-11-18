@@ -158,6 +158,8 @@ Alert rules (`deploy/monitoring/alerts.yml`, unit-tested in `alerts.test.yml`):
 | `EthUsdStale` | last ETH/USD refresh older than 600s (absent series: price source disabled, no alert) | 10m | ticket |
 | `IndexerStateDrift` | the last reconciliation pass found indexed values that differ from the chain (phase, curve reserves, graduated pair reserves or v4 pool price, holder balances; the indexer log names each check) | 25m | page |
 | `IndexerReconciliationStale` | no reconciliation pass has completed its comparison for 3600s | 10m | ticket |
+| `WebClientErrorsHigh` | browser errors > 5% of page loads (TTFB samples) over 30m, and at least 20 errors | 10m | ticket |
+| `WebLCPSlow` | browser-reported p75 LCP > 2.5s over 1h, with at least 50 samples | 15m | ticket |
 
 - `IndexerObservedLagHigh` fires during the initial backfill from `StartBlock`; silence it
   during first sync.
@@ -177,6 +179,13 @@ Alert rules (`deploy/monitoring/alerts.yml`, unit-tested in `alerts.test.yml`):
 - `IndexerReconciliationStale` means passes keep failing (`state reconciliation pass failed` in
   the log, `launchpad_indexer_reconciliation_runs_total{outcome="error"}` rising), usually an RPC
   that cannot serve `eth_call` at the observed block.
+- `WebClientErrorsHigh` and `WebLCPSlow` come from the browser through `POST /v1/client-events`
+  (`docs/specs/2026-11-18-client-telemetry-preflight.md`). The series carry only where an error
+  happened (`source`, route group) and its class, never a message or stack. On a ticket: find the
+  route group and class in `launchpad_web_client_errors_total`, then reproduce it in a browser.
+  A `ChunkLoadError` spike right after a deploy usually means old tabs requesting removed chunks.
+  Anyone can post these events, so treat a spike with no matching user reports as possible
+  forgery before acting.
 
 ### Live feed (P0-B)
 

@@ -145,6 +145,7 @@ func (s *Server) RegisterEventRoutes(r EventRoutes) {
 	r.Register(s.API)
 }
 func (s *Server) RegisterFeedRoutes(r FeedRoutes)               { r.Register(s.API) }
+func (s *Server) RegisterClientEventRoutes(r ClientEventRoutes) { r.Register(s.API) }
 func (s *Server) RegisterWalletRoutes(r WalletRoutes)           { r.Register(s.API) }
 func (s *Server) RegisterObservationRoutes(r ObservationRoutes) { r.Register(s.API) }
 func (s *Server) RegisterProfileRoutes(r ProfileRoutes)         { r.Register(s.API) }
@@ -222,6 +223,8 @@ func middleware(mux *http.ServeMux, cfg Config, limiter *RateLimiter, logger *sl
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		route := routePattern(mux, r)
+		// Decided from the matched pattern before a rejection relabels route.
+		userWrite := !nonUserWrites[route]
 		status := http.StatusOK
 		rw := &statusWriter{ResponseWriter: w, status: &status}
 		id := strings.TrimSpace(r.Header.Get("X-Request-ID"))
@@ -245,7 +248,7 @@ func middleware(mux *http.ServeMux, cfg Config, limiter *RateLimiter, logger *sl
 				logger.Error("panic recovered", "request_id", id, "panic", redact.Error(fmt.Errorf("%v", v)), "stack", string(debug.Stack()))
 			}
 			metrics.ObserveRequest(route, r.Method, status, time.Since(started))
-			if reason, ok := rejectionReason(r.Method, status); ok {
+			if reason, ok := rejectionReason(r.Method, status); ok && userWrite {
 				metrics.WriteRejected(reason)
 			}
 			logger.Info("http request", "request_id", id, "method", r.Method, "path", r.URL.Path, "status", status, "duration_ms", time.Since(started).Milliseconds())
@@ -318,13 +321,25 @@ func cors(w http.ResponseWriter, origins []string, r *http.Request) bool {
 	if origin == "" {
 		return true
 	}
+	if !originAllowed(origins, origin) {
+		return false
+	}
+	w.Header().Set("Access-Control-Allow-Origin", origin)
+	w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization,Content-Type,privy-id-token,If-Match,If-None-Match")
+	// X-Request-ID lets the web app show a reference a user can quote to support.
+	w.Header().Set("Access-Control-Expose-Headers", "ETag, X-Revision, Retry-After, X-Request-ID")
+	return true
+}
+
+// nonUserWrites are POST/PUT/DELETE patterns that are not user writes (telemetry beacons); their
+// rejections must not move WriteRejectionSpike.
+var nonUserWrites = map[string]bool{clientEventsPattern: true}
+
+// originAllowed reports whether origin is on the allow-list; "*" never matches.
+func originAllowed(origins []string, origin string) bool {
 	for _, allowed := range origins {
 		if allowed == origin && allowed != "*" {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Authorization,Content-Type,privy-id-token,If-Match,If-None-Match")
-			// X-Request-ID lets the web app show a reference a user can quote to support.
-			w.Header().Set("Access-Control-Expose-Headers", "ETag, X-Revision, Retry-After, X-Request-ID")
 			return true
 		}
 	}

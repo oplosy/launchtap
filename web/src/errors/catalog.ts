@@ -27,6 +27,7 @@ export const apiMessages: Readonly<Record<string, string>> = {
   invalid_side: "Choose buy or sell.",
   invalid_address: "That is not a valid address.",
   invalid_transaction_hash: "That transaction hash is not valid.",
+  invalid_client_events: "The browser report was rejected. Nothing else is affected.",
   transaction_not_indexed: "This transaction is not indexed yet. It will appear shortly.",
   snapshot_unavailable: "The indexer has not caught up yet. Try again in a few seconds.",
   // Lists, filters and pages

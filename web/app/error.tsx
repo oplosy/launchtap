@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { scrubTelemetry, safeLog } from "@/security/logging";
+import { reportBoundaryError } from "@/telemetry/client-events";
 
 export default function Error({
   error,
@@ -13,6 +14,7 @@ export default function Error({
 }) {
   useEffect(() => {
     safeLog("route_error", { digest: error.digest, error: scrubTelemetry(error) });
+    reportBoundaryError("route_boundary", error);
   }, [error]);
   return (
     <div className="page-stack">

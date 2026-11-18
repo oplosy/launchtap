@@ -3417,6 +3417,52 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/client-events": {
+      "post": {
+        "description": "Closed-set values only; the API keeps counters and histograms and stores nothing else. The body is JSON sent as text/plain so browsers need no CORS preflight.",
+        "operationId": "postClientEvents",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Origin",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "text/plain": {
+              "schema": {
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Report browser errors and Web Vitals",
+        "tags": [
+          "telemetry"
+        ]
+      }
+    },
     "/comments/{id}/report": {
       "put": {
         "operationId": "reportComment",
