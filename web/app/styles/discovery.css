@@ -88,6 +88,9 @@
   border-bottom: 1px solid var(--hairline);
   padding: 12px 0;
 }
+.token-frame {
+  display: contents;
+}
 .token-image {
   width: 44px;
   height: 44px;
@@ -265,13 +268,27 @@ html[data-theme="light"] .ui-image-fallback {
   aspect-ratio: 1;
   /* A card's artwork is the card itself, so it keeps a soft square, not the avatar circle. */
   border-radius: 8px;
-  transition: opacity var(--dur-base) var(--ease-out);
 }
 .token-list[data-layout="grid"] .token-image .ui-image-fallback-letter {
   font-size: 48px;
 }
-.token-list[data-layout="grid"] > .token-card:hover .token-image {
-  opacity: 0.88;
+/* Hover: the artwork eases in a little inside its fixed frame. */
+.token-list[data-layout="grid"] .token-frame {
+  display: block;
+  grid-column: 1 / -1;
+  overflow: hidden;
+  border-radius: 8px;
+}
+.token-list[data-layout="grid"] .token-frame > img.token-image {
+  display: block;
+}
+.token-list[data-layout="grid"] .token-frame > .token-image {
+  transition: transform 0.6s var(--ease-out);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .token-list[data-layout="grid"] > .token-card:hover .token-frame > .token-image {
+    transform: scale(1.06);
+  }
 }
 .token-list[data-layout="grid"] .token-metrics {
   grid-column: 1 / -1;
@@ -288,27 +305,26 @@ html[data-theme="light"] .ui-image-fallback {
   text-align: center;
 }
 /*
- * Card caption, set like a plate label under a print: the name, the ticker in spaced capitals,
- * then a hairline and the two figures split by a vertical rule.
+ * Card caption, centred under the artwork in the one UI typeface: the name, the ticker in spaced
+ * capitals, then a hairline and the two figures split by a vertical rule.
  */
-/* The name and ticker are centred under the artwork. */
 .token-list[data-layout="grid"] .token-identity {
   grid-column: 1 / -1;
   padding-top: 2px;
   text-align: center;
 }
 .token-list[data-layout="grid"] .token-identity h3 {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 600;
-  line-height: 30px;
+  line-height: 28px;
   letter-spacing: var(--tracking-page);
 }
 .token-list[data-layout="grid"] .token-symbol {
   align-items: center;
   justify-content: center;
   margin-top: 2px;
-  font-family: var(--font-code);
   font-size: 12px;
+  font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -329,6 +345,7 @@ html[data-theme="light"] .ui-image-fallback {
 }
 .token-list[data-layout="grid"] .token-metrics dd {
   margin-top: 2px;
+  font-family: var(--font-ui);
   font-size: 16px;
   font-weight: 500;
   line-height: 22px;
