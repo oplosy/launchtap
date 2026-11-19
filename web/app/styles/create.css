@@ -142,10 +142,13 @@
     color: color-mix(in srgb, var(--text-3) 50%, transparent);
     pointer-events: none;
   }
-  /* Set lower than the panels, so the base stands below their bottom edge. */
+  /*
+   * Overhangs the panels by the same amount above and below: the row starts 72px above the fields
+   * (section padding, heading, gap), so moving the drawing down by half of that centres it on them.
+   */
   .launch-column-art svg {
     position: absolute;
-    inset: 56px auto -56px 50%;
+    inset: calc((28px + 28px + 16px) / 2) auto calc((28px + 28px + 16px) / -2) 50%;
     width: calc(100% + 2 * clamp(24px, 3vw, 56px));
     max-width: none;
     height: 100%;

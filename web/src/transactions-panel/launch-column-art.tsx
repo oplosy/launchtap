@@ -297,7 +297,7 @@ const strokes: readonly (readonly [string, string])[] = [
 export function LaunchColumnArt() {
   return (
     <div className="launch-column-art" aria-hidden="true">
-      <svg viewBox="-4 -4 208 560.4" preserveAspectRatio="xMidYMax meet" focusable="false">
+      <svg viewBox="-4 -4 208 560.4" preserveAspectRatio="xMidYMid meet" focusable="false">
         {strokes.map(([d, kind]) => (
           <path key={d} d={d} className={kind || undefined} pathLength={1} />
         ))}
