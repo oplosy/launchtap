@@ -380,30 +380,27 @@ export function BiggestLaunches() {
         <ol className="forum-launch-list">
           {items.map((token) => {
             const href = tokenHref(token.address);
-            return (
-              <li key={token.address} className="forum-launch">
+            const row = (
+              <>
                 <TokenArt address={token.address} symbol={token.symbol} />
-                <div className="forum-launch-main">
-                  {href ? (
-                    <Link href={href as never} className="forum-community">
-                      {communityLabel(token.symbol)}
-                    </Link>
-                  ) : (
-                    <span className="forum-community">{communityLabel(token.symbol)}</span>
-                  )}
+                <span className="forum-launch-main">
+                  <span className="forum-community">{communityLabel(token.symbol)}</span>
                   <span className="forum-launch-cap mono">
                     {displayAmount(token.market_cap_eth)} ETH
                   </span>
-                </div>
+                </span>
+              </>
+            );
+            // The whole row opens the token; there is no separate trade button.
+            return (
+              <li key={token.address}>
                 {href ? (
-                  <Link
-                    className="ui-button ui-button-secondary ui-button-sm"
-                    href={href as never}
-                    aria-label={`Trade ${token.symbol.trim() || "token"}`}
-                  >
-                    Trade
+                  <Link href={href as never} className="forum-launch">
+                    {row}
                   </Link>
-                ) : null}
+                ) : (
+                  <div className="forum-launch">{row}</div>
+                )}
               </li>
             );
           })}

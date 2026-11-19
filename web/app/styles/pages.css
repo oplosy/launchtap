@@ -1467,13 +1467,20 @@
 }
 .forum-launch {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) auto;
+  grid-template-columns: 36px minmax(0, 1fr);
   align-items: center;
   gap: 12px;
   border-bottom: 1px solid var(--hairline);
   padding: 12px 0;
   font-size: 14px;
   line-height: 20px;
+}
+a.forum-launch {
+  color: inherit;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+a.forum-launch:hover {
+  opacity: 0.72;
 }
 .forum-launch .forum-art {
   width: 36px;
