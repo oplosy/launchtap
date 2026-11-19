@@ -1456,17 +1456,13 @@
 }
 .forum-launch {
   display: grid;
-  grid-template-columns: 34px 36px minmax(0, 1fr) auto;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   border-bottom: 1px solid var(--hairline);
   padding: 12px 0;
   font-size: 14px;
   line-height: 20px;
-}
-.forum-launch .forum-rank {
-  font-size: 18px;
-  text-align: left;
 }
 .forum-launch .forum-art {
   width: 36px;
@@ -1502,9 +1498,18 @@
     grid-template-columns: minmax(0, 1fr) 320px;
     align-items: start;
   }
+  /* The rail stays in view beside the feed and scrolls its own list inside the window height. */
   .forum-sidebar {
     position: sticky;
     top: calc(var(--nav-height) + 24px);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    max-height: calc(100vh - var(--nav-height) - 48px);
+  }
+  .forum-sidebar .forum-launch-list {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--hairline-bright) transparent;
   }
 }
 @media (max-width: 560px) {

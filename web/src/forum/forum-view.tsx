@@ -378,11 +378,10 @@ export function BiggestLaunches() {
         <p className="forum-muted">No launches yet.</p>
       ) : (
         <ol className="forum-launch-list">
-          {items.map((token, index) => {
+          {items.map((token) => {
             const href = tokenHref(token.address);
             return (
               <li key={token.address} className="forum-launch">
-                <span className="forum-rank mono">{String(index + 1).padStart(2, "0")}</span>
                 <TokenArt address={token.address} symbol={token.symbol} />
                 <div className="forum-launch-main">
                   {href ? (

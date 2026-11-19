@@ -11,7 +11,7 @@ export const FORUM_TAB_LABELS: Record<ForumTab, string> = {
   top: "Top",
 };
 export const FORUM_PAGE_SIZE = 20;
-export const BIGGEST_LAUNCHES = 10;
+export const BIGGEST_LAUNCHES = 20;
 
 /** Reads `?tab=`; anything unknown (or repeated) falls back to New. */
 export function parseForumTab(raw: string | string[] | undefined): ForumTab {
