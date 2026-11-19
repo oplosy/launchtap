@@ -72,18 +72,29 @@
     align-items: start;
     gap: clamp(24px, 3vw, 56px);
   }
-  /* The preview card's top lines up with the first section heading, below that section's padding. */
+  /*
+   * The preview and its action span exactly the form's fields: the card's top meets the first row of
+   * fields (below the first section's 28px padding, 28px heading line and 16px gap) and the last
+   * action ends level with the last field. The column art stretches to the same row.
+   */
   .launch-aside {
-    gap: 28px;
-    margin-top: 28px;
+    display: flex;
+    flex-direction: column;
+    align-self: stretch;
+    gap: clamp(16px, 1.9vw, 28px);
+    margin-top: calc(28px + 28px + 16px);
+  }
+  .launch-aside > :last-child {
+    margin-top: auto;
   }
   .launch-aside .launch-preview-card {
     gap: 24px 28px;
     padding: 28px;
   }
+  /* The image square shrinks on narrower desktops so the aside still fits beside the form. */
   .launch-aside .launch-preview-image {
-    width: 144px;
-    height: 144px;
+    width: clamp(100px, 10vw, 144px);
+    height: clamp(100px, 10vw, 144px);
     border-radius: calc(var(--radius-container) - 4px);
     font-size: 44px;
   }
@@ -123,21 +134,22 @@
   display: none;
 }
 @media (min-width: 1024px) {
+  /* Takes the row's height without adding to it: the drawing is laid over the stretched cell. */
   .launch-column-art {
-    position: sticky;
-    top: calc(var(--nav-height) + 24px);
-    display: flex;
-    justify-content: center;
+    position: relative;
+    display: block;
+    align-self: stretch;
     color: color-mix(in srgb, var(--text-3) 50%, transparent);
     pointer-events: none;
   }
   .launch-column-art svg {
-    flex: none;
+    position: absolute;
+    inset: 0 auto 0 50%;
     width: calc(100% + 2 * clamp(24px, 3vw, 56px));
     max-width: none;
-    height: auto;
-    max-height: min(600px, calc(100vh - var(--nav-height) - 48px));
+    height: 100%;
     overflow: visible;
+    transform: translateX(-50%);
   }
   .launch-column-art path {
     fill: none;
