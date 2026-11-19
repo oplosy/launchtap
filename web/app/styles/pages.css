@@ -1322,7 +1322,10 @@
   font-size: 12px;
 }
 
-/* Every block sits on its token's artwork under a dark scrim, so the text stays white. */
+/*
+ * Every block sits on its token's artwork under a veil of the page colour: dark in the dark theme,
+ * light in the light one, so the text keeps the theme's own ink and contrast in both.
+ */
 .forum-post-backdrop {
   position: absolute;
   inset: 0;
@@ -1336,21 +1339,21 @@
   z-index: -1;
   background: linear-gradient(
     180deg,
-    rgba(0, 0, 0, 0.5) 0%,
-    rgba(0, 0, 0, 0.72) 50%,
-    rgba(0, 0, 0, 0.9) 100%
+    color-mix(in srgb, var(--canvas) 50%, transparent) 0%,
+    color-mix(in srgb, var(--canvas) 72%, transparent) 50%,
+    color-mix(in srgb, var(--canvas) 90%, transparent) 100%
   );
   content: "";
 }
 .forum-post .forum-community,
 .forum-post .forum-post-body {
-  color: #ffffff;
+  color: var(--text);
 }
 .forum-post .forum-post-time,
 .forum-post .forum-post-meta,
 .forum-post .forum-post-meta a,
 .forum-post .forum-post-score {
-  color: rgba(255, 255, 255, 0.82);
+  color: color-mix(in srgb, var(--text) 82%, transparent);
 }
 .forum-post:hover .forum-post-backdrop {
   transform: scale(1.04);
