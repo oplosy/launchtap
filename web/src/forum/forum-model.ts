@@ -43,3 +43,21 @@ export function appendForumPage(
   const seen = new Set(current.map((post) => post.id));
   return [...current, ...page.filter((post) => !seen.has(post.id))];
 }
+
+/** Type scale of a post block: short posts read like a poster, long ones at reading size. */
+export type PostScale = "poster" | "statement" | "reading";
+
+export function postScale(body: string): PostScale {
+  const length = [...body.trim()].length;
+  if (length <= 48) return "poster";
+  if (length <= 140) return "statement";
+  return "reading";
+}
+
+/**
+ * Every seventh block, starting with the fourth, is an art block: the token's artwork fills it.
+ * Only short and mid-length posts qualify, so a long post never sits on top of an image.
+ */
+export function isArtBlock(index: number, body: string): boolean {
+  return index % 7 === 3 && postScale(body) !== "reading";
+}

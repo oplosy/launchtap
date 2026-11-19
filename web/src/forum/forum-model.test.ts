@@ -4,7 +4,9 @@ import {
   appendForumPage,
   communityLabel,
   forumTabHref,
+  isArtBlock,
   parseForumTab,
+  postScale,
   tokenHref,
 } from "./forum-model";
 
@@ -44,5 +46,38 @@ describe("forum model", () => {
     expect(
       appendForumPage([post("9"), post("8")], [post("8"), post("7")]).map((p) => p.id),
     ).toEqual(["9", "8", "7"]);
+  });
+});
+
+describe("postScale", () => {
+  it("sizes a post by its length in characters", () => {
+    expect(postScale("gm")).toBe("poster");
+    expect(postScale("x".repeat(48))).toBe("poster");
+    expect(postScale("x".repeat(49))).toBe("statement");
+    expect(postScale("x".repeat(140))).toBe("statement");
+    expect(postScale("x".repeat(141))).toBe("reading");
+  });
+
+  it("counts code points and ignores surrounding whitespace", () => {
+    expect(postScale(`  ${"🚀".repeat(48)}  `)).toBe("poster");
+  });
+});
+
+describe("isArtBlock", () => {
+  it("marks every seventh block from the fourth", () => {
+    expect([0, 1, 2, 3, 4, 9, 10, 17].map((index) => isArtBlock(index, "gm"))).toEqual([
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+    ]);
+  });
+
+  it("never puts a long post on an image", () => {
+    expect(isArtBlock(3, "x".repeat(141))).toBe(false);
   });
 });

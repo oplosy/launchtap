@@ -31,6 +31,8 @@ import {
   FORUM_TAB_LABELS,
   FORUM_TABS,
   forumTabHref,
+  isArtBlock,
+  postScale,
   tokenHref,
   type ForumTab,
 } from "./forum-model";
@@ -43,12 +45,20 @@ function apiClient(): ApiClient | null {
 }
 
 /** The token's artwork, served by the API per address; a lettered tile when it is missing. */
-function TokenArt({ address, symbol }: { address: string; symbol: string }) {
+function TokenArt({
+  address,
+  symbol,
+  className = "forum-art",
+}: {
+  address: string;
+  symbol: string;
+  className?: string;
+}) {
   const configuration = publicConfiguration();
   const apiBaseUrl = configuration.status === "ready" ? configuration.apiBaseUrl : null;
   const src = resolveApiAssetUrl(apiBaseUrl, `/v1/tokens/${encodeURIComponent(address)}/image`);
   return (
-    <span className="forum-art" style={{ "--hue": addressHue(address) } as CSSProperties}>
+    <span className={className} style={{ "--hue": addressHue(address) } as CSSProperties}>
       <SafeImage src={src} alt={`${symbol.trim() || "Token"} artwork`} fallbackLabel="No artwork" />
     </span>
   );
@@ -71,7 +81,7 @@ function Loading({ label }: { label: string }) {
 
 export function ForumTabs({ active }: { active: ForumTab }) {
   return (
-    <nav className="ui-segment forum-tabs" aria-label="Forum view">
+    <nav className="forum-tabs" aria-label="Forum view">
       {FORUM_TABS.map((tab) => (
         <Link
           key={tab}
@@ -99,35 +109,44 @@ function CommunityLink({ token, symbol }: { token: string; symbol: string }) {
   );
 }
 
-function PostCard({ post, now }: { post: ForumPost; now: number }) {
+/**
+ * One post as a block: short posts set large like a poster, long ones at reading size. Art blocks
+ * lay the post over the token's artwork. The whole block is one target that opens the token.
+ */
+function PostCard({ post, now, index }: { post: ForumPost; now: number; index: number }) {
   const author = authorLabel(post.author);
   const href = tokenHref(post.token);
+  const art = isArtBlock(index, post.body);
   return (
-    <li className="forum-post">
-      <TokenArt address={post.token} symbol={post.symbol} />
-      <div className="forum-post-content">
-        <div className="forum-post-meta">
-          <CommunityLink token={post.token} symbol={post.symbol} />
-          <span aria-hidden="true">·</span>
-          {author.walletHref ? (
-            <Link href={author.walletHref as never} title={post.author.wallet ?? undefined}>
-              {author.primary}
-            </Link>
-          ) : (
-            <span title={post.author.wallet ?? undefined}>{author.primary}</span>
-          )}
-          {post.author.role === "creator" ? <Badge tone="accent">Creator</Badge> : null}
-          <span aria-hidden="true">·</span>
-          <time dateTime={post.created_at} title={formatTime(post.created_at)}>
-            {relativeTime(post.created_at, now)}
-          </time>
-          <span aria-hidden="true">·</span>
-          <span className="forum-post-score mono">{scoreLabel(post.score)}</span>
-        </div>
-        <p className="forum-post-body">{post.body}</p>
+    <li className="forum-post" data-scale={postScale(post.body)} data-art={art ? "" : undefined}>
+      {art ? (
+        <TokenArt address={post.token} symbol={post.symbol} className="forum-post-backdrop" />
+      ) : null}
+      <div className="forum-post-head">
+        {art ? null : <TokenArt address={post.token} symbol={post.symbol} />}
+        <CommunityLink token={post.token} symbol={post.symbol} />
+        <time
+          className="forum-post-time mono"
+          dateTime={post.created_at}
+          title={formatTime(post.created_at)}
+        >
+          {relativeTime(post.created_at, now)}
+        </time>
+      </div>
+      <p className="forum-post-body">{post.body}</p>
+      <div className="forum-post-meta">
+        {author.walletHref ? (
+          <Link href={author.walletHref as never} title={post.author.wallet ?? undefined}>
+            {author.primary}
+          </Link>
+        ) : (
+          <span title={post.author.wallet ?? undefined}>{author.primary}</span>
+        )}
+        {post.author.role === "creator" ? <Badge tone="accent">Creator</Badge> : null}
+        <span className="forum-post-score mono">{scoreLabel(post.score)}</span>
       </div>
       {href ? (
-        // Stretched over the card: the whole post is one target that opens the token.
+        // Stretched over the block: the whole post is one target that opens the token.
         <Link className="forum-post-open" href={href as never}>
           <span className="sr-only">Trade {post.symbol.trim() || "token"}</span>
         </Link>
@@ -231,8 +250,8 @@ function ForumFeed({ sort }: { sort: "new" | "best" }) {
   return (
     <div className="forum-feed">
       <ul className="forum-post-list">
-        {state.items.map((post) => (
-          <PostCard key={post.id} post={post} now={now} />
+        {state.items.map((post, index) => (
+          <PostCard key={post.id} post={post} now={now} index={index} />
         ))}
       </ul>
       {state.more === "error" ? (
@@ -307,7 +326,8 @@ function ForumCommunities({ sort }: { sort: "hot" | "top" }) {
         const href = tokenHref(community.token);
         return (
           <li key={community.token} className="forum-community-row">
-            <span className="forum-rank mono">{index + 1}</span>
+            <span className="forum-rank mono">{String(index + 1).padStart(2, "0")}</span>
+            <TokenArt address={community.token} symbol={community.symbol} />
             <div className="forum-community-main">
               <CommunityLink token={community.token} symbol={community.symbol} />
               <span className="forum-community-name">{community.name}</span>
@@ -367,7 +387,7 @@ export function BiggestLaunches() {
             const href = tokenHref(token.address);
             return (
               <li key={token.address} className="forum-launch">
-                <span className="forum-rank mono">{index + 1}</span>
+                <span className="forum-rank mono">{String(index + 1).padStart(2, "0")}</span>
                 <TokenArt address={token.address} symbol={token.symbol} />
                 <div className="forum-launch-main">
                   {href ? (
@@ -396,7 +416,7 @@ export function BiggestLaunches() {
         </ol>
       )}
       <Link className="forum-browse" href="/explore">
-        Browse the launchpad
+        Browse the launchpad <span aria-hidden="true">→</span>
       </Link>
     </aside>
   );

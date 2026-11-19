@@ -874,50 +874,106 @@
   gap: 10px;
 }
 
-/* Forum / Memestock: the feed of post cards, with the biggest launches in a rail beside it. */
+/*
+ * Forum / Memestock: an editorial page. A Swiss-style hero over a block feed (short posts set like
+ * posters, long ones at reading size, every seventh block laid over the token's artwork) and a
+ * ruled, numbered rail of the biggest launches. Side margins are a fixed 80 px on wide screens.
+ */
 .forum-page {
-  padding-top: clamp(24px, 3vw, 40px);
-  padding-bottom: 96px;
+  gap: clamp(40px, 5vw, 64px);
+  padding-bottom: 120px;
+}
+@media (min-width: 1024px) {
+  /* The shell gutter tops out at 80 px; this tops it up so the page sits 80 px from each edge. */
+  .forum-page {
+    margin-inline: calc(80px - var(--gutter));
+  }
+}
+.forum-hero {
+  display: grid;
+  gap: 20px;
+  align-items: end;
+  border-bottom: 1px solid var(--hairline-strong);
+  padding: clamp(48px, 7vw, 104px) 0 clamp(28px, 3vw, 40px);
+}
+.forum-hero h1 {
+  margin: 0;
+  font: var(--type-hero);
+  font-size: clamp(72px, 13vw, 200px);
+  letter-spacing: var(--tracking-hero);
+  line-height: 0.86;
+}
+.forum-hero p {
+  max-width: 38ch;
+  margin: 0;
+  color: var(--text-2);
 }
 .forum-layout {
   display: grid;
-  gap: 48px;
+  gap: 56px;
   width: 100%;
-  max-width: 1120px;
-  margin-inline: auto;
 }
 .forum-main {
   display: grid;
   align-content: start;
-  gap: 16px;
+  gap: 28px;
   min-width: 0;
 }
+
+/* Tabs: large words on a rule, the active one underlined (shared sliding indicator). */
 .forum-tabs {
-  justify-self: center;
+  position: relative;
+  display: flex;
+  gap: clamp(20px, 3vw, 40px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--hairline);
+  scrollbar-width: none;
 }
 .forum-tab {
-  display: inline-flex;
-  align-items: center;
-  height: 38px;
-  border-radius: var(--radius-pill);
-  color: var(--text-2);
-  padding: 0 16px;
-  font: var(--type-label);
   position: relative;
   z-index: 1;
+  flex: none;
+  color: var(--text-3);
+  padding: 0 0 14px;
+  font: 500 clamp(22px, 2.4vw, 30px) / 1.1 var(--font-ui);
+  letter-spacing: var(--tracking-page);
   transition: color var(--dur-fast) var(--ease-out);
 }
 .forum-tab:hover,
 .forum-tab[aria-current="page"] {
   color: var(--text);
 }
-.forum-tabs:not(:has(> .slide-indicator[data-placed])) > .forum-tab[aria-current="page"] {
-  background: var(--canvas);
-  box-shadow: 0 0 0 1px var(--hairline-strong);
+.forum-tab::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--text);
+  content: "";
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--dur-base) var(--ease-out);
 }
+.forum-tab[aria-current="page"]::after {
+  transform: scaleX(1);
+}
+.forum-tabs > .slide-indicator {
+  top: auto;
+  bottom: 0;
+  height: 2px;
+  border-radius: 0;
+  background: var(--text);
+  transform: translateX(var(--x, 0));
+}
+.forum-tabs:has(> .slide-indicator[data-placed]) > .forum-tab::after {
+  display: none;
+}
+
 .forum-feed {
   display: grid;
-  gap: 24px;
+  gap: 32px;
   justify-items: center;
 }
 .forum-post-list,
@@ -929,63 +985,68 @@
   padding: 0;
   list-style: none;
 }
+
+/* The block feed: square blocks that grow when a long post needs the room. */
 .forum-post-list {
-  gap: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 16px;
 }
 .forum-post {
   position: relative;
+  isolation: isolate;
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  align-items: start;
-  gap: 16px;
+  grid-template-rows: auto 1fr auto;
+  gap: 20px;
   min-width: 0;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-container);
-  padding: 18px 20px;
-  transition: background-color var(--dur-fast) var(--ease-out);
+  padding: 20px 22px;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
 }
 .forum-post:hover {
+  border-color: var(--hairline-bright);
   background: var(--fill);
+}
+.forum-post-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
 }
 .forum-art {
   display: block;
-  width: 44px;
-  height: 44px;
+  width: 28px;
+  height: 28px;
   flex: none;
   overflow: hidden;
   border-radius: var(--radius-avatar);
 }
-.forum-art > * {
+.forum-art > *,
+.forum-post-backdrop > * {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-.forum-post-content {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-.forum-post-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
+.forum-post-time {
+  margin-left: auto;
   color: var(--text-3);
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 12px;
+  white-space: nowrap;
 }
-/* Links inside the card stay their own targets above the stretched card link. */
+/* Links inside the block stay their own targets above the stretched block link. */
+.forum-post-head a,
 .forum-post-meta a {
   position: relative;
   z-index: 1;
   display: inline-flex;
   align-items: center;
   min-height: 24px;
-  color: var(--text-2);
-}
-.forum-post-meta a:hover,
-.forum-browse:hover {
-  color: var(--text);
-  text-decoration: underline;
 }
 .forum-community {
   min-width: 0;
@@ -993,10 +1054,13 @@
   color: var(--text);
   font-weight: 600;
 }
-.forum-post-meta .forum-community {
-  color: var(--text);
+.forum-post-head a:hover,
+.forum-post-meta a:hover,
+.forum-browse:hover {
+  text-decoration: underline;
 }
 .forum-post-body {
+  align-self: center;
   margin: 0;
   color: var(--text);
   overflow-wrap: anywhere;
@@ -1005,7 +1069,74 @@
   font-size: 18px;
   letter-spacing: var(--tracking-body);
 }
-/* Laid over the whole card, outside the grid flow, so it adds no row of its own. */
+.forum-post[data-scale="poster"] .forum-post-body {
+  font-weight: 600;
+  font-size: clamp(30px, 3vw, 40px);
+  line-height: 1.05;
+  letter-spacing: var(--tracking-hero);
+}
+.forum-post[data-scale="statement"] .forum-post-body {
+  font-weight: 500;
+  font-size: clamp(22px, 2vw, 26px);
+  line-height: 1.22;
+  letter-spacing: var(--tracking-page);
+}
+.forum-post-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 20px;
+}
+.forum-post-meta a {
+  color: var(--text-2);
+}
+.forum-post-score {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+/* Art block: the token's artwork fills the block under a dark scrim; the text stays white. */
+.forum-post-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  display: block;
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+.forum-post[data-art]::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.5) 0%,
+    rgba(0, 0, 0, 0.72) 50%,
+    rgba(0, 0, 0, 0.9) 100%
+  );
+  content: "";
+}
+.forum-post[data-art] {
+  border-color: transparent;
+}
+.forum-post[data-art] .forum-community,
+.forum-post[data-art] .forum-post-body {
+  color: #ffffff;
+}
+.forum-post[data-art] .forum-post-time,
+.forum-post[data-art] .forum-post-meta,
+.forum-post[data-art] .forum-post-meta a,
+.forum-post[data-art] .forum-post-score {
+  color: rgba(255, 255, 255, 0.82);
+}
+.forum-post[data-art]:hover .forum-post-backdrop {
+  transform: scale(1.04);
+}
+
+/* Laid over the whole block, outside the grid flow, so it adds no row of its own. */
 .forum-post-open {
   position: absolute;
   inset: 0;
@@ -1018,23 +1149,42 @@
   outline: 2px solid var(--text);
   outline-offset: 2px;
 }
+
+/* Hot / Top: a ruled, numbered ranking. */
+.forum-community-list {
+  border-top: 1px solid var(--hairline);
+}
 .forum-community-row {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto auto auto;
+  grid-template-columns: 56px 48px minmax(0, 1fr) auto auto auto;
   align-items: center;
-  gap: 12px;
-  min-height: 64px;
-  border-radius: var(--radius-container);
-  padding: 8px 16px;
+  gap: 16px;
+  min-height: 88px;
+  border-bottom: 1px solid var(--hairline);
+  padding: 12px 4px;
   font-size: 14px;
   transition: background-color var(--dur-fast) var(--ease-out);
 }
 .forum-community-row:hover {
   background: var(--fill);
 }
+.forum-community-row .forum-art {
+  width: 48px;
+  height: 48px;
+}
+.forum-community-row .forum-rank {
+  font-size: clamp(28px, 3vw, 40px);
+  line-height: 1;
+  text-align: left;
+}
 .forum-community-main {
   display: grid;
+  gap: 2px;
   min-width: 0;
+}
+.forum-community-main .forum-community {
+  font-size: clamp(20px, 2vw, 24px);
+  letter-spacing: var(--tracking-page);
 }
 .forum-community-name {
   overflow: hidden;
@@ -1057,51 +1207,47 @@
   font-size: 13px;
   text-align: right;
 }
+
+/* Rail: the biggest launches as a numbered, ruled index. */
 .forum-sidebar {
   display: grid;
   align-content: start;
-  gap: 16px;
-  border-radius: var(--radius-container);
-  background: var(--fill);
-  padding: 24px 20px;
+  gap: 20px;
 }
 .forum-sidebar h2 {
   margin: 0;
+  border-bottom: 1px solid var(--hairline-strong);
+  padding-bottom: 14px;
   font: var(--type-section);
-  font-size: 20px;
-  line-height: 28px;
-  text-align: center;
+  letter-spacing: var(--tracking-page);
 }
 .forum-sidebar .forum-error,
 .forum-sidebar .forum-muted {
   text-align: center;
 }
-/* The rail is a --fill card: red text drops under 4.5:1 there, so its error line stays neutral. */
 .forum-sidebar .forum-error {
   color: var(--text-2);
 }
 .forum-launch-list {
-  gap: 4px;
+  gap: 0;
 }
 .forum-launch {
   display: grid;
-  grid-template-columns: 16px 36px minmax(0, 1fr) auto;
+  grid-template-columns: 34px 36px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  padding: 6px 0;
+  border-bottom: 1px solid var(--hairline);
+  padding: 12px 0;
   font-size: 14px;
   line-height: 20px;
+}
+.forum-launch .forum-rank {
+  font-size: 18px;
+  text-align: left;
 }
 .forum-launch .forum-art {
   width: 36px;
   height: 36px;
-}
-/* The rail is already a --fill card; the button takes the page colour to stand off it. */
-.forum-launch .ui-button {
-  background: var(--canvas);
-}
-.forum-launch .ui-button:hover {
-  background: var(--hairline);
 }
 .forum-launch-main {
   display: grid;
@@ -1113,7 +1259,7 @@
   line-height: 18px;
 }
 .forum-browse {
-  justify-self: center;
+  justify-self: start;
   color: var(--text);
   font: var(--type-label);
 }
@@ -1128,9 +1274,14 @@
   font-size: 14px;
   text-align: center;
 }
+@media (min-width: 768px) {
+  .forum-hero {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
 @media (min-width: 1024px) {
   .forum-layout {
-    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-columns: minmax(0, 1fr) 320px;
     align-items: start;
   }
   .forum-sidebar {
@@ -1140,25 +1291,23 @@
 }
 @media (max-width: 560px) {
   .forum-post {
-    grid-template-columns: 36px minmax(0, 1fr);
-    gap: 12px;
-    padding: 14px 12px;
-  }
-  .forum-post .forum-art {
-    width: 36px;
-    height: 36px;
-  }
-  .forum-post-body {
-    font-size: 17px;
+    aspect-ratio: auto;
+    min-height: 220px;
+    padding: 18px;
   }
   .forum-community-row {
-    grid-template-columns: 24px minmax(0, 1fr) auto;
+    grid-template-columns: 40px 40px minmax(0, 1fr) auto;
+    gap: 12px;
+  }
+  .forum-community-row .forum-art {
+    width: 40px;
+    height: 40px;
   }
   .forum-community-time {
     display: none;
   }
   .forum-community-row .ui-button {
-    grid-column: 2 / -1;
+    grid-column: 3 / -1;
     justify-self: start;
   }
 }
