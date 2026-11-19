@@ -605,24 +605,9 @@
   font-size: 14px;
   text-align: center;
 }
-.command-foot {
-  display: flex;
-  flex: none;
-  gap: 16px;
-  border-top: 1px solid var(--hairline);
-  color: var(--text-3);
-  padding: 10px 16px;
-  font-size: 12px;
-}
-.command-foot kbd {
-  margin-right: 4px;
-}
 @media (max-width: 720px) {
   .command-palette {
     margin-top: 12px;
-  }
-  .command-foot {
-    display: none;
   }
 }
 

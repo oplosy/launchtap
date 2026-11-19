@@ -189,7 +189,6 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
             }
           }}
         />
-        <kbd>Esc</kbd>
       </div>
       <div className="command-list" id={listId} role="listbox" aria-label="Results">
         {groups.map((group) => (
@@ -224,15 +223,6 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
         {!(searchable && searching) && commands.length === 0 ? (
           <p className="command-empty">Nothing matches “{term}”.</p>
         ) : null}
-      </div>
-      <div className="command-foot" aria-hidden="true">
-        <span>
-          <kbd>↑</kbd>
-          <kbd>↓</kbd> to move
-        </span>
-        <span>
-          <kbd>↵</kbd> to open
-        </span>
       </div>
     </dialog>
   );
