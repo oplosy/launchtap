@@ -838,7 +838,7 @@
 }
 /*
  * Leaderboard: the forum's editorial language. Large period words on a rule, then a ruled ranking
- * with big monospace ranks; the top three are set at display size. On wide screens it is the
+ * with big monospace ranks, every row the same size. On wide screens it is the
  * docs' centred 820 px reading column, with the margins left empty.
  */
 .leaderboard-page {
@@ -919,21 +919,7 @@
   display: none;
 }
 
-/* The top three: display-size ranks and figures, the first one in full ink. */
-.leaderboard-row[data-podium] {
-  min-height: clamp(112px, 11vw, 160px);
-}
-.leaderboard-row[data-podium] .leaderboard-rank {
-  font-size: clamp(56px, 8vw, 112px);
-  font-weight: 600;
-  letter-spacing: var(--tracking-hero);
-}
-.leaderboard-row[data-podium] .leaderboard-wallet,
-.leaderboard-row[data-podium] .leaderboard-pnl {
-  font-size: clamp(22px, 2.6vw, 34px);
-  font-weight: 600;
-  letter-spacing: var(--tracking-hero);
-}
+/* The leader's rank in full ink. */
 .leaderboard-heading + .leaderboard-row .leaderboard-rank {
   color: var(--text);
 }
@@ -982,18 +968,6 @@
   }
   .leaderboard-unit {
     display: inline;
-  }
-  .leaderboard-row[data-podium] {
-    min-height: 96px;
-  }
-  .leaderboard-row[data-podium] .leaderboard-rank {
-    font-size: 40px;
-  }
-  .leaderboard-row[data-podium] .leaderboard-wallet {
-    font-size: 17px;
-  }
-  .leaderboard-row[data-podium] .leaderboard-pnl {
-    font-size: 20px;
   }
   /* Column labels make no sense once cells stack; they stay for screen readers. */
   .leaderboard-heading {

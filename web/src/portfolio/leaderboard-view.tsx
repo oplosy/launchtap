@@ -66,12 +66,7 @@ export function LeaderboardView({
         // Keyed by rank, not address: a window switch then updates each row in place. Keyed by
         // address, React moved a wallet's row to its new rank, which Chrome counts as a layout
         // shift (CLS 0.3-0.6 measured per switch).
-        <div
-          className="leaderboard-row"
-          role="row"
-          key={item.rank}
-          data-podium={item.rank <= 3 ? "" : undefined}
-        >
+        <div className="leaderboard-row" role="row" key={item.rank}>
           <span role="cell" className="mono leaderboard-rank">
             {String(item.rank).padStart(2, "0")}
           </span>
