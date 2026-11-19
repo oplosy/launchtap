@@ -49,7 +49,8 @@
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out: cubic-bezier(0.6, 0, 0.4, 1);
   --font-ui: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-code: var(--font-mono), ui-monospace, monospace;
+  /* One typeface everywhere, figures included; code and numbers keep tabular figures. */
+  --font-code: var(--font-ui);
 }
 
 html[data-theme="light"] {

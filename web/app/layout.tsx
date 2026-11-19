@@ -16,12 +16,6 @@ const sans = localFont({
   variable: "--font-sans",
   display: "swap",
 });
-const mono = localFont({
-  src: "../node_modules/@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2",
-  weight: "100 900",
-  variable: "--font-mono",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: { default: "Launchpad | Onchain launch desk", template: "%s | Launchpad" },
@@ -46,12 +40,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const riskAcknowledged = jar.get(RISK_ACK_COOKIE)?.value === "1";
   const theme = saved === "light" || saved === "dark" ? saved : undefined;
   return (
-    <html
-      lang="en"
-      data-theme={theme}
-      data-scroll-behavior="smooth"
-      className={`${sans.variable} ${mono.variable}`}
-    >
+    <html lang="en" data-theme={theme} data-scroll-behavior="smooth" className={sans.variable}>
       <body>
         <ClientTelemetry />
         <Providers>
