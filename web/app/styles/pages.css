@@ -588,6 +588,94 @@
 .docs-explorer:hover {
   border-color: var(--text);
 }
+/*
+ * The right margin's Greek key band and section emblems (DocsMarginalia). The band is revealed down
+ * to the middle of the screen as the reader scrolls; an emblem draws in once its section is reached
+ * and brightens while it is read. Only where the margin is wide enough to hold a medallion.
+ */
+.docs-marginalia {
+  display: none;
+}
+@media (min-width: 1280px) {
+  .docs-marginalia {
+    position: relative;
+    display: block;
+    grid-row: 1;
+    grid-column: 3;
+    align-self: stretch;
+    justify-self: center;
+    width: 72px;
+    color: color-mix(in srgb, var(--text-3) 50%, transparent);
+    pointer-events: none;
+  }
+  .docs-meander {
+    position: absolute;
+    inset: 0 auto 0 50%;
+    width: 24px;
+    height: 100%;
+    overflow: visible;
+    transform: translateX(-50%);
+    clip-path: inset(0 0 calc(100% - var(--docs-reveal, 0px)) 0);
+  }
+  .docs-meander path,
+  .docs-meander line {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1;
+  }
+  .docs-emblem {
+    position: absolute;
+    left: 0;
+    width: 72px;
+    height: 72px;
+    overflow: visible;
+    transform: translateY(-50%);
+    transition: color var(--dur-base) var(--ease-out);
+  }
+  .docs-emblem[data-active] {
+    color: var(--text-2);
+  }
+  /*
+   * The medallion covers the band behind it, so the band runs into it and out again. It appears
+   * with its emblem, so sections not yet reached leave no empty rings ahead of the band.
+   */
+  .docs-emblem-ring {
+    fill: var(--canvas);
+    stroke: currentColor;
+    stroke-width: 1;
+    opacity: 0;
+    transition: opacity var(--dur-base) var(--ease-out);
+  }
+  .docs-emblem[data-drawn] .docs-emblem-ring {
+    opacity: 1;
+  }
+  .docs-emblem path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    transition: stroke-dashoffset 1.6s var(--ease-out);
+  }
+  .docs-emblem[data-drawn] path {
+    stroke-dashoffset: 0;
+  }
+}
+@media (min-width: 1280px) and (prefers-reduced-motion: reduce) {
+  .docs-meander {
+    clip-path: none;
+  }
+  .docs-emblem path {
+    stroke-dashoffset: 0;
+    transition: none;
+  }
+  .docs-emblem-ring {
+    opacity: 1;
+    transition: none;
+  }
+}
 @media (max-width: 1023px) {
   .docs-layout {
     grid-template-columns: minmax(0, 1fr);

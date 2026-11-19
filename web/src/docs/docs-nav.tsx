@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { useActiveSection } from "./use-active-section";
 
 /** Table of contents: beside the text on wide screens, behind a "Contents" button below 1024 px. */
 export function DocsNav({ sections }: { sections: ReadonlyArray<{ id: string; label: string }> }) {
-  const [active, setActive] = useState(sections[0]?.id);
+  const active = useActiveSection(sections);
   const [open, setOpen] = useState(false);
   const navId = useId();
   const contentsRef = useRef<HTMLDivElement>(null);
@@ -37,21 +38,6 @@ export function DocsNav({ sections }: { sections: ReadonlyArray<{ id: string; la
       window.removeEventListener("resize", place);
     };
   }, []);
-  useEffect(() => {
-    // The section crossing the upper third of the viewport is the one being read.
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries.find((entry) => entry.isIntersecting);
-        if (visible) setActive(visible.target.id);
-      },
-      { rootMargin: "-30% 0px -65% 0px" },
-    );
-    for (const { id } of sections) {
-      const element = document.getElementById(id);
-      if (element) observer.observe(element);
-    }
-    return () => observer.disconnect();
-  }, [sections]);
   return (
     <div className="docs-contents" ref={contentsRef} data-shown={shown ? "true" : "false"}>
       <button

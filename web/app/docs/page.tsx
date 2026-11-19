@@ -1,6 +1,7 @@
 import { ArrowSquareOut } from "@/components/icons";
 import { SafeExternalLink } from "@/components/primitives";
 import { publicConfiguration } from "@/config/public";
+import { DocsMarginalia } from "@/docs/docs-marginalia";
 import { DocsNav } from "@/docs/docs-nav";
 
 // Every number on this page mirrors the engine v1 launch parameters in
@@ -393,6 +394,7 @@ export default function DocsPage() {
             </p>
           </section>
         </article>
+        <DocsMarginalia sections={SECTIONS} />
       </div>
     </div>
   );
