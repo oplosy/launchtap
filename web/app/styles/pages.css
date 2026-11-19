@@ -1471,12 +1471,14 @@
 }
 /*
  * One line per launch in three fixed columns (market cap, community name, art), spread across the
- * rail so both gaps between them are equal and every row lines up.
+ * rail so both gaps between them are equal and every row lines up. Text sits right in its
+ * column, so the ends of the figures and names line up.
  */
 .forum-launch {
   display: grid;
   grid-template-columns: 88px 88px 36px;
   justify-content: space-between;
+  text-align: right;
   align-items: center;
   gap: 12px;
   border-bottom: 1px solid var(--hairline);
