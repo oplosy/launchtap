@@ -837,7 +837,7 @@
   padding: 0 24px 16px;
 }
 /*
- * Leaderboard: the forum's editorial language. Large period words on a rule, then a ruled ranking
+ * Leaderboard: the forum's editorial language. A period dropdown like Explore's sort, then a ruled ranking
  * with big monospace ranks, every row the same size. On wide screens it is the
  * docs' centred 820 px reading column, with the margins left empty.
  */
@@ -857,7 +857,10 @@
   gap: 28px;
   width: 100%;
 }
-/* The tab rule above doubles as the table's top edge. */
+/* The period dropdown sits at the ranking's right edge, above its column labels. */
+.leaderboard-window {
+  justify-self: end;
+}
 .leaderboard-table {
   display: grid;
 }

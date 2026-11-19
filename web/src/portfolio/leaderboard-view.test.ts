@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { LeaderboardView, LeaderboardWindowTabs } from "./leaderboard-view";
+import { LeaderboardView } from "./leaderboard-view";
 
 const NAMED = "0x00000000000000000000000000000000000000ab";
 const PLAIN = "0x00000000000000000000000000000000000000ac";
@@ -24,17 +24,5 @@ describe("LeaderboardView", () => {
   it("explains an empty window", () => {
     const html = renderToStaticMarkup(createElement(LeaderboardView, { items: [], period: "7d" }));
     expect(html).toContain("in the last 7 days");
-  });
-});
-
-describe("LeaderboardWindowTabs", () => {
-  it("links every period and marks the active one", () => {
-    const html = renderToStaticMarkup(createElement(LeaderboardWindowTabs, { active: "30d" }));
-    expect(html).toContain('href="/leaderboard"');
-    expect(html).toContain('href="/leaderboard?window=7d"');
-    expect(html).toMatch(
-      /href="\/leaderboard\?window=30d" aria-current="page"|aria-current="page"[^>]*href="\/leaderboard\?window=30d"/,
-    );
-    expect(html.match(/aria-current/g)?.length).toBe(1);
   });
 });

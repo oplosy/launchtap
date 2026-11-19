@@ -11,8 +11,8 @@ export const LEADERBOARD_WINDOWS = ["all", "7d", "30d"] as const;
 export type LeaderboardWindow = (typeof LEADERBOARD_WINDOWS)[number];
 export const LEADERBOARD_WINDOW_LABELS: Record<LeaderboardWindow, string> = {
   all: "All time",
-  "7d": "7d",
-  "30d": "30d",
+  "7d": "Last 7 days",
+  "30d": "Last 30 days",
 };
 
 /** Reads `?window=`; anything unknown (or repeated) falls back to all time. */

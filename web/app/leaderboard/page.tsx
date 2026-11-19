@@ -9,7 +9,8 @@ import {
   parseLeaderboardWindow,
   type LeaderboardWindow,
 } from "@/portfolio/leaderboard-data";
-import { LeaderboardView, LeaderboardWindowTabs } from "@/portfolio/leaderboard-view";
+import { LeaderboardView } from "@/portfolio/leaderboard-view";
+import { LeaderboardWindowSelect } from "@/portfolio/leaderboard-window-select";
 
 export const revalidate = 60;
 export const metadata: Metadata = { title: "Leaderboard" };
@@ -35,13 +36,13 @@ export default async function LeaderboardPage({
   return (
     <div className="page-stack leaderboard-page">
       {/* One heading for every window: a per-window heading wrapped to a second line on mobile
-          and pushed the whole board down on each switch. The active tab names the window. */}
+          and pushed the whole board down on each switch. The period dropdown names the window. */}
       <h1 className="sr-only">Leaderboard</h1>
       <section
         className="leaderboard-board"
         aria-label={`Ranking, ${LEADERBOARD_WINDOW_LABELS[period].toLowerCase()}`}
       >
-        <LeaderboardWindowTabs active={period} />
+        <LeaderboardWindowSelect active={period} />
         {/* Not keyed by period: a window switch is a router transition, so React keeps the
             current table until the new one streams instead of collapsing to the skeleton,
             which shifted the page footer (CLS 0.9 measured on a window switch). */}

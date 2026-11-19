@@ -1,33 +1,9 @@
 import Link from "next/link";
 import type { LeaderboardResponse } from "@/api/client";
 import { EmptyState } from "@/components/primitives";
-import { SlidingIndicator } from "@/components/sliding-indicator";
 import { shortAddress } from "@/token/address";
-import {
-  LEADERBOARD_WINDOW_LABELS,
-  LEADERBOARD_WINDOWS,
-  type LeaderboardWindow,
-} from "./leaderboard-data";
+import type { LeaderboardWindow } from "./leaderboard-data";
 import { formatSignedEth, pnlTone, walletPath } from "./wallet-model";
-
-/** Window tabs as plain links, so the choice lives in the URL and works without JavaScript. */
-export function LeaderboardWindowTabs({ active }: { active: LeaderboardWindow }) {
-  return (
-    <nav className="forum-tabs leaderboard-tabs" aria-label="Leaderboard period">
-      {LEADERBOARD_WINDOWS.map((option) => (
-        <Link
-          key={option}
-          className="forum-tab"
-          href={(option === "all" ? "/leaderboard" : `/leaderboard?window=${option}`) as never}
-          aria-current={active === option ? "page" : undefined}
-        >
-          {LEADERBOARD_WINDOW_LABELS[option]}
-        </Link>
-      ))}
-      <SlidingIndicator />
-    </nav>
-  );
-}
 
 /** Ranked realized-PnL table; a plain server-renderable view with no hooks or client state. */
 export function LeaderboardView({

@@ -370,12 +370,15 @@ test("the leaderboard lists ranks", async ({ page }) => {
       fullPage: true,
       animations: "disabled",
     });
-    // The period tabs run along the ranking's rule; ranks are end-aligned so their digits line up.
-    const tabs = page.getByRole("navigation", { name: "Leaderboard period" });
-    const box = (await tabs.boundingBox())!;
+    // The period dropdown sits at the ranking's right edge and switches the window in the URL;
+    // ranks are end-aligned so their digits line up.
+    const period = page.getByRole("combobox", { name: "Period" });
+    const box = (await period.boundingBox())!;
     const board = (await table.boundingBox())!;
-    expect(Math.abs(box.x - board.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(box.width - board.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box.x + box.width - (board.x + board.width))).toBeLessThanOrEqual(1);
+    await period.selectOption("7d");
+    await expect(page).toHaveURL(/\/leaderboard\?window=7d$/);
+    await expect(period).toHaveValue("7d");
     const rank = table.getByRole("row").nth(1).locator(":scope > *").first();
     expect(await rank.evaluate((node) => getComputedStyle(node).textAlign)).toMatch(
       /^(right|end)$/,
