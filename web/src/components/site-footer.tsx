@@ -61,6 +61,7 @@ export function SiteFooter() {
             <Link href={"/explore" as never}>Explore</Link>
             <Link href="/create">Create</Link>
             <Link href="/forum">Forum</Link>
+            <Link href="/rewards">Rewards</Link>
           </FooterSection>
           <FooterSection label="Data">
             <Link href="/leaderboard">Leaderboard</Link>

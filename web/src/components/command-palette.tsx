@@ -6,6 +6,7 @@ import {
   ArrowRight,
   BookOpenText,
   ChartLineUp,
+  Coins,
   Compass,
   Desktop,
   MagnifyingGlass,
@@ -38,6 +39,7 @@ const PAGES = [
   { href: "/", label: "Explore", keywords: "home launches tokens", icon: <Compass /> },
   { href: "/create", label: "Create a launch", keywords: "new token launch", icon: <Plus /> },
   { href: "/analytics", label: "Analytics", keywords: "stats volume", icon: <ChartLineUp /> },
+  { href: "/rewards", label: "Rewards", keywords: "creator fees claims earn", icon: <Coins /> },
   { href: "/docs", label: "Docs", keywords: "help curve fees risk", icon: <BookOpenText /> },
   { href: "/profile", label: "Profile", keywords: "account wallet claims", icon: <UserCircle /> },
 ] as const;

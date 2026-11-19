@@ -325,6 +325,54 @@ test("the username form saves a name and published wallets, and shows server rej
   expect(unauthenticated).toEqual([]);
 });
 
+test("rewards totals the linked wallets' creator fees and refunds and links each claim", async ({
+  page,
+}) => {
+  const other = "0x00000000000000000000000000000000000000dd";
+  await signIn(page);
+  const unauthenticated = await installApi(page, async (path, request, json) => {
+    if (path === "/profile") {
+      const headers = request.headers();
+      if (headers.authorization !== `Bearer ${SESSION.accessToken}`) return json({}, 401);
+      return json({
+        snapshot,
+        items: [
+          {
+            token: TOKEN,
+            curve: TOKEN,
+            name: "Alpha",
+            symbol: "ALP",
+            phase: "curve",
+            creator_fees: wad("2"),
+            refund: "0",
+          },
+          {
+            token: other,
+            curve: other,
+            name: "Beta",
+            symbol: "BET",
+            phase: "graduated",
+            creator_fees: wad("1"),
+            refund: wad("3"),
+          },
+        ],
+      });
+    }
+    return false;
+  });
+
+  await page.goto("/rewards");
+  await expect(page.getByRole("heading", { name: "Rewards.", exact: true })).toBeVisible();
+  const yours = page.getByRole("region", { name: "Your rewards" });
+  await expect(yours.getByText("Creator fees to claim")).toBeVisible();
+  await expect(yours.locator(".rewards-totals dd").first()).toContainText("3 ETH");
+  await expect(yours.locator(".rewards-totals dd").nth(1)).toContainText("3 ETH");
+  const claims = yours.getByRole("link", { name: "Claim", exact: true });
+  await expect(claims).toHaveCount(2);
+  await expect(claims.first()).toHaveAttribute("href", `/token/${TOKEN}`);
+  expect(unauthenticated).toEqual([]);
+});
+
 test("the inbox lists notifications, marks them read and loads more", async ({ page }) => {
   const reads: unknown[] = [];
   const item = (id: number, kind: "graduation" | "large_trade", symbol: string) => ({

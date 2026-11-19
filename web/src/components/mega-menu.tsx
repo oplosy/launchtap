@@ -8,6 +8,7 @@ import { focusLeftMenu } from "./menu-focus";
 export const NAV_LINKS: ReadonlyArray<{ href: string; label: string }> = [
   { href: "/explore", label: "Explore" },
   { href: "/forum", label: "Forum" },
+  { href: "/rewards", label: "Rewards" },
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/analytics", label: "Analytics" },
   { href: "/docs", label: "Docs" },

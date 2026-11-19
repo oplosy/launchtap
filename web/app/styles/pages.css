@@ -1714,3 +1714,94 @@ a.forum-launch:hover {
     justify-self: start;
   }
 }
+
+/* Rewards: how a creator earns, then what the signed-in account can claim. */
+.rewards-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  list-style: none;
+}
+.rewards-steps li {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--fill) 50%, var(--canvas));
+  padding: 20px 22px 22px;
+}
+.rewards-step-index {
+  color: var(--text-3);
+  font: var(--type-label);
+}
+.rewards-steps h3 {
+  font: var(--type-section);
+}
+.rewards-steps p {
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 24px;
+}
+.rewards-more {
+  margin-top: 14px;
+  font: var(--type-label);
+}
+.rewards-more a,
+.rewards-panel > p a {
+  border-bottom: 1px solid var(--hairline-bright);
+  transition: border-color var(--dur-fast) linear;
+}
+.rewards-more a:hover,
+.rewards-panel > p a:hover {
+  border-color: var(--text);
+}
+.rewards-panel {
+  display: grid;
+  gap: 16px;
+  padding-bottom: 24px;
+}
+.rewards-panel h2 {
+  font: var(--type-section);
+}
+.rewards-panel > p:not(.discovery-notice) {
+  color: var(--text-2);
+}
+.rewards-panel > .ui-button {
+  justify-self: start;
+}
+.rewards-totals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.rewards-totals > div {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+.rewards-totals dt {
+  color: var(--text-3);
+  font: var(--type-label);
+}
+.rewards-totals dd {
+  display: grid;
+  gap: 2px;
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 36px;
+}
+.rewards-list li > .profile-action-values {
+  margin-left: auto;
+}
+.rewards-list li > .ui-button {
+  flex: none;
+}
+@media (max-width: 767px) {
+  .rewards-steps,
+  .rewards-totals {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
