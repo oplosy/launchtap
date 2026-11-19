@@ -589,8 +589,8 @@
   border-color: var(--text);
 }
 /*
- * The right margin's Greek key band and section emblems (DocsMarginalia). The band is revealed down
- * to the middle of the screen as the reader scrolls; an emblem draws in once its section is reached
+ * The right margin's slalom line and section emblems (DocsMarginalia). The line is revealed down to
+ * the middle of the screen as the reader scrolls; an emblem draws in once its section is reached
  * and brightens while it is read. Only where the margin is wide enough to hold a medallion.
  */
 .docs-marginalia {
@@ -608,17 +608,15 @@
     color: color-mix(in srgb, var(--text-3) 50%, transparent);
     pointer-events: none;
   }
-  .docs-meander {
+  .docs-thread {
     position: absolute;
-    inset: 0 auto 0 50%;
-    width: 24px;
+    inset: 0;
+    width: 100%;
     height: 100%;
     overflow: visible;
-    transform: translateX(-50%);
-    clip-path: inset(0 0 calc(100% - var(--docs-reveal, 0px)) 0);
+    clip-path: inset(-2px -40px calc(100% - var(--docs-reveal, 0px)) -40px);
   }
-  .docs-meander path,
-  .docs-meander line {
+  .docs-thread path {
     fill: none;
     stroke: currentColor;
     stroke-width: 1;
@@ -664,7 +662,7 @@
   }
 }
 @media (min-width: 1280px) and (prefers-reduced-motion: reduce) {
-  .docs-meander {
+  .docs-thread {
     clip-path: none;
   }
   .docs-emblem path {

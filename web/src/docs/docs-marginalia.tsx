@@ -4,21 +4,52 @@ import { useEffect, useRef, useState } from "react";
 import { docsEmblems } from "./docs-emblems";
 import { useActiveSection } from "./use-active-section";
 
+const WIDTH = 72;
+const MIDDLE = WIDTH / 2;
+const SWAY = 26;
+const STRIDE = 96;
+
 /**
- * The docs' right margin: a Greek key band that draws itself down the page as the reader scrolls
- * (it reaches the middle of the screen), and a line emblem beside the illustrated sections, drawn
- * in once the reader reaches that section. Decorative only, and shown on wide screens only.
+ * A thin line that slaloms down the margin, crossing the middle at every emblem: between two
+ * stops it makes an even number of half-waves, alternating sides, each a cubic whose controls sit
+ * 4/3 of the sway out so the turn peaks at exactly `SWAY` and joins its neighbour smoothly.
+ */
+function threadPath(height: number, stops: readonly number[]) {
+  const points = [0, ...stops.filter((y) => y > 0 && y < height).sort((a, b) => a - b), height];
+  let d = `M${MIDDLE} 0`;
+  let side = 1;
+  for (let i = 1; i < points.length; i += 1) {
+    const from = points[i - 1] ?? 0;
+    const to = points[i] ?? 0;
+    const turns = Math.max(2, 2 * Math.round((to - from) / STRIDE / 2));
+    const step = (to - from) / turns;
+    for (let k = 0; k < turns; k += 1) {
+      const a = from + k * step;
+      const x = MIDDLE + (side * SWAY * 4) / 3;
+      d += `C${x.toFixed(1)} ${(a + step / 4).toFixed(1)} ${x.toFixed(1)} ${(a + (3 * step) / 4).toFixed(1)} ${MIDDLE} ${(a + step).toFixed(1)}`;
+      side = -side;
+    }
+  }
+  return d;
+}
+
+/**
+ * The docs' right margin: a thin line that slaloms down the page as the reader scrolls (drawn down
+ * to the middle of the screen), and a line emblem beside the illustrated sections, drawn in once
+ * the reader reaches that section. Decorative only, and shown on wide screens only.
  */
 export function DocsMarginalia({ sections }: { sections: ReadonlyArray<{ id: string }> }) {
   const active = useActiveSection(sections);
   const rootRef = useRef<HTMLDivElement>(null);
   // Each emblem sits level with its section heading, measured from the top of the margin.
   const [offsets, setOffsets] = useState<Readonly<Record<string, number>>>({});
+  const [height, setHeight] = useState(0);
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
     const measure = () => {
-      const top = root.getBoundingClientRect().top;
+      const { top, height: rootHeight } = root.getBoundingClientRect();
+      setHeight(Math.round(rootHeight));
       const next: Record<string, number> = {};
       for (const id of Object.keys(docsEmblems)) {
         const heading = document.getElementById(id)?.querySelector("h2");
@@ -55,18 +86,11 @@ export function DocsMarginalia({ sections }: { sections: ReadonlyArray<{ id: str
   const activeIndex = sections.findIndex(({ id }) => id === active);
   return (
     <div className="docs-marginalia" ref={rootRef} aria-hidden="true">
-      <svg className="docs-meander" focusable="false">
-        <defs>
-          {/* One turn of the key, in pixels; the spiral hangs off the line at x = 20. */}
-          <pattern id="docs-meander-key" width="24" height="18" patternUnits="userSpaceOnUse">
-            <path d="M20 0.5H4.5V14.5H15.5V4.5H8.5V10.5H12" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#docs-meander-key)" />
-        <line x1="0.5" x2="0.5" y1="0" y2="100%" />
-        <line x1="20" x2="20" y1="0" y2="100%" />
-        <line x1="23.5" x2="23.5" y1="0" y2="100%" />
-      </svg>
+      {height > 0 ? (
+        <svg className="docs-thread" focusable="false">
+          <path d={threadPath(height, Object.values(offsets))} />
+        </svg>
+      ) : null}
       {sections.map(({ id }, index) => {
         const paths = docsEmblems[id];
         const top = offsets[id];
