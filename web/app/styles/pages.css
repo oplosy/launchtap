@@ -1529,11 +1529,58 @@ a.forum-launch:hover {
     grid-template-rows: auto minmax(0, 1fr) auto;
     max-height: calc(100vh - var(--nav-height) - 48px);
   }
+  /*
+   * No scrollbar: the list fades out at an edge while more launches lie past it. The fades follow
+   * the scroll position (bottom only at the top, both mid-list, top only at the end); a browser
+   * without scroll-driven animations keeps a fixed bottom fade.
+   */
   .forum-sidebar .forum-launch-list {
+    --fade-top: 0px;
+    --fade-bottom: 56px;
     overflow-y: auto;
     overscroll-behavior: contain;
-    scrollbar-width: thin;
-    scrollbar-color: var(--hairline-bright) transparent;
+    scrollbar-width: none;
+    mask-image: linear-gradient(
+      to bottom,
+      transparent,
+      #000 var(--fade-top),
+      #000 calc(100% - var(--fade-bottom)),
+      transparent
+    );
+  }
+  .forum-sidebar .forum-launch-list::-webkit-scrollbar {
+    display: none;
+  }
+  @supports (animation-timeline: scroll()) {
+    .forum-sidebar .forum-launch-list {
+      animation: forum-rail-fade linear both;
+      animation-timeline: scroll(self);
+    }
+  }
+}
+@property --fade-top {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --fade-bottom {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@keyframes forum-rail-fade {
+  from {
+    --fade-top: 0px;
+    --fade-bottom: 56px;
+  }
+  12%,
+  88% {
+    --fade-top: 56px;
+    --fade-bottom: 56px;
+  }
+  to {
+    --fade-top: 56px;
+    --fade-bottom: 0px;
   }
 }
 @media (max-width: 560px) {
