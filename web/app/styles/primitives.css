@@ -43,7 +43,7 @@
   text-align: center;
 }
 .page-section-head h2 {
-  font-size: clamp(30px, 3vw, 44px);
+  font-size: clamp(28px, 2.6vw, 38px);
   font-weight: 400;
   line-height: 1.1;
   letter-spacing: var(--tracking-page);
