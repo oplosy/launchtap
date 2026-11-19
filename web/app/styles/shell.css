@@ -205,8 +205,9 @@
 .app-footer {
   width: 100%;
   max-width: calc(var(--measure-page) + 2 * var(--gutter));
-  margin: var(--section-gap) auto 0;
-  padding: 64px var(--gutter) 48px;
+  /* 60% of the section gap: the page's last block and the footer read as one page. */
+  margin: calc(var(--section-gap) * 0.6) auto 0;
+  padding: 38px var(--gutter) 48px;
 }
 /* Brand | sections | about, as three columns; stacked below 1024 px. */
 .footer-main {
@@ -403,7 +404,7 @@
 
 @media (max-width: 1023px) {
   .app-footer {
-    padding-top: 48px;
+    padding-top: 29px;
     padding-bottom: 32px;
   }
   .footer-main {

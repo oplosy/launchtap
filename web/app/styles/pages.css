@@ -149,7 +149,7 @@
 .analytics-page {
   gap: clamp(40px, 5vw, 64px);
   padding-top: clamp(32px, 4vw, 56px);
-  padding-bottom: 120px;
+  padding-bottom: 72px;
 }
 @media (min-width: 1024px) {
   /* The shell gutter tops out at 80 px; this tops it up so the page sits 80 px from each edge. */
@@ -436,7 +436,7 @@
 /* Docs: a centred 820 px reading column; contents sit in the left gutter, or behind a button. */
 .docs-page {
   padding-top: clamp(48px, 7.5vw, 96px);
-  padding-bottom: 96px;
+  padding-bottom: 58px;
 }
 .docs-layout {
   display: grid;
@@ -755,7 +755,7 @@
 .leaderboard-page {
   gap: clamp(40px, 5vw, 64px);
   padding-top: clamp(32px, 4vw, 56px);
-  padding-bottom: 120px;
+  padding-bottom: 72px;
 }
 @media (min-width: 1024px) {
   /* The shell gutter tops out at 80 px; this tops it up so the page sits 80 px from each edge. */
@@ -1131,7 +1131,7 @@
  */
 .forum-page {
   padding-top: clamp(32px, 4vw, 56px);
-  padding-bottom: 120px;
+  padding-bottom: 72px;
 }
 @media (min-width: 1024px) {
   /* The shell gutter tops out at 80 px; this tops it up so the page sits 80 px from each edge. */
@@ -1231,16 +1231,8 @@
   min-width: 0;
   aspect-ratio: 1;
   overflow: hidden;
-  border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-container);
   padding: 20px 22px;
-  transition:
-    border-color var(--dur-fast) var(--ease-out),
-    background-color var(--dur-fast) var(--ease-out);
-}
-.forum-post:hover {
-  border-color: var(--hairline-bright);
-  background: var(--fill);
 }
 .forum-post-head {
   display: flex;
@@ -1330,7 +1322,7 @@
   font-size: 12px;
 }
 
-/* Art block: the token's artwork fills the block under a dark scrim; the text stays white. */
+/* Every block sits on its token's artwork under a dark scrim, so the text stays white. */
 .forum-post-backdrop {
   position: absolute;
   inset: 0;
@@ -1338,7 +1330,7 @@
   display: block;
   transition: transform var(--dur-slow) var(--ease-out);
 }
-.forum-post[data-art]::before {
+.forum-post::before {
   position: absolute;
   inset: 0;
   z-index: -1;
@@ -1350,20 +1342,17 @@
   );
   content: "";
 }
-.forum-post[data-art] {
-  border-color: transparent;
-}
-.forum-post[data-art] .forum-community,
-.forum-post[data-art] .forum-post-body {
+.forum-post .forum-community,
+.forum-post .forum-post-body {
   color: #ffffff;
 }
-.forum-post[data-art] .forum-post-time,
-.forum-post[data-art] .forum-post-meta,
-.forum-post[data-art] .forum-post-meta a,
-.forum-post[data-art] .forum-post-score {
+.forum-post .forum-post-time,
+.forum-post .forum-post-meta,
+.forum-post .forum-post-meta a,
+.forum-post .forum-post-score {
   color: rgba(255, 255, 255, 0.82);
 }
-.forum-post[data-art]:hover .forum-post-backdrop {
+.forum-post:hover .forum-post-backdrop {
   transform: scale(1.04);
 }
 

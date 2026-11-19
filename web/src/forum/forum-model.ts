@@ -53,11 +53,3 @@ export function postScale(body: string): PostScale {
   if (length <= 140) return "statement";
   return "reading";
 }
-
-/**
- * Every seventh block, starting with the fourth, is an art block: the token's artwork fills it.
- * Only short and mid-length posts qualify, so a long post never sits on top of an image.
- */
-export function isArtBlock(index: number, body: string): boolean {
-  return index % 7 === 3 && postScale(body) !== "reading";
-}

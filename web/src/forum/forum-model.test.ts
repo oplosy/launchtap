@@ -4,7 +4,6 @@ import {
   appendForumPage,
   communityLabel,
   forumTabHref,
-  isArtBlock,
   parseForumTab,
   postScale,
   tokenHref,
@@ -60,24 +59,5 @@ describe("postScale", () => {
 
   it("counts code points and ignores surrounding whitespace", () => {
     expect(postScale(`  ${"🚀".repeat(48)}  `)).toBe("poster");
-  });
-});
-
-describe("isArtBlock", () => {
-  it("marks every seventh block from the fourth", () => {
-    expect([0, 1, 2, 3, 4, 9, 10, 17].map((index) => isArtBlock(index, "gm"))).toEqual([
-      false,
-      false,
-      false,
-      true,
-      false,
-      false,
-      true,
-      true,
-    ]);
-  });
-
-  it("never puts a long post on an image", () => {
-    expect(isArtBlock(3, "x".repeat(141))).toBe(false);
   });
 });

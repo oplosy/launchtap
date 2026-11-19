@@ -31,7 +31,6 @@ import {
   FORUM_TAB_LABELS,
   FORUM_TABS,
   forumTabHref,
-  isArtBlock,
   postScale,
   tokenHref,
   type ForumTab,
@@ -110,20 +109,16 @@ function CommunityLink({ token, symbol }: { token: string; symbol: string }) {
 }
 
 /**
- * One post as a block: short posts set large like a poster, long ones at reading size. Art blocks
- * lay the post over the token's artwork. The whole block is one target that opens the token.
+ * One post as a block over its token's artwork: short posts set large like a poster, long ones at
+ * reading size. The whole block is one target that opens the token.
  */
-function PostCard({ post, now, index }: { post: ForumPost; now: number; index: number }) {
+function PostCard({ post, now }: { post: ForumPost; now: number }) {
   const author = authorLabel(post.author);
   const href = tokenHref(post.token);
-  const art = isArtBlock(index, post.body);
   return (
-    <li className="forum-post" data-scale={postScale(post.body)} data-art={art ? "" : undefined}>
-      {art ? (
-        <TokenArt address={post.token} symbol={post.symbol} className="forum-post-backdrop" />
-      ) : null}
+    <li className="forum-post" data-scale={postScale(post.body)}>
+      <TokenArt address={post.token} symbol={post.symbol} className="forum-post-backdrop" />
       <div className="forum-post-head">
-        {art ? null : <TokenArt address={post.token} symbol={post.symbol} />}
         <CommunityLink token={post.token} symbol={post.symbol} />
         <time
           className="forum-post-time mono"
@@ -250,8 +245,8 @@ function ForumFeed({ sort }: { sort: "new" | "best" }) {
   return (
     <div className="forum-feed">
       <ul className="forum-post-list">
-        {state.items.map((post, index) => (
-          <PostCard key={post.id} post={post} now={now} index={index} />
+        {state.items.map((post) => (
+          <PostCard key={post.id} post={post} now={now} />
         ))}
       </ul>
       {state.more === "error" ? (
