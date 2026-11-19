@@ -1466,21 +1466,29 @@
 .forum-sidebar .forum-error {
   color: var(--text-2);
 }
-.forum-launch-list {
-  gap: 0;
-}
 /*
- * One line per launch in three fixed columns (market cap, community name, art), spread across the
- * rail so both gaps between them are equal and every row lines up. Text sits right in its
- * column, so the ends of the figures and names line up.
+ * Three columns shared by every row (market cap, community name, art): each column is as wide as
+ * its widest entry, two equal gaps apart, and figures and names sit right in their columns so
+ * their ends line up. A long name gives way first (ellipsis). Beside the feed the columns spread
+ * across the narrow rail; full width under the feed they keep a fixed gap.
  */
+.forum-launch-list {
+  grid-template-columns: max-content minmax(0, max-content) 36px;
+  justify-content: start;
+  column-gap: 40px;
+  row-gap: 0;
+}
+.forum-launch-list > li {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
 .forum-launch {
   display: grid;
-  grid-template-columns: 88px 88px 36px;
-  justify-content: space-between;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   text-align: right;
   align-items: center;
-  gap: 12px;
   border-bottom: 1px solid var(--hairline);
   padding: 12px 0;
   font-size: 14px;
@@ -1542,6 +1550,8 @@ a.forum-launch:hover {
    * without scroll-driven animations keeps a fixed bottom fade.
    */
   .forum-sidebar .forum-launch-list {
+    justify-content: space-between;
+    column-gap: 16px;
     --fade-top: 0px;
     --fade-bottom: 56px;
     overflow-y: auto;
