@@ -290,27 +290,98 @@ html[data-theme="light"] .ui-image-fallback {
 .token-list[data-layout="grid"] .token-metrics dd {
   text-align: start;
 }
-/* Card text reads at a size that holds its own next to the artwork. */
+/*
+ * Card caption, set like a plate label under a print: the name, the ticker in spaced capitals,
+ * then a hairline and the two figures split by a vertical rule.
+ */
+/* The name and ticker are centred on the card; the star sits in the same row at its end, and the
+   inline padding on both sides keeps the centre true and the text clear of the star. */
+.token-list[data-layout="grid"] .token-identity {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  padding: 2px 40px 0;
+  text-align: center;
+}
 .token-list[data-layout="grid"] .token-identity h3 {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 600;
-  line-height: 26px;
-  letter-spacing: -0.01em;
+  line-height: 30px;
+  letter-spacing: var(--tracking-page);
 }
 .token-list[data-layout="grid"] .token-symbol {
-  font-size: 14px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+  font-family: var(--font-code);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.token-list[data-layout="grid"] .token-phase {
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  padding: 0 8px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 18px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+.token-list[data-layout="grid"] .token-metrics {
+  gap: 0;
+  border-top: 1px solid var(--hairline);
+  padding-top: 12px;
+}
+.token-list[data-layout="grid"] .token-metrics > div:first-child {
+  padding-right: 12px;
+}
+.token-list[data-layout="grid"] .token-metrics > div + div {
+  border-left: 1px solid var(--hairline);
+  padding-left: 16px;
 }
 .token-list[data-layout="grid"] .token-metrics dt {
-  font-size: 13px;
+  font-size: 12px;
   line-height: 18px;
 }
 .token-list[data-layout="grid"] .token-metrics dd {
-  font-size: 15px;
+  margin-top: 2px;
+  font-size: 16px;
+  font-weight: 500;
   line-height: 22px;
+  letter-spacing: -0.01em;
 }
 .token-list[data-layout="grid"] .star-button {
   grid-row: 2;
   grid-column: 2;
+  margin-top: 1px;
+}
+/* Two narrow tiles per row on phones: a smaller name, and the figures stacked without the rule. */
+@media (max-width: 560px) {
+  .token-list[data-layout="grid"] .token-identity {
+    padding-inline: 30px;
+  }
+  .token-list[data-layout="grid"] .token-identity h3 {
+    font-size: 17px;
+    line-height: 26px;
+  }
+  .token-list[data-layout="grid"] .star-button {
+    margin-top: -3px;
+  }
+  .token-list[data-layout="grid"] .token-metrics {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .token-list[data-layout="grid"] .token-metrics > div:first-child {
+    padding-right: 0;
+  }
+  .token-list[data-layout="grid"] .token-metrics > div + div {
+    border-left: 0;
+    padding-left: 0;
+  }
+  .token-list[data-layout="grid"] .token-metrics dd {
+    font-size: 14px;
+    line-height: 20px;
+  }
 }
 
 @media (max-width: 720px) {
