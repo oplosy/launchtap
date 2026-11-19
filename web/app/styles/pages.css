@@ -1223,7 +1223,8 @@
 /* The block feed: square blocks that grow when a long post needs the room. */
 .forum-post-list {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
-  gap: 16px;
+  /* The same spacing as the home card grid. */
+  gap: 40px 24px;
 }
 .forum-post {
   position: relative;
@@ -1518,10 +1519,6 @@ a.forum-launch:hover {
   .forum-layout {
     grid-template-columns: minmax(0, 1fr) 272px;
     align-items: start;
-  }
-  /* The room the narrower, right-flush rail gives back goes to the gaps between the blocks. */
-  .forum-post-list {
-    gap: 72px;
   }
   /* The rail stays in view beside the feed and scrolls its own list inside the window height. */
   .forum-sidebar {
