@@ -72,20 +72,10 @@ async function installApi(page: Page, empty: boolean) {
   });
 }
 
-test("the hero is centred with its two actions", async ({ page }) => {
+test("the home page opens on its sections with a screen-reader h1", async ({ page }) => {
   await page.goto("/");
-  await expect(
-    page.getByRole("heading", { level: 1, name: "Launch a token. Trade the curve." }),
-  ).toBeVisible();
-  const create = page.getByRole("link", { name: "Create a token" });
-  const explore = page.getByRole("main").getByRole("link", { name: "Explore", exact: true });
-  await expect(create).toHaveAttribute("href", "/create");
-  await expect(explore).toHaveAttribute("href", "/explore");
-  const [a, b] = [await create.boundingBox(), await explore.boundingBox()];
-  const width = page.viewportSize()!.width;
-  const left = Math.min(a!.x, b!.x);
-  const right = Math.max(a!.x + a!.width, b!.x + b!.width);
-  expect(Math.abs((left + right) / 2 - width / 2)).toBeLessThanOrEqual(2);
+  await expect(page.getByRole("heading", { level: 1, name: "Launchpad" })).toBeAttached();
+  await expect(page.getByText("Trade the curve.")).toHaveCount(0);
 });
 
 test("sections link to their full views and render names as text", async ({ page }) => {
@@ -99,14 +89,16 @@ test("sections link to their full views and render names as text", async ({ page
   await expect(page.getByRole("region", { name: "Featured" })).toHaveCount(0);
   for (const [title, href] of [
     ["Trending", "/explore?view=trending"],
-    ["Just graduated", "/explore?view=graduated"],
+    ["Graduated", "/explore?view=graduated"],
     ["From the forum", "/forum"],
   ] as const) {
     const section = page.getByRole("region", { name: title });
-    await expect(section.getByRole("link", { name: /^View all/ })).toHaveAttribute("href", href);
+    await expect(
+      section.getByRole("heading", { level: 2 }).getByRole("link", { name: title }),
+    ).toHaveAttribute("href", href);
   }
   await expect(
-    page.getByRole("region", { name: "Just graduated" }).getByRole("link", { name: "Token 9" }),
+    page.getByRole("region", { name: "Graduated" }).getByRole("link", { name: "Token 9" }),
   ).toBeVisible();
   await expect(
     page.getByRole("region", { name: "From the forum" }).getByText("First post"),
