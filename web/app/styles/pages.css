@@ -1134,9 +1134,12 @@
   padding-bottom: 72px;
 }
 @media (min-width: 1024px) {
-  /* The shell gutter tops out at 80 px; this tops it up so the page sits 80 px from each edge. */
+  /*
+   * The feed sits 80 px from the left edge; the launches rail runs to the shell gutter on the
+   * right, flush with the nav's right edge.
+   */
   .forum-page {
-    margin-inline: calc(80px - var(--gutter));
+    margin-inline: calc(80px - var(--gutter)) 0;
   }
 }
 .forum-layout {
@@ -1513,8 +1516,12 @@ a.forum-launch:hover {
 }
 @media (min-width: 1024px) {
   .forum-layout {
-    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-columns: minmax(0, 1fr) 272px;
     align-items: start;
+  }
+  /* The room the narrower, right-flush rail gives back goes to the gaps between the blocks. */
+  .forum-post-list {
+    gap: 72px;
   }
   /* The rail stays in view beside the feed and scrolls its own list inside the window height. */
   .forum-sidebar {
