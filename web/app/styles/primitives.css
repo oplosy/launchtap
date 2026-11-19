@@ -343,12 +343,22 @@ select.ui-input {
 }
 textarea.ui-input,
 .ui-textarea {
-  border-radius: var(--radius-input);
+  /* Half the single-line field height: its corners match the pill fields' round ends. */
+  border-radius: 22px;
   height: auto;
   min-height: 96px;
-  padding: 12px 14px;
+  padding: 12px 18px;
   line-height: 1.5;
   resize: vertical;
+}
+/* Where the browser can size a field to its text, it grows with it and needs no drag handle. */
+@supports (field-sizing: content) {
+  textarea.ui-input,
+  .ui-textarea {
+    max-height: 320px;
+    field-sizing: content;
+    resize: none;
+  }
 }
 input[type="file"].ui-input {
   height: auto;

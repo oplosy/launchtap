@@ -137,18 +137,35 @@ export function LaunchImageField({
   return (
     <div className="ui-field launch-image-field">
       <label htmlFor="launch-image-file">Token image</label>
-      <input
-        id="launch-image-file"
-        className="launch-image-input"
-        type="file"
-        accept="image/png,image/jpeg,image/webp"
-        aria-describedby="launch-image-hint"
-        aria-invalid={extras.fileError ? "true" : undefined}
-        onChange={(event) => {
-          onChange();
-          void extras.chooseFile(event.target.files?.[0]);
-        }}
-      />
+      {/* The native picker sits invisibly over the whole tile: a click, a keyboard press or a
+          dropped file all reach the real input, and the tile only draws what it holds. */}
+      <div className="launch-dropzone" data-filled={extras.preview ? "" : undefined}>
+        <input
+          id="launch-image-file"
+          className="launch-image-input"
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          aria-describedby="launch-image-hint"
+          aria-invalid={extras.fileError ? "true" : undefined}
+          onChange={(event) => {
+            onChange();
+            void extras.chooseFile(event.target.files?.[0]);
+          }}
+        />
+        {extras.preview ? (
+          // A local object URL of the chosen file; SafeImage only accepts remote URLs.
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src={extras.preview} alt="Token image preview" className="launch-image-preview" />
+        ) : (
+          <span className="launch-dropzone-mark" aria-hidden="true">
+            +
+          </span>
+        )}
+        <span className="launch-dropzone-text" aria-hidden="true">
+          <strong>{extras.file ? extras.file.name : "Choose an image"}</strong>
+          <span>{extras.file ? "Click or drop to replace" : "or drop it here"}</span>
+        </span>
+      </div>
       <p id="launch-image-hint" className="ui-field-hint">
         Optional. PNG, JPEG, or WebP, up to 5 MiB. Uploaded after the launch confirms.
       </p>
@@ -156,11 +173,6 @@ export function LaunchImageField({
         <p className="ui-field-error" role="alert">
           {extras.fileError}
         </p>
-      ) : null}
-      {extras.preview ? (
-        // A local object URL of the chosen file; SafeImage only accepts remote URLs.
-        /* eslint-disable-next-line @next/next/no-img-element */
-        <img src={extras.preview} alt="Token image preview" className="launch-image-preview" />
       ) : null}
     </div>
   );
