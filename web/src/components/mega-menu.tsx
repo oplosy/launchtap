@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { focusLeftMenu } from "./menu-focus";
 
 /** The text links of the primary navigation, in order. Explore also opens the mega menu. */
@@ -67,6 +67,25 @@ export function MegaMenu({
       document.removeEventListener("focusin", onFocus);
     };
   }, [open, onClose, triggerRef]);
+
+  // The menu's text starts on the same line as the Explore trigger's text: measured on open and
+  // on resize, and written straight to the panel so no re-render is needed.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const trigger = triggerRef.current;
+      const panel = panelRef.current;
+      if (!trigger || !panel) return;
+      const padding = Number.parseFloat(getComputedStyle(trigger).paddingLeft) || 0;
+      const start =
+        trigger.getBoundingClientRect().left + padding - panel.getBoundingClientRect().left;
+      panel.style.setProperty("--mega-start", `${Math.max(0, Math.round(start))}px`);
+      panel.dataset.anchored = "true";
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [open, triggerRef]);
 
   const trackBackdrop = (event: React.PointerEvent) => {
     if (event.pointerType !== "mouse" || !open) return;

@@ -141,6 +141,13 @@
   margin: 0 auto;
   padding: 8px var(--gutter) 20px;
 }
+/* Once measured, the columns start on the Explore trigger's text line instead of the centre. */
+.mega-menu[data-anchored="true"] .mega-menu-inner {
+  justify-content: flex-start;
+  max-width: none;
+  margin: 0;
+  padding-left: var(--mega-start);
+}
 .mega-menu-group ul {
   display: grid;
   gap: 12px;
