@@ -1469,12 +1469,11 @@
 .forum-launch-list {
   gap: 0;
 }
-/* One line per launch, left to right: market cap, community name, art. */
+/* One line per launch, left to right: market cap, community name, art, one equal gap apart. */
 .forum-launch {
-  display: grid;
-  grid-template-columns: 88px minmax(0, 1fr) 36px;
+  display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   border-bottom: 1px solid var(--hairline);
   padding: 12px 0;
   font-size: 14px;
@@ -1488,6 +1487,7 @@ a.forum-launch:hover {
   opacity: 0.72;
 }
 .forum-launch .forum-art {
+  flex: none;
   width: 36px;
   height: 36px;
 }
@@ -1497,6 +1497,7 @@ a.forum-launch:hover {
   white-space: nowrap;
 }
 .forum-launch .forum-community {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
