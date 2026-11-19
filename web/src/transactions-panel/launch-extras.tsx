@@ -51,7 +51,7 @@ export function useLaunchExtras(links: { xUrl: string; telegramUrl: string }) {
   const extras: LaunchExtras = { description, file, ...links };
   const wanted = hasLaunchExtras(extras);
   const descriptionError = descriptionTooLong(description)
-    ? `Keep the description within ${maxDescriptionBytes.toLocaleString("en-US")} bytes.`
+    ? `Max ${maxDescriptionBytes.toLocaleString("en-US")} bytes. Shorten the description.`
     : undefined;
 
   /** Validates before accepting: a rejected file clears the previous choice. */
@@ -198,7 +198,10 @@ export function LaunchDescriptionField({
   extras: LaunchExtrasState;
   onChange: () => void;
 }) {
-  const bytes = new TextEncoder().encode(extras.description).length;
+  // No running count: a note appears only at the limit, an error past it.
+  const atLimit =
+    !extras.descriptionError &&
+    new TextEncoder().encode(extras.description).length === maxDescriptionBytes;
   return (
     <div className="ui-field">
       <label htmlFor="launch-description">Description</label>
@@ -208,16 +211,18 @@ export function LaunchDescriptionField({
         rows={1}
         value={extras.description}
         placeholder="Optional. What is this token about?"
-        aria-describedby="launch-description-hint"
+        aria-describedby={atLimit ? "launch-description-hint" : undefined}
         aria-invalid={extras.descriptionError ? "true" : undefined}
         onChange={(event) => {
           onChange();
           extras.setDescription(event.target.value);
         }}
       />
-      <p id="launch-description-hint" className="ui-field-hint">
-        {bytes.toLocaleString("en-US")}/{maxDescriptionBytes.toLocaleString("en-US")} bytes
-      </p>
+      {atLimit ? (
+        <p id="launch-description-hint" className="ui-field-hint">
+          Max {maxDescriptionBytes.toLocaleString("en-US")} bytes reached.
+        </p>
+      ) : null}
       {extras.descriptionError ? (
         <p className="ui-field-error" role="alert">
           {extras.descriptionError}

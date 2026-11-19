@@ -258,8 +258,9 @@
   font-size: 16px;
   transition: border-color var(--dur-fast) linear;
 }
+/* Placeholders sit well back from typed text. */
 .ui-input::placeholder {
-  color: var(--text-3);
+  color: color-mix(in srgb, var(--text-3) 60%, transparent);
 }
 .ui-input:hover:not(:disabled) {
   border-color: var(--hairline-bright);
