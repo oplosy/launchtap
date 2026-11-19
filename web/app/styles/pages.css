@@ -642,29 +642,174 @@
   justify-content: center;
   padding: 0 24px 16px;
 }
+/*
+ * Leaderboard: the forum's editorial language. Large period words on a rule, then a ruled ranking
+ * with big monospace ranks; the top three are set at display size. Side margins are a fixed 80 px
+ * on wide screens.
+ */
 .leaderboard-page {
-  padding-bottom: 96px;
+  gap: clamp(40px, 5vw, 64px);
+  padding-top: clamp(32px, 4vw, 56px);
+  padding-bottom: 120px;
+}
+@media (min-width: 1024px) {
+  /* The shell gutter tops out at 80 px; this tops it up so the page sits 80 px from each edge. */
+  .leaderboard-page {
+    margin-inline: calc(80px - var(--gutter));
+  }
 }
 .leaderboard-board {
   display: grid;
-  gap: 8px;
+  gap: 28px;
   width: 100%;
-  max-width: 800px;
-  margin-inline: auto;
+}
+/* The tab rule above doubles as the table's top edge. */
+.leaderboard-table {
+  display: grid;
 }
 .leaderboard-row {
-  grid-template-columns: 56px 1.4fr 1.4fr 1fr;
-  gap: 24px;
-  min-width: 480px;
+  display: grid;
+  grid-template-columns: clamp(64px, 9vw, 140px) minmax(0, 1fr) minmax(140px, auto) 140px;
+  align-items: center;
+  gap: clamp(16px, 3vw, 40px);
+  min-height: 88px;
+  border-bottom: 1px solid var(--hairline);
+  padding: 12px 4px;
+  font-variant-numeric: tabular-nums;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.leaderboard-row:not(.leaderboard-heading):hover {
+  background: var(--fill);
+}
+.leaderboard-heading {
+  min-height: 0;
+  padding-block: 0 12px;
+  color: var(--text-3);
+  font: var(--type-label);
 }
 .leaderboard-rank {
   color: var(--text-3);
+  font-size: clamp(28px, 3vw, 40px);
+  line-height: 1;
   text-align: right;
 }
-.leaderboard-back {
+.leaderboard-heading .leaderboard-rank {
+  font: inherit;
+}
+.leaderboard-wallet {
+  min-width: 0;
+  overflow: hidden;
+  font-size: clamp(18px, 1.8vw, 22px);
+  font-weight: 500;
+  letter-spacing: var(--tracking-page);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.leaderboard-wallet a {
+  color: var(--text);
+}
+.leaderboard-pnl,
+.leaderboard-tokens {
+  text-align: right;
+  white-space: nowrap;
+}
+.leaderboard-row:not(.leaderboard-heading) .leaderboard-pnl {
+  font-size: clamp(18px, 1.8vw, 22px);
+  font-weight: 500;
+}
+.leaderboard-row:not(.leaderboard-heading) .leaderboard-tokens {
   color: var(--text-2);
+  font-size: 14px;
+}
+.leaderboard-unit {
+  display: none;
+}
+
+/* The top three: display-size ranks and figures, the first one in full ink. */
+.leaderboard-row[data-podium] {
+  min-height: clamp(112px, 11vw, 160px);
+}
+.leaderboard-row[data-podium] .leaderboard-rank {
+  font-size: clamp(56px, 8vw, 112px);
+  font-weight: 600;
+  letter-spacing: var(--tracking-hero);
+}
+.leaderboard-row[data-podium] .leaderboard-wallet,
+.leaderboard-row[data-podium] .leaderboard-pnl {
+  font-size: clamp(22px, 2.6vw, 34px);
+  font-weight: 600;
+  letter-spacing: var(--tracking-hero);
+}
+.leaderboard-heading + .leaderboard-row .leaderboard-rank {
+  color: var(--text);
+}
+
+.leaderboard-note {
+  display: grid;
+  gap: 12px;
+  max-width: 60ch;
+  color: var(--text-2);
+  font-size: 14px;
+}
+.leaderboard-note p {
+  margin: 0;
+}
+.leaderboard-note a {
+  justify-self: start;
+  color: var(--text);
   font: var(--type-label);
-  text-align: center;
+}
+.leaderboard-note a:hover {
+  text-decoration: underline;
+}
+@media (max-width: 640px) {
+  /* Phone: rank, then the wallet over its token count, with the PnL on the right. */
+  .leaderboard-row {
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "rank wallet pnl"
+      "rank tokens pnl";
+    gap: 2px 14px;
+    min-height: 76px;
+  }
+  .leaderboard-rank {
+    grid-area: rank;
+    font-size: 24px;
+  }
+  .leaderboard-wallet {
+    grid-area: wallet;
+  }
+  .leaderboard-pnl {
+    grid-area: pnl;
+  }
+  .leaderboard-tokens {
+    grid-area: tokens;
+    text-align: left;
+  }
+  .leaderboard-unit {
+    display: inline;
+  }
+  .leaderboard-row[data-podium] {
+    min-height: 96px;
+  }
+  .leaderboard-row[data-podium] .leaderboard-rank {
+    font-size: 40px;
+  }
+  .leaderboard-row[data-podium] .leaderboard-wallet {
+    font-size: 17px;
+  }
+  .leaderboard-row[data-podium] .leaderboard-pnl {
+    font-size: 20px;
+  }
+  /* Column labels make no sense once cells stack; they stay for screen readers. */
+  .leaderboard-heading {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 
 /* Token comments */

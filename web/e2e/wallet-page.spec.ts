@@ -361,7 +361,7 @@ test("the leaderboard lists ranks", async ({ page }) => {
     await page.goto("/leaderboard");
     const table = page.getByRole("table", { name: "Leaderboard" });
     await expect(table.getByRole("row")).toHaveCount(3);
-    await expect(table.getByRole("row").nth(1)).toContainText("1");
+    await expect(table.getByRole("row").nth(1)).toContainText("01");
     await expect(table.getByRole("row").nth(1)).toContainText("+1.5 ETH");
     await expect(table.getByRole("row").nth(2)).toContainText("−0.25 ETH");
     await expect(table.locator(`a[href="/wallet/${WALLET}"]`)).toBeVisible();
@@ -370,10 +370,12 @@ test("the leaderboard lists ranks", async ({ page }) => {
       fullPage: true,
       animations: "disabled",
     });
-    // Period tabs sit centred; ranks are end-aligned so their digits line up.
+    // The period tabs run along the ranking's rule; ranks are end-aligned so their digits line up.
     const tabs = page.getByRole("navigation", { name: "Leaderboard period" });
     const box = (await tabs.boundingBox())!;
-    expect(Math.abs(box.x + box.width / 2 - page.viewportSize()!.width / 2)).toBeLessThanOrEqual(2);
+    const board = (await table.boundingBox())!;
+    expect(Math.abs(box.x - board.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box.width - board.width)).toBeLessThanOrEqual(1);
     const rank = table.getByRole("row").nth(1).locator(":scope > *").first();
     expect(await rank.evaluate((node) => getComputedStyle(node).textAlign)).toMatch(
       /^(right|end)$/,

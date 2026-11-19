@@ -13,11 +13,11 @@ import { formatSignedEth, pnlTone, walletPath } from "./wallet-model";
 /** Window tabs as plain links, so the choice lives in the URL and works without JavaScript. */
 export function LeaderboardWindowTabs({ active }: { active: LeaderboardWindow }) {
   return (
-    <nav className="explore-tabs" aria-label="Leaderboard period">
+    <nav className="forum-tabs leaderboard-tabs" aria-label="Leaderboard period">
       {LEADERBOARD_WINDOWS.map((option) => (
         <Link
           key={option}
-          className="explore-tab"
+          className="forum-tab"
           href={(option === "all" ? "/leaderboard" : `/leaderboard?window=${option}`) as never}
           aria-current={active === option ? "page" : undefined}
         >
@@ -49,24 +49,33 @@ export function LeaderboardView({
       />
     );
   return (
-    <div className="analytics-table" role="table" aria-label="Leaderboard">
-      <div className="analytics-row leaderboard-row analytics-heading" role="row">
+    <div className="leaderboard-table" role="table" aria-label="Leaderboard">
+      <div className="leaderboard-row leaderboard-heading" role="row">
         <span role="cell" className="leaderboard-rank">
           Rank
         </span>
         <span role="cell">Wallet</span>
-        <span role="cell">Realized PnL</span>
-        <span role="cell">Tokens traded</span>
+        <span role="cell" className="leaderboard-pnl">
+          Realized PnL
+        </span>
+        <span role="cell" className="leaderboard-tokens">
+          Tokens traded
+        </span>
       </div>
       {items.map((item) => (
         // Keyed by rank, not address: a window switch then updates each row in place. Keyed by
         // address, React moved a wallet's row to its new rank, which Chrome counts as a layout
         // shift (CLS 0.3-0.6 measured per switch).
-        <div className="analytics-row leaderboard-row" role="row" key={item.rank}>
+        <div
+          className="leaderboard-row"
+          role="row"
+          key={item.rank}
+          data-podium={item.rank <= 3 ? "" : undefined}
+        >
           <span role="cell" className="mono leaderboard-rank">
-            {item.rank.toLocaleString("en-US")}
+            {String(item.rank).padStart(2, "0")}
           </span>
-          <span role="cell" className="mono">
+          <span role="cell" className="leaderboard-wallet">
             <Link
               href={walletPath(item.address) as never}
               title={item.username ? shortAddress(item.address) : item.address}
@@ -74,11 +83,17 @@ export function LeaderboardView({
               {item.username ? `@${item.username}` : shortAddress(item.address)}
             </Link>
           </span>
-          <span role="cell" className={`mono pnl pnl-${pnlTone(item.realized_pnl_wei)}`}>
+          <span
+            role="cell"
+            className={`mono leaderboard-pnl pnl pnl-${pnlTone(item.realized_pnl_wei)}`}
+          >
             {formatSignedEth(item.realized_pnl_wei)}
           </span>
-          <span role="cell" className="mono">
+          <span role="cell" className="mono leaderboard-tokens">
             {item.tokens_traded.toLocaleString("en-US")}
+            <span className="leaderboard-unit">
+              {item.tokens_traded === 1 ? " token" : " tokens"}
+            </span>
           </span>
         </div>
       ))}

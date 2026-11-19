@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { PageHeader } from "@/components/layout";
 import { Skeleton } from "@/components/primitives";
 import { apiInternalBaseUrl } from "@/config/server";
 import {
@@ -37,10 +36,7 @@ export default async function LeaderboardPage({
     <div className="page-stack leaderboard-page">
       {/* One heading for every window: a per-window heading wrapped to a second line on mobile
           and pushed the whole board down on each switch. The active tab names the window. */}
-      <PageHeader
-        title="Top realized PnL."
-        summary="Wallets ranked by realized profit in ETH. Pool trades are attributed to the transaction sender. Windows count profit booked by sells inside the period."
-      />
+      <h1 className="sr-only">Leaderboard</h1>
       <section
         className="leaderboard-board"
         aria-label={`Ranking, ${LEADERBOARD_WINDOW_LABELS[period].toLowerCase()}`}
@@ -61,9 +57,15 @@ export default async function LeaderboardPage({
           <Board period={period} />
         </Suspense>
       </section>
-      <p className="leaderboard-back">
-        <Link href="/analytics">Back to Analytics</Link>
-      </p>
+      <footer className="leaderboard-note">
+        <p>
+          Wallets ranked by realized profit in ETH. Pool trades are attributed to the transaction
+          sender. Windows count profit booked by sells inside the period.
+        </p>
+        <Link href="/analytics">
+          Back to Analytics <span aria-hidden="true">→</span>
+        </Link>
+      </footer>
     </div>
   );
 }
