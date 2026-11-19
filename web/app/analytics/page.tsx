@@ -8,7 +8,6 @@ import Link from "next/link";
 import { ApiClient, type ProtocolDailyResponse } from "@/api/client";
 import { protocolRevenueView, type ProtocolRevenueView } from "@/analytics/protocol-revenue";
 import { DEFAULT_E2E_WEB_URL, publicConfiguration } from "@/config/public";
-import { PageHeader } from "@/components/layout";
 import { formatCanonicalBaseUnits } from "@/amounts";
 import { Badge, Button, ErrorState, Skeleton, UnavailableState } from "@/components/primitives";
 
@@ -77,15 +76,30 @@ export default function AnalyticsPage() {
   }, [configuration.apiBaseUrl, configuration.status]);
   return (
     <div className="page-stack analytics-page">
-      <PageHeader
-        title="Read the launch route."
-        summary="Protocol activity across launches, trades, volume, and graduations. ETH-native values are shown without USD enrichment."
-        actions={
-          <Link className="ui-button ui-button-secondary ui-button-md" href="/leaderboard">
-            View the leaderboard
-          </Link>
-        }
-      />
+      <h1 className="sr-only">Analytics</h1>
+      <div className="analytics-bar">
+        {!loading && !error && summary ? (
+          <section className="analytics-snapshot" aria-label="Current analytics">
+            <Badge
+              tone={
+                summary.snapshot.finality === "finalized" || summary.snapshot.finality === "safe"
+                  ? "success"
+                  : "warning"
+              }
+            >
+              {snapshotLabel(summary.snapshot)}
+            </Badge>
+            <span className="mono">
+              Updated {new Date(summary.updated_at).toLocaleString("en-US")}
+            </span>
+          </section>
+        ) : (
+          <span />
+        )}
+        <Link className="analytics-link" href="/leaderboard">
+          View the leaderboard <span aria-hidden="true">→</span>
+        </Link>
+      </div>
       {error ? (
         <ErrorState
           title="Live analytics are unavailable"
@@ -112,31 +126,26 @@ export default function AnalyticsPage() {
       ) : null}
       {!loading && !error && summary && daily ? (
         <>
-          <section className="analytics-snapshot" aria-label="Current analytics">
-            <span className="panel-kicker">Current window</span>
-            <Badge
-              tone={
-                summary.snapshot.finality === "finalized" || summary.snapshot.finality === "safe"
-                  ? "success"
-                  : "warning"
-              }
-            >
-              {snapshotLabel(summary.snapshot)}
-            </Badge>
-            <span className="mono">
-              Updated {new Date(summary.updated_at).toLocaleString("en-US")}
-            </span>
-          </section>
           <section className="analytics-grid" aria-label="Protocol summary">
-            <Metric label="24h volume" value={eth(summary.volume_24h_eth)} />
-            <Metric label="All-time volume" value={eth(summary.volume_all_time_eth)} />
-            <Metric label="24h launches" value={summary.launches_24h.toLocaleString("en-US")} />
+            <Metric index={1} label="24h volume" value={eth(summary.volume_24h_eth)} />
+            <Metric index={2} label="All-time volume" value={eth(summary.volume_all_time_eth)} />
             <Metric
+              index={3}
+              label="24h launches"
+              value={summary.launches_24h.toLocaleString("en-US")}
+            />
+            <Metric
+              index={4}
               label="All-time launches"
               value={summary.launches_all_time.toLocaleString("en-US")}
             />
-            <Metric label="24h trades" value={summary.trades_24h.toLocaleString("en-US")} />
             <Metric
+              index={5}
+              label="24h trades"
+              value={summary.trades_24h.toLocaleString("en-US")}
+            />
+            <Metric
+              index={6}
               label="Graduations"
               value={`${summary.graduations_24h.toLocaleString("en-US")} / ${summary.graduations_all_time.toLocaleString("en-US")}`}
             />
@@ -177,8 +186,9 @@ export default function AnalyticsPage() {
               />
             )}
           </section>
-          <p className="ui-field-hint">
-            Daily values update as new chain activity becomes available.
+          <p className="ui-field-hint analytics-note">
+            Daily values update as new chain activity becomes available. ETH-native values are shown
+            without USD enrichment.
           </p>
         </>
       ) : null}
@@ -281,11 +291,16 @@ function VolumeChart({ items }: { items: DailyItem[] }) {
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ index, label, value }: { index: number; label: string; value: string }) {
   return (
     <section className="metric-panel">
       <dl>
-        <dt>{label}</dt>
+        <dt>
+          <span className="mono metric-index" aria-hidden="true">
+            {String(index).padStart(2, "0")}
+          </span>
+          {label}
+        </dt>
         <dd className="metric-value">
           <span className="sr-only">{value}</span>
           {/* Characters roll in one by one; the string is never parsed back into a number. */}

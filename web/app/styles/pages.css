@@ -141,28 +141,52 @@
   }
 }
 
-/* Analytics: KPI grid separated by hairlines, a borderless chart (colour only in the data). */
+/*
+ * Analytics: the forum's editorial language. A status line on a rule, a numbered index of large
+ * left-set figures, then ruled sections (revenue, daily activity) with display-size headings.
+ * Colour stays in the data. Side margins are a fixed 80 px on wide screens.
+ */
 .analytics-page {
-  padding-bottom: 96px;
+  gap: clamp(40px, 5vw, 64px);
+  padding-top: clamp(32px, 4vw, 56px);
+  padding-bottom: 120px;
+}
+@media (min-width: 1024px) {
+  /* The shell gutter tops out at 80 px; this tops it up so the page sits 80 px from each edge. */
+  .analytics-page {
+    margin-inline: calc(80px - var(--gutter));
+  }
+}
+.analytics-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--hairline);
+  padding-bottom: 14px;
 }
 .analytics-snapshot {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
   gap: 10px 14px;
-}
-.analytics-snapshot .panel-kicker {
-  margin: 0;
 }
 .analytics-snapshot > .mono {
   color: var(--text-3);
   font-size: 13px;
 }
+.analytics-link {
+  color: var(--text);
+  font: var(--type-label);
+}
+.analytics-link:hover {
+  text-decoration: underline;
+}
 .analytics-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  border-top: 1px solid var(--hairline);
 }
 .metric-panel {
   display: grid;
@@ -326,6 +350,87 @@
 }
 .analytics-history > .ui-state {
   margin: 0 0 24px;
+}
+
+/* Analytics figures: left-set, numbered, ruled; the shared metric panel stays centred elsewhere. */
+.analytics-grid > .metric-panel {
+  gap: 0;
+  padding: 28px 24px 36px;
+  text-align: left;
+}
+.analytics-grid > .metric-panel:nth-child(3n + 1) {
+  padding-left: 4px;
+}
+.analytics-grid dt {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  color: var(--text-2);
+  font: var(--type-label);
+}
+.metric-index {
+  color: var(--text-3);
+  font-size: 12px;
+}
+.analytics-grid .metric-value {
+  justify-content: flex-start;
+  margin-top: clamp(20px, 2.4vw, 32px);
+  font-size: clamp(34px, 4.2vw, 60px);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: var(--tracking-hero);
+}
+@media (max-width: 860px) {
+  .analytics-grid > .metric-panel:nth-child(3n + 1) {
+    padding-left: 24px;
+  }
+  .analytics-grid > .metric-panel:nth-child(odd) {
+    padding-left: 4px;
+  }
+}
+@media (max-width: 480px) {
+  .analytics-grid > .metric-panel,
+  .analytics-grid > .metric-panel:nth-child(3n + 1) {
+    padding: 24px 4px 28px;
+  }
+}
+
+/* Sections: a display-size heading on a strong rule, its scope set in mono on the right. */
+.analytics-history {
+  display: grid;
+  gap: 24px;
+}
+.analytics-history .panel-head {
+  border-bottom: 1px solid var(--hairline-strong);
+  padding: 0 0 16px;
+}
+.analytics-history .panel-head h2 {
+  margin: 0;
+  font: var(--type-section);
+  font-size: clamp(28px, 3.2vw, 44px);
+  line-height: 1.05;
+  letter-spacing: var(--tracking-hero);
+}
+/* A short history reads as a few slim bars set from the right (newest day), not one wide slab. */
+.analytics-history .volume-chart {
+  justify-content: flex-end;
+  height: clamp(180px, 22vw, 280px);
+}
+.analytics-history .volume-bar {
+  max-width: 40px;
+}
+.analytics-history .analytics-row {
+  min-height: 52px;
+  font-size: 15px;
+}
+.analytics-history .analytics-heading {
+  min-height: 40px;
+  font: var(--type-label);
+}
+.analytics-history > .ui-field-hint,
+.analytics-note {
+  max-width: 72ch;
+  margin: 0;
 }
 
 /* Docs: a centred 820 px reading column; contents sit in the left gutter, or behind a button. */
