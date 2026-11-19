@@ -142,9 +142,10 @@
     color: color-mix(in srgb, var(--text-3) 50%, transparent);
     pointer-events: none;
   }
+  /* Set a little lower than the panels, so the base stands just below their bottom edge. */
   .launch-column-art svg {
     position: absolute;
-    inset: 0 auto 0 50%;
+    inset: 28px auto -28px 50%;
     width: calc(100% + 2 * clamp(24px, 3vw, 56px));
     max-width: none;
     height: 100%;
