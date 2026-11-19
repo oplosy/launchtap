@@ -16,13 +16,7 @@ export default async function ForumPage({
   const tab = parseForumTab(query?.tab);
   return (
     <div className="page-stack forum-page">
-      <header className="forum-hero">
-        <h1>Forum</h1>
-        <p>
-          Holders and creators talk on every token&apos;s page. Here is all of it in one place,
-          newest first or ranked by what is moving.
-        </p>
-      </header>
+      <h1 className="sr-only">Forum</h1>
       <div className="forum-layout">
         <section className="forum-main" aria-label="Forum posts">
           <ForumTabs active={tab} />

@@ -875,12 +875,12 @@
 }
 
 /*
- * Forum / Memestock: an editorial page. A Swiss-style hero over a block feed (short posts set like
+ * Forum / Memestock: an editorial page. A block feed (short posts set like
  * posters, long ones at reading size, every seventh block laid over the token's artwork) and a
  * ruled, numbered rail of the biggest launches. Side margins are a fixed 80 px on wide screens.
  */
 .forum-page {
-  gap: clamp(40px, 5vw, 64px);
+  padding-top: clamp(32px, 4vw, 56px);
   padding-bottom: 120px;
 }
 @media (min-width: 1024px) {
@@ -888,25 +888,6 @@
   .forum-page {
     margin-inline: calc(80px - var(--gutter));
   }
-}
-.forum-hero {
-  display: grid;
-  gap: 20px;
-  align-items: end;
-  border-bottom: 1px solid var(--hairline-strong);
-  padding: clamp(48px, 7vw, 104px) 0 clamp(28px, 3vw, 40px);
-}
-.forum-hero h1 {
-  margin: 0;
-  font: var(--type-hero);
-  font-size: clamp(72px, 13vw, 200px);
-  letter-spacing: var(--tracking-hero);
-  line-height: 0.86;
-}
-.forum-hero p {
-  max-width: 38ch;
-  margin: 0;
-  color: var(--text-2);
 }
 .forum-layout {
   display: grid;
@@ -1273,11 +1254,6 @@
   color: var(--text-2);
   font-size: 14px;
   text-align: center;
-}
-@media (min-width: 768px) {
-  .forum-hero {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
 }
 @media (min-width: 1024px) {
   .forum-layout {
