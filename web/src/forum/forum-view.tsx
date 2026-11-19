@@ -382,13 +382,11 @@ export function BiggestLaunches() {
             const href = tokenHref(token.address);
             const row = (
               <>
-                <TokenArt address={token.address} symbol={token.symbol} />
-                <span className="forum-launch-main">
-                  <span className="forum-community">{communityLabel(token.symbol)}</span>
-                  <span className="forum-launch-cap mono">
-                    {displayAmount(token.market_cap_eth)} ETH
-                  </span>
+                <span className="forum-launch-cap mono">
+                  {displayAmount(token.market_cap_eth)} ETH
                 </span>
+                <span className="forum-community">{communityLabel(token.symbol)}</span>
+                <TokenArt address={token.address} symbol={token.symbol} />
               </>
             );
             // The whole row opens the token; there is no separate trade button.
