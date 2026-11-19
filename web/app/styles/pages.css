@@ -838,8 +838,8 @@
 }
 /*
  * Leaderboard: the forum's editorial language. Large period words on a rule, then a ruled ranking
- * with big monospace ranks; the top three are set at display size. Side margins are a fixed 80 px
- * on wide screens.
+ * with big monospace ranks; the top three are set at display size. On wide screens it is the
+ * docs' centred 820 px reading column, with the margins left empty.
  */
 .leaderboard-page {
   gap: clamp(40px, 5vw, 64px);
@@ -847,9 +847,9 @@
   padding-bottom: 72px;
 }
 @media (min-width: 1024px) {
-  /* The shell gutter tops out at 80 px; this tops it up so the page sits 80 px from each edge. */
   .leaderboard-page {
-    margin-inline: calc(80px - var(--gutter));
+    width: min(100%, 820px);
+    margin-inline: auto;
   }
 }
 .leaderboard-board {
