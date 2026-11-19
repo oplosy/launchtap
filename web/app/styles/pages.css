@@ -451,16 +451,18 @@
   justify-self: center;
   width: min(100%, 200px);
 }
-/* Wide layout: the list surfaces out of a blur on the first scroll and dissolves into one at the
-   end of the article. Hidden, it also leaves the tab order (visibility). */
+/* Wide layout: the list and the margin line surface out of a blur on the first scroll and dissolve
+   into one at the end of the article (docsSideShown). Hidden, they also leave the tab order. */
 @media (min-width: 1024px) {
-  .docs-contents {
+  .docs-contents,
+  .docs-marginalia {
     transition:
       opacity 700ms var(--ease-out),
       filter 700ms var(--ease-out),
       visibility 0s;
   }
-  .docs-contents[data-shown="false"] {
+  .docs-contents[data-shown="false"],
+  .docs-marginalia[data-shown="false"] {
     opacity: 0;
     filter: blur(10px);
     visibility: hidden;
@@ -472,7 +474,9 @@
 }
 @media (min-width: 1024px) and (prefers-reduced-motion: reduce) {
   .docs-contents,
-  .docs-contents[data-shown="false"] {
+  .docs-contents[data-shown="false"],
+  .docs-marginalia,
+  .docs-marginalia[data-shown="false"] {
     filter: none;
     transition: none;
   }
@@ -589,7 +593,7 @@
   border-color: var(--text);
 }
 /*
- * The right margin's slalom line and section emblems (DocsMarginalia). The line is revealed down to
+ * The right margin's wandering line and section emblems (DocsMarginalia). The line is revealed down to
  * the middle of the screen as the reader scrolls; an emblem draws in once its section is reached
  * and brightens while it is read. Only where the margin is wide enough to hold a medallion.
  */
@@ -604,7 +608,7 @@
     grid-column: 3;
     align-self: stretch;
     justify-self: center;
-    width: 72px;
+    width: min(100%, 240px);
     color: color-mix(in srgb, var(--text-3) 50%, transparent);
     pointer-events: none;
   }
@@ -619,11 +623,11 @@
   .docs-thread path {
     fill: none;
     stroke: currentColor;
-    stroke-width: 1;
+    stroke-width: 1.5;
+    stroke-linecap: round;
   }
   .docs-emblem {
     position: absolute;
-    left: 0;
     width: 72px;
     height: 72px;
     overflow: visible;
@@ -634,13 +638,12 @@
     color: var(--text-2);
   }
   /*
-   * The medallion covers the band behind it, so the band runs into it and out again. It appears
-   * with its emblem, so sections not yet reached leave no empty rings ahead of the band.
+   * An unstroked disc behind each emblem hides the line there, so the line runs into the emblem and
+   * out again. It appears with its emblem.
    */
   .docs-emblem-ring {
     fill: var(--canvas);
-    stroke: currentColor;
-    stroke-width: 1;
+    stroke: none;
     opacity: 0;
     transition: opacity var(--dur-base) var(--ease-out);
   }

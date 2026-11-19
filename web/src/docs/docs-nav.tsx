@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { docsSideShown } from "./docs-visibility";
 import { useActiveSection } from "./use-active-section";
 
 /** Table of contents: beside the text on wide screens, behind a "Contents" button below 1024 px. */
@@ -9,26 +10,20 @@ export function DocsNav({ sections }: { sections: ReadonlyArray<{ id: string; la
   const [open, setOpen] = useState(false);
   const navId = useId();
   const contentsRef = useRef<HTMLDivElement>(null);
-  // Hidden at the top of the page, faded in on the first scroll, faded out once the end of the
-  // article reaches the list. Only the wide layout uses it (CSS ignores it below 1024 px).
+  // Out of and back into the fog with the margin line (see `docsSideShown`). Only the wide layout
+  // uses it (CSS ignores it below 1024 px).
   const [shown, setShown] = useState(false);
   useEffect(() => {
     const contents = contentsRef.current;
-    const article = contents?.parentElement?.querySelector(".docs-article");
-    if (!contents || !article) return;
+    const layout = contents?.parentElement;
+    if (!contents || !layout) return;
     // Stick at the vertical centre of the screen, below the nav when the screen is short.
     const place = () => {
       const nav = document.querySelector(".app-navbar")?.getBoundingClientRect().height ?? 0;
       const centre = (window.innerHeight - contents.offsetHeight) / 2;
       contents.style.setProperty("--docs-contents-top", `${Math.max(nav + 16, centre)}px`);
     };
-    const sync = () => {
-      // The sticky list reaches the article's last line exactly when it would start scrolling
-      // away; fade a little before that so it dissolves in place instead of sliding off.
-      const ended =
-        article.getBoundingClientRect().bottom <= contents.getBoundingClientRect().bottom + 96;
-      setShown(window.scrollY > 0 && !ended);
-    };
+    const sync = () => setShown(docsSideShown(layout));
     place();
     sync();
     window.addEventListener("scroll", sync, { passive: true });

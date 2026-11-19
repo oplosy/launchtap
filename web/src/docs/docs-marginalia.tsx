@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { docsEmblems } from "./docs-emblems";
+import { docsSideShown } from "./docs-visibility";
 import { useActiveSection } from "./use-active-section";
 
-const WIDTH = 72;
-const MIDDLE = WIDTH / 2;
-const SWAY = 30;
+/** An emblem's medallion, in px. */
+const EMBLEM = 72;
 const SEED = 0x5eed;
 
 type Point = readonly [number, number];
@@ -24,67 +24,94 @@ function seeded(seed: number) {
 }
 
 /**
- * Where the line passes on its way down: through the middle at the top, at every emblem and at the
- * bottom, and in between at uneven steps and uneven distances from the middle. It mostly swaps
- * sides but sometimes leans the same way twice, and now and then hooks back up before going on.
+ * Where the line passes on its way down the margin: long, uneven steps that drift across the
+ * column by uneven amounts, so every bend is a slow one, and every emblem strung on it at its
+ * heading.
+ * Returns the points and each emblem's horizontal centre.
  */
-function threadPoints(height: number, stops: readonly number[]) {
-  const anchors = [0, ...stops.filter((y) => y > 0 && y < height).sort((a, b) => a - b), height];
+function threadLayout(width: number, height: number, stops: Readonly<Record<string, number>>) {
   const next = seeded(SEED);
-  const points: Point[] = [[MIDDLE, 0]];
-  let side = next() < 0.5 ? -1 : 1;
-  const swing = () => {
-    if (next() < 0.78) side = -side;
-    return MIDDLE + side * (5 + next() * (SWAY - 5));
-  };
-  for (let i = 1; i < anchors.length; i += 1) {
-    const to = anchors[i] ?? 0;
-    let y = anchors[i - 1] ?? 0;
+  const pick = (low: number, high: number) => low + next() * (high - low);
+  const edge = 12;
+  const inner = Math.min(EMBLEM / 2 + 6, width / 2);
+  const emblemX: Record<string, number> = {};
+  const points: Point[] = [[pick(inner, width - inner), 0]];
+  const targets: [string | null, number][] = [
+    ...Object.entries(stops)
+      .filter(([, y]) => y > 0 && y < height)
+      .sort((a, b) => a[1] - b[1]),
+    [null, height],
+  ];
+  let right = next() < 0.5;
+  for (const [id, to] of targets) {
+    let y = points[points.length - 1]?.[1] ?? 0;
     for (;;) {
-      const advance = 34 + next() * 118;
-      if (to - y - advance < 36) break;
+      const advance = pick(190, 330);
+      if (to - y - advance < 140) break;
       y += advance;
-      points.push([swing(), y]);
-      if (next() < 0.2) points.push([swing(), y - (12 + next() * 26)]);
+      if (next() < 0.8) right = !right;
+      points.push([right ? pick(width * 0.6, width - edge) : pick(edge, width * 0.4), y]);
     }
-    points.push([MIDDLE, to]);
+    const x = id ? pick(inner, width - inner) : pick(edge, width - edge);
+    if (id) emblemX[id] = x;
+    points.push([x, to]);
   }
-  return points;
+  return { points, emblemX };
 }
 
-/** A smooth line through the points (Catmull-Rom, as cubic Béziers). */
-function threadPath(height: number, stops: readonly number[]) {
-  const points = threadPoints(height, stops);
-  const at = (i: number) => points[Math.min(Math.max(i, 0), points.length - 1)] ?? [MIDDLE, 0];
+/**
+ * A smooth line through the points: centripetal Catmull-Rom, as cubic Béziers. Centripetal spacing
+ * keeps uneven steps from overshooting into kinks, so every turn stays a soft bend.
+ */
+function smoothPath(points: readonly Point[]) {
+  const at = (i: number) => points[Math.min(Math.max(i, 0), points.length - 1)] ?? [0, 0];
   const n = (v: number) => v.toFixed(1);
-  let d = `M${MIDDLE} 0`;
+  const knot = (a: Point, b: Point) => Math.sqrt(Math.hypot(b[0] - a[0], b[1] - a[1]));
+  const [startX, startY] = at(0);
+  let d = `M${n(startX)} ${n(startY)}`;
   for (let i = 0; i < points.length - 1; i += 1) {
-    const [x0, y0] = at(i - 1);
-    const [x1, y1] = at(i);
-    const [x2, y2] = at(i + 1);
-    const [x3, y3] = at(i + 2);
-    d += `C${n(x1 + (x2 - x0) / 6)} ${n(y1 + (y2 - y0) / 6)} ${n(x2 - (x3 - x1) / 6)} ${n(y2 - (y3 - y1) / 6)} ${n(x2)} ${n(y2)}`;
+    const p0 = at(i - 1);
+    const p1 = at(i);
+    const p2 = at(i + 1);
+    const p3 = at(i + 2);
+    const d1 = knot(p0, p1);
+    const d2 = knot(p1, p2);
+    const d3 = knot(p2, p3);
+    const control = (from: Point, to: Point, back: Point, k: number, step: number, axis: 0 | 1) =>
+      k < 1e-6
+        ? from[axis] + (to[axis] - from[axis]) / 3
+        : (k * k * to[axis] -
+            step * step * back[axis] +
+            (2 * k * k + 3 * k * step + step * step) * from[axis]) /
+          (3 * k * (k + step));
+    d +=
+      `C${n(control(p1, p2, p0, d1, d2, 0))} ${n(control(p1, p2, p0, d1, d2, 1))}` +
+      ` ${n(control(p2, p1, p3, d3, d2, 0))} ${n(control(p2, p1, p3, d3, d2, 1))}` +
+      ` ${n(p2[0])} ${n(p2[1])}`;
   }
   return d;
 }
 
 /**
  * The docs' right margin: a thin line that wanders down the page as the reader scrolls (drawn down
- * to the middle of the screen), and a line emblem beside the illustrated sections, drawn in once
- * the reader reaches that section. Decorative only, and shown on wide screens only.
+ * to the middle of the screen), with a line emblem strung on it level with each illustrated
+ * section, drawn in once the reader reaches that section. It surfaces out of a blur on the first
+ * scroll and dissolves into one at the end, with the contents list. Decorative, wide screens only.
  */
 export function DocsMarginalia({ sections }: { sections: ReadonlyArray<{ id: string }> }) {
   const active = useActiveSection(sections);
   const rootRef = useRef<HTMLDivElement>(null);
   // Each emblem sits level with its section heading, measured from the top of the margin.
   const [offsets, setOffsets] = useState<Readonly<Record<string, number>>>({});
-  const [height, setHeight] = useState(0);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const [shown, setShown] = useState(false);
   useEffect(() => {
     const root = rootRef.current;
-    if (!root) return;
+    const layout = root?.parentElement;
+    if (!root || !layout) return;
     const measure = () => {
-      const { top, height: rootHeight } = root.getBoundingClientRect();
-      setHeight(Math.round(rootHeight));
+      const { top, width, height } = root.getBoundingClientRect();
+      setSize({ width: Math.round(width), height: Math.round(height) });
       const next: Record<string, number> = {};
       for (const id of Object.keys(docsEmblems)) {
         const heading = document.getElementById(id)?.querySelector("h2");
@@ -94,14 +121,22 @@ export function DocsMarginalia({ sections }: { sections: ReadonlyArray<{ id: str
       }
       setOffsets(next);
     };
+    // The drawn end follows the middle of the screen with an ease, so the line glides on after a
+    // scroll instead of jumping with each wheel step.
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let frame = 0;
+    let drawn: number | null = null;
+    const glide = () => {
+      const box = root.getBoundingClientRect();
+      const target = Math.min(Math.max(window.innerHeight / 2 - box.top, 0), box.height);
+      drawn = drawn === null || still ? target : drawn + (target - drawn) * 0.12;
+      if (Math.abs(target - drawn) < 0.5) drawn = target;
+      root.style.setProperty("--docs-reveal", `${drawn.toFixed(1)}px`);
+      setShown(docsSideShown(layout));
+      frame = drawn === target ? 0 : requestAnimationFrame(glide);
+    };
     const reveal = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const box = root.getBoundingClientRect();
-        const drawn = Math.min(Math.max(window.innerHeight / 2 - box.top, 0), box.height);
-        root.style.setProperty("--docs-reveal", `${Math.round(drawn)}px`);
-      });
+      if (!frame) frame = requestAnimationFrame(glide);
     };
     measure();
     reveal();
@@ -118,25 +153,35 @@ export function DocsMarginalia({ sections }: { sections: ReadonlyArray<{ id: str
       cancelAnimationFrame(frame);
     };
   }, []);
+  const thread = useMemo(
+    () => (size.height > 0 ? threadLayout(size.width, size.height, offsets) : null),
+    [size, offsets],
+  );
   const activeIndex = sections.findIndex(({ id }) => id === active);
   return (
-    <div className="docs-marginalia" ref={rootRef} aria-hidden="true">
-      {height > 0 ? (
+    <div
+      className="docs-marginalia"
+      ref={rootRef}
+      aria-hidden="true"
+      data-shown={shown ? "true" : "false"}
+    >
+      {thread ? (
         <svg className="docs-thread" focusable="false">
-          <path d={threadPath(height, Object.values(offsets))} />
+          <path d={smoothPath(thread.points)} />
         </svg>
       ) : null}
       {sections.map(({ id }, index) => {
         const paths = docsEmblems[id];
         const top = offsets[id];
-        if (!paths || top === undefined) return null;
+        const x = thread?.emblemX[id];
+        if (!paths || top === undefined || x === undefined) return null;
         return (
           <svg
             key={id}
             className="docs-emblem"
             viewBox="0 0 64 64"
             focusable="false"
-            style={{ top }}
+            style={{ top, left: x - EMBLEM / 2 }}
             data-drawn={index <= activeIndex ? "" : undefined}
             data-active={id === active ? "" : undefined}
           >
