@@ -1154,14 +1154,17 @@
   min-width: 0;
 }
 
-/* Tabs: large words on a rule, the active one underlined (shared sliding indicator). */
+/*
+ * Tabs: words on a rule, the active one underlined (shared sliding indicator). Type, padding and
+ * rule match the rail's "Biggest launches" heading, so both rules run on one line.
+ */
 .forum-tabs {
   position: relative;
   display: flex;
   gap: clamp(20px, 3vw, 40px);
   overflow-x: auto;
   overflow-y: hidden;
-  border-bottom: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline-strong);
   scrollbar-width: none;
 }
 .forum-tab {
@@ -1170,7 +1173,7 @@
   flex: none;
   color: var(--text-3);
   padding: 0 0 14px;
-  font: 500 clamp(22px, 2.4vw, 30px) / 1.1 var(--font-ui);
+  font: var(--type-section);
   letter-spacing: var(--tracking-page);
   transition: color var(--dur-fast) var(--ease-out);
 }
