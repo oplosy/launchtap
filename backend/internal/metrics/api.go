@@ -16,6 +16,7 @@ type API struct {
 	rejected *prometheus.CounterVec
 	sse      prometheus.Gauge
 	feed     feedInstruments
+	web      webClientInstruments
 
 	// Registered only by RegisterPriceFeed, when the ETH/USD source is enabled.
 	priceSuccess prometheus.Gauge
@@ -44,8 +45,10 @@ func NewAPI(reg prometheus.Registerer) *API {
 		}),
 	}
 	a.feed = newFeedInstruments()
+	a.web = newWebClientInstruments()
 	reg.MustRegister(a.requests, a.duration, a.rejected, a.sse)
 	reg.MustRegister(a.feed.collectors()...)
+	reg.MustRegister(a.web.collectors()...)
 
 	return a
 }

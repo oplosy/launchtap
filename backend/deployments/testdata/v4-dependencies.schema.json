@@ -2,180 +2,419 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://launchtap.local/schemas/v4-dependencies-v1.json",
   "title": "LaunchTap reviewed Uniswap v4 chain dependencies",
-  "type": "object",
-  "additionalProperties": false,
-  "required": [
-    "schemaVersion",
-    "target",
-    "chainId",
-    "reviewed",
-    "poolManager",
-    "positionManager",
-    "permit2",
-    "universalRouter",
-    "positionDescriptor",
-    "stateView",
-    "v4Quoter",
-    "weth9",
-    "bytecodeHashes",
-    "forkVerification",
-    "evidence",
-    "sources"
+  "description": "upstream: a Uniswap deployment identified from its official records (mainnet). self-deployed: a stack this project deployed from its pinned builds on a test chain (docs/specs/2026-11-18-v2-testnet-path-preflight.md).",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/upstream"
+    },
+    {
+      "$ref": "#/$defs/selfDeployed"
+    }
   ],
-  "properties": {
-    "schemaVersion": {
-      "const": 1
-    },
-    "target": {
-      "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$"
-    },
-    "chainId": {
-      "type": "integer",
-      "minimum": 1
-    },
-    "reviewed": {
-      "const": true
-    },
-    "poolManager": {
-      "$ref": "#/$defs/address"
-    },
-    "positionManager": {
-      "$ref": "#/$defs/address"
-    },
-    "permit2": {
-      "$ref": "#/$defs/address"
-    },
-    "universalRouter": {
-      "$ref": "#/$defs/address"
-    },
-    "positionDescriptor": {
-      "$ref": "#/$defs/address"
-    },
-    "stateView": {
-      "$ref": "#/$defs/address"
-    },
-    "v4Quoter": {
-      "$ref": "#/$defs/address"
-    },
-    "weth9": {
-      "$ref": "#/$defs/address"
-    },
-    "bytecodeHashes": {
+  "$defs": {
+    "upstream": {
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "schemaVersion",
+        "target",
+        "chainId",
+        "reviewed",
         "poolManager",
         "positionManager",
         "permit2",
-        "universalRouter"
+        "universalRouter",
+        "positionDescriptor",
+        "stateView",
+        "v4Quoter",
+        "weth9",
+        "bytecodeHashes",
+        "forkVerification",
+        "evidence",
+        "sources"
       ],
       "properties": {
-        "poolManager": {
-          "$ref": "#/$defs/hash"
+        "schemaVersion": {
+          "const": 1
         },
-        "positionManager": {
-          "$ref": "#/$defs/hash"
+        "target": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$"
         },
-        "permit2": {
-          "$ref": "#/$defs/hash"
-        },
-        "universalRouter": {
-          "$ref": "#/$defs/hash"
-        }
-      }
-    },
-    "forkVerification": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "blockNumber",
-        "blockHash",
-        "observedRpcProvider",
-        "archiveRpcProvider",
-        "rpcEnvironmentVariable",
-        "archiveRequired"
-      ],
-      "properties": {
-        "blockNumber": {
+        "chainId": {
           "type": "integer",
           "minimum": 1
         },
-        "blockHash": {
-          "$ref": "#/$defs/hash"
-        },
-        "observedRpcProvider": {
-          "type": "string",
-          "minLength": 1
-        },
-        "archiveRpcProvider": {
-          "type": "string",
-          "minLength": 1
-        },
-        "rpcEnvironmentVariable": {
-          "type": "string",
-          "pattern": "^[A-Z][A-Z0-9_]*$"
-        },
-        "archiveRequired": {
+        "reviewed": {
           "const": true
+        },
+        "poolManager": {
+          "$ref": "#/$defs/address"
+        },
+        "positionManager": {
+          "$ref": "#/$defs/address"
+        },
+        "permit2": {
+          "$ref": "#/$defs/address"
+        },
+        "universalRouter": {
+          "$ref": "#/$defs/address"
+        },
+        "positionDescriptor": {
+          "$ref": "#/$defs/address"
+        },
+        "stateView": {
+          "$ref": "#/$defs/address"
+        },
+        "v4Quoter": {
+          "$ref": "#/$defs/address"
+        },
+        "weth9": {
+          "$ref": "#/$defs/address"
+        },
+        "bytecodeHashes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "poolManager",
+            "positionManager",
+            "permit2",
+            "universalRouter"
+          ],
+          "properties": {
+            "poolManager": {
+              "$ref": "#/$defs/hash"
+            },
+            "positionManager": {
+              "$ref": "#/$defs/hash"
+            },
+            "permit2": {
+              "$ref": "#/$defs/hash"
+            },
+            "universalRouter": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        "forkVerification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "blockNumber",
+            "blockHash",
+            "observedRpcProvider",
+            "archiveRpcProvider",
+            "rpcEnvironmentVariable",
+            "archiveRequired"
+          ],
+          "properties": {
+            "blockNumber": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "blockHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "observedRpcProvider": {
+              "type": "string",
+              "minLength": 1
+            },
+            "archiveRpcProvider": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rpcEnvironmentVariable": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            },
+            "archiveRequired": {
+              "const": true
+            }
+          }
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "poolManager",
+            "positionManager",
+            "permit2",
+            "universalRouter"
+          ],
+          "properties": {
+            "poolManager": {
+              "type": "string",
+              "minLength": 1
+            },
+            "positionManager": {
+              "type": "string",
+              "minLength": 1
+            },
+            "permit2": {
+              "type": "string",
+              "minLength": 1
+            },
+            "universalRouter": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "sources": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "uniswapV4Deployments",
+            "uniswapDeploymentsFeed",
+            "uniswapDeploymentsFeedCommit",
+            "chainRpc"
+          ],
+          "properties": {
+            "uniswapV4Deployments": {
+              "$ref": "#/$defs/url"
+            },
+            "uniswapDeploymentsFeed": {
+              "$ref": "#/$defs/url"
+            },
+            "uniswapDeploymentsFeedCommit": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
+            "chainRpc": {
+              "$ref": "#/$defs/url"
+            }
+          }
         }
       }
     },
-    "evidence": {
+    "selfDeployed": {
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "schemaVersion",
+        "provenance",
+        "target",
+        "chainId",
+        "reviewed",
         "poolManager",
         "positionManager",
         "permit2",
-        "universalRouter"
+        "universalRouter",
+        "positionDescriptor",
+        "stateView",
+        "v4Quoter",
+        "weth9",
+        "poolManagerOwner",
+        "deployTransactions",
+        "bytecodeHashes",
+        "forkVerification",
+        "evidence",
+        "sources"
       ],
       "properties": {
-        "poolManager": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "provenance": {
+          "const": "self-deployed"
+        },
+        "target": {
           "type": "string",
-          "minLength": 1
+          "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$"
+        },
+        "chainId": {
+          "$comment": "Robinhood mainnet (4663) runs only on the upstream Uniswap v4 deployment.",
+          "type": "integer",
+          "minimum": 1,
+          "not": {
+            "const": 4663
+          }
+        },
+        "reviewed": {
+          "const": true
+        },
+        "poolManager": {
+          "$ref": "#/$defs/address"
         },
         "positionManager": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/address"
         },
         "permit2": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/address"
         },
         "universalRouter": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/address"
+        },
+        "positionDescriptor": {
+          "type": "null"
+        },
+        "stateView": {
+          "type": "null"
+        },
+        "v4Quoter": {
+          "$ref": "#/$defs/address"
+        },
+        "weth9": {
+          "$ref": "#/$defs/address"
+        },
+        "poolManagerOwner": {
+          "$ref": "#/$defs/address"
+        },
+        "deployTransactions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "poolManager",
+            "positionManager",
+            "v4Quoter",
+            "universalRouter"
+          ],
+          "properties": {
+            "poolManager": {
+              "$ref": "#/$defs/hash"
+            },
+            "positionManager": {
+              "$ref": "#/$defs/hash"
+            },
+            "v4Quoter": {
+              "$ref": "#/$defs/hash"
+            },
+            "universalRouter": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        "bytecodeHashes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "poolManager",
+            "positionManager",
+            "permit2",
+            "universalRouter",
+            "v4Quoter"
+          ],
+          "properties": {
+            "poolManager": {
+              "$ref": "#/$defs/hash"
+            },
+            "positionManager": {
+              "$ref": "#/$defs/hash"
+            },
+            "permit2": {
+              "$ref": "#/$defs/hash"
+            },
+            "universalRouter": {
+              "$ref": "#/$defs/hash"
+            },
+            "v4Quoter": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        "forkVerification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "blockNumber",
+            "blockHash",
+            "observedRpcProvider",
+            "archiveRpcProvider",
+            "rpcEnvironmentVariable",
+            "archiveRequired"
+          ],
+          "properties": {
+            "blockNumber": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "blockHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "observedRpcProvider": {
+              "type": "string",
+              "minLength": 1
+            },
+            "archiveRpcProvider": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rpcEnvironmentVariable": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            },
+            "archiveRequired": {
+              "type": "boolean"
+            }
+          }
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "poolManager",
+            "positionManager",
+            "permit2",
+            "universalRouter",
+            "v4Quoter"
+          ],
+          "properties": {
+            "poolManager": {
+              "type": "string",
+              "minLength": 1
+            },
+            "positionManager": {
+              "type": "string",
+              "minLength": 1
+            },
+            "permit2": {
+              "type": "string",
+              "minLength": 1
+            },
+            "universalRouter": {
+              "type": "string",
+              "minLength": 1
+            },
+            "v4Quoter": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "sources": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "v4Core",
+            "v4Periphery",
+            "universalRouter",
+            "permit2Runtime",
+            "chainRpc"
+          ],
+          "properties": {
+            "v4Core": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
+            "v4Periphery": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
+            "universalRouter": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
+            "permit2Runtime": {
+              "type": "string",
+              "minLength": 1
+            },
+            "chainRpc": {
+              "$ref": "#/$defs/url"
+            }
+          }
         }
       }
     },
-    "sources": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "uniswapV4Deployments",
-        "uniswapDeploymentsFeed",
-        "uniswapDeploymentsFeedCommit",
-        "chainRpc"
-      ],
-      "properties": {
-        "uniswapV4Deployments": {
-          "$ref": "#/$defs/url"
-        },
-        "uniswapDeploymentsFeed": {
-          "$ref": "#/$defs/url"
-        },
-        "uniswapDeploymentsFeedCommit": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{40}$"
-        },
-        "chainRpc": {
-          "$ref": "#/$defs/url"
-        }
-      }
-    }
-  },
-  "$defs": {
     "address": {
       "type": "string",
       "pattern": "^0x[0-9a-fA-F]{40}$"

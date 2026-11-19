@@ -18,6 +18,7 @@ import { List } from "./icons";
 import { Sheet } from "./primitives";
 import { MegaMenu, NAV_LINKS } from "./mega-menu";
 import { BackToTop } from "./back-to-top";
+import { RiskNotice } from "@/legal/risk-notice";
 import { SiteFooter } from "./site-footer";
 import { ThemeToggle } from "./theme-toggle";
 import { walletPath } from "@/portfolio/wallet-model";
@@ -30,7 +31,13 @@ const CommandPalette = lazy(() => import("./command-palette"));
 
 const noSubscription = () => () => undefined;
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  riskNoticeOpen = false,
+}: {
+  children: React.ReactNode;
+  riskNoticeOpen?: boolean;
+}) {
   const pathname = usePathname();
   // The lightweight connection context only: it reports an address once a wallet is connected.
   const connection = useWalletConnection();
@@ -200,6 +207,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       <StaleDataBanner />
+      <RiskNotice initiallyOpen={riskNoticeOpen} />
       <main className="app-content">{children}</main>
       <SiteFooter />
       <BackToTop />

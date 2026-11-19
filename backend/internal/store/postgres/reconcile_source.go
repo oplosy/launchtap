@@ -58,8 +58,9 @@ func (s ReconcileSource) Snapshot(ctx context.Context, tokens, holders int) (rec
 
 func (s ReconcileSource) token(ctx context.Context, adapter *Adapter, row sqlc.ListReconcileTokensRow, holders int) (reconcile.Token, error) {
 	address := common.Address(row.TokenAddress)
-	token := reconcile.Token{Address: address, Curve: common.Address(row.CurveAddress), Phase: row.Phase}
-	if row.ReserveSource == "curve" {
+	token := reconcile.Token{Address: address, Curve: common.Address(row.CurveAddress), Phase: row.Phase, ReserveSource: row.ReserveSource}
+	switch row.ReserveSource {
+	case reconcile.SourceCurve, reconcile.SourcePair:
 		eth, err := parseAmount("eth_reserve", row.EthReserveText)
 		if err != nil {
 			return reconcile.Token{}, err
@@ -68,7 +69,25 @@ func (s ReconcileSource) token(ctx context.Context, adapter *Adapter, row sqlc.L
 		if err != nil {
 			return reconcile.Token{}, err
 		}
-		token.CurveReserves = &reconcile.Reserves{ETH: eth, Token: tokens}
+		if row.ReserveSource == reconcile.SourceCurve {
+			token.CurveReserves = &reconcile.Reserves{ETH: eth, Token: tokens}
+		} else if row.LpPair != nil && row.Weth != nil {
+			// Without a pair or WETH the pass reports the missing coordinates as drift.
+			token.Pair = &reconcile.PairState{Pair: common.Address(*row.LpPair), WETH: common.Address(*row.Weth), ETH: eth, Token: tokens}
+		}
+	case reconcile.SourceV4:
+		price, err := parseAmount("sqrt_price_x96", row.SqrtPriceX96Text)
+		if err != nil {
+			return reconcile.Token{}, err
+		}
+		switch {
+		case len(row.V4PoolID) == 0 || len(row.V4PoolManager) == 0:
+			// No pool registry or PoolManager row: the pass reports the missing coordinates as drift.
+		case len(row.V4PoolID) != common.HashLength || len(row.V4PoolManager) != common.AddressLength:
+			return reconcile.Token{}, fmt.Errorf("indexed v4 pool of %s has a %d-byte id and a %d-byte PoolManager", address.Hex(), len(row.V4PoolID), len(row.V4PoolManager))
+		default:
+			token.V4 = &reconcile.V4State{PoolManager: common.BytesToAddress(row.V4PoolManager), PoolID: common.BytesToHash(row.V4PoolID), SqrtPriceX96: price}
+		}
 	}
 	total, err := adapter.queries.SumHolderBalances(ctx, sqlc.SumHolderBalancesParams{ChainID: s.ChainID, TokenAddress: row.TokenAddress})
 	if err != nil {

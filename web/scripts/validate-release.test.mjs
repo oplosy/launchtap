@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateReleaseEnvironment } from "./validate-release.mjs";
+import { legalDocumentErrors, validateReleaseEnvironment } from "./validate-release.mjs";
 
 const reviewed = [
   {
@@ -12,6 +12,10 @@ const reviewed = [
     uniswapV2Router02: "0x0000000000000000000000000000000000000004",
   },
 ];
+const approved = {
+  terms: { status: "approved", effectiveDate: "2027-01-01" },
+  privacy: { status: "approved", effectiveDate: "2027-01-01" },
+};
 const valid = {
   NEXT_PUBLIC_PRIVY_APP_ID: "cl_live_1234567890",
   NEXT_PUBLIC_DEPLOYMENT_ID: "production",
@@ -32,12 +36,13 @@ describe("release target validation", () => {
   });
 
   it("accepts only a complete reviewed production configuration", () => {
-    expect(validateReleaseEnvironment(valid, "production", reviewed)).toEqual([]);
+    expect(validateReleaseEnvironment(valid, "production", reviewed, approved)).toEqual([]);
     expect(
       validateReleaseEnvironment(
         { ...valid, NEXT_PUBLIC_DEPLOYMENT_ID: "unknown" },
         "production",
         reviewed,
+        approved,
       ),
     ).toContain("deployment ID and chain ID are not in the reviewed manifest");
     expect(
@@ -45,6 +50,7 @@ describe("release target validation", () => {
         { ...valid, NEXT_PUBLIC_E2E_FIXTURE: "1" },
         "production",
         reviewed,
+        approved,
       ),
     ).toContain("E2E fixture is not deployable");
   });
@@ -66,15 +72,18 @@ describe("release target validation", () => {
       uniswapV2Router02: null,
       v4,
     };
-    expect(validateReleaseEnvironment(valid, "production", [engine2])).toEqual([]);
+    expect(validateReleaseEnvironment(valid, "production", [engine2], approved)).toEqual([]);
     expect(
-      validateReleaseEnvironment(valid, "production", [
-        { ...engine2, v4: { ...v4, locker: null } },
-      ]),
+      validateReleaseEnvironment(
+        valid,
+        "production",
+        [{ ...engine2, v4: { ...v4, locker: null } }],
+        approved,
+      ),
     ).toContain("enabled deployment is missing reviewed contract addresses");
-    expect(validateReleaseEnvironment(valid, "production", [{ ...engine2, v4: null }])).toContain(
-      "enabled deployment is missing reviewed contract addresses",
-    );
+    expect(
+      validateReleaseEnvironment(valid, "production", [{ ...engine2, v4: null }], approved),
+    ).toContain("enabled deployment is missing reviewed contract addresses");
   });
 
   it("rejects fixture words only at a token start", () => {
@@ -84,6 +93,7 @@ describe("release target validation", () => {
           { ...valid, NEXT_PUBLIC_PRIVY_APP_ID: value },
           "production",
           reviewed,
+          approved,
         ),
       ).toEqual([]);
     for (const value of [
@@ -96,6 +106,7 @@ describe("release target validation", () => {
           { ...valid, NEXT_PUBLIC_RPC_URL: value },
           "production",
           reviewed,
+          approved,
         ),
       ).toContain("NEXT_PUBLIC_RPC_URL contains a fixture or test value");
   });
@@ -107,5 +118,22 @@ describe("release target validation", () => {
     expect(
       validateReleaseEnvironment({ ...valid, NEXT_PUBLIC_E2E_FIXTURE: "1" }, "anvil", reviewed),
     ).toEqual([]);
+  });
+
+  it("refuses a production release while a legal document is a draft", () => {
+    const draft = { ...approved, terms: { status: "draft", effectiveDate: null } };
+    expect(validateReleaseEnvironment(valid, "production", reviewed, draft)).toEqual([
+      "legal document terms is not approved by counsel (status draft)",
+    ]);
+    expect(legalDocumentErrors(null)).toEqual(["legal documents status is unreadable"]);
+    expect(legalDocumentErrors({ terms: approved.terms })).toEqual([
+      "legal document privacy is not approved by counsel (status missing)",
+    ]);
+    expect(
+      legalDocumentErrors({ ...approved, privacy: { status: "approved", effectiveDate: "soon" } }),
+    ).toEqual(["legal document privacy needs an effective date (YYYY-MM-DD)"]);
+    expect(validateReleaseEnvironment(valid, "anvil", reviewed, draft)).not.toContain(
+      "legal document terms is not approved by counsel (status draft)",
+    );
   });
 });

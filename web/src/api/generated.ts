@@ -1,4 +1,24 @@
 export interface paths {
+    "/client-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report browser errors and Web Vitals
+         * @description Closed-set values only; the API keeps counters and histograms and stores nothing else. The body is JSON sent as text/plain so browsers need no CORS preflight.
+         */
+        post: operations["postClientEvents"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/comments/{id}/report": {
         parameters: {
             query?: never;
@@ -1789,6 +1809,39 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    postClientEvents: {
+        parameters: {
+            query?: never;
+            header?: {
+                Origin?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "text/plain": string;
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     reportComment: {
         parameters: {
             query?: never;

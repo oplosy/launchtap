@@ -15,8 +15,8 @@ counterevidence, and a reproducible proof or reproduction method. Quality findin
 measured resource waste; style-only preferences are excluded.
 
 The canonical schema, severity calibration, state transitions, and regression-test requirements
-are in [the Plan 5 finding template](docs/audits/plan-5/03-policy-and-finding-template.md).
-Surface ownership and exclusions are in the [Task 1 audit pack](docs/audits/plan-5/README.md).
+are kept with the maintainer's internal audit records; the engine 2 scope for external review is
+the [external audit package](docs/audits/external-audit-package.md).
 
 ## Handling sensitive information
 
@@ -24,7 +24,7 @@ Do not commit or paste real private keys, seed phrases, Privy verification keys,
 credentials, private RPC URLs, production tokens, or other secrets into source, reports, tests,
 logs, prompts, or issues. Use synthetic canaries for leak-path testing and redact command output.
 Production deployment, governance, hosting, monitoring, and external-audit evidence remains an
-external prerequisite documented in `backlog.md`.
+external prerequisite tracked by the maintainer.
 
 ## Scope boundary
 

@@ -91,6 +91,30 @@ if ([uint64] $mainnetV4.chainId -ne [uint64] $mainnet.chainId) {
 if ([string] $mainnetV4.weth9 -cne [string] $mainnet.weth) {
     Fail "mainnet v4 PositionManager WETH9 must match the reviewed WETH"
 }
+if ($null -ne $mainnetV4.PSObject.Properties["provenance"]) {
+    Fail "mainnet v4 dependency record must be Uniswap's upstream deployment, not self-deployed"
+}
+
+# The self-deployed testnet v4 stack (docs/specs/2026-11-18-v2-testnet-path-preflight.md) is
+# optional until an operator has deployed and reviewed it.
+$testnetV4Path = Join-Path $deploymentsRoot "config/robinhood-testnet-v4.json"
+if (Test-Path -LiteralPath $testnetV4Path) {
+    Assert-JsonSchema $testnetV4Path (Join-Path $deploymentsRoot "v4-dependencies.schema.json") `
+        "testnet Uniswap v4 dependency record"
+    $testnetV4 = Get-Content -Raw -LiteralPath $testnetV4Path | ConvertFrom-Json
+    $testnetDependencies = Get-Content -Raw -LiteralPath (Join-Path $deploymentsRoot "config/robinhood-testnet.json") |
+        ConvertFrom-Json
+    if ([uint64] $testnetV4.chainId -ne 46630) { Fail "testnet v4 dependency record must target chain 46630" }
+    if ([string] $testnetV4.provenance -cne "self-deployed") {
+        Fail "testnet v4 dependency record must be the self-deployed stack"
+    }
+    if ([string] $testnetV4.weth9 -ine [string] $testnetDependencies.weth) {
+        Fail "testnet v4 PositionManager WETH9 must match the reviewed testnet WETH"
+    }
+    if ([string] $testnetV4.permit2 -cne "0x000000000022D473030F116dDEE9F6B43aC78BA3") {
+        Fail "testnet v4 dependency record must use the canonical Permit2"
+    }
+}
 if ([uint64] $mainnet.chainId -ne 4663) { Fail "mainnet chain id must remain 4663" }
 if ([string] $mainnet.weth -cne "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73") {
     Fail "mainnet WETH drifted from the reviewed dependency record"

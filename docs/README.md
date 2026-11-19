@@ -4,17 +4,13 @@ Start with the [repository README](../README.md) for product boundaries, current
 
 ## Product and design
 
-- [Product definition](../PRODUCT.md)
 - [Design system](../DESIGN.md)
-- [Feature notes](../notes.md)
+- [Architecture overview](architecture.md)
 - [Roadmap](ROADMAP.md)
-- [Specifications](specs/)
+- [External audit package](audits/external-audit-package.md)
 
 ## Delivery and verification
 
 - [Agent rules and common commands](../CLAUDE.md)
-- [Implementation plans](plans/)
 - [Operational runbooks](runbooks/)
-- [Audit records](audits/)
 - [Security policy](../SECURITY.md)
-- [Current work ledger](../backlog.md)

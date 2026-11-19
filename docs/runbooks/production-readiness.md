@@ -44,6 +44,7 @@ and evidence link before the release gate is run.
 | Protocol treasury | address, custody owner, and transfer verification | `<owner>` / `<pending>` |
 | External audit | signed report, scope, commit/artifact digest, and accepted findings | `<owner>` / `<pending>` |
 | Legal/geo policy | approved jurisdiction policy and enforcement owner | `<owner>` / `<pending>` |
+| Legal pages | counsel-approved Terms and Privacy text in `web/app/terms`, `web/app/privacy`, with `web/src/legal/documents.json` set to `approved` and an effective date; `npm run verify:release` and the Compose `preflight` refuse a draft | `<counsel>` / `<pending>` |
 
 Never put private keys, seed phrases, bearer tokens, database passwords, credentialed RPC URLs,
 or Privy verification keys in this repository or in browser-visible `NEXT_PUBLIC_*` variables.
@@ -81,7 +82,10 @@ signer set. Record:
 Do not accept mainnet funds until the external audit and governance owners have signed off.
 Contract rollback is not a database rollback: the contracts are non-upgradeable. The planned
 emergency action is an approved pause/governance procedure, followed by a forward contract or
-application release if required.
+application release if required. The procedure is
+[`incident-response.md`](incident-response.md): triggers, the Safe signing path, verification,
+user communication, unpause criteria, and the rehearsal log the pause-handoff evidence above
+points to.
 
 ## Release, health, rollback, and monitoring
 
@@ -152,8 +156,10 @@ Alert rules (`deploy/monitoring/alerts.yml`, unit-tested in `alerts.test.yml`):
 | `DatabaseDown` | indexer DB check down, or API pool had to make acquires wait (empty acquires rising) with no idle connection | 2m | page |
 | `WriteRejectionSpike` | 5m rejection rate > 10x the 1h average ending 15m ago, and > 0.05/s | 15m | ticket |
 | `EthUsdStale` | last ETH/USD refresh older than 600s (absent series: price source disabled, no alert) | 10m | ticket |
-| `IndexerStateDrift` | the last reconciliation pass found indexed values that differ from the chain | 25m | page |
+| `IndexerStateDrift` | the last reconciliation pass found indexed values that differ from the chain (phase, curve reserves, graduated pair reserves or v4 pool price, holder balances; the indexer log names each check) | 25m | page |
 | `IndexerReconciliationStale` | no reconciliation pass has completed its comparison for 3600s | 10m | ticket |
+| `WebClientErrorsHigh` | browser errors > 5% of page loads (TTFB samples) over 30m, and at least 20 errors | 10m | ticket |
+| `WebLCPSlow` | browser-reported p75 LCP > 2.5s over 1h, with at least 50 samples | 15m | ticket |
 
 - `IndexerObservedLagHigh` fires during the initial backfill from `StartBlock`; silence it
   during first sync.
@@ -173,6 +179,13 @@ Alert rules (`deploy/monitoring/alerts.yml`, unit-tested in `alerts.test.yml`):
 - `IndexerReconciliationStale` means passes keep failing (`state reconciliation pass failed` in
   the log, `launchpad_indexer_reconciliation_runs_total{outcome="error"}` rising), usually an RPC
   that cannot serve `eth_call` at the observed block.
+- `WebClientErrorsHigh` and `WebLCPSlow` come from the browser through `POST /v1/client-events`
+  (`docs/specs/2026-11-18-client-telemetry-preflight.md`). The series carry only where an error
+  happened (`source`, route group) and its class, never a message or stack. On a ticket: find the
+  route group and class in `launchpad_web_client_errors_total`, then reproduce it in a browser.
+  A `ChunkLoadError` spike right after a deploy usually means old tabs requesting removed chunks.
+  Anyone can post these events, so treat a spike with no matching user reports as possible
+  forgery before acting.
 
 ### Live feed (P0-B)
 

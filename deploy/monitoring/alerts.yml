@@ -114,3 +114,26 @@ groups:
         labels: {severity: ticket}
         annotations:
           summary: "no indexed-state reconciliation pass has completed for an hour"
+
+      # Browser telemetry (docs/specs/2026-11-18-client-telemetry-preflight.md). Anyone can post
+      # client events, so both alerts are tickets that ask an operator to look. Each page load
+      # reports TTFB once, so TTFB samples stand in for page loads.
+      - alert: WebClientErrorsHigh
+        expr: |
+          sum(increase(launchpad_web_client_errors_total[30m]))
+            > 0.05 * (sum(increase(launchpad_web_vital_seconds_count{name="TTFB"}[30m])) or vector(0))
+          and sum(increase(launchpad_web_client_errors_total[30m])) >= 20
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: "browser errors exceed 5% of page loads over 30 minutes"
+
+      # Performance target (docs/specs/2026-11-14-performance-targets.md): p75 LCP under 2.5 s.
+      - alert: WebLCPSlow
+        expr: |
+          histogram_quantile(0.75, sum by (le) (rate(launchpad_web_vital_seconds_bucket{name="LCP"}[1h]))) > 2.5
+          and sum(increase(launchpad_web_vital_seconds_count{name="LCP"}[1h])) >= 50
+        for: 15m
+        labels: {severity: ticket}
+        annotations:
+          summary: "p75 LCP reported by browsers is above the 2.5 s target"

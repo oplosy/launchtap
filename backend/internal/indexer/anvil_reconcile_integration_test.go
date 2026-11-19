@@ -36,6 +36,38 @@ func assertReconciled(t *testing.T, ctx context.Context, pool *pgxpool.Pool, sou
 	return result
 }
 
+// assertPoolDriftDetected shifts the graduated token's indexed pool state by one unit (the pair's
+// WETH reserve for CheckPairETH, the v4 price for CheckV4Price), expects exactly that mismatch, and
+// restores the row (docs/specs/2026-11-18-pool-reconciliation-preflight.md).
+func assertPoolDriftDetected(t *testing.T, ctx context.Context, db *sql.DB, pool *pgxpool.Pool, source *chain.Client, chainID int64, deploymentID string, token common.Address, check string) {
+	t.Helper()
+	statements := map[string]string{
+		reconcile.CheckPairETH: `UPDATE token_reserves SET eth_reserve = eth_reserve + $3 WHERE chain_id=$1 AND token_address=$2 AND reserve_source='pair'`,
+		reconcile.CheckV4Price: `UPDATE token_reserves SET sqrt_price_x96 = sqrt_price_x96 + $3 WHERE chain_id=$1 AND token_address=$2 AND reserve_source='v4'`,
+	}
+	statement, ok := statements[check]
+	if !ok {
+		t.Fatalf("no pool corruption for check %s", check)
+	}
+	shift := func(delta int) {
+		t.Helper()
+		changed, err := db.ExecContext(ctx, statement, chainID, token.Bytes(), delta)
+		if err != nil {
+			t.Fatalf("shift indexed pool state: %v", err)
+		}
+		if rows, err := changed.RowsAffected(); err != nil || rows != 1 {
+			t.Fatalf("shift indexed pool state: rows=%d err=%v; want 1", rows, err)
+		}
+	}
+	shift(1)
+	// Restore even when the pass fails the test, so a later assertion sees the real row.
+	defer shift(-1)
+	result := reconcileOnce(t, ctx, pool, source, chainID, deploymentID)
+	if result.Outcome != reconcile.OutcomeDrift || len(result.Mismatches) != 1 || result.Mismatches[0].Check != check || result.Mismatches[0].Token != token {
+		t.Fatalf("corrupted pool state: outcome %s, mismatches %v; want exactly %s on %s", result.Outcome, result.Mismatches, check, token.Hex())
+	}
+}
+
 // assertDriftDetected corrupts one indexed holder balance, expects the pass to report exactly the
 // holder and the supply-sum mismatch for it, and restores the row.
 func assertDriftDetected(t *testing.T, ctx context.Context, db *sql.DB, pool *pgxpool.Pool, source *chain.Client, chainID int64, deploymentID string, token common.Address) {

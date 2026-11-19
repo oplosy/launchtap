@@ -1,11 +1,18 @@
 "use client";
 
+import { useEffect } from "react";
+import { reportBoundaryError } from "@/telemetry/client-events";
+
 export default function GlobalError({
+  error,
   reset,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    reportBoundaryError("global_boundary", error);
+  }, [error]);
   return (
     <html lang="en">
       <body>

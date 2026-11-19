@@ -1,9 +1,12 @@
 # ETH/USD enrichment source
 
-Status: source selection complete; adapter implementation and production account
-configuration remain a separate delivery item.
+Status: implemented. The CoinGecko adapter shipped with P0-A (`backend/internal/pricefeed`,
+`GET /v1/reference/eth-usd`). The 2026-11-14 scope decision
+(`docs/specs/2026-11-14-product-scope-decisions.md`) moved it to the free Demo plan
+(`COINGECKO_API_PLAN=demo`); the paid-plan wording below is the original 2026-09-11 decision.
+Only the key itself is still open (`backlog.md`, operator-only inputs).
 
-Last reviewed: 2026-09-11
+Last reviewed: 2026-11-18
 
 ## Decision
 

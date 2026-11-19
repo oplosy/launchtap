@@ -23,6 +23,7 @@ import (
 	storepostgres "github.com/Contictus/launchtap/backend/internal/store/postgres"
 	"github.com/Contictus/launchtap/backend/internal/swapbackfill"
 	"github.com/Contictus/launchtap/backend/internal/wallet"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -234,7 +235,11 @@ func run() error {
 		OnResult: func(result reconcile.Result) {
 			indexerMetrics.Reconciled(result)
 			for _, mismatch := range result.Mismatches {
-				slog.Error("indexed state differs from chain", "block", result.Block, "check", mismatch.Check, "token", mismatch.Token.Hex(), "subject", mismatch.Subject.Hex(), "indexed", mismatch.Indexed, "chain", mismatch.Chain)
+				attrs := []any{"block", result.Block, "check", mismatch.Check, "token", mismatch.Token.Hex(), "subject", mismatch.Subject.Hex(), "indexed", mismatch.Indexed, "chain", mismatch.Chain}
+				if mismatch.Pool != (common.Hash{}) {
+					attrs = append(attrs, "pool", mismatch.Pool.Hex())
+				}
+				slog.Error("indexed state differs from chain", attrs...)
 			}
 		},
 		OnError: func(err error) {
