@@ -84,7 +84,6 @@ export function TokenCard({
         </h3>
         <p className="token-symbol">
           <span>{token.symbol || "—"}</span>
-          {token.phase === "graduated" ? <span className="token-phase">Graduated</span> : null}
         </p>
       </div>
       <dl className="token-metrics">
