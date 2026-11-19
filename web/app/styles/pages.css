@@ -1331,7 +1331,6 @@
   inset: 0;
   z-index: -2;
   display: block;
-  transition: transform var(--dur-slow) var(--ease-out);
 }
 .forum-post::before {
   position: absolute;
@@ -1355,8 +1354,15 @@
 .forum-post .forum-post-score {
   color: color-mix(in srgb, var(--text) 82%, transparent);
 }
-.forum-post:hover .forum-post-backdrop {
-  transform: scale(1.04);
+/* Hover: the whole block grows a little outward, above its neighbours, as token cards do. */
+@media (prefers-reduced-motion: no-preference) {
+  .forum-post {
+    transition: transform 0.4s var(--ease-out);
+  }
+  .forum-post:hover {
+    z-index: 1;
+    transform: scale(1.03);
+  }
 }
 
 /* Laid over the whole block, outside the grid flow, so it adds no row of its own. */
