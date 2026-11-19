@@ -35,15 +35,20 @@ function threadLayout(width: number, height: number, stops: Readonly<Record<stri
   const edge = 12;
   const inner = Math.min(EMBLEM / 2 + 6, width / 2);
   const emblemX: Record<string, number> = {};
-  const points: Point[] = [[pick(inner, width - inner), 0]];
   const targets: [string | null, number][] = [
     ...Object.entries(stops)
       .filter(([, y]) => y > 0 && y < height)
       .sort((a, b) => a[1] - b[1]),
     [null, height],
   ];
+  const targetX = targets.map(([id]) =>
+    id ? pick(inner, width - inner) : pick(edge, width - edge),
+  );
+  // Start straight above the first stop: the first emblem sits right at the top, and a start
+  // anywhere else would draw a near-flat stroke across to it.
+  const points: Point[] = [[targetX[0] ?? width / 2, 0]];
   let right = next() < 0.5;
-  for (const [id, to] of targets) {
+  for (const [index, [id, to]] of targets.entries()) {
     let y = points[points.length - 1]?.[1] ?? 0;
     for (;;) {
       const advance = pick(190, 330);
@@ -52,7 +57,7 @@ function threadLayout(width: number, height: number, stops: Readonly<Record<stri
       if (next() < 0.8) right = !right;
       points.push([right ? pick(width * 0.6, width - edge) : pick(edge, width * 0.4), y]);
     }
-    const x = id ? pick(inner, width - inner) : pick(edge, width - edge);
+    const x = targetX[index] ?? width / 2;
     if (id) emblemX[id] = x;
     points.push([x, to]);
   }
