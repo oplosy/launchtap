@@ -104,7 +104,7 @@ export function HomeFeed() {
               items={trending.slice(0, CARD_SECTION_SIZE)}
               apiBaseUrl={apiBaseUrl}
               layout="grid"
-              className="home-card-grid"
+              className="home-card-grid home-wave"
             />
           )}
         </Section>
