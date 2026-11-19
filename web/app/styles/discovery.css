@@ -138,6 +138,13 @@ html[data-theme="light"] .ui-image-fallback {
 .token-card:hover .token-identity h3 a {
   color: var(--text-2);
 }
+/* A grid tile's figures soften with its title on hover. */
+.token-list[data-layout="grid"] .token-metrics dd {
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.token-list[data-layout="grid"] > .token-card:hover .token-metrics dd {
+  color: var(--text-2);
+}
 .token-card a:focus-visible {
   outline: none;
 }
