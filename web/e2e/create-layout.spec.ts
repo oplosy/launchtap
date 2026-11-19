@@ -53,10 +53,10 @@ test("the three sections appear in order, the image picker in the preview", asyn
   const form = page.getByRole("region", { name: "Launch token" });
   await expect(page.getByRole("textbox", { name: "Name" })).toBeVisible();
   await expect(form.getByRole("heading", { level: 2 })).toHaveText([
-    "Name and symbol",
+    "Name and Symbol",
     // The About heading (description and links) also carries its info tip's text.
     /^About/,
-    "Initial buy",
+    "Initial Buy",
   ]);
   // The image is picked on the preview card's image square.
   await expect(

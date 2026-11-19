@@ -6,6 +6,9 @@ import type { ReviewedWriteIntent } from "@/transactions";
 import { type Address, eth } from "./shared";
 import { ReviewActions, ReviewNotice, type ReviewedWrite } from "./reviewed-trade";
 
+/** Re-exported so the panel imports its views from one module. */
+export { LaunchColumnArt } from "./launch-column-art";
+
 /**
  * Reasons the launch (or its developer buy) cannot go through right now, read from the factory.
  * Empty until the factory has been read: a failed read already shows its own error.

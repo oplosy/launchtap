@@ -260,7 +260,7 @@
 }
 /* Placeholders sit well back from typed text. */
 .ui-input::placeholder {
-  color: color-mix(in srgb, var(--text-3) 60%, transparent);
+  color: var(--placeholder);
 }
 .ui-input:hover:not(:disabled) {
   border-color: var(--hairline-bright);

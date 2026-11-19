@@ -25,7 +25,7 @@ import {
   TransactionProgress,
 } from "./shared";
 import { ReviewNotice, useReviewedWrite, WrongNetworkBanner } from "./reviewed-trade";
-import { LaunchConfirmation, LaunchPreview, launchBlockers } from "./launch-views";
+import { LaunchColumnArt, LaunchConfirmation, LaunchPreview, launchBlockers } from "./launch-views";
 import {
   LaunchAttachStatus,
   LaunchDescriptionField,
@@ -249,7 +249,7 @@ function LaunchPanelReady() {
             <div className="launch-main">
               <div className="transaction-form">
                 <section className="launch-section" aria-labelledby="launch-step-name">
-                  <h2 id="launch-step-name">Name and symbol</h2>
+                  <h2 id="launch-step-name">Name and Symbol</h2>
                   <div className="launch-field-row">
                     <Input
                       label="Name"
@@ -298,7 +298,7 @@ function LaunchPanelReady() {
                   </div>
                 </section>
                 <section className="launch-section" aria-labelledby="launch-step-buy">
-                  <h2 id="launch-step-buy">Initial buy</h2>
+                  <h2 id="launch-step-buy">Initial Buy</h2>
                   <div className="launch-field-row">
                     <div className="ui-field">
                       <span>Paired asset</span>
@@ -336,7 +336,8 @@ function LaunchPanelReady() {
                   </div>
                 </section>
               </div>
-              {/* Right column on wide screens: live preview, terms and the launch action stay in view. */}
+              <LaunchColumnArt />
+              {/* Right column on wide screens: live preview, terms and the launch action. */}
               <div className="launch-aside">
                 <LaunchPreview
                   previewUrl={extras.preview}
