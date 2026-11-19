@@ -283,6 +283,10 @@ try {
         Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "local-stack-forum.sql") |
             & docker exec -i $postgresContainer psql -v ON_ERROR_STOP=1 -U postgres -d $databaseName | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Forum seed failed" }
+        Write-Host "Seeding a demo leaderboard..."
+        Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "local-stack-leaderboard.sql") |
+            & docker exec -i $postgresContainer psql -v ON_ERROR_STOP=1 -U postgres -d $databaseName | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Leaderboard seed failed" }
         Write-Host "Seeding token artwork..."
         $addresses = @(& docker exec $postgresContainer psql -U postgres -d $databaseName -Atc "SELECT '0x' || encode(token_address, 'hex') || ':' || symbol FROM tokens")
         & node (Join-Path $PSScriptRoot "local-stack-images.mjs") @addresses |
