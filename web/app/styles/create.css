@@ -84,6 +84,13 @@
     border-radius: calc(var(--radius-container) - 4px);
     font-size: 44px;
   }
+  .launch-aside .launch-image-slot-mark {
+    gap: 6px;
+    font-size: 13px;
+  }
+  .launch-aside .launch-image-slot-plus {
+    font-size: 36px;
+  }
   .launch-aside .launch-preview-name {
     font-size: 32px;
     line-height: 40px;
@@ -154,33 +161,34 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
-/* Image picker: a dashed tile holding a round slot (the token's avatar shape) and a short label. */
-.launch-dropzone {
+/*
+ * Image picker: the preview card's image square itself. Empty, it is a dashed square with a "+";
+ * filled, it shows the chosen image and a "Replace" veil on hover. The native input covers it.
+ */
+.launch-image-slot {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  min-height: 112px;
-  border: 1px dashed var(--hairline-strong);
-  border-radius: var(--radius-container);
-  padding: 16px 20px;
+  border: 1px dashed var(--hairline-bright);
+  cursor: pointer;
   transition:
     border-color var(--dur-fast) var(--ease-out),
     background-color var(--dur-fast) var(--ease-out);
 }
-.launch-dropzone:hover,
-.launch-dropzone:has(.launch-image-input:focus-visible) {
-  border-color: var(--hairline-bright);
-  background: var(--fill);
+.launch-image-slot[data-filled] {
+  border-color: transparent;
 }
-.launch-dropzone:has(.launch-image-input:focus-visible) {
+.launch-image-slot:hover,
+.launch-image-slot:has(.launch-image-input:focus-visible) {
+  border-color: var(--text-2);
+}
+.launch-image-slot:has(.launch-image-input:focus-visible) {
   outline: 2px solid var(--text);
   outline-offset: 2px;
 }
-.launch-dropzone[data-filled] {
-  border-style: solid;
+/* A chosen image needs no frame; the "Replace" veil marks it as clickable. */
+.launch-image-slot[data-filled]:hover {
+  border-color: transparent;
 }
-.launch-dropzone:has(.launch-image-input[aria-invalid="true"]) {
+.launch-image-slot[data-invalid] {
   border-color: var(--down);
 }
 .launch-image-input {
@@ -192,41 +200,51 @@
   opacity: 0;
   cursor: pointer;
 }
-.launch-dropzone-mark,
-.launch-image-preview {
+.launch-image-slot-mark {
   display: grid;
-  flex: none;
-  width: 72px;
-  height: 72px;
-  border-radius: var(--radius-avatar);
-}
-.launch-dropzone-mark {
-  place-items: center;
+  justify-items: center;
+  gap: 2px;
   color: var(--text-2);
-  background: var(--fill);
-  font-size: 28px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
+}
+.launch-image-slot-plus {
+  font-size: 22px;
   font-weight: 300;
   line-height: 1;
 }
-.launch-image-preview {
-  object-fit: cover;
-}
-.launch-dropzone-text {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-.launch-dropzone-text strong {
-  overflow: hidden;
+.launch-image-slot-replace {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 6px 0;
   color: var(--text);
-  font-size: 15px;
+  background: color-mix(in srgb, var(--canvas) 72%, transparent);
+  backdrop-filter: blur(6px);
+  font-size: 12px;
   font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: center;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
 }
-.launch-dropzone-text span {
-  color: var(--text-3);
-  font-size: 13px;
+.launch-image-slot:hover .launch-image-slot-replace,
+.launch-image-slot:has(.launch-image-input:focus-visible) .launch-image-slot-replace {
+  opacity: 1;
+}
+.launch-image-error {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+/* Below the wide layout the square is a small avatar circle: a larger target, and the "+" alone. */
+@media (max-width: 1023px) {
+  .launch-preview-image.launch-image-slot {
+    width: 72px;
+    height: 72px;
+  }
+  .launch-image-slot-mark > span:not(.launch-image-slot-plus) {
+    display: none;
+  }
 }
 .launch-main .transaction-confirmation h3 {
   font: var(--type-label);

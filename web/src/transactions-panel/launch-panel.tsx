@@ -29,7 +29,8 @@ import { LaunchConfirmation, LaunchPreview, launchBlockers } from "./launch-view
 import {
   LaunchAttachStatus,
   LaunchDescriptionField,
-  LaunchImageField,
+  LaunchImageNote,
+  LaunchImageSlot,
   LaunchSignIn,
   useLaunchExtras,
 } from "./launch-extras";
@@ -247,10 +248,6 @@ function LaunchPanelReady() {
           <div className="launch-layout">
             <div className="launch-main">
               <div className="transaction-form">
-                <section className="launch-section" aria-labelledby="launch-step-image">
-                  <h2 id="launch-step-image">Image</h2>
-                  <LaunchImageField extras={extras} onChange={() => write.closeReview()} />
-                </section>
                 <section className="launch-section" aria-labelledby="launch-step-name">
                   <h2 id="launch-step-name">Name and symbol</h2>
                   <div className="launch-field-row">
@@ -343,6 +340,10 @@ function LaunchPanelReady() {
               <div className="launch-aside">
                 <LaunchPreview
                   previewUrl={extras.preview}
+                  imageSlot={
+                    <LaunchImageSlot extras={extras} onChange={() => write.closeReview()} />
+                  }
+                  imageNote={<LaunchImageNote extras={extras} />}
                   name={name}
                   symbol={symbol}
                   launchFee={launchFee}

@@ -127,7 +127,11 @@ export function useLaunchExtras(links: { xUrl: string; telegramUrl: string }) {
 
 export type LaunchExtrasState = ReturnType<typeof useLaunchExtras>;
 
-export function LaunchImageField({
+/**
+ * The token image picker, drawn as the preview card's image square: the native picker sits
+ * invisibly over it, so a click, a keyboard press or a dropped file all reach the real input.
+ */
+export function LaunchImageSlot({
   extras,
   onChange,
 }: {
@@ -135,46 +139,55 @@ export function LaunchImageField({
   onChange: () => void;
 }) {
   return (
-    <div className="ui-field launch-image-field">
-      <label htmlFor="launch-image-file">Token image</label>
-      {/* The native picker sits invisibly over the whole tile: a click, a keyboard press or a
-          dropped file all reach the real input, and the tile only draws what it holds. */}
-      <div className="launch-dropzone" data-filled={extras.preview ? "" : undefined}>
-        <input
-          id="launch-image-file"
-          className="launch-image-input"
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          aria-describedby="launch-image-hint"
-          aria-invalid={extras.fileError ? "true" : undefined}
-          onChange={(event) => {
-            onChange();
-            void extras.chooseFile(event.target.files?.[0]);
-          }}
-        />
-        {extras.preview ? (
-          // A local object URL of the chosen file; SafeImage only accepts remote URLs.
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img src={extras.preview} alt="Token image preview" className="launch-image-preview" />
-        ) : (
-          <span className="launch-dropzone-mark" aria-hidden="true">
-            +
+    <div
+      className="launch-preview-image launch-image-slot"
+      data-filled={extras.preview ? "" : undefined}
+      data-invalid={extras.fileError ? "" : undefined}
+    >
+      <input
+        className="launch-image-input"
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        aria-label="Token image"
+        aria-describedby="launch-image-hint"
+        aria-invalid={extras.fileError ? "true" : undefined}
+        onChange={(event) => {
+          onChange();
+          void extras.chooseFile(event.target.files?.[0]);
+        }}
+      />
+      {extras.preview ? (
+        <>
+          {/* A local object URL of the chosen file; SafeImage only accepts remote URLs. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={extras.preview} alt="Token image preview" />
+          <span className="launch-image-slot-replace" aria-hidden="true">
+            Replace
           </span>
-        )}
-        <span className="launch-dropzone-text" aria-hidden="true">
-          <strong>{extras.file ? extras.file.name : "Choose an image"}</strong>
-          <span>{extras.file ? "Click or drop to replace" : "or drop it here"}</span>
+        </>
+      ) : (
+        <span className="launch-image-slot-mark" aria-hidden="true">
+          <span className="launch-image-slot-plus">+</span>
+          <span>Add image</span>
         </span>
-      </div>
-      <p id="launch-image-hint" className="ui-field-hint">
+      )}
+    </div>
+  );
+}
+
+/** The image slot's hint (for screen readers) and its error, under the preview's name. */
+export function LaunchImageNote({ extras }: { extras: LaunchExtrasState }) {
+  return (
+    <>
+      <p id="launch-image-hint" className="sr-only">
         Optional. PNG, JPEG, or WebP, up to 5 MiB. Uploaded after the launch confirms.
       </p>
       {extras.fileError ? (
-        <p className="ui-field-error" role="alert">
+        <p className="ui-field-error launch-image-error" role="alert">
           {extras.fileError}
         </p>
       ) : null}
-    </div>
+    </>
   );
 }
 

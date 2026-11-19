@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { launchRulesV2 } from "@/launch-v2";
 import type { ReviewedWriteIntent } from "@/transactions";
 import { type Address, eth } from "./shared";
@@ -25,6 +26,8 @@ export function launchBlockers(
 
 export function LaunchPreview({
   previewUrl,
+  imageSlot,
+  imageNote,
   name,
   symbol,
   launchFee,
@@ -33,6 +36,10 @@ export function LaunchPreview({
 }: {
   /** A `blob:` URL of the chosen file; never a remote URL. */
   previewUrl: string | null;
+  /** Drawn in place of the static image square, e.g. the image picker. */
+  imageSlot?: ReactNode;
+  /** Shown under the name, across the card (the picker's hint and error). */
+  imageNote?: ReactNode;
   name: string;
   symbol: string;
   launchFee: bigint | null;
@@ -43,19 +50,22 @@ export function LaunchPreview({
   const v2 = v2Rules !== undefined;
   return (
     <aside className="launch-preview-card" aria-label="Token preview">
-      <div className="launch-preview-image">
-        {previewUrl ? (
-          // A local object URL of the file being uploaded; CSP allows blob: images.
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img src={previewUrl} alt="Token preview" />
-        ) : (
-          <span aria-hidden="true">◈</span>
-        )}
-      </div>
+      {imageSlot ?? (
+        <div className="launch-preview-image">
+          {previewUrl ? (
+            // A local object URL of the file being uploaded; CSP allows blob: images.
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={previewUrl} alt="Token preview" />
+          ) : (
+            <span aria-hidden="true">◈</span>
+          )}
+        </div>
+      )}
       <div className="launch-preview-identity">
         <p className="launch-preview-name">{name.trim() || "Your token"}</p>
         <p className="mono">{symbol.trim() || "ticker"}</p>
       </div>
+      {imageNote}
       <dl>
         <div>
           <dt>Launch fee</dt>

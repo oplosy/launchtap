@@ -47,18 +47,21 @@ test("the launch form sits left of the token preview on a laptop", async ({ page
   });
 });
 
-test("the four sections appear in order", async ({ page }) => {
+test("the three sections appear in order, the image picker in the preview", async ({ page }) => {
   await installRpc(page);
   await page.goto("/create");
   const form = page.getByRole("region", { name: "Launch token" });
   await expect(page.getByRole("textbox", { name: "Name" })).toBeVisible();
   await expect(form.getByRole("heading", { level: 2 })).toHaveText([
-    "Image",
     "Name and symbol",
     // The About heading (description and links) also carries its info tip's text.
     /^About/,
     "Initial buy",
   ]);
+  // The image is picked on the preview card's image square.
+  await expect(
+    page.getByRole("complementary", { name: "Token preview" }).getByLabel("Token image"),
+  ).toBeAttached();
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth))
     .toBe(0);
