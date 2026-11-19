@@ -149,39 +149,6 @@
   min-height: 44px;
   padding-block: 9px;
 }
-/* More options: a closed disclosure holding the optional description and links. */
-.launch-more > summary {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  cursor: pointer;
-  list-style: none;
-}
-.launch-more > summary::-webkit-details-marker {
-  display: none;
-}
-/* Details content renders in a slot that ignores the section's grid gap; this restores it. */
-.launch-more-body {
-  display: grid;
-  gap: 16px;
-  padding-top: 16px;
-}
-.launch-more-label {
-  font: var(--type-section);
-}
-.launch-more-hint {
-  color: var(--text-3);
-  font: var(--type-label);
-}
-.launch-more > summary svg {
-  align-self: center;
-  margin-left: auto;
-  color: var(--text-2);
-  transition: transform var(--dur-fast) var(--ease-out);
-}
-.launch-more[open] > summary svg {
-  transform: rotate(180deg);
-}
 .launch-field-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

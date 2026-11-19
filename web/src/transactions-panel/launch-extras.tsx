@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { CaretDown } from "@phosphor-icons/react";
 import { useContext, useEffect, useRef, useState } from "react";
 import type { Address } from "viem";
 import { ApiClient } from "@/api/client";
@@ -176,25 +175,6 @@ export function LaunchImageField({
         </p>
       ) : null}
     </div>
-  );
-}
-
-/** A closed disclosure for the optional description and links, so the quick path stays short. */
-export function LaunchMoreOptions({ children }: { children: React.ReactNode }) {
-  return (
-    <details className="launch-section launch-more">
-      <summary>
-        <span className="launch-more-label">More options</span>
-        <span className="launch-more-hint">Description and links</span>
-        <CaretDown size={16} aria-hidden="true" />
-      </summary>
-      <div className="launch-more-body">
-        <p className="ui-field-hint">
-          Optional. Saved after the launch confirms; you can change them later from the token page.
-        </p>
-        {children}
-      </div>
-    </details>
   );
 }
 

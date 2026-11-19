@@ -29,7 +29,6 @@ import { LaunchConfirmation, LaunchPreview, launchBlockers } from "./launch-view
 import {
   LaunchAttachStatus,
   LaunchDescriptionField,
-  LaunchMoreOptions,
   LaunchImageField,
   LaunchSignIn,
   useLaunchExtras,
@@ -274,6 +273,33 @@ function LaunchPanelReady() {
                     />
                   </div>
                 </section>
+                <section className="launch-section" aria-labelledby="launch-step-links">
+                  <h2 id="launch-step-links">
+                    About
+                    <InfoTip
+                      align="start"
+                      label="the description and links"
+                      text="Optional. Saved after the launch confirms; you can change them later from the token page."
+                    />
+                  </h2>
+                  <LaunchDescriptionField extras={extras} onChange={() => write.closeReview()} />
+                  <div className="launch-field-row">
+                    <Input
+                      label="X profile"
+                      value={xUrl}
+                      onChange={(event) => edit(setXUrl)(event.target.value)}
+                      placeholder="https://x.com/handle"
+                      error={fieldError("xUrl", xUrl)}
+                    />
+                    <Input
+                      label="Telegram"
+                      value={telegramUrl}
+                      onChange={(event) => edit(setTelegramUrl)(event.target.value)}
+                      placeholder="https://t.me/community"
+                      error={fieldError("telegramUrl", telegramUrl)}
+                    />
+                  </div>
+                </section>
                 <section className="launch-section" aria-labelledby="launch-step-buy">
                   <h2 id="launch-step-buy">Initial buy</h2>
                   <div className="launch-field-row">
@@ -312,25 +338,6 @@ function LaunchPanelReady() {
                     />
                   </div>
                 </section>
-                <LaunchMoreOptions>
-                  <LaunchDescriptionField extras={extras} onChange={() => write.closeReview()} />
-                  <div className="launch-field-row">
-                    <Input
-                      label="X profile"
-                      value={xUrl}
-                      onChange={(event) => edit(setXUrl)(event.target.value)}
-                      placeholder="https://x.com/handle"
-                      error={fieldError("xUrl", xUrl)}
-                    />
-                    <Input
-                      label="Telegram"
-                      value={telegramUrl}
-                      onChange={(event) => edit(setTelegramUrl)(event.target.value)}
-                      placeholder="https://t.me/community"
-                      error={fieldError("telegramUrl", telegramUrl)}
-                    />
-                  </div>
-                </LaunchMoreOptions>
               </div>
               {/* Right column on wide screens: live preview, terms and the launch action stay in view. */}
               <div className="launch-aside">
