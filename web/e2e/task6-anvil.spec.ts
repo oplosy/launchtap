@@ -233,6 +233,7 @@ test.describe("Task 6 Anvil transaction gate", () => {
       .getByLabel("Token image", { exact: true })
       .setInputFiles({ name: "art.png", mimeType: "image/png", buffer: png });
     await expect(page.getByRole("img", { name: "Token image preview" })).toBeVisible();
+    await page.getByText("More options", { exact: true }).click();
     await page.getByLabel("Description", { exact: true }).fill("A pictured launch.");
     await page.getByLabel("X profile", { exact: true }).fill("https://x.com/pictured");
     await page.getByRole("button", { name: "Review launch" }).click();

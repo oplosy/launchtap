@@ -216,7 +216,7 @@ func TestMetadataAuthenticationAuthorizationAndValidationProblems(t *testing.T) 
 		{"oversized did", fakeVerifier{principal: privyauth.Principal{PrivyDID: strings.Repeat("d", maxPrivyDIDBytes+1)}}, nil, `{}`, http.StatusUnauthorized},
 		{"authorization", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did", Wallets: []common.Address{common.HexToAddress("0x01")}}}, metadata.ErrUnauthorized, `{}`, http.StatusForbidden},
 		{"revision", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, metadata.ErrRevisionConflict, `{}`, http.StatusPreconditionFailed},
-		{"description", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"description":"` + strings.Repeat("x", 2001) + `"}`, http.StatusUnprocessableEntity},
+		{"description", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"description":"` + strings.Repeat("x", maxDescriptionBytes+1) + `"}`, http.StatusUnprocessableEntity},
 		{"description nul", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"description":"a\u0000b"}`, http.StatusUnprocessableEntity},
 		{"description control", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"description":"a\u0007b"}`, http.StatusUnprocessableEntity},
 		{"description bidi override", fakeVerifier{principal: privyauth.Principal{PrivyDID: "did"}}, nil, `{"description":"a\u202eb"}`, http.StatusUnprocessableEntity},

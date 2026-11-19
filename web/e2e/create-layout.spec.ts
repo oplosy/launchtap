@@ -55,10 +55,13 @@ test("the four sections appear in order", async ({ page }) => {
   await expect(form.getByRole("heading", { level: 2 })).toHaveText([
     "Image",
     "Name and symbol",
-    // The About heading (description and links) also carries its info tip's text.
-    /^About/,
     "Initial buy",
   ]);
+  // The description and links sit in a closed "More options" disclosure after the sections.
+  const more = form.locator("details.launch-more");
+  await expect(more).not.toHaveAttribute("open");
+  await more.locator("summary").click();
+  await expect(page.getByLabel("Description", { exact: true })).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth))
     .toBe(0);
