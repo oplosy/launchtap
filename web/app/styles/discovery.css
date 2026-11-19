@@ -88,6 +88,9 @@
   border-bottom: 1px solid var(--hairline);
   padding: 12px 0;
 }
+.token-frame {
+  display: contents;
+}
 .token-image {
   width: 44px;
   height: 44px;
@@ -276,14 +279,30 @@ html[data-theme="light"] .ui-image-fallback {
 .token-list[data-layout="grid"] .token-image .ui-image-fallback-letter {
   font-size: 48px;
 }
-/* Hover: the whole card (artwork and caption) grows a little outward, above its neighbours. */
+/*
+ * Hover: the whole card (artwork and caption) grows a little outward, above its neighbours, while
+ * the artwork zooms slightly inside its clipped frame.
+ */
+.token-list[data-layout="grid"] .token-frame {
+  display: block;
+  grid-column: 1 / -1;
+  overflow: hidden;
+  border-radius: 8px;
+}
+.token-list[data-layout="grid"] .token-frame > img.token-image {
+  display: block;
+}
 @media (prefers-reduced-motion: no-preference) {
-  .token-list[data-layout="grid"] > .token-card {
+  .token-list[data-layout="grid"] > .token-card,
+  .token-list[data-layout="grid"] .token-frame > .token-image {
     transition: transform 0.4s var(--ease-out);
   }
   .token-list[data-layout="grid"] > .token-card:hover {
     z-index: 1;
     transform: scale(1.03);
+  }
+  .token-list[data-layout="grid"] > .token-card:hover .token-frame > .token-image {
+    transform: scale(1.05);
   }
 }
 .token-list[data-layout="grid"] .token-metrics {

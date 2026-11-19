@@ -1356,12 +1356,17 @@
 }
 /* Hover: the whole block grows a little outward, above its neighbours, as token cards do. */
 @media (prefers-reduced-motion: no-preference) {
-  .forum-post {
+  .forum-post,
+  .forum-post-backdrop {
     transition: transform 0.4s var(--ease-out);
   }
   .forum-post:hover {
     z-index: 1;
     transform: scale(1.03);
+  }
+  /* The artwork also zooms slightly inside the block, which clips it. */
+  .forum-post:hover .forum-post-backdrop {
+    transform: scale(1.05);
   }
 }
 
