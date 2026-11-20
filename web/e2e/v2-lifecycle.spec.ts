@@ -153,7 +153,7 @@ test.describe("Anvil v2 lifecycle gate", () => {
       await page.goto("/create");
       await connectWallet(page);
       const preview = page.getByRole("complementary", { name: "Token preview" });
-      await expect(preview).toContainText("50%, decaying to 0 over 1 min");
+      await expect(preview.getByTitle("50%, decaying to 0 over 1 min")).toHaveText("50% → 0");
       await page.getByLabel("Name", { exact: true }).fill("Lifecycle V2");
       await page.getByLabel("Ticker", { exact: true }).fill("LV2");
       await page.getByLabel("Developer buy (ETH)", { exact: true }).fill("0.01");

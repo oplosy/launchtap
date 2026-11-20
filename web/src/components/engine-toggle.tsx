@@ -5,12 +5,12 @@ export type LaunchEngine = 1 | 2;
 const ENGINES: readonly { version: LaunchEngine; label: string; summary: string }[] = [
   {
     version: 1,
-    label: "Engine v1",
+    label: "V1",
     summary: "Graduates to a Uniswap v2 pair. The pool's LP tokens are burned.",
   },
   {
     version: 2,
-    label: "Engine v2",
+    label: "V2",
     summary:
       "Graduates to a Uniswap v4 pool. The LP stays locked forever and you share its trading fees.",
   },
