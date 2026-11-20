@@ -133,6 +133,20 @@ func TestServiceRoleGrants(t *testing.T) {
 			if read != wantRead || insert != want || update != want || remove != want {
 				t.Errorf("%s on %s: select=%t insert=%t update=%t delete=%t, want select=%t write=%t", role, table, read, insert, update, remove, wantRead, want)
 			}
+			// has_table_privilege ignores column grants; has_any_column_privilege sees both, so
+			// a column grant outside apiColumnWrites fails here.
+			var anyInsert, anyUpdate bool
+			if err := database.DB.QueryRowContext(ctx, `SELECT has_any_column_privilege($1, $2, 'INSERT'), has_any_column_privilege($1, $2, 'UPDATE')`, role, "public."+table).Scan(&anyInsert, &anyUpdate); err != nil {
+				t.Fatal(err)
+			}
+			columns, columnGrant := apiColumnWrites[table]
+			columnGrant = columnGrant && role == APIRole
+			if wantInsert := want || (columnGrant && len(columns.insert) > 0); anyInsert != wantInsert {
+				t.Errorf("%s on %s: insert on some column=%t, want %t", role, table, anyInsert, wantInsert)
+			}
+			if wantUpdate := want || (columnGrant && len(columns.update) > 0); anyUpdate != wantUpdate {
+				t.Errorf("%s on %s: update on some column=%t, want %t", role, table, anyUpdate, wantUpdate)
+			}
 		}
 	}
 	for table := range privateReaders {
