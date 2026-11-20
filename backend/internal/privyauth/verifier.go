@@ -61,9 +61,19 @@ func NewES256Verifier(appID, serializedKey string) (*ES256Verifier, error) {
 }
 
 func (v *ES256Verifier) Verify(_ context.Context, accessToken, identityToken string) (Principal, error) {
+	// Both token kinds share issuer, audience and key, so a signature check alone cannot tell
+	// them apart. An identity token presented as the access token would otherwise pass: the
+	// same string twice, or any token carrying the identity-only linked_accounts claim. Privy
+	// lists sid on access tokens but does not guarantee it, so its absence is not rejected.
+	if accessToken == identityToken {
+		return Principal{}, invalid(errors.New("access and identity tokens are the same token"))
+	}
 	access, err := v.verifyJWT(accessToken)
 	if err != nil {
 		return Principal{}, invalid(err)
+	}
+	if _, ok := access["linked_accounts"]; ok {
+		return Principal{}, invalid(errors.New("access token carries identity claims"))
 	}
 	identity, err := v.verifyJWT(identityToken)
 	if err != nil {
