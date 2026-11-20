@@ -7,6 +7,8 @@ import { IERC721Receiver } from "@openzeppelin/contracts/token/ERC721/IERC721Rec
 /// fees into pull-claim balances (spec §3.5, §5.2).
 interface ILpFeeLocker is IERC721Receiver {
     event LpFeesCollected(address indexed token, uint256 ethAmount, uint256 tokenAmount);
+    /// @notice `recipient` is the account whose credited balance was paid out. Under `claimTo`
+    /// the funds go to the address the caller named, not to `recipient`.
     event LpFeesClaimed(
         address indexed token, address indexed recipient, uint256 ethAmount, uint256 tokenAmount
     );
