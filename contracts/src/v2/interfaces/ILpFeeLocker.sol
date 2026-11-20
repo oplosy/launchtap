@@ -19,6 +19,7 @@ interface ILpFeeLocker is IERC721Receiver {
     error NotPositionManager(address caller);
     error NotPoolManager(address caller);
     error EthTransferFailed(address recipient);
+    error InvalidRecipient(address recipient);
 
     /// @notice Records `tokenId` as `token`'s locked position. Only `token`'s curve, once.
     function registerPosition(address token, uint256 tokenId) external;
@@ -28,6 +29,13 @@ interface ILpFeeLocker is IERC721Receiver {
 
     /// @notice Collects, then pays the caller's ETH and token balances for `token`.
     function claim(address token) external returns (uint256 ethAmount, uint256 tokenAmount);
+
+    /// @notice Collects, then pays the caller's ETH and token balances for `token` to
+    /// `recipient`, for an owed account that cannot receive ETH itself. `LpFeesClaimed` names
+    /// the caller. Reverts `InvalidRecipient` for the zero address or this contract.
+    function claimTo(address token, address recipient)
+        external
+        returns (uint256 ethAmount, uint256 tokenAmount);
 
     function positionOf(address token) external view returns (uint256 tokenId);
 
