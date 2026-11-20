@@ -199,11 +199,20 @@ func (c *Client) switchTo(ctx context.Context, method string, target int) {
 		return
 	}
 	from := c.endpoints[f.active].role
+	// A primary never verified, or rejected, may not take over on a fallback failure either.
+	needsVerification := target == 0 && !f.primaryVerified
+	rejected := target == 0 && f.primaryRejected
 	f.mu.Unlock()
 
-	checkContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.config.Timeout)
-	err := c.checkChainID(checkContext, c.endpoints[target])
-	cancel()
+	err := errPrimaryRejected
+	if !rejected {
+		checkContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.config.Timeout)
+		err = c.checkChainID(checkContext, c.endpoints[target])
+		if err == nil && needsVerification && !c.verifyPrimary(checkContext) {
+			err = errPrimaryUnverified
+		}
+		cancel()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err != nil {
@@ -221,7 +230,11 @@ func (c *Client) switchTo(ctx context.Context, method string, target int) {
 	slog.Warn("RPC provider switched", "from", from, "to", c.endpoints[target].role, "failing_method", method, "wait_for_block", f.gateHeight)
 }
 
-var errChainIDMismatch = errors.New("RPC chain id does not match")
+var (
+	errChainIDMismatch   = errors.New("RPC chain id does not match")
+	errPrimaryRejected   = errors.New("primary RPC failed the identity checks")
+	errPrimaryUnverified = errors.New("primary RPC identity checks did not pass")
+)
 
 func (c *Client) checkChainID(ctx context.Context, ep *endpoint) error {
 	chainID, err := ep.eth.ChainID(ctx)
@@ -236,8 +249,13 @@ func (c *Client) checkChainID(ctx context.Context, ep *endpoint) error {
 
 // chainIDCheckReason names a failed chain-id check without the error text.
 func chainIDCheckReason(err error) string {
-	if errors.Is(err, errChainIDMismatch) {
+	switch {
+	case errors.Is(err, errChainIDMismatch):
 		return "chain_id_mismatch"
+	case errors.Is(err, errPrimaryRejected):
+		return "primary_rejected"
+	case errors.Is(err, errPrimaryUnverified):
+		return "primary_unverified"
 	}
 	return rpcOutcome(err)
 }
