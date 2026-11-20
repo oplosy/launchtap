@@ -39,6 +39,26 @@ contract EthRejectingClaimer {
     }
 }
 
+/// @dev Tries to claim again from inside the ETH payout. The payout always reverts, so it never
+/// holds ETH.
+// forge-lint: disable-next-item(locked-ether)
+contract ReenteringRecipient {
+    ILpFeeLocker internal immutable LOCKER;
+    address internal immutable TOKEN;
+
+    // Test-only wiring to the locker under test; a zero address is never passed.
+    // forge-lint: disable-next-item(missing-zero-check)
+    constructor(ILpFeeLocker locker, address token) {
+        LOCKER = locker;
+        TOKEN = token;
+    }
+
+    receive() external payable {
+        // forge-lint: disable-next-line(unused-return)
+        LOCKER.claim(TOKEN);
+    }
+}
+
 // Tests ignore fee-call returns they read back separately, send ETH to fixed test routers,
 // and the fuzz sequence drives swaps/collects in a loop by design.
 // forge-lint: disable-start(unused-return, calls-loop, arbitrary-send-eth)
@@ -205,6 +225,8 @@ contract LpFeeLockerTest is V4TestBase {
         assertGt(owedTokens, 0);
 
         vm.expectEmit(address(locker));
+        // An expectation for the claim below, not a log after an external call.
+        // forge-lint: disable-next-line(reentrancy-events)
         emit ILpFeeLocker.LpFeesClaimed(address(token), address(rejector), owedEth, owedTokens);
         rejector.claimTo(locker, address(token), NEW_RECIPIENT);
 
@@ -231,6 +253,22 @@ contract LpFeeLockerTest is V4TestBase {
         assertEq(paidEth, creatorEth);
         (uint256 stillOwed,) = locker.owed(address(token), TREASURY);
         assertEq(stillOwed, protocolEth);
+    }
+
+    function test_claimTo_reenteringRecipientCannotClaimTwice() public {
+        ReenteringRecipient reenterer = new ReenteringRecipient(locker, address(token));
+        _buy(1 ether);
+        locker.collect(address(token));
+        (uint256 owedEth,) = locker.owed(address(token), CREATOR);
+
+        vm.prank(CREATOR);
+        vm.expectRevert(
+            abi.encodeWithSelector(ILpFeeLocker.EthTransferFailed.selector, address(reenterer))
+        );
+        locker.claimTo(address(token), address(reenterer));
+
+        (uint256 stillOwed,) = locker.owed(address(token), CREATOR);
+        assertEq(stillOwed, owedEth);
     }
 
     function test_claimTo_rejectsZeroAndLockerRecipients() public {
