@@ -115,9 +115,9 @@
     "check": "incorrect-equality",
     "impact": "Medium",
     "confidence": "High",
-    "description": "LpFeeLocker._collect(address) (src/v2/LpFeeLocker.sol#135-152) uses a dangerous strict equality:\n\t- ethAmount == 0 && tokenAmount == 0 (src/v2/LpFeeLocker.sol#146)\n",
-    "id": "5d9facb6f8122c1b723da31190ea3fdae41fa47a1d96c7cc332570bbdbbebd6f",
-    "first_markdown_element": "src/v2/LpFeeLocker.sol#L135-L152"
+    "description": "LpFeeLocker._collect(address) (src/v2/LpFeeLocker.sol#158-175) uses a dangerous strict equality:\n\t- ethAmount == 0 && tokenAmount == 0 (src/v2/LpFeeLocker.sol#169)\n",
+    "id": "44682fbcb03ff0c1096a03971890db9f9d86696b626e9fb2834be44a441ad58d",
+    "first_markdown_element": "src/v2/LpFeeLocker.sol#L158-L175"
   },
   {
     "check": "unused-return",
@@ -131,8 +131,8 @@
     "check": "reentrancy-no-eth",
     "impact": "Medium",
     "confidence": "Medium",
-    "description": "Reentrancy in LpFeeLocker.claim(address) (src/v2/LpFeeLocker.sol#93-115):\n\tExternal calls:\n\t- _collect(token) (src/v2/LpFeeLocker.sol#98)\n\t\t- POSITION_MANAGER.modifyLiquidities(_collectData(tokenId,token),block.timestamp) (src/v2/LpFeeLocker.sol#142)\n\tState variables written after the call(s):\n\t- _ethOwed[token][msg.sender] = 0 (src/v2/LpFeeLocker.sol#104)\n\tLpFeeLocker._ethOwed (src/v2/LpFeeLocker.sol#36) can be used in cross function reentrancies:\n\t- LpFeeLocker.owed(address,address) (src/v2/LpFeeLocker.sol#123-129)\n\t- _tokenOwed[token][msg.sender] = 0 (src/v2/LpFeeLocker.sol#105)\n\tLpFeeLocker._tokenOwed (src/v2/LpFeeLocker.sol#37) can be used in cross function reentrancies:\n\t- LpFeeLocker.owed(address,address) (src/v2/LpFeeLocker.sol#123-129)\n",
-    "id": "b3256d5f9d28bacae93ae67cd62d362f2ab4703c3eb3abc702fbfe4531a0252b",
-    "first_markdown_element": "src/v2/LpFeeLocker.sol#L93-L115"
+    "description": "Reentrancy in LpFeeLocker._claim(address,address) (src/v2/LpFeeLocker.sol#129-152):\n\tExternal calls:\n\t- _collect(token) (src/v2/LpFeeLocker.sol#133)\n\t\t- POSITION_MANAGER.modifyLiquidities(_collectData(tokenId,token),block.timestamp) (src/v2/LpFeeLocker.sol#165)\n\tState variables written after the call(s):\n\t- _ethOwed[token][msg.sender] = 0 (src/v2/LpFeeLocker.sol#139)\n\tLpFeeLocker._ethOwed (src/v2/LpFeeLocker.sol#36) can be used in cross function reentrancies:\n\t- LpFeeLocker.owed(address,address) (src/v2/LpFeeLocker.sol#119-125)\n\t- _tokenOwed[token][msg.sender] = 0 (src/v2/LpFeeLocker.sol#140)\n\tLpFeeLocker._tokenOwed (src/v2/LpFeeLocker.sol#37) can be used in cross function reentrancies:\n\t- LpFeeLocker.owed(address,address) (src/v2/LpFeeLocker.sol#119-125)\n",
+    "id": "a2f0f741b8ba1c889cdf21a476f39a443998a1eca1a3b924581705a6a498f0cf",
+    "first_markdown_element": "src/v2/LpFeeLocker.sol#L129-L152"
   }
 ]

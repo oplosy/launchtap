@@ -5111,6 +5111,17 @@ export const browserAbis = {
     },
     {
       "type": "error",
+      "name": "InvalidRecipient",
+      "inputs": [
+        {
+          "name": "recipient",
+          "type": "address",
+          "internalType": "address"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "NotPoolManager",
       "inputs": [
         {

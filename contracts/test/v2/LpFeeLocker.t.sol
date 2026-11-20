@@ -32,6 +32,11 @@ contract EthRejectingClaimer {
         // forge-lint: disable-next-line(unused-return)
         locker.claim(token);
     }
+
+    function claimTo(ILpFeeLocker locker, address token, address recipient) external {
+        // forge-lint: disable-next-line(unused-return)
+        locker.claimTo(token, recipient);
+    }
 }
 
 // Tests ignore fee-call returns they read back separately, send ETH to fixed test routers,
@@ -187,6 +192,57 @@ contract LpFeeLockerTest is V4TestBase {
         vm.prank(TREASURY);
         (uint256 paidEth,) = locker.claim(address(token));
         assertGt(paidEth, 0);
+    }
+
+    function test_claimTo_paysRejectingAccountsBalancesElsewhere() public {
+        EthRejectingClaimer rejector = new EthRejectingClaimer();
+        curve.setFeeRecipient(address(rejector));
+        _buy(1 ether);
+        _sell(1_000_000e18);
+        locker.collect(address(token));
+        (uint256 owedEth, uint256 owedTokens) = locker.owed(address(token), address(rejector));
+        assertGt(owedEth, 0);
+        assertGt(owedTokens, 0);
+
+        vm.expectEmit(address(locker));
+        emit ILpFeeLocker.LpFeesClaimed(address(token), address(rejector), owedEth, owedTokens);
+        rejector.claimTo(locker, address(token), NEW_RECIPIENT);
+
+        assertEq(NEW_RECIPIENT.balance, owedEth);
+        assertEq(token.balanceOf(NEW_RECIPIENT), owedTokens);
+        (uint256 leftEth, uint256 leftTokens) = locker.owed(address(token), address(rejector));
+        assertEq(leftEth + leftTokens, 0);
+        (uint256 strangerEth, uint256 strangerTokens) = locker.owed(address(token), NEW_RECIPIENT);
+        assertEq(strangerEth + strangerTokens, 0);
+    }
+
+    function test_claimTo_paysOnlyTheCallersBalance() public {
+        _buy(1 ether);
+        locker.collect(address(token));
+        (uint256 creatorEth,) = locker.owed(address(token), CREATOR);
+        (uint256 protocolEth,) = locker.owed(address(token), TREASURY);
+
+        vm.prank(STRANGER);
+        (uint256 paidEth, uint256 paidTokens) = locker.claimTo(address(token), STRANGER);
+        assertEq(paidEth + paidTokens, 0);
+
+        vm.prank(CREATOR);
+        (paidEth,) = locker.claimTo(address(token), NEW_RECIPIENT);
+        assertEq(paidEth, creatorEth);
+        (uint256 stillOwed,) = locker.owed(address(token), TREASURY);
+        assertEq(stillOwed, protocolEth);
+    }
+
+    function test_claimTo_rejectsZeroAndLockerRecipients() public {
+        _buy(1 ether);
+        vm.startPrank(CREATOR);
+        vm.expectRevert(abi.encodeWithSelector(ILpFeeLocker.InvalidRecipient.selector, address(0)));
+        locker.claimTo(address(token), address(0));
+        vm.expectRevert(
+            abi.encodeWithSelector(ILpFeeLocker.InvalidRecipient.selector, address(locker))
+        );
+        locker.claimTo(address(token), address(locker));
+        vm.stopPrank();
     }
 
     function test_thirdPartyLiquidity_doesNotTouchLockerPosition() public {
