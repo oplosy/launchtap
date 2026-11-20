@@ -635,6 +635,11 @@ export const TOKEN_ART = {
   TRAM: ["comet", "cobalt", "split", 2],
   MRBL: ["columns", "rose", "stripR", 3],
   ANCHR: ["compass", "teal", "block", 2],
+  // Engine 2 launches (local-stack.ps1 $v2Launches).
+  LIGHT: ["radar", "night", "stripR", 2],
+  FINCH: ["fern", "teal", "stripL", 0],
+  QRTZ: ["waves", "sky", "block", 1],
+  EMBER: ["comet", "oxblood", "split", 0],
 };
 
 function frame(p, layout, motif, caption) {
