@@ -47,6 +47,7 @@ func TestEarlyBuyersWireContract(t *testing.T) {
 			}},
 		},
 		WindowOpen: true,
+		Truncated:  true,
 		Snapshot:   pagination.Snapshot{ChainID: 46630, BlockNumber: 42},
 		Finality:   "safe",
 	}}
@@ -63,7 +64,7 @@ func TestEarlyBuyersWireContract(t *testing.T) {
 	}
 	for _, want := range []string{
 		`"window_seconds":60`, `"window_open":true`, `"early_wallet_count":3`, `"early_balance":"90"`,
-		`"cluster_count":1`, `"wallet_count":2`, `"balance":"80"`, `"links":["same_transaction","funding_source"]`, `"funding_checked":2`,
+		`"cluster_count":1`, `"wallet_count":2`, `"balance":"80"`, `"links":["same_transaction","funding_source"]`, `"funding_checked":2`, `"truncated":true`,
 		`"includes_creator":true`, `"address":"` + walletA.Hex() + `","balance":"50"`, `"as_of_block":42`,
 	} {
 		if !strings.Contains(w.Body.String(), want) {
