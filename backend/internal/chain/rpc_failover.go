@@ -47,6 +47,11 @@ type FailoverConfig struct {
 	// StartOnFallback makes the fallback active from the start (the primary was unreachable
 	// at startup); Heads probes the primary as usual.
 	StartOnFallback bool
+	// VerifyPrimary runs the caller's startup identity checks on the primary. Required with
+	// StartOnFallback, where the primary was never checked: the first switch back waits until it
+	// succeeds once. A provider error retries at the next probe; any other error keeps the
+	// fallback active and stops probing until restart.
+	VerifyPrimary func(context.Context) error
 	// Now is optional; tests set it.
 	Now func() time.Time
 }
@@ -64,6 +69,10 @@ type failover struct {
 	gateHeight uint64
 	maxLatest  uint64
 	lastProbe  time.Time
+	// primaryVerified is set once the primary passed VerifyPrimary (or the caller's startup
+	// checks); primaryRejected once it failed them for a reason other than availability.
+	primaryVerified bool
+	primaryRejected bool
 }
 
 // WithFallback combines two single-provider clients into one that fails over between them. The
@@ -76,12 +85,15 @@ func WithFallback(primary, fallback *Client, config FailoverConfig) (*Client, er
 	if config.ChainID == 0 || config.AfterFailures == 0 || config.ProbeInterval <= 0 {
 		return nil, errors.New("failover chain id, failure threshold and probe interval must be positive")
 	}
+	if config.StartOnFallback && config.VerifyPrimary == nil {
+		return nil, errors.New("failover starting on the fallback needs a primary verification")
+	}
 	if config.Now == nil {
 		config.Now = time.Now
 	}
 	fallbackEndpoint := *fallback.endpoints[0]
 	fallbackEndpoint.role = roleFallback
-	state := &failover{config: config, failures: map[string]uint64{}}
+	state := &failover{config: config, failures: map[string]uint64{}, primaryVerified: !config.StartOnFallback}
 	if config.StartOnFallback {
 		state.active = 1
 		state.lastProbe = config.Now()
@@ -264,17 +276,18 @@ func (c *Client) failoverHeads(ctx context.Context) (Heads, error) {
 }
 
 // probePrimary checks the primary at most once per probe interval while the fallback is active.
-// It switches back, and returns the primary's heads, when the primary reports the right chain id
-// and is at or above the highest head seen.
+// It switches back, and returns the primary's heads, when the primary reports the right chain id,
+// has passed the caller's identity checks once, and is at or above the highest head seen.
 func (c *Client) probePrimary(ctx context.Context) (Heads, bool) {
 	f := c.failover
 	f.mu.Lock()
 	now := f.config.Now()
-	if f.active == 0 || now.Sub(f.lastProbe) < f.config.ProbeInterval {
+	if f.active == 0 || f.primaryRejected || now.Sub(f.lastProbe) < f.config.ProbeInterval {
 		f.mu.Unlock()
 		return Heads{}, false
 	}
 	f.lastProbe = now
+	verified := f.primaryVerified
 	f.mu.Unlock()
 
 	// One timeout bounds the whole probe, so a hanging primary delays this head read by at most
@@ -283,6 +296,9 @@ func (c *Client) probePrimary(ctx context.Context) (Heads, bool) {
 	defer cancel()
 	primary := c.endpoints[0]
 	if err := c.checkChainID(probeContext, primary); err != nil {
+		return Heads{}, false
+	}
+	if !verified && !c.verifyPrimary(probeContext) {
 		return Heads{}, false
 	}
 	heads, err := c.headsOn(probeContext, primary)
@@ -304,4 +320,25 @@ func (c *Client) probePrimary(ctx context.Context) (Heads, bool) {
 	f.maxLatest = latest
 	slog.Warn("RPC provider switched", "from", roleFallback, "to", rolePrimary, "block", latest)
 	return heads, true
+}
+
+// verifyPrimary runs VerifyPrimary on a primary never verified before and records the result.
+// The caller logs the error detail; only its class is logged here.
+func (c *Client) verifyPrimary(ctx context.Context) bool {
+	f := c.failover
+	err := f.config.VerifyPrimary(ctx)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	switch {
+	case err == nil:
+		f.primaryVerified = true
+		slog.Info("primary RPC passed the identity checks")
+		return true
+	case ctx.Err() != nil || IsProviderUnavailable(err):
+		slog.Warn("primary RPC identity checks incomplete; retrying at the next probe", "reason", rpcOutcome(err))
+	default:
+		f.primaryRejected = true
+		slog.Error("primary RPC failed the identity checks; staying on the fallback until restart")
+	}
+	return false
 }

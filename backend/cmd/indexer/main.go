@@ -364,13 +364,22 @@ func dialIndexerRPC(ctx context.Context, primaryURL string, fallback config.RPCF
 	// An unreachable primary starts the indexer on the fallback; a primary that answers with the
 	// wrong chain or bytecode is a misconfiguration and still refuses to start.
 	startOnFallback := false
-	verifyPrimary := func() error {
+	verifyPrimary := func(ctx context.Context) error {
 		if err := verifyPrimaryRPC(ctx, primary, chainID, deployment); err != nil {
 			return err
 		}
 		return verifyEngines(ctx, primary)
 	}
-	if err := verifyPrimary(); err != nil {
+	// Started on the fallback, the failover runs the same checks on the primary before it first
+	// switches back to it.
+	verifyBeforeSwitchback := func(ctx context.Context) error {
+		err := verifyPrimary(ctx)
+		if err != nil {
+			slog.Warn("primary RPC identity checks failed before switching back", "error", redact.Error(err, primaryURL, fallback.URL))
+		}
+		return err
+	}
+	if err := verifyPrimary(ctx); err != nil {
 		if !chain.IsProviderUnavailable(err) {
 			primary.Close()
 			secondary.Close()
@@ -379,7 +388,7 @@ func dialIndexerRPC(ctx context.Context, primaryURL string, fallback config.RPCF
 		startOnFallback = true
 		slog.Warn("primary RPC unreachable at startup; starting on the fallback", "error", redact.Error(err, primaryURL, fallback.URL))
 	}
-	combined, err := chain.WithFallback(primary, secondary, chain.FailoverConfig{ChainID: chainID, AfterFailures: fallback.AfterFailures, ProbeInterval: fallback.ProbeInterval, StartOnFallback: startOnFallback})
+	combined, err := chain.WithFallback(primary, secondary, chain.FailoverConfig{ChainID: chainID, AfterFailures: fallback.AfterFailures, ProbeInterval: fallback.ProbeInterval, StartOnFallback: startOnFallback, VerifyPrimary: verifyBeforeSwitchback})
 	if err != nil {
 		primary.Close()
 		secondary.Close()
