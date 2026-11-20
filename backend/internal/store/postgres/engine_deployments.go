@@ -49,7 +49,7 @@ func (o *Ownership) RecordEngineDeployments(ctx context.Context, chainID int64, 
 		case state.ObservedNumber.Valid:
 			observed = &state.ObservedNumber.Int64
 		}
-		fresh, err := newEngineDeployments(recorded, engines, observed)
+		fresh, err := newEngineDeployments(recorded, deploymentID, engines, observed)
 		if err != nil {
 			return err
 		}
@@ -66,8 +66,10 @@ func (o *Ownership) RecordEngineDeployments(ctx context.Context, chainID int64, 
 }
 
 // newEngineDeployments returns the configured engines not recorded yet. observed is the
-// indexer's cursor, nil before its first committed step.
-func newEngineDeployments(recorded []sqlc.ListIndexerEngineDeploymentsRow, engines []EngineDeployment, observed *int64) ([]EngineDeployment, error) {
+// indexer's cursor, nil before its first committed step. The site deployment is the one the
+// cursor has always ingested, so it is never added late: an indexer that ran before this table
+// existed records it on its first start.
+func newEngineDeployments(recorded []sqlc.ListIndexerEngineDeploymentsRow, siteDeploymentID string, engines []EngineDeployment, observed *int64) ([]EngineDeployment, error) {
 	known := make(map[string]sqlc.ListIndexerEngineDeploymentsRow, len(recorded))
 	for _, row := range recorded {
 		known[row.EngineDeploymentID] = row
@@ -81,7 +83,7 @@ func newEngineDeployments(recorded []sqlc.ListIndexerEngineDeploymentsRow, engin
 			}
 			continue
 		}
-		if observed != nil && *observed >= engine.StartBlock {
+		if engine.DeploymentID != siteDeploymentID && observed != nil && *observed >= engine.StartBlock {
 			return nil, &EngineAddedLateError{EngineDeploymentID: engine.DeploymentID, StartBlock: engine.StartBlock, Observed: *observed}
 		}
 		fresh = append(fresh, engine)
