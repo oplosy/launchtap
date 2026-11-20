@@ -269,6 +269,9 @@ func TestWithFallbackValidatesInputs(t *testing.T) {
 		"zero interval": func() (*Client, error) {
 			return WithFallback(primary, fallback, FailoverConfig{ChainID: 1, AfterFailures: 1})
 		},
+		"fallback start without primary verification": func() (*Client, error) {
+			return WithFallback(primary, fallback, FailoverConfig{ChainID: 1, AfterFailures: 1, ProbeInterval: time.Second, StartOnFallback: true})
+		},
 	}
 	for name, build := range cases {
 		if _, err := build(); err == nil {
@@ -289,7 +292,7 @@ func TestFailoverStartOnFallbackServesFromFallbackUntilPrimaryProbe(t *testing.T
 	primary, primaryClient := newFakeProvider(t, 100)
 	fallback, fallbackClient := newFakeProvider(t, 100)
 	clock := &fakeClock{now: time.Unix(1_800_000_000, 0)}
-	client, err := WithFallback(primaryClient, fallbackClient, FailoverConfig{ChainID: 46630, AfterFailures: 3, ProbeInterval: 30 * time.Second, StartOnFallback: true, Now: clock.Now})
+	client, err := WithFallback(primaryClient, fallbackClient, FailoverConfig{ChainID: 46630, AfterFailures: 3, ProbeInterval: 30 * time.Second, StartOnFallback: true, VerifyPrimary: verifiedPrimary, Now: clock.Now})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +352,7 @@ func TestFailoverProbeIsBoundedByOneTimeout(t *testing.T) {
 	primary, primaryClient := newFakeProviderWithConfig(t, 100, config)
 	_, fallbackClient := newFakeProviderWithConfig(t, 100, config)
 	clock := &fakeClock{now: time.Unix(1_800_000_000, 0)}
-	client, err := WithFallback(primaryClient, fallbackClient, FailoverConfig{ChainID: 46630, AfterFailures: 3, ProbeInterval: time.Second, StartOnFallback: true, Now: clock.Now})
+	client, err := WithFallback(primaryClient, fallbackClient, FailoverConfig{ChainID: 46630, AfterFailures: 3, ProbeInterval: time.Second, StartOnFallback: true, VerifyPrimary: verifiedPrimary, Now: clock.Now})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,5 +391,90 @@ func TestFailoverInFlightCallOnOldProviderAbortsAfterSwitch(t *testing.T) {
 	}
 	if _, err := client.CodeAt(context.Background(), common.Address{}); !errors.Is(err, ErrRPCSwitching) {
 		t.Fatalf("CodeAt() after the switch = %v, want ErrRPCSwitching until the fallback is confirmed", err)
+	}
+}
+
+func verifiedPrimary(context.Context) error { return nil }
+
+// startOnFallbackWithVerification builds a failover started on the fallback whose primary
+// verification returns the scripted results in order, then the last one forever.
+func startOnFallbackWithVerification(t *testing.T, results ...error) (*fakeProvider, *fakeProvider, *Client, *fakeClock, *atomic.Int64) {
+	t.Helper()
+	primary, primaryClient := newFakeProvider(t, 100)
+	fallback, fallbackClient := newFakeProvider(t, 100)
+	clock := &fakeClock{now: time.Unix(1_800_000_000, 0)}
+	calls := &atomic.Int64{}
+	verify := func(context.Context) error {
+		call := calls.Add(1)
+		return results[min(int(call), len(results))-1]
+	}
+	client, err := WithFallback(primaryClient, fallbackClient, FailoverConfig{ChainID: 46630, AfterFailures: 3, ProbeInterval: 30 * time.Second, StartOnFallback: true, VerifyPrimary: verify, Now: clock.Now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(client.Close)
+	return primary, fallback, client, clock, calls
+}
+
+func mustServeFrom(t *testing.T, client *Client, provider *fakeProvider) {
+	t.Helper()
+	before := provider.codeHits.Load()
+	if _, err := client.CodeAt(context.Background(), common.Address{}); err != nil || provider.codeHits.Load() != before+1 {
+		t.Fatalf("CodeAt() = %v; want it served by the expected provider", err)
+	}
+}
+
+// A primary never verified at startup is verified once before the first switch back, and not
+// again on a later switch back.
+func TestFailoverVerifiesUnverifiedPrimaryOnceBeforeSwitchingBack(t *testing.T) {
+	t.Parallel()
+	primary, fallback, client, clock, calls := startOnFallbackWithVerification(t, nil)
+	clock.Advance(30 * time.Second)
+	mustHeadsAt(t, client, 100)
+	mustServeFrom(t, client, primary)
+	if calls.Load() != 1 {
+		t.Fatalf("primary verified %d times, want 1", calls.Load())
+	}
+
+	primary.down.Store(true)
+	failCodeCalls(t, client, 3)
+	primary.down.Store(false)
+	mustHeadsAt(t, client, 100)
+	mustServeFrom(t, client, fallback)
+	clock.Advance(30 * time.Second)
+	mustHeadsAt(t, client, 100)
+	mustServeFrom(t, client, primary)
+	if calls.Load() != 1 {
+		t.Fatalf("primary verified %d times after a second switch back, want 1", calls.Load())
+	}
+}
+
+// A primary that fails the identity checks (wrong bytecode) never takes over, and is not probed
+// again until restart.
+func TestFailoverKeepsFallbackWhenPrimaryFailsIdentityChecks(t *testing.T) {
+	t.Parallel()
+	_, fallback, client, clock, calls := startOnFallbackWithVerification(t, errors.New("deployment bytecode mismatch"))
+	for range 3 {
+		clock.Advance(30 * time.Second)
+		mustHeadsAt(t, client, 100)
+		mustServeFrom(t, client, fallback)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("rejected primary verified %d times, want 1", calls.Load())
+	}
+}
+
+// A provider error during verification is retried at the next probe, not treated as a rejection.
+func TestFailoverRetriesPrimaryVerificationAfterProviderError(t *testing.T) {
+	t.Parallel()
+	primary, fallback, client, clock, calls := startOnFallbackWithVerification(t, context.DeadlineExceeded, nil)
+	clock.Advance(30 * time.Second)
+	mustHeadsAt(t, client, 100)
+	mustServeFrom(t, client, fallback)
+	clock.Advance(30 * time.Second)
+	mustHeadsAt(t, client, 100)
+	mustServeFrom(t, client, primary)
+	if calls.Load() != 2 {
+		t.Fatalf("primary verified %d times, want 2", calls.Load())
 	}
 }
