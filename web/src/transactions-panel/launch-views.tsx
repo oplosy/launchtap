@@ -90,34 +90,54 @@ export function LaunchPreview({
           <dt>Graduation</dt>
           <dd>4.2 ETH</dd>
         </div>
+        {/* Both engines show the same eight facts with short values, so switching engines
+            never changes the card's height; the full wording is in each value's title. */}
         {v2 ? (
           <>
             <div>
               <dt>Anti-snipe tax</dt>
-              <dd>
-                {v2Rules
-                  ? `${v2Rules.taxStart}, decaying to 0 over ${v2Rules.taxWindow}`
-                  : "Unavailable"}
+              <dd
+                title={
+                  v2Rules
+                    ? `${v2Rules.taxStart}, decaying to 0 over ${v2Rules.taxWindow}`
+                    : undefined
+                }
+              >
+                {v2Rules ? `${v2Rules.taxStart} → 0` : "Unavailable"}
               </dd>
             </div>
             <div>
-              <dt>Pool fee</dt>
-              <dd>
-                {v2Rules
-                  ? `1% · ${v2Rules.lpCreatorShare} creator / ${v2Rules.lpProtocolShare} protocol`
-                  : "Unavailable"}
+              <dt>LP fee share</dt>
+              <dd
+                title={
+                  v2Rules
+                    ? `1% pool fee · ${v2Rules.lpCreatorShare} creator / ${v2Rules.lpProtocolShare} protocol`
+                    : undefined
+                }
+              >
+                {v2Rules ? v2Rules.lpCreatorShare : "Unavailable"}
               </dd>
             </div>
             <div>
               <dt>Liquidity</dt>
-              <dd>Uniswap V4 position, locked forever</dd>
+              <dd title="Uniswap V4 position, locked forever">Locked</dd>
             </div>
           </>
         ) : (
-          <div>
-            <dt>Liquidity</dt>
-            <dd>Initial LP burned</dd>
-          </div>
+          <>
+            <div>
+              <dt>Anti-snipe tax</dt>
+              <dd>None</dd>
+            </div>
+            <div>
+              <dt>LP fee share</dt>
+              <dd title="The initial LP is burned, so no one collects its fees">None</dd>
+            </div>
+            <div>
+              <dt>Liquidity</dt>
+              <dd title="Uniswap v2 pair, initial LP burned">Burned</dd>
+            </div>
+          </>
         )}
       </dl>
     </aside>
