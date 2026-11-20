@@ -72,6 +72,23 @@ func TestProfileReaderAggregatesActionsAcrossLinkedWallets(t *testing.T) {
 	if len(repeated.Items) != len(page.Items) || repeated.Items[0].Token != page.Items[0].Token || repeated.Items[1].Token != page.Items[1].Token {
 		t.Fatalf("profile action ordering is not deterministic: first=%v repeated=%v", page.Items, repeated.Items)
 	}
+
+	// Only the wallets' own tokens are candidates: an unrelated wallet sees nothing, and an
+	// account without wallets still gets the indexed head.
+	unrelated, err := reader.List(ctx, chainID, []common.Address{common.BytesToAddress(addressBytes(0x99))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(unrelated.Items) != 0 {
+		t.Fatalf("unrelated wallet actions = %+v, want none", unrelated.Items)
+	}
+	empty, err := reader.List(ctx, chainID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(empty.Items) != 0 || empty.Snapshot.BlockNumber != 100 {
+		t.Fatalf("wallet-less profile = %d items at block %d, want none at block 100", len(empty.Items), empty.Snapshot.BlockNumber)
+	}
 }
 
 func insertRefundCredit(t testing.TB, ctx context.Context, database *sql.DB, chainID, blockNumber int64, blockHash []byte, blockTime time.Time, txHash []byte, token, account []byte, amount int64) {

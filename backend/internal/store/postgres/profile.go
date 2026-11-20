@@ -19,6 +19,12 @@ type ProfileReader struct {
 func (r ProfileReader) List(ctx context.Context, chainID int64, wallets []common.Address) (profile.Page, error) {
 	var page profile.Page
 	err := withReadSnapshotBeginner(ctx, r.Pool, chainID, r.DeploymentID, func(ctx context.Context, adapter *Adapter, snapshot ReadSnapshot) error {
+		page.Snapshot = snapshot.Identity
+		page.Finality = finality(snapshot.State, snapshot.Identity.BlockNumber)
+		// A wallet-less account has no curve action; the snapshot still reports the indexed head.
+		if len(wallets) == 0 {
+			return nil
+		}
 		walletBytes := make([][]byte, len(wallets))
 		for i, wallet := range wallets {
 			walletBytes[i] = append([]byte(nil), wallet[:]...)
@@ -41,8 +47,6 @@ func (r ProfileReader) List(ctx context.Context, chainID int64, wallets []common
 				CreatorFees: creatorFees, Refund: refund,
 			})
 		}
-		page.Snapshot = snapshot.Identity
-		page.Finality = finality(snapshot.State, snapshot.Identity.BlockNumber)
 		return nil
 	})
 	return page, err
