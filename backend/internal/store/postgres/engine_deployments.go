@@ -56,7 +56,7 @@ func (o *Ownership) RecordEngineDeployments(ctx context.Context, chainID int64, 
 		for _, engine := range fresh {
 			if err := adapter.queries.InsertIndexerEngineDeployment(ctx, sqlc.InsertIndexerEngineDeploymentParams{
 				ChainID: chainID, DeploymentID: deploymentID, EngineDeploymentID: engine.DeploymentID,
-				EngineVersion: int32(engine.EngineVersion), Factory: engine.Factory.Bytes(), StartBlock: engine.StartBlock,
+				EngineVersion: int32(engine.EngineVersion), Factory: sqlc.Address(engine.Factory), StartBlock: engine.StartBlock,
 			}); err != nil {
 				return fmt.Errorf("record engine deployment %q: %w", engine.DeploymentID, err)
 			}
@@ -78,7 +78,7 @@ func newEngineDeployments(recorded []sqlc.ListIndexerEngineDeploymentsRow, siteD
 	for _, engine := range engines {
 		row, ok := known[engine.DeploymentID]
 		if ok {
-			if row.EngineVersion != int32(engine.EngineVersion) || common.BytesToAddress(row.Factory) != engine.Factory || len(row.Factory) != common.AddressLength || row.StartBlock != engine.StartBlock {
+			if row.EngineVersion != int32(engine.EngineVersion) || common.Address(row.Factory) != engine.Factory || row.StartBlock != engine.StartBlock {
 				return nil, fmt.Errorf("engine deployment %q changed since it was first ingested (engine %d, factory %x, start block %d)", engine.DeploymentID, row.EngineVersion, row.Factory, row.StartBlock)
 			}
 			continue

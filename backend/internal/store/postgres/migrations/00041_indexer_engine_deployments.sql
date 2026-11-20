@@ -18,8 +18,9 @@ CREATE TABLE indexer_engine_deployments (
     CONSTRAINT indexer_engine_deployments_start_block_nonnegative CHECK (start_block >= 0)
 );
 
-GRANT SELECT ON indexer_engine_deployments TO launchpad_indexer_role;
-GRANT INSERT ON indexer_engine_deployments TO launchpad_indexer_role;
+GRANT SELECT ON indexer_engine_deployments TO launchpad_api_role, launchpad_indexer_role,
+    launchpad_telegram_role, launchpad_funding_role, launchpad_moderate_role;
+GRANT INSERT, UPDATE, DELETE ON indexer_engine_deployments TO launchpad_indexer_role;
 
 -- +goose Down
 DROP TABLE indexer_engine_deployments;

@@ -211,7 +211,7 @@ type IndexerEngineDeployment struct {
 	DeploymentID       string
 	EngineDeploymentID string
 	EngineVersion      int32
-	Factory            []byte
+	Factory            Address
 	StartBlock         int64
 	RecordedAt         pgtype.Timestamptz
 }

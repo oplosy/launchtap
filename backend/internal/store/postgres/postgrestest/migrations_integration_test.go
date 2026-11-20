@@ -197,9 +197,9 @@ func TestMetadataLaunchIdentityMigrationQuarantinesLegacyRowsAndProtectsDown(t *
 	`, chainID, token, txHash, imageContent, len(imageContent), imageHash[:], at); err != nil {
 		t.Fatal(err)
 	}
-	for range 30 {
+	for range 31 {
 		if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
-			t.Fatalf("rollback indexer-heartbeat/service-roles/audit-follow-ups/candles-ATH-index/protocol-daily-revenue/leaderboard-ranked-PnL/V4-swap-chain-order-index/V4-swap-sender-order-index/leaderboard-windows/locker-index/protocol-aggregates/wallet-funding/Telegram-links/comment-votes/V4-swap-sender-index/engine-v2 projections/engine-v2/forum/inbox/windowed-leaderboard/social/claim-index/curve-index/wallet/feed/discovery/sort/index/UTC/price-change migrations before testing launch-identity guard: %v", err)
+			t.Fatalf("rollback indexer-engine-deployments/indexer-heartbeat/service-roles/audit-follow-ups/candles-ATH-index/protocol-daily-revenue/leaderboard-ranked-PnL/V4-swap-chain-order-index/V4-swap-sender-order-index/leaderboard-windows/locker-index/protocol-aggregates/wallet-funding/Telegram-links/comment-votes/V4-swap-sender-index/engine-v2 projections/engine-v2/forum/inbox/windowed-leaderboard/social/claim-index/curve-index/wallet/feed/discovery/sort/index/UTC/price-change migrations before testing launch-identity guard: %v", err)
 		}
 	}
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err == nil || !strings.Contains(err.Error(), "multiple metadata or image rows exist") {
