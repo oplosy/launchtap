@@ -49,6 +49,7 @@ func TestLoadParsesCompleteConfiguration(t *testing.T) {
 	want := Config{
 		ChainID:                       4663,
 		DeploymentID:                  "robinhood-mainnet-v1",
+		EngineDeploymentIDs:           []string{"robinhood-mainnet-v1"},
 		RPCURL:                        "https://rpc.example.test/v2/key",
 		DatabaseURL:                   "postgresql://user:pass@db.example.test:5432/launchpad",
 		PrivyAppID:                    "app-id",
@@ -89,6 +90,7 @@ func TestConfigEnvironmentMapping(t *testing.T) {
 	want := map[string]string{
 		"ChainID":                       "CHAIN_ID",
 		"DeploymentID":                  "DEPLOYMENT_ID",
+		"EngineDeploymentIDs":           "ENGINE_DEPLOYMENT_IDS",
 		"RPCURL":                        "RPC_URL",
 		"DatabaseURL":                   "DATABASE_URL",
 		"PrivyAppID":                    "PRIVY_APP_ID",
@@ -704,5 +706,40 @@ func TestAPIAbuseLimitDefaultsAndValidation(t *testing.T) {
 		env := validEnvironment()
 		env[field] = value
 		assertFieldError(t, Load, env, field, ErrInvalid)
+	}
+}
+
+func TestLoadParsesEngineDeploymentIDs(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		value string
+		want  []string
+		err   string
+	}{
+		"both engines":       {value: " robinhood-mainnet-v1 , robinhood-mainnet-v2 ", want: []string{"robinhood-mainnet-v1", "robinhood-mainnet-v2"}},
+		"site deployment":    {value: "robinhood-mainnet-v1", want: []string{"robinhood-mainnet-v1"}},
+		"missing site":       {value: "robinhood-mainnet-v2", err: "must include DEPLOYMENT_ID"},
+		"duplicate":          {value: "robinhood-mainnet-v1,robinhood-mainnet-v1", err: "twice"},
+		"invalid id":         {value: "robinhood-mainnet-v1,Bad", err: "ENGINE_DEPLOYMENT_IDS"},
+		"empty list element": {value: "robinhood-mainnet-v1,", err: "ENGINE_DEPLOYMENT_IDS"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			env := validEnvironment()
+			env["ENGINE_DEPLOYMENT_IDS"] = test.value
+			got, err := Load(mapGetenv(env))
+			if test.err != "" {
+				if err == nil || !strings.Contains(err.Error(), test.err) {
+					t.Fatalf("Load() error = %v, want %q", err, test.err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if !reflect.DeepEqual(got.EngineDeploymentIDs, test.want) {
+				t.Fatalf("EngineDeploymentIDs = %v, want %v", got.EngineDeploymentIDs, test.want)
+			}
+		})
 	}
 }

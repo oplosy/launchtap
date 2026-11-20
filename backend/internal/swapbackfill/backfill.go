@@ -184,8 +184,8 @@ func Run(ctx context.Context, d Deps, o Options) (Summary, error) {
 type PostgresStore struct {
 	Pool    *pgxpool.Pool
 	ChainID int64
-	// Factory is excluded from position marking (R4).
-	Factory common.Address
+	// Factories, one per launch engine, are excluded from position marking (R4).
+	Factories []common.Address
 	// DeploymentID selects the indexer sync state SafeBlock reads.
 	DeploymentID string
 }
@@ -226,7 +226,7 @@ func (s PostgresStore) Attribute(ctx context.Context, senders map[common.Hash]co
 	sort.Slice(hashes, func(i, j int) bool { return string(hashes[i][:]) < string(hashes[j][:]) })
 	updated := 0
 	err := storepostgres.WithinTx(ctx, s.Pool, func(ctx context.Context, adapter *storepostgres.Adapter) error {
-		adapter = adapter.WithFactory(s.Factory)
+		adapter = adapter.WithFactories(s.Factories)
 		for _, hash := range hashes {
 			n, err := adapter.AttributeSwapSender(ctx, s.ChainID, hash, senders[hash])
 			if err != nil {

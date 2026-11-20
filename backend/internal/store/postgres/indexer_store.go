@@ -24,8 +24,9 @@ type IndexerStore struct {
 	Owner        *Ownership
 	ChainID      int64
 	DeploymentID string
-	// Factory is the configured launch factory; it is excluded from wallet position tracking.
-	Factory common.Address
+	// Factories are the configured launch factories, one per engine; they are excluded from
+	// wallet position tracking.
+	Factories []common.Address
 	// OnNotify, when set, is told the outcome of each NOTIFY (channel is market_dirty or api_refresh).
 	OnNotify func(channel string, ok bool)
 }
@@ -38,14 +39,14 @@ func (s IndexerStore) Transaction(ctx context.Context, fn func(context.Context, 
 	transactionContext := context.WithValue(ctx, refreshDeploymentContextKey{}, s.DeploymentID)
 	if s.Owner != nil {
 		if err := s.Owner.WithinTx(transactionContext, func(ctx context.Context, a *Adapter) error {
-			return fn(ctx, a.WithFactory(s.Factory).WithDirtyMarkDedupe())
+			return fn(ctx, a.WithFactories(s.Factories).WithDirtyMarkDedupe())
 		}); err != nil {
 			return markStoreConflict(err)
 		}
 		return s.notifyRefresh(ctx)
 	}
 	if err := WithinTx(transactionContext, beginner, func(ctx context.Context, a *Adapter) error {
-		return fn(ctx, a.WithFactory(s.Factory).WithDirtyMarkDedupe())
+		return fn(ctx, a.WithFactories(s.Factories).WithDirtyMarkDedupe())
 	}); err != nil {
 		return markStoreConflict(err)
 	}

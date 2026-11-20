@@ -53,6 +53,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	engines, err := resolveEngineDeployments(registry, c.ChainID, c.EngineDeploymentIDs, c.IndexerConfirmations)
+	if err != nil {
+		return err
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	fallback, err := config.LoadRPCFallback(env, c.RPCURL)
@@ -64,12 +68,20 @@ func run() error {
 	indexerMetrics := metrics.NewIndexer(metricsRegistry, health.Snapshot)
 	rpcConfig := chain.RPCConfig{Timeout: c.RPCTimeout, MaxRetries: c.RPCMaxRetries, RetryBackoff: c.RPCRetryBackoff, Observer: indexerMetrics}
 	source, err := dialIndexerRPC(ctx, c.RPCURL, fallback, rpcConfig, c.ChainID, deployment, func(ctx context.Context, client *chain.Client) error {
-		return verifyFallbackRPC(ctx, client, c.ChainID, deployment)
+		if err := verifyFallbackRPC(ctx, client, c.ChainID, deployment); err != nil {
+			return err
+		}
+		return verifyOtherEngines(ctx, client, c.DeploymentID, engines)
 	})
 	if err != nil {
 		return err
 	}
 	defer source.Close()
+	// The site deployment is checked by dialIndexerRPC or initializeIndexerResources; every other
+	// engine's bytecode and governance are checked here, still before the database opens.
+	if err := verifyOtherEngines(ctx, source, c.DeploymentID, engines); err != nil {
+		return err
+	}
 	// With a fallback, dialIndexerRPC already ran the identity checks on the provider started on.
 	pool, owner, err := initializeIndexerResources(ctx, source, !fallback.Enabled(), c.ChainID, deployment,
 		func() (*pgxpool.Pool, error) {
@@ -84,26 +96,43 @@ func run() error {
 	}
 	defer pool.Close()
 	defer func() { _ = owner.Close() }()
-	decoder, err := chain.NewDecoder(deployment.EngineVersion)
-	if err != nil {
+	records := make([]storepostgres.EngineDeployment, 0, len(engines))
+	for _, engine := range engines {
+		records = append(records, storepostgres.EngineDeployment{DeploymentID: engine.DeploymentID, EngineVersion: engine.EngineVersion, Factory: engine.Factory, StartBlock: int64(engine.StartBlock)})
+	}
+	if err := owner.RecordEngineDeployments(ctx, int64(c.ChainID), c.DeploymentID, records); err != nil {
 		return err
 	}
-	discovery, err := newDiscovery(source, decoder, deployment, c.IndexerLogAddressBatchSize)
-	if err != nil {
-		return err
+	engineSources := make([]indexer.EngineSource, 0, len(engines))
+	factories := make([]common.Address, 0, len(engines))
+	startBlock := engines[0].StartBlock
+	for _, engine := range engines {
+		decoder, err := chain.NewDecoder(engine.EngineVersion)
+		if err != nil {
+			return err
+		}
+		discovery, err := newDiscovery(source, decoder, engine, c.IndexerLogAddressBatchSize)
+		if err != nil {
+			return err
+		}
+		if discovery, err = discovery.WithLogConcurrency(int(c.IndexerLogFetchConcurrency)); err != nil {
+			return err
+		}
+		engineSources = append(engineSources, indexer.EngineSource{Discovery: discovery, Decoder: decoder, Factory: engine.Factory})
+		factories = append(factories, engine.Factory)
+		startBlock = min(startBlock, engine.StartBlock)
 	}
-	if discovery, err = discovery.WithLogConcurrency(int(c.IndexerLogFetchConcurrency)); err != nil {
-		return err
-	}
-	store := storepostgres.IndexerStore{Pool: pool, Beginner: owner.Beginner(), Owner: owner, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, Factory: deployment.Factory, OnNotify: indexerMetrics.Notified}
+	store := storepostgres.IndexerStore{Pool: pool, Beginner: owner.Beginner(), Owner: owner, ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, Factories: factories, OnNotify: indexerMetrics.Notified}
 	router := indexer.LedgerRouter{ChainID: int64(c.ChainID)}
 	health.Set(indexer.Health{ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, OwnershipHeld: true, RPCHealthy: true})
 	healthStore := storepostgres.NewAdapter(pool)
-	if deployment.EngineVersion == 2 {
-		// Holder views exclude the chain's PoolManager for engine-2 tokens; newDiscovery has
-		// already required the manifest's V4 section.
-		if err := healthStore.RegisterV4PoolManager(ctx, int64(c.ChainID), deployment.V4.PoolManager); err != nil {
-			return err
+	for _, engine := range engines {
+		if engine.EngineVersion == 2 {
+			// Holder views exclude the chain's PoolManager for engine-2 tokens; newDiscovery has
+			// already required the manifest's V4 section.
+			if err := healthStore.RegisterV4PoolManager(ctx, int64(c.ChainID), engine.V4.PoolManager); err != nil {
+				return err
+			}
 		}
 	}
 	refreshOperationalHealth := func() {
@@ -117,13 +146,13 @@ func run() error {
 		health.Operational(snapshot)
 	}
 	refreshOperationalHealth()
-	engine, err := indexer.New(indexer.Settings{
-		ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID, Factory: deployment.Factory,
-		StartBlock: int64(deployment.StartBlock), ChunkSize: int64(c.IndexerChunkSize), PollInterval: c.IndexerPollInterval,
+	engine, err := indexer.NewWithEngines(indexer.Settings{
+		ChainID: int64(c.ChainID), DeploymentID: c.DeploymentID,
+		StartBlock: int64(startBlock), ChunkSize: int64(c.IndexerChunkSize), PollInterval: c.IndexerPollInterval,
 		ReorgSearchDepth: c.IndexerReorgSearchDepth, ReorgRecoveryMode: c.IndexerReorgRecoveryMode,
 		OnCommitted: health.Committed, OnFailure: health.Failed, OnHeads: health.ChainHead,
 		Senders: source, OnSenderMisses: indexerMetrics.SenderLookupMissed,
-	}, store, source, discovery, decoder, router)
+	}, store, source, engineSources, router)
 	if err != nil {
 		return err
 	}
@@ -208,7 +237,7 @@ func run() error {
 	}}
 	// Retries sender lookups that missed during ingest, only up to the committed safe head. It
 	// uses the shared pool (never the ownership connection) and never stops ingest.
-	backfillStore := swapbackfill.PostgresStore{Pool: pool, ChainID: int64(c.ChainID), Factory: deployment.Factory, DeploymentID: c.DeploymentID}
+	backfillStore := swapbackfill.PostgresStore{Pool: pool, ChainID: int64(c.ChainID), Factories: factories, DeploymentID: c.DeploymentID}
 	senderBackfill := swapbackfill.Scheduler{
 		Deps: swapbackfill.Deps{
 			Store:   backfillStore,
@@ -266,7 +295,7 @@ func run() error {
 			}
 		}()
 	}
-	slog.Info("indexer started", "chain_id", c.ChainID, "deployment_id", c.DeploymentID, "start_block", deployment.StartBlock,
+	slog.Info("indexer started", "chain_id", c.ChainID, "deployment_id", c.DeploymentID, "engine_deployment_ids", c.EngineDeploymentIDs, "start_block", startBlock,
 		"reorg_search_depth", c.IndexerReorgSearchDepth, "reorg_recovery_mode", c.IndexerReorgRecoveryMode, "started_at", time.Now().UTC())
 	runErr := engine.Run(ctx)
 	select {
@@ -374,6 +403,45 @@ func verifyFallbackRPC(ctx context.Context, source fallbackVerifier, chainID uin
 	}
 	if _, err := source.Heads(ctx); err != nil {
 		return fmt.Errorf("read fallback finality heads: %w", err)
+	}
+	return nil
+}
+
+// resolveEngineDeployments resolves every engine manifest the indexer ingests on chainID. At most
+// one manifest may serve each engine version (docs/specs/2026-11-20-dual-engine-preflight.md).
+func resolveEngineDeployments(registry *deployments.Registry, chainID uint64, ids []string, confirmations *uint64) ([]deployments.Deployment, error) {
+	if len(ids) == 0 {
+		return nil, errors.New("no engine deployment configured")
+	}
+	resolved := make([]deployments.Deployment, 0, len(ids))
+	versions := make(map[uint16]string, len(ids))
+	for _, id := range ids {
+		engine, err := registry.Resolve(chainID, id, confirmations)
+		if err != nil {
+			return nil, fmt.Errorf("resolve engine deployment %q: %w", id, err)
+		}
+		if other, taken := versions[engine.EngineVersion]; taken {
+			return nil, fmt.Errorf("engine deployments %q and %q both serve engine %d", other, id, engine.EngineVersion)
+		}
+		versions[engine.EngineVersion] = id
+		resolved = append(resolved, engine)
+	}
+	return resolved, nil
+}
+
+// verifyOtherEngines checks the bytecode and governance of every engine deployment other than
+// the site deployment, which the RPC identity checks already cover.
+func verifyOtherEngines(ctx context.Context, source chain.RuntimeVerifier, siteDeploymentID string, engines []deployments.Deployment) error {
+	for _, engine := range engines {
+		if engine.DeploymentID == siteDeploymentID {
+			continue
+		}
+		if err := chain.VerifyDeploymentBytecode(ctx, source, engine); err != nil {
+			return fmt.Errorf("verify engine deployment %q bytecode: %w", engine.DeploymentID, err)
+		}
+		if err := chain.VerifyGovernanceTimelock(ctx, source, engine); err != nil {
+			return fmt.Errorf("verify engine deployment %q governance timelock: %w", engine.DeploymentID, err)
+		}
 	}
 	return nil
 }

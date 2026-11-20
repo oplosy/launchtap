@@ -56,3 +56,13 @@ LEFT JOIN sync_state AS s
     ON s.chain_id = sqlc.arg(chain_id) AND s.deployment_id = sqlc.arg(deployment_id)
 LEFT JOIN indexer_heartbeats AS h
     ON h.chain_id = s.chain_id AND h.deployment_id = s.deployment_id;
+
+-- name: ListIndexerEngineDeployments :many
+SELECT engine_deployment_id, engine_version, factory, start_block
+FROM indexer_engine_deployments
+WHERE chain_id = sqlc.arg(chain_id) AND deployment_id = sqlc.arg(deployment_id)
+ORDER BY engine_deployment_id;
+
+-- name: InsertIndexerEngineDeployment :exec
+INSERT INTO indexer_engine_deployments (chain_id, deployment_id, engine_deployment_id, engine_version, factory, start_block)
+VALUES (sqlc.arg(chain_id), sqlc.arg(deployment_id), sqlc.arg(engine_deployment_id), sqlc.arg(engine_version), sqlc.arg(factory), sqlc.arg(start_block));

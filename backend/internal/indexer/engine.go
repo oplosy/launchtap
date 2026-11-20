@@ -63,12 +63,12 @@ var _ SenderSource = (*chain.Client)(nil)
 
 // Engine is not safe for concurrent Step calls; Run drives it from one goroutine.
 type Engine struct {
-	settings  Settings
-	store     Store
-	source    Source
-	discovery Discovery
-	decoder   *chain.Decoder
-	router    Router
+	settings Settings
+	store    Store
+	source   Source
+	// engines holds one source per launch engine, ordered by engine version (engines.go).
+	engines []EngineSource
+	router  Router
 	// identities caches the persisted token identities, with their V4 pools attached, across
 	// steps; nil means "load inside the next step's state transaction". Only this engine writes
 	// the rows behind it, so it is dropped on every write that can change them
@@ -92,13 +92,10 @@ func changesIdentities(decoded []chain.DecodedLog) bool {
 }
 
 func New(settings Settings, store Store, source Source, discovery Discovery, decoder *chain.Decoder, router Router) (*Engine, error) {
-	if settings.ReorgSearchDepth == 0 {
-		settings.ReorgSearchDepth = defaultReorgSearchDepth
-	}
-	if settings.ChainID <= 0 || settings.DeploymentID == "" || settings.StartBlock < 0 || settings.ChunkSize <= 0 || settings.PollInterval <= 0 || settings.ReorgSearchDepth > maxReorgSearchDepth || (settings.ReorgSearchDepth > defaultReorgSearchDepth && !settings.ReorgRecoveryMode) || (settings.ReorgRecoveryMode && settings.ReorgSearchDepth <= defaultReorgSearchDepth) || store == nil || source == nil || discovery == nil || decoder == nil || router == nil {
+	if discovery == nil || decoder == nil {
 		return nil, errors.New("invalid indexer dependencies or settings")
 	}
-	return &Engine{settings: settings, store: store, source: source, discovery: discovery, decoder: decoder, router: router}, nil
+	return NewWithEngines(settings, store, source, []EngineSource{{Discovery: discovery, Decoder: decoder, Factory: settings.Factory}}, router)
 }
 
 // attachPools sets PoolID on the engine-2 identity of each persisted pool's token. A pool whose

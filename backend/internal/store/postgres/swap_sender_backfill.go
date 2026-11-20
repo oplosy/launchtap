@@ -57,7 +57,7 @@ func (adapter *Adapter) AttributeSwapSender(ctx context.Context, chainID int64, 
 			continue
 		}
 		marked[pair] = struct{}{}
-		if err := adapter.queries.MarkPoolSwapPositionDirty(ctx, sqlc.MarkPoolSwapPositionDirtyParams{ChainID: chainID, Pair: pair[:], TxFrom: sender[:], Factory: adapter.factory[:]}); err != nil {
+		if err := adapter.queries.MarkPoolSwapPositionDirty(ctx, sqlc.MarkPoolSwapPositionDirtyParams{ChainID: chainID, Pair: pair[:], TxFrom: sender[:], Factories: adapter.excludedFactories()}); err != nil {
 			return 0, fmt.Errorf("mark pool swap position dirty: %w", err)
 		}
 	}
@@ -74,7 +74,7 @@ func (adapter *Adapter) AttributeSwapSender(ctx context.Context, chainID int64, 
 		if err := adapter.queries.MarkV4PoolTokenDirty(ctx, sqlc.MarkV4PoolTokenDirtyParams{ChainID: chainID, PoolID: &poolID}); err != nil {
 			return 0, fmt.Errorf("mark V4 pool token dirty: %w", err)
 		}
-		if err := adapter.queries.MarkV4SwapPositionDirty(ctx, sqlc.MarkV4SwapPositionDirtyParams{ChainID: chainID, PoolID: poolID[:], TxFrom: sender[:], Factory: adapter.factory[:]}); err != nil {
+		if err := adapter.queries.MarkV4SwapPositionDirty(ctx, sqlc.MarkV4SwapPositionDirtyParams{ChainID: chainID, PoolID: poolID[:], TxFrom: sender[:], Factories: adapter.excludedFactories()}); err != nil {
 			return 0, fmt.Errorf("mark V4 swap position dirty: %w", err)
 		}
 	}
@@ -114,7 +114,7 @@ func (adapter *Adapter) SeedPositionDirtyPaged(ctx context.Context, chainID int6
 		}
 		for _, token := range tokens {
 			row, err := adapter.queries.SeedTokenPositionDirty(ctx, sqlc.SeedTokenPositionDirtyParams{
-				ChainID: chainID, TokenAddress: token[:], Factory: adapter.factory[:], DryRun: dryRun,
+				ChainID: chainID, TokenAddress: token[:], Factories: adapter.excludedFactories(), DryRun: dryRun,
 			})
 			if err != nil {
 				return seed, fmt.Errorf("seed position dirty for token %x: %w", token[:], err)

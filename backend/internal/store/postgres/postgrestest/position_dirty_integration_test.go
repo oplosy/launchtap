@@ -76,7 +76,7 @@ func TestIngestMarksPositionPairs(t *testing.T) {
 	within := func(fn func(*storepostgres.Adapter) error) {
 		t.Helper()
 		if err := storepostgres.WithinTx(ctx, f.pool, func(ctx context.Context, adapter *storepostgres.Adapter) error {
-			return fn(adapter.WithFactory(factory))
+			return fn(adapter.WithFactories([]common.Address{factory}))
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -237,7 +237,7 @@ func TestLaunchMintDoesNotLeaveCurveDirty(t *testing.T) {
 	factory := common.BytesToAddress(addressBytes(0xc4))
 	// One transaction, in log order, like the ledger router: the transfers' launch FK is deferred.
 	if err := storepostgres.WithinTx(ctx, pool, func(ctx context.Context, adapter *storepostgres.Adapter) error {
-		adapter = adapter.WithFactory(factory)
+		adapter = adapter.WithFactories([]common.Address{factory})
 		if _, err := adapter.IngestTransfer(ctx, mint); err != nil {
 			return err
 		}

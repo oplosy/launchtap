@@ -1076,7 +1076,7 @@ FROM tokens AS token
 WHERE token.chain_id = $2::bigint AND token.lp_pair = $3::bytea
   AND $1::bytea IS NOT NULL
   AND $1::bytea <> decode(repeat('00', 20), 'hex')
-  AND $1::bytea <> $4::bytea
+  AND $1::bytea <> ALL($4::bytea[])
   AND NOT EXISTS (
     SELECT 1 FROM tokens AS excluded
     WHERE excluded.chain_id = $2::bigint AND excluded.curve_address = $1::bytea
@@ -1089,10 +1089,10 @@ ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval
 `
 
 type MarkPoolSwapPositionDirtyParams struct {
-	TxFrom  []byte
-	ChainID int64
-	Pair    []byte
-	Factory []byte
+	TxFrom    []byte
+	ChainID   int64
+	Pair      []byte
+	Factories [][]byte
 }
 
 // A NULL tx_from (sender not yet known) is a no-op.
@@ -1101,7 +1101,7 @@ func (q *Queries) MarkPoolSwapPositionDirty(ctx context.Context, arg MarkPoolSwa
 		arg.TxFrom,
 		arg.ChainID,
 		arg.Pair,
-		arg.Factory,
+		arg.Factories,
 	)
 	return err
 }
@@ -1110,7 +1110,7 @@ const markPositionDirty = `-- name: MarkPositionDirty :exec
 INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
 SELECT $1::bigint, $2::bytea, $3::bytea, nextval('position_dirty_generation_seq')
 WHERE $2::bytea <> decode(repeat('00', 20), 'hex')
-  AND $2::bytea <> $4::bytea
+  AND $2::bytea <> ALL($4::bytea[])
   AND NOT EXISTS (
     SELECT 1 FROM tokens AS excluded
     WHERE excluded.chain_id = $1::bigint AND excluded.curve_address = $2::bytea
@@ -1134,7 +1134,7 @@ type MarkPositionDirtyParams struct {
 	ChainID      int64
 	Wallet       []byte
 	TokenAddress []byte
-	Factory      []byte
+	Factories    [][]byte
 }
 
 // Excluded wallets (R4): the zero address, the factory, any token's curve, pair or locker, and
@@ -1144,7 +1144,7 @@ func (q *Queries) MarkPositionDirty(ctx context.Context, arg MarkPositionDirtyPa
 		arg.ChainID,
 		arg.Wallet,
 		arg.TokenAddress,
-		arg.Factory,
+		arg.Factories,
 	)
 	return err
 }
@@ -1264,7 +1264,7 @@ FROM (
     SELECT DISTINCT $1::bigint AS chain_id, side.wallet, $2::bytea AS token_address
     FROM (VALUES ($3::bytea), ($4::bytea)) AS side(wallet)
     WHERE side.wallet <> decode(repeat('00', 20), 'hex')
-      AND side.wallet <> $5::bytea
+      AND side.wallet <> ALL($5::bytea[])
       AND NOT EXISTS (
         SELECT 1 FROM tokens AS excluded
         WHERE excluded.chain_id = $1::bigint AND excluded.curve_address = side.wallet
@@ -1290,7 +1290,7 @@ type MarkTransferPositionsDirtyParams struct {
 	TokenAddress []byte
 	FromAddress  []byte
 	ToAddress    []byte
-	Factory      []byte
+	Factories    [][]byte
 }
 
 func (q *Queries) MarkTransferPositionsDirty(ctx context.Context, arg MarkTransferPositionsDirtyParams) error {
@@ -1299,7 +1299,7 @@ func (q *Queries) MarkTransferPositionsDirty(ctx context.Context, arg MarkTransf
 		arg.TokenAddress,
 		arg.FromAddress,
 		arg.ToAddress,
-		arg.Factory,
+		arg.Factories,
 	)
 	return err
 }
@@ -1328,17 +1328,17 @@ JOIN tokens AS token ON token.chain_id = graduation.chain_id AND token.token_add
 LEFT JOIN v4_pool_managers AS manager ON manager.chain_id = graduation.chain_id
 WHERE graduation.chain_id = $2::bigint AND graduation.pool_id = $3::bytea
   AND $1::bytea IS NOT NULL
-  AND $1::bytea <> $4::bytea
+  AND $1::bytea <> ALL($4::bytea[])
   AND NOT token_holder_excluded(token.engine_version, $1::bytea, token.curve_address,
                                 token.lp_pair, token.locker, manager.pool_manager)
 ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq')
 `
 
 type MarkV4SwapPositionDirtyParams struct {
-	TxFrom  []byte
-	ChainID int64
-	PoolID  []byte
-	Factory []byte
+	TxFrom    []byte
+	ChainID   int64
+	PoolID    []byte
+	Factories [][]byte
 }
 
 // The V4 side of MarkPoolSwapPositionDirty: marks (tx_from, graduated token of the pool) dirty.
@@ -1349,7 +1349,7 @@ func (q *Queries) MarkV4SwapPositionDirty(ctx context.Context, arg MarkV4SwapPos
 		arg.TxFrom,
 		arg.ChainID,
 		arg.PoolID,
-		arg.Factory,
+		arg.Factories,
 	)
 	return err
 }
@@ -1729,7 +1729,7 @@ WITH pairs AS (
         WHERE transfer.chain_id = $1::bigint AND transfer.token_address = $2::bytea
     ) AS source
     WHERE source.wallet <> decode(repeat('00', 20), 'hex')
-      AND source.wallet <> $3::bytea
+      AND source.wallet <> ALL($3::bytea[])
       AND NOT EXISTS (
         SELECT 1 FROM tokens AS excluded
         WHERE excluded.chain_id = $1::bigint AND excluded.curve_address = source.wallet
@@ -1760,7 +1760,7 @@ SELECT (SELECT count(*) FROM pairs)::bigint AS pair_count, (SELECT count(*) FROM
 type SeedTokenPositionDirtyParams struct {
 	ChainID      int64
 	TokenAddress []byte
-	Factory      []byte
+	Factories    [][]byte
 	DryRun       bool
 }
 
@@ -1779,7 +1779,7 @@ func (q *Queries) SeedTokenPositionDirty(ctx context.Context, arg SeedTokenPosit
 	row := q.db.QueryRow(ctx, seedTokenPositionDirty,
 		arg.ChainID,
 		arg.TokenAddress,
-		arg.Factory,
+		arg.Factories,
 		arg.DryRun,
 	)
 	var i SeedTokenPositionDirtyRow

@@ -59,7 +59,7 @@ SELECT DISTINCT pairs.wallet, pairs.token_address FROM (
     WHERE transfer.chain_id=sqlc.arg(chain_id) AND transfer.block_number>sqlc.arg(block_number)
 ) AS pairs
 WHERE pairs.wallet <> decode(repeat('00', 20), 'hex')
-  AND pairs.wallet <> sqlc.arg(factory)::bytea
+  AND pairs.wallet <> ALL(sqlc.arg(factories)::bytea[])
   AND NOT EXISTS (
     SELECT 1 FROM tokens AS excluded
     WHERE excluded.chain_id=sqlc.arg(chain_id) AND excluded.curve_address=pairs.wallet
