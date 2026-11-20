@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAnvilWalletFixture, publicConfiguration } from "./public";
+import { engineDeployment, isAnvilWalletFixture, publicConfiguration } from "./public";
 
 describe("publicConfiguration", () => {
   it("fails closed for missing values", () => {
@@ -94,6 +94,53 @@ describe("publicConfiguration", () => {
   it("fails closed when the engine-2 Anvil fixture misses any V4 address", () => {
     for (const key of Object.keys(v2Fixture).filter((name) => name.startsWith("NEXT_PUBLIC_V2_"))) {
       expect(publicConfiguration({ ...v2Fixture, [key]: "" }).status).toBe("fail-closed");
+    }
+  });
+
+  const v1Fixture = {
+    NEXT_PUBLIC_TASK6_ANVIL_FACTORY: "0x0000000000000000000000000000000000000001",
+    NEXT_PUBLIC_TASK6_ANVIL_WETH: "0x0000000000000000000000000000000000000002",
+    NEXT_PUBLIC_TASK6_ANVIL_ROUTER: "0x0000000000000000000000000000000000000003",
+    NEXT_PUBLIC_TASK6_ANVIL_UNISWAP_FACTORY: "0x0000000000000000000000000000000000000004",
+  };
+
+  it("serves both engines on one local chain with engine 1 as the site deployment", () => {
+    const configuration = publicConfiguration({ ...v2Fixture, ...v1Fixture });
+    expect(configuration.status).toBe("ready");
+    expect(configuration.deploymentId).toBe("task6-anvil");
+    expect(engineDeployment(configuration, 1)?.factory).toBe(
+      v1Fixture.NEXT_PUBLIC_TASK6_ANVIL_FACTORY,
+    );
+    expect(engineDeployment(configuration, 2)?.factory).toBe(
+      v2Fixture.NEXT_PUBLIC_V2_ANVIL_FACTORY,
+    );
+    expect(engineDeployment(publicConfiguration(v2Fixture), 1)).toBeNull();
+  });
+
+  it("serves only the site engine on a reviewed chain unless a valid engine list names more", () => {
+    const reviewed = {
+      NEXT_PUBLIC_PRIVY_APP_ID: "cl_test_1234567890",
+      NEXT_PUBLIC_DEPLOYMENT_ID: "robinhood-testnet-v1",
+      NEXT_PUBLIC_CHAIN_ID: "46630",
+      NEXT_PUBLIC_API_BASE_URL: "https://api.testnet.example",
+      NEXT_PUBLIC_RPC_URL: "https://rpc.testnet.example",
+    };
+    const single = publicConfiguration(reviewed);
+    expect(engineDeployment(single, 1)?.deploymentId).toBe("robinhood-testnet-v1");
+    expect(engineDeployment(single, 2)).toBeNull();
+    const listed = publicConfiguration({
+      ...reviewed,
+      NEXT_PUBLIC_ENGINE_DEPLOYMENT_IDS: " robinhood-testnet-v1 ",
+    });
+    expect(listed.status).toBe("ready");
+    for (const invalid of [
+      "robinhood-mainnet",
+      "robinhood-testnet-v1,unknown",
+      "robinhood-testnet-v1,robinhood-testnet-v1",
+    ]) {
+      expect(
+        publicConfiguration({ ...reviewed, NEXT_PUBLIC_ENGINE_DEPLOYMENT_IDS: invalid }).status,
+      ).toBe("fail-closed");
     }
   });
 

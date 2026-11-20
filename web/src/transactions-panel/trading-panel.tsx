@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Abi } from "viem";
+import { engineDeployment } from "@/config/public";
 import { reviewedV4Addresses } from "@/engine";
 import { poolMatchesApi } from "@/v4-swap";
 import { browserAbis } from "@/contracts/generated";
@@ -94,10 +95,17 @@ function TradingPanelReady({ token }: { token: TradingToken }) {
     graduated,
   });
   const claimRow = <CurveClaimRow claims={claims} />;
-  const reviewedRouter = reviewedRouterAddress(configuration.deployment!, configuration.chainId);
+  // A token trades through its own engine's deployment; engine 1 and engine 2 run side by side.
+  const tokenDeployment =
+    engineVersion === 1 || engineVersion === 2
+      ? engineDeployment(configuration, engineVersion)
+      : null;
+  const reviewedRouter = tokenDeployment
+    ? reviewedRouterAddress(tokenDeployment, configuration.chainId)
+    : null;
   const reviewedV4 =
-    engineVersion === 2
-      ? reviewedV4Addresses(configuration.deployment!, configuration.chainId)
+    engineVersion === 2 && tokenDeployment
+      ? reviewedV4Addresses(tokenDeployment, configuration.chainId)
       : null;
   // Plan v2-C D5: trade only the pool whose locally computed id equals the indexed one.
   const v4PoolReady = Boolean(
@@ -109,7 +117,7 @@ function TradingPanelReady({ token }: { token: TradingToken }) {
       token.v2PoolId ? { pool_id: token.v2PoolId } : null,
     ),
   );
-  const reviewedWeth = safeAddress(configuration.deployment?.weth);
+  const reviewedWeth = safeAddress(tokenDeployment?.weth);
 
   const { taxLine, minimum, priceImpact } = useCurveTradeFigures({
     quote: inputUnits && inputUnits > 0n ? quote : null,

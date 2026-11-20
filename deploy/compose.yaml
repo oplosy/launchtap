@@ -11,6 +11,8 @@ x-backend: &backend
   environment: &backend-env
     CHAIN_ID: ${NEXT_PUBLIC_CHAIN_ID:?Set the reviewed chain ID}
     DEPLOYMENT_ID: ${NEXT_PUBLIC_DEPLOYMENT_ID:?Set the reviewed deployment ID}
+    # Optional: every engine deployment served side by side, including DEPLOYMENT_ID.
+    ENGINE_DEPLOYMENT_IDS: ${NEXT_PUBLIC_ENGINE_DEPLOYMENT_IDS:-}
     PRIVY_APP_ID: ${NEXT_PUBLIC_PRIVY_APP_ID:?Set the production Privy app ID}
     API_ALLOWED_ORIGINS: https://${WEB_DOMAIN:?Set WEB_DOMAIN}
   read_only: true
@@ -51,6 +53,7 @@ services:
       args: &public-env
         NEXT_PUBLIC_PRIVY_APP_ID: ${NEXT_PUBLIC_PRIVY_APP_ID:?Set the production Privy app ID}
         NEXT_PUBLIC_DEPLOYMENT_ID: ${NEXT_PUBLIC_DEPLOYMENT_ID:?Set the reviewed deployment ID}
+        NEXT_PUBLIC_ENGINE_DEPLOYMENT_IDS: ${NEXT_PUBLIC_ENGINE_DEPLOYMENT_IDS:-}
         NEXT_PUBLIC_CHAIN_ID: ${NEXT_PUBLIC_CHAIN_ID:?Set the reviewed chain ID}
         NEXT_PUBLIC_API_BASE_URL: https://${API_DOMAIN:?Set API_DOMAIN}
         NEXT_PUBLIC_RPC_URL: ${NEXT_PUBLIC_RPC_URL:?Set the public HTTPS RPC URL}

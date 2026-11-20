@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { EngineBadge } from "@/components/engine-toggle";
-import { LaunchPanel } from "@/transactions-panel";
+import { CreateWorkspace } from "@/components/create-workspace";
 
 export const metadata: Metadata = {
   title: "Create a token",
@@ -11,13 +9,7 @@ export const metadata: Metadata = {
 export default function CreatePage() {
   return (
     <div className="page-stack create-page">
-      <div className="create-page-toolbar">
-        <Link className="ui-button ui-button-secondary ui-button-sm create-back-button" href="/">
-          <span aria-hidden="true">‹</span> Back
-        </Link>
-        <EngineBadge />
-      </div>
-      <LaunchPanel />
+      <CreateWorkspace />
     </div>
   );
 }
