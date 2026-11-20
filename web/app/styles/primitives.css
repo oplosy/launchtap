@@ -169,6 +169,12 @@
   align-items: center;
   gap: 8px;
 }
+/* The global `svg { max-width: 100% }` resolves against a button that sizes to its content, which
+   collapses an icon to zero width; a button icon keeps its own size. */
+.ui-button svg {
+  flex-shrink: 0;
+  max-width: none;
+}
 .ui-button-sm {
   height: 32px;
   padding: 0 14px;
