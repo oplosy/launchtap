@@ -75,7 +75,7 @@ func run() error {
 			return err
 		}
 		return otherEngines(ctx, client)
-	}, otherEngines)
+	}, otherEngines, indexerMetrics.PrimaryRPCRejected)
 	if err != nil {
 		return err
 	}
@@ -346,7 +346,7 @@ func initializeIndexerResources(ctx context.Context, source chain.RuntimeVerifie
 // (docs/specs/2026-11-17-rpc-failover-preflight.md). With a fallback, verifyEngines runs on a
 // reachable primary after its identity checks (verifyFallback covers the fallback's), so the
 // caller need not check the other engines again on the provider started on.
-func dialIndexerRPC(ctx context.Context, primaryURL string, fallback config.RPCFallbackConfig, rpcConfig chain.RPCConfig, chainID uint64, deployment deployments.Deployment, verifyFallback, verifyEngines func(context.Context, *chain.Client) error) (*chain.Client, error) {
+func dialIndexerRPC(ctx context.Context, primaryURL string, fallback config.RPCFallbackConfig, rpcConfig chain.RPCConfig, chainID uint64, deployment deployments.Deployment, verifyFallback, verifyEngines func(context.Context, *chain.Client) error, onPrimaryRejected func()) (*chain.Client, error) {
 	primary, err := chain.Dial(ctx, primaryURL, rpcConfig)
 	if err != nil || !fallback.Enabled() {
 		return primary, err
@@ -371,11 +371,12 @@ func dialIndexerRPC(ctx context.Context, primaryURL string, fallback config.RPCF
 		return verifyEngines(ctx, primary)
 	}
 	// Started on the fallback, the failover runs the same checks on the primary before it first
-	// switches back to it.
+	// switches back to it. Only a rejection is logged here, with its detail; the failover already
+	// logs an incomplete (unavailable) check.
 	verifyBeforeSwitchback := func(ctx context.Context) error {
 		err := verifyPrimary(ctx)
-		if err != nil {
-			slog.Warn("primary RPC identity checks failed before switching back", "error", redact.Error(err, primaryURL, fallback.URL))
+		if err != nil && ctx.Err() == nil && !chain.IsProviderUnavailable(err) {
+			slog.Error("primary RPC failed the identity checks before switching back", "error", redact.Error(err, primaryURL, fallback.URL))
 		}
 		return err
 	}
@@ -388,7 +389,7 @@ func dialIndexerRPC(ctx context.Context, primaryURL string, fallback config.RPCF
 		startOnFallback = true
 		slog.Warn("primary RPC unreachable at startup; starting on the fallback", "error", redact.Error(err, primaryURL, fallback.URL))
 	}
-	combined, err := chain.WithFallback(primary, secondary, chain.FailoverConfig{ChainID: chainID, AfterFailures: fallback.AfterFailures, ProbeInterval: fallback.ProbeInterval, StartOnFallback: startOnFallback, VerifyPrimary: verifyBeforeSwitchback})
+	combined, err := chain.WithFallback(primary, secondary, chain.FailoverConfig{ChainID: chainID, AfterFailures: fallback.AfterFailures, ProbeInterval: fallback.ProbeInterval, StartOnFallback: startOnFallback, VerifyPrimary: verifyBeforeSwitchback, OnPrimaryRejected: onPrimaryRejected})
 	if err != nil {
 		primary.Close()
 		secondary.Close()

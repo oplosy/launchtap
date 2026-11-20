@@ -17,6 +17,10 @@ import (
 const (
 	rolePrimary  = "primary"
 	roleFallback = "fallback"
+	// primaryVerifyTimeouts is VerifyPrimary's budget in RPC timeouts. The identity checks make
+	// several sequential reads (bytecode per contract, timelock, other engines), so they get their
+	// own budget instead of sharing the probe's single timeout; they run only until they pass once.
+	primaryVerifyTimeouts = 10
 )
 
 // ErrRPCSwitching is returned by every call except Heads while a provider switch waits for the
@@ -52,6 +56,9 @@ type FailoverConfig struct {
 	// succeeds once. A provider error retries at the next probe; any other error keeps the
 	// fallback active and stops probing until restart.
 	VerifyPrimary func(context.Context) error
+	// OnPrimaryRejected is optional; it is called once when the primary fails VerifyPrimary for
+	// a reason other than availability, so the caller can raise an alert.
+	OnPrimaryRejected func()
 	// Now is optional; tests set it.
 	Now func() time.Time
 }
@@ -208,7 +215,7 @@ func (c *Client) switchTo(ctx context.Context, method string, target int) {
 	if !rejected {
 		checkContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.config.Timeout)
 		err = c.checkChainID(checkContext, c.endpoints[target])
-		if err == nil && needsVerification && !c.verifyPrimary(checkContext) {
+		if err == nil && needsVerification && !c.verifyPrimary(context.WithoutCancel(ctx)) {
 			err = errPrimaryUnverified
 		}
 		cancel()
@@ -308,15 +315,16 @@ func (c *Client) probePrimary(ctx context.Context) (Heads, bool) {
 	verified := f.primaryVerified
 	f.mu.Unlock()
 
-	// One timeout bounds the whole probe, so a hanging primary delays this head read by at most
-	// that much once per probe interval.
+	// An unverified primary's identity checks (which include the chain id) run first, with their
+	// own budget (verifyPrimary), until they pass once. One timeout then bounds the probe's own
+	// reads, so a hanging primary delays this head read by at most that much per probe interval.
+	if !verified && !c.verifyPrimary(ctx) {
+		return Heads{}, false
+	}
 	probeContext, cancel := context.WithTimeout(ctx, c.config.Timeout)
 	defer cancel()
 	primary := c.endpoints[0]
 	if err := c.checkChainID(probeContext, primary); err != nil {
-		return Heads{}, false
-	}
-	if !verified && !c.verifyPrimary(probeContext) {
 		return Heads{}, false
 	}
 	heads, err := c.headsOn(probeContext, primary)
@@ -340,23 +348,35 @@ func (c *Client) probePrimary(ctx context.Context) (Heads, bool) {
 	return heads, true
 }
 
-// verifyPrimary runs VerifyPrimary on a primary never verified before and records the result.
-// The caller logs the error detail; only its class is logged here.
+// verifyPrimary runs VerifyPrimary, within its own budget of primaryVerifyTimeouts RPC
+// timeouts, on a primary never verified before and records the result. The caller logs the
+// error detail of a rejection; only the outcome class is logged here.
 func (c *Client) verifyPrimary(ctx context.Context) bool {
 	f := c.failover
-	err := f.config.VerifyPrimary(ctx)
+	verifyContext, cancel := context.WithTimeout(ctx, primaryVerifyTimeouts*c.config.Timeout)
+	err := f.config.VerifyPrimary(verifyContext)
+	incomplete := verifyContext.Err() != nil || IsProviderUnavailable(err)
+	cancel()
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	switch {
 	case err == nil:
 		f.primaryVerified = true
+		f.mu.Unlock()
 		slog.Info("primary RPC passed the identity checks")
 		return true
-	case ctx.Err() != nil || IsProviderUnavailable(err):
+	case incomplete:
+		f.mu.Unlock()
 		slog.Warn("primary RPC identity checks incomplete; retrying at the next probe", "reason", rpcOutcome(err))
-	default:
-		f.primaryRejected = true
+		return false
+	}
+	first := !f.primaryRejected
+	f.primaryRejected = true
+	f.mu.Unlock()
+	if first {
 		slog.Error("primary RPC failed the identity checks; staying on the fallback until restart")
+		if f.config.OnPrimaryRejected != nil {
+			f.config.OnPrimaryRejected()
+		}
 	}
 	return false
 }

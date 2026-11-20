@@ -517,3 +517,55 @@ func TestFailoverFallbackFailureVerifiesThenSwitchesToPrimary(t *testing.T) {
 		t.Fatalf("primary verified %d times, want 1", calls.Load())
 	}
 }
+
+// A rejection is reported to OnPrimaryRejected exactly once, however many paths see it.
+func TestFailoverReportsPrimaryRejectionOnce(t *testing.T) {
+	t.Parallel()
+	_, primaryClient := newFakeProvider(t, 100)
+	fallback, fallbackClient := newFakeProvider(t, 100)
+	clock := &fakeClock{now: time.Unix(1_800_000_000, 0)}
+	var reported atomic.Int64
+	client, err := WithFallback(primaryClient, fallbackClient, FailoverConfig{
+		ChainID: 46630, AfterFailures: 3, ProbeInterval: 30 * time.Second, StartOnFallback: true, Now: clock.Now,
+		VerifyPrimary:     func(context.Context) error { return errors.New("deployment bytecode mismatch") },
+		OnPrimaryRejected: func() { reported.Add(1) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(client.Close)
+	clock.Advance(30 * time.Second)
+	mustHeadsAt(t, client, 100)
+	fallback.down.Store(true)
+	failCodeCalls(t, client, 3)
+	fallback.down.Store(false)
+	if reported.Load() != 1 {
+		t.Fatalf("OnPrimaryRejected called %d times, want 1", reported.Load())
+	}
+}
+
+// The identity checks get their own budget: checks that need longer than one RPC timeout still
+// complete and let the primary back.
+func TestFailoverPrimaryVerificationOutlastsOneTimeout(t *testing.T) {
+	t.Parallel()
+	config := RPCConfig{Timeout: 100 * time.Millisecond, RetryBackoff: time.Millisecond}
+	primary, primaryClient := newFakeProviderWithConfig(t, 100, config)
+	_, fallbackClient := newFakeProviderWithConfig(t, 100, config)
+	clock := &fakeClock{now: time.Unix(1_800_000_000, 0)}
+	slowChecks := func(ctx context.Context) error {
+		select {
+		case <-time.After(3 * config.Timeout):
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	client, err := WithFallback(primaryClient, fallbackClient, FailoverConfig{ChainID: 46630, AfterFailures: 3, ProbeInterval: time.Second, StartOnFallback: true, VerifyPrimary: slowChecks, Now: clock.Now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(client.Close)
+	clock.Advance(time.Second)
+	mustHeadsAt(t, client, 100)
+	mustServeFrom(t, client, primary)
+}

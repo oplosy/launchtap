@@ -152,6 +152,7 @@ Alert rules (`deploy/monitoring/alerts.yml`, unit-tested in `alerts.test.yml`):
 | `IndexerObservedLagHigh` | chain head minus observed block > 300 blocks | 5m | page |
 | `IndexerFinalizedLagHigh` | finalized block lag > 1800s | 10m | ticket |
 | `RPCErrorRateHigh` | error or timeout share of chain RPC calls > 5% (10m) | 10m | ticket |
+| `PrimaryRPCRejected` | the primary RPC failed the deployment identity checks before a switch back; the indexer stays on the fallback | 0m | ticket |
 | `API5xxRateHigh` | 5xx share of API requests > 1% (10m), and at least 1 request/s | 10m | page |
 | `DatabaseDown` | indexer DB check down, or API pool had to make acquires wait (empty acquires rising) with no idle connection | 2m | page |
 | `WriteRejectionSpike` | 5m rejection rate > 10x the 1h average ending 15m ago, and > 0.05/s | 15m | ticket |
