@@ -65,6 +65,16 @@ func tokenExists(ctx context.Context, q *sqlc.Queries, chainID int64, token comm
 	return nil
 }
 
+// lockReportableComment holds the comment and its author row until commit, then reads the
+// comment if it is still visible and its author not banned. The lock is taken first, in its own
+// statement, so the read sees a hide or ban that committed while it waited.
+func lockReportableComment(ctx context.Context, q *sqlc.Queries, a social.Actor, commentID int64) (sqlc.GetReportableCommentRow, error) {
+	if err := q.LockReportableComment(ctx, sqlc.LockReportableCommentParams{CommentID: commentID, ChainID: a.ChainID, DeploymentID: a.DeploymentID}); err != nil {
+		return sqlc.GetReportableCommentRow{}, fmt.Errorf("lock comment: %w", err)
+	}
+	return q.GetReportableComment(ctx, sqlc.GetReportableCommentParams{CommentID: commentID, ChainID: a.ChainID, DeploymentID: a.DeploymentID})
+}
+
 // lockUser serializes the caller's social writes, ensures its row exists and returns it.
 func lockUser(ctx context.Context, q *sqlc.Queries, a social.Actor) (sqlc.GetSocialUserRow, error) {
 	if err := q.LockSocialSubject(ctx, sqlc.LockSocialSubjectParams{ChainID: a.ChainID, DeploymentID: a.DeploymentID, SubjectKey: a.PrivyDID}); err != nil {
@@ -311,7 +321,7 @@ func (s SocialStore) Report(ctx context.Context, a social.Actor, commentID int64
 		if user.BannedAt.Valid {
 			return social.ErrBanned
 		}
-		target, err := q.GetReportableComment(ctx, sqlc.GetReportableCommentParams{CommentID: commentID, ChainID: a.ChainID, DeploymentID: a.DeploymentID})
+		target, err := lockReportableComment(ctx, q, a, commentID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return social.ErrCommentNotFound
 		}
@@ -365,7 +375,7 @@ func (s SocialStore) Vote(ctx context.Context, a social.Actor, commentID int64, 
 		if user.BannedAt.Valid {
 			return social.ErrBanned
 		}
-		target, err := q.GetReportableComment(ctx, sqlc.GetReportableCommentParams{CommentID: commentID, ChainID: a.ChainID, DeploymentID: a.DeploymentID})
+		target, err := lockReportableComment(ctx, q, a, commentID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return social.ErrCommentNotFound
 		}

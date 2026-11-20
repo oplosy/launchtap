@@ -209,7 +209,6 @@ WHERE c.id = $1
   AND c.deployment_id = $3
   AND c.hidden_at IS NULL
   AND u.banned_at IS NULL
-FOR SHARE OF c, u
 `
 
 type GetReportableCommentParams struct {
@@ -227,9 +226,8 @@ type GetReportableCommentRow struct {
 }
 
 // No row when the comment is missing in this scope, hidden, or its author is banned. Every author
-// has a social_users row (post creates it before inserting a comment). FOR SHARE locks the comment
-// and the author row, so a report waits for an in-flight hide or ban and then re-checks the
-// committed state; the later report insert cannot leave an open report on actioned content.
+// has a social_users row (post creates it before inserting a comment). Callers take
+// LockReportableComment first.
 func (q *Queries) GetReportableComment(ctx context.Context, arg GetReportableCommentParams) (GetReportableCommentRow, error) {
 	row := q.db.QueryRow(ctx, getReportableComment, arg.CommentID, arg.ChainID, arg.DeploymentID)
 	var i GetReportableCommentRow
@@ -487,6 +485,27 @@ func (q *Queries) ListTokenComments(ctx context.Context, arg ListTokenCommentsPa
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockReportableComment = `-- name: LockReportableComment :exec
+SELECT lock_reportable_comment($1::BIGINT, $2::BIGINT,
+    $3::TEXT)
+`
+
+type LockReportableCommentParams struct {
+	CommentID    int64
+	ChainID      int64
+	DeploymentID string
+}
+
+// Holds the comment and its author row FOR SHARE until commit through a SECURITY DEFINER function
+// (migration 00043): a row lock needs UPDATE privilege, which the API role does not have on
+// token_comments or social_users. Called right before GetReportableComment in the same
+// transaction, so a report or vote waits for an in-flight hide or ban and the read then sees the
+// committed state; the later report insert cannot leave an open report on actioned content.
+func (q *Queries) LockReportableComment(ctx context.Context, arg LockReportableCommentParams) error {
+	_, err := q.db.Exec(ctx, lockReportableComment, arg.CommentID, arg.ChainID, arg.DeploymentID)
+	return err
 }
 
 const lockSocialSubject = `-- name: LockSocialSubject :exec

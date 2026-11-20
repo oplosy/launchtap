@@ -149,9 +149,8 @@ type Querier interface {
 	GetProtocolDailyRefreshDay(ctx context.Context, arg GetProtocolDailyRefreshDayParams) (pgtype.Date, error)
 	GetProtocolStats(ctx context.Context, chainID int64) (GetProtocolStatsRow, error)
 	// No row when the comment is missing in this scope, hidden, or its author is banned. Every author
-	// has a social_users row (post creates it before inserting a comment). FOR SHARE locks the comment
-	// and the author row, so a report waits for an in-flight hide or ban and then re-checks the
-	// committed state; the later report insert cannot leave an open report on actioned content.
+	// has a social_users row (post creates it before inserting a comment). Callers take
+	// LockReportableComment first.
 	GetReportableComment(ctx context.Context, arg GetReportableCommentParams) (GetReportableCommentRow, error)
 	GetSocialUser(ctx context.Context, arg GetSocialUserParams) (GetSocialUserRow, error)
 	GetSyncState(ctx context.Context, arg GetSyncStateParams) (SyncState, error)
@@ -383,6 +382,12 @@ type Querier interface {
 	// Serializes protocol aggregate refreshes of one chain, so a refresh reads the watermark only
 	// after any concurrent refresh (including a reorg's full rebuild) has committed.
 	LockProtocolAggregates(ctx context.Context, chainID int64) error
+	// Holds the comment and its author row FOR SHARE until commit through a SECURITY DEFINER function
+	// (migration 00043): a row lock needs UPDATE privilege, which the API role does not have on
+	// token_comments or social_users. Called right before GetReportableComment in the same
+	// transaction, so a report or vote waits for an in-flight hide or ban and the read then sees the
+	// committed state; the later report insert cannot leave an open report on actioned content.
+	LockReportableComment(ctx context.Context, arg LockReportableCommentParams) error
 	// Serializes per-subject social writes (rate limits, username changes). The key is built in SQL.
 	LockSocialSubject(ctx context.Context, arg LockSocialSubjectParams) error
 	// Holds the launch row FOR SHARE until commit through a SECURITY DEFINER function (migration

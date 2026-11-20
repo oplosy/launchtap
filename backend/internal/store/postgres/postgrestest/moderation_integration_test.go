@@ -20,8 +20,10 @@ var modScope = social.Scope{ChainID: socialChainID, DeploymentID: socialDep}
 
 func newModerationStore(t *testing.T, ctx context.Context, database *Database) (storepostgres.ModerationStore, storepostgres.SocialStore) {
 	t.Helper()
-	pool := openPool(t, ctx, database.URLAs(t, ModerateRole))
-	return storepostgres.ModerationStore{Pool: pool}, storepostgres.SocialStore{Pool: pool}
+	// Each store runs as the role of the binary that uses it: cmd/moderate and the API.
+	moderate := openPool(t, ctx, database.URLAs(t, ModerateRole))
+	api := openPool(t, ctx, database.URLAs(t, APIRole))
+	return storepostgres.ModerationStore{Pool: moderate}, storepostgres.SocialStore{Pool: api}
 }
 
 // seedComment inserts a comment directly (the post rate limit is not under test here).
