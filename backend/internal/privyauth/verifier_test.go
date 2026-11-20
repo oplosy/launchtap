@@ -118,6 +118,13 @@ func TestVerifierRejectsInvalidTokenConditions(t *testing.T) {
 			return signRaw(t, private, `{"alg":"ES256"}`, `{"iss":"privy.io","iss":"privy.io","aud":"test-app","sub":"did:privy:user","iat":`+itoa(now-1)+`,"exp":`+itoa(now+60)+`}`)
 		}, func() string { return validIdentity }},
 		{"oversize", func() string { return strings.Repeat("a", maxTokenBytes+1) }, func() string { return validIdentity }},
+		// An identity token must not stand in for the access token (Antigravity audit HIGH-1).
+		{"identity token sent as both tokens", func() string { return validIdentity }, func() string { return validIdentity }},
+		{"identity token sent as access token", func() string {
+			c := cloneClaims(validIdentityClaims)
+			c["iat"] = now - 2 // a different identity token for the same user
+			return signClaims(t, private, "ES256", c)
+		}, func() string { return validIdentity }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
