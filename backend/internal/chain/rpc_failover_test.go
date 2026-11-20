@@ -478,3 +478,42 @@ func TestFailoverRetriesPrimaryVerificationAfterProviderError(t *testing.T) {
 		t.Fatalf("primary verified %d times, want 2", calls.Load())
 	}
 }
+
+// A fallback failure may not hand the indexer to a primary that was never verified or that
+// failed the identity checks: the failure-driven switch runs the same verification.
+func TestFailoverFallbackFailureDoesNotSwitchToUnverifiedPrimary(t *testing.T) {
+	t.Parallel()
+	_, fallback, client, clock, calls := startOnFallbackWithVerification(t, errors.New("deployment bytecode mismatch"))
+	fallback.down.Store(true)
+	failCodeCalls(t, client, 3)
+	if calls.Load() != 1 {
+		t.Fatalf("primary verified %d times on the failure switch, want 1", calls.Load())
+	}
+	fallback.down.Store(false)
+	mustHeadsAt(t, client, 100)
+	mustServeFrom(t, client, fallback)
+
+	// Rejected now: neither another failure nor a probe tries the primary again.
+	fallback.down.Store(true)
+	failCodeCalls(t, client, 3)
+	fallback.down.Store(false)
+	clock.Advance(30 * time.Second)
+	mustHeadsAt(t, client, 100)
+	mustServeFrom(t, client, fallback)
+	if calls.Load() != 1 {
+		t.Fatalf("rejected primary verified %d times, want 1", calls.Load())
+	}
+}
+
+// The failure-driven switch to an unverified primary that passes the checks goes through.
+func TestFailoverFallbackFailureVerifiesThenSwitchesToPrimary(t *testing.T) {
+	t.Parallel()
+	primary, fallback, client, _, calls := startOnFallbackWithVerification(t, nil)
+	fallback.down.Store(true)
+	failCodeCalls(t, client, 3)
+	mustHeadsAt(t, client, 100)
+	mustServeFrom(t, client, primary)
+	if calls.Load() != 1 {
+		t.Fatalf("primary verified %d times, want 1", calls.Load())
+	}
+}
