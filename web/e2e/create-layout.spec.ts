@@ -40,6 +40,18 @@ test("the launch form sits left of the token preview on a laptop", async ({ page
   // 60/40: the form column is wider and ends before the preview column starts.
   expect(form.x + form.width).toBeLessThanOrEqual(preview.x);
   expect(form.width).toBeGreaterThan(preview.width);
+  // The form and the preview start and end level: the card meets the first heading, and the last
+  // action ends with the last field.
+  const heading = (await page.getByRole("heading", { name: "Name and Symbol" }).boundingBox())!;
+  const lastField = (await page
+    .locator(".launch-main > .transaction-form .ui-field")
+    .last()
+    .boundingBox())!;
+  const lastAction = (await page.locator(".launch-aside > :last-child").boundingBox())!;
+  expect(Math.abs(preview.y - heading.y)).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(lastAction.y + lastAction.height - (lastField.y + lastField.height)),
+  ).toBeLessThanOrEqual(1);
   await page.screenshot({
     path: "test-results/screenshots/rebuild-create-wide.png",
     fullPage: true,

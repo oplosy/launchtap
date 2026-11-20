@@ -75,16 +75,21 @@
     gap: clamp(24px, 3vw, 56px);
   }
   /*
-   * The preview and its action span exactly the form's fields: the card's top meets the first row of
-   * fields (below the first section's 28px padding, 28px heading line and 16px gap) and the last
-   * action ends level with the last field. The column art stretches to the same row.
+   * The form and the preview start and end level: the card's top meets the first section heading
+   * (below that section's 28px padding) and the last action ends level with the last field. Both
+   * columns stretch to the taller one; the form spreads its sections and the aside pushes its last
+   * action down, so either column may be the taller. The column art stretches to the same row.
    */
+  .launch-main > .transaction-form {
+    align-self: stretch;
+    align-content: space-between;
+  }
   .launch-aside {
     display: flex;
     flex-direction: column;
     align-self: stretch;
     gap: clamp(16px, 1.9vw, 28px);
-    margin-top: calc(28px + 28px + 16px);
+    margin-top: 28px;
   }
   .launch-aside > :last-child {
     margin-top: auto;
