@@ -23,8 +23,7 @@ export default function LeaderboardError({
   }, [error]);
   return (
     // `retry` (Next 16.3+) refetches the server content; `reset` would only re-render it.
-    <div className="page-stack leaderboard-page">
-      <h1 className="sr-only">Leaderboard</h1>
+    <div className="leaderboard-panel">
       <UnavailableState
         title="Leaderboard unavailable"
         description="The ranking could not be loaded. Try again in a minute."

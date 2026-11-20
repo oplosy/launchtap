@@ -358,7 +358,14 @@ test("the leaderboard lists ranks", async ({ page }) => {
   });
   try {
     test.skip(!listening, "The fixture API port is already in use.");
+    // The old route redirects to the leaderboard tab of the rewards page.
     await page.goto("/leaderboard");
+    await expect(page).toHaveURL(/\/rewards\/leaderboard$/);
+    await expect(
+      page.getByRole("navigation", { name: "Rewards sections" }).getByRole("link", {
+        name: "Leaderboard",
+      }),
+    ).toHaveAttribute("aria-current", "page");
     const table = page.getByRole("table", { name: "Leaderboard" });
     await expect(table.getByRole("row")).toHaveCount(3);
     await expect(table.getByRole("row").nth(1)).toContainText("01");
@@ -377,7 +384,7 @@ test("the leaderboard lists ranks", async ({ page }) => {
     const board = (await table.boundingBox())!;
     expect(Math.abs(box.x + box.width - (board.x + board.width))).toBeLessThanOrEqual(1);
     await period.selectOption("7d");
-    await expect(page).toHaveURL(/\/leaderboard\?window=7d$/);
+    await expect(page).toHaveURL(/\/rewards\/leaderboard\?window=7d$/);
     await expect(period).toHaveValue("7d");
     const rank = table.getByRole("row").nth(1).locator(":scope > *").first();
     expect(await rank.evaluate((node) => getComputedStyle(node).textAlign)).toMatch(

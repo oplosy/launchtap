@@ -64,7 +64,7 @@ export function SiteFooter() {
             <Link href="/rewards">Rewards</Link>
           </FooterSection>
           <FooterSection label="Data">
-            <Link href="/leaderboard">Leaderboard</Link>
+            <Link href="/rewards/leaderboard">Leaderboard</Link>
             <Link href="/analytics">Analytics</Link>
           </FooterSection>
           <FooterSection label="Resources">

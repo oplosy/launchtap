@@ -841,13 +841,12 @@
  * with big monospace ranks, every row the same size. On wide screens it is the
  * docs' centred 820 px reading column, with the margins left empty.
  */
-.leaderboard-page {
+.leaderboard-panel {
+  display: grid;
   gap: clamp(40px, 5vw, 64px);
-  padding-top: clamp(32px, 4vw, 56px);
-  padding-bottom: 72px;
 }
 @media (min-width: 1024px) {
-  .leaderboard-page {
+  .leaderboard-panel {
     width: min(100%, 820px);
     margin-inline: auto;
   }

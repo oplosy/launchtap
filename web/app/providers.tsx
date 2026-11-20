@@ -36,7 +36,8 @@ const WALLET_ROUTES = [
   /^\/token\//,
   /^\/create(?:\/|$)/,
   /^\/profile(?:\/|$)/,
-  /^\/rewards(?:\/|$)/,
+  // The Rewards tab only: its Leaderboard tab (/rewards/leaderboard) is a read-only route.
+  /^\/rewards\/?$/,
 ];
 
 const WalletStackStatus = createContext({ required: false, ready: true });

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const NAV = ["Explore", "Forum", "Rewards", "Leaderboard", "Analytics", "Docs"] as const;
+const NAV = ["Explore", "Forum", "Rewards", "Analytics", "Docs"] as const;
 
 test("desktop nav centres five links and the Explore mega menu is keyboard operable", async ({
   page,
