@@ -171,3 +171,17 @@ func TestReconciliationMetrics(t *testing.T) {
 		t.Errorf("mismatches after a clean pass = %v, want 0", got)
 	}
 }
+
+func TestPrimaryRPCRejectedMetric(t *testing.T) {
+	t.Parallel()
+
+	reg := NewRegistry(ComponentIndexer)
+	m := NewIndexer(reg, new(indexer.HealthTracker).Snapshot)
+	if got := seriesValue(t, reg, "launchpad_indexer_rpc_primary_rejected", map[string]string{}); got != 0 {
+		t.Fatalf("launchpad_indexer_rpc_primary_rejected = %v before a rejection, want 0", got)
+	}
+	m.PrimaryRPCRejected()
+	if got := seriesValue(t, reg, "launchpad_indexer_rpc_primary_rejected", map[string]string{}); got != 1 {
+		t.Fatalf("launchpad_indexer_rpc_primary_rejected = %v, want 1", got)
+	}
+}
