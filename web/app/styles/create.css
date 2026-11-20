@@ -7,7 +7,7 @@
 }
 .create-page-toolbar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
@@ -20,34 +20,17 @@
   font-size: 18px;
   line-height: 1;
 }
-/* Engine choice: engine 1 and engine 2 run side by side; the summary names what graduation does. */
+/* Engine choice: engine 1 and engine 2 run side by side. */
 .engine-choice {
-  display: grid;
-  justify-items: end;
-  gap: 8px;
-  max-width: 360px;
+  display: flex;
 }
 .engine-choice .ui-segment > button:disabled {
   color: var(--text-3);
   cursor: not-allowed;
 }
-.engine-choice-summary {
-  margin: 0;
-  color: var(--text-2);
-  font-size: 13px;
-  line-height: 1.45;
-  text-align: right;
-}
 @media (max-width: 640px) {
   .create-page-toolbar {
     flex-wrap: wrap;
-  }
-  .engine-choice {
-    justify-items: start;
-    max-width: none;
-  }
-  .engine-choice-summary {
-    text-align: left;
   }
 }
 
