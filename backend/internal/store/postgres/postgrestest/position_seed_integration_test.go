@@ -40,7 +40,7 @@ func TestSeedPositionDirtyQueuesExistingHistory(t *testing.T) {
 	// Pre-feature state: nothing queued, nothing computed.
 	l.exec(`DELETE FROM position_dirty WHERE chain_id = $1`, walletChainID)
 
-	adapter := storepostgres.NewAdapter(f.pool).WithFactory(factory)
+	adapter := storepostgres.NewAdapter(f.pool).WithFactories([]common.Address{factory})
 	wantKeys := []string{}
 	for _, wallet := range []byte{0xc1, 0xc5, 0xc6, 0xc7, 0xc8, 0xc9} {
 		wantKeys = append(wantKeys, common.Bytes2Hex(addressBytes(wallet))+"/"+common.Bytes2Hex(positionToken))

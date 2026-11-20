@@ -77,8 +77,12 @@ func (e *FieldError) Unwrap() error {
 // are trimmed before validation. IndexerConfirmations is nil when the local-only
 // override is absent; deployment validation decides whether it is permitted.
 type Config struct {
-	ChainID              uint64   `env:"CHAIN_ID"`
-	DeploymentID         string   `env:"DEPLOYMENT_ID"`
+	ChainID      uint64 `env:"CHAIN_ID"`
+	DeploymentID string `env:"DEPLOYMENT_ID"`
+	// EngineDeploymentIDs lists the engine manifests the indexer ingests side by side on this
+	// chain. It always contains DeploymentID, the site identity; unset means DeploymentID alone
+	// (docs/specs/2026-11-20-dual-engine-preflight.md, decision 2).
+	EngineDeploymentIDs  []string `env:"ENGINE_DEPLOYMENT_IDS"`
 	RPCURL               string   `env:"RPC_URL"`
 	DatabaseURL          string   `env:"DATABASE_URL"`
 	PrivyAppID           string   `env:"PRIVY_APP_ID"`
@@ -173,6 +177,10 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if !deploymentIDPattern.MatchString(values.deploymentID) {
 		return Config{}, invalidOrMissing("DEPLOYMENT_ID", values.deploymentID)
+	}
+	engineDeploymentIDs, err := parseEngineDeploymentIDs(values.engineDeploymentIDs, values.deploymentID)
+	if err != nil {
+		return Config{}, err
 	}
 	if err := validateURL("RPC_URL", values.rpcURL, "http", "https"); err != nil {
 		return Config{}, err
@@ -279,6 +287,7 @@ func Load(getenv func(string) string) (Config, error) {
 	return Config{
 		ChainID:                       chainID,
 		DeploymentID:                  values.deploymentID,
+		EngineDeploymentIDs:           engineDeploymentIDs,
 		RPCURL:                        values.rpcURL,
 		DatabaseURL:                   databaseURL,
 		PrivyAppID:                    values.privyAppID,
@@ -349,6 +358,7 @@ func (c Config) RequireIndexer() error {
 type environmentValues struct {
 	chainID                       string
 	deploymentID                  string
+	engineDeploymentIDs           string
 	rpcURL                        string
 	privyAppID                    string
 	privyVerificationKey          string
@@ -384,6 +394,7 @@ func readEnvironment(getenv func(string) string) environmentValues {
 	return environmentValues{
 		chainID:                       strings.TrimSpace(getenv("CHAIN_ID")),
 		deploymentID:                  strings.TrimSpace(getenv("DEPLOYMENT_ID")),
+		engineDeploymentIDs:           strings.TrimSpace(getenv("ENGINE_DEPLOYMENT_IDS")),
 		rpcURL:                        strings.TrimSpace(getenv("RPC_URL")),
 		privyAppID:                    strings.TrimSpace(getenv("PRIVY_APP_ID")),
 		privyVerificationKey:          strings.TrimSpace(getenv("PRIVY_VERIFICATION_KEY")),
@@ -414,4 +425,30 @@ func readEnvironment(getenv func(string) string) environmentValues {
 		indexerSenderBackfillInterval: strings.TrimSpace(getenv("INDEXER_SENDER_BACKFILL_INTERVAL")),
 		indexerSenderBackfillMaxTxs:   strings.TrimSpace(getenv("INDEXER_SENDER_BACKFILL_MAX_TXS")),
 	}
+}
+
+// parseEngineDeploymentIDs reads the comma-separated engine manifest list. Each id must be a
+// valid deployment id, appear once, and the list must contain the site deployment.
+func parseEngineDeploymentIDs(raw, deploymentID string) ([]string, error) {
+	if raw == "" {
+		return []string{deploymentID}, nil
+	}
+	parts := strings.Split(raw, ",")
+	ids := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		id := strings.TrimSpace(part)
+		if !deploymentIDPattern.MatchString(id) {
+			return nil, invalidOrMissing("ENGINE_DEPLOYMENT_IDS", raw)
+		}
+		if _, dup := seen[id]; dup {
+			return nil, fmt.Errorf("ENGINE_DEPLOYMENT_IDS lists %q twice", id)
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if _, ok := seen[deploymentID]; !ok {
+		return nil, fmt.Errorf("ENGINE_DEPLOYMENT_IDS must include DEPLOYMENT_ID %q", deploymentID)
+	}
+	return ids, nil
 }

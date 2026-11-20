@@ -199,7 +199,7 @@ func TestAnvilV2LifecycleAndReorg(t *testing.T) {
 		engine, err := indexer.New(indexer.Settings{
 			ChainID: chainID, DeploymentID: deploymentID, Factory: factory,
 			StartBlock: start, ChunkSize: 128, PollInterval: time.Millisecond, Senders: source,
-		}, storepostgres.IndexerStore{Pool: pool, ChainID: chainID, DeploymentID: deploymentID, Factory: factory},
+		}, storepostgres.IndexerStore{Pool: pool, ChainID: chainID, DeploymentID: deploymentID, Factories: []common.Address{factory}},
 			laggedFinalitySource{client: source, stable: uint64(start)}, discovery, decoder, indexer.LedgerRouter{ChainID: chainID})
 		if err != nil {
 			t.Fatal(err)

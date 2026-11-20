@@ -80,7 +80,7 @@ func TestBackfillFillsV4SwapSenders(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store := swapbackfill.PostgresStore{Pool: pool, ChainID: chainID, Factory: common.HexToAddress("0x0b0b")}
+	store := swapbackfill.PostgresStore{Pool: pool, ChainID: chainID, Factories: []common.Address{common.HexToAddress("0x0b0b")}}
 	if count, err := store.CountUnattributed(ctx, block.BlockNumber); err != nil || count < int64(len(pending)) {
 		t.Fatalf("CountUnattributed = %d, %v; want at least %d V4 swaps", count, err, len(pending))
 	}

@@ -191,6 +191,7 @@ type Querier interface {
 	InsertFutureTreasuryConfiguration(ctx context.Context, arg InsertFutureTreasuryConfigurationParams) (int64, error)
 	InsertGraduation(ctx context.Context, arg InsertGraduationParams) (int64, error)
 	InsertGraduationV2(ctx context.Context, arg InsertGraduationV2Params) (int64, error)
+	InsertIndexerEngineDeployment(ctx context.Context, arg InsertIndexerEngineDeploymentParams) error
 	InsertLaunchFeeClaim(ctx context.Context, arg InsertLaunchFeeClaimParams) (int64, error)
 	InsertLaunchPauseEvent(ctx context.Context, arg InsertLaunchPauseEventParams) (int64, error)
 	// The top 100 of ListLeaderboardWindow (read.sql), ranked 1..n: the same window, aggregation,
@@ -262,6 +263,7 @@ type Querier interface {
 	// within 30 days, strictly older than the cursor position, newest first. Each watched token
 	// contributes at most page_size rows through its own ordered index scan.
 	ListInboxEvents(ctx context.Context, arg ListInboxEventsParams) ([]ListInboxEventsRow, error)
+	ListIndexerEngineDeployments(ctx context.Context, arg ListIndexerEngineDeploymentsParams) ([]ListIndexerEngineDeploymentsRow, error)
 	ListLaunchesAfter(ctx context.Context, arg ListLaunchesAfterParams) ([]ListLaunchesAfterRow, error)
 	// R4 at read time: the zero address, every curve or pair address, every engine-2 locker and the
 	// chain's V4 PoolManager are never ranked. The factory is never marked dirty, so it never has

@@ -31,7 +31,7 @@ func (m mapSenders) TransactionSenders(_ context.Context, hashes []common.Hash) 
 
 func (f walletSchemaFixture) backfill(ctx context.Context, senders mapSenders) (swapbackfill.Summary, error) {
 	return swapbackfill.Run(ctx, swapbackfill.Deps{
-		Store:   swapbackfill.PostgresStore{Pool: f.pool, ChainID: walletChainID, Factory: common.BytesToAddress(addressBytes(0xc4))},
+		Store:   swapbackfill.PostgresStore{Pool: f.pool, ChainID: walletChainID, Factories: []common.Address{common.BytesToAddress(addressBytes(0xc4))}},
 		Senders: senders,
 		Log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Sleep:   func(context.Context) error { return nil },
@@ -128,7 +128,7 @@ func TestSchedulerPassFillsSwapsAtOrBelowSafeHead(t *testing.T) {
 	defer cancel()
 	f := newWalletSchemaFixture(t, ctx)
 	const deploymentID = "wallet-backfill-test"
-	store := swapbackfill.PostgresStore{Pool: f.pool, ChainID: walletChainID, Factory: common.BytesToAddress(addressBytes(0xc4)), DeploymentID: deploymentID}
+	store := swapbackfill.PostgresStore{Pool: f.pool, ChainID: walletChainID, Factories: []common.Address{common.BytesToAddress(addressBytes(0xc4))}, DeploymentID: deploymentID}
 	if _, ok, err := store.SafeBlock(ctx); err != nil || ok {
 		t.Fatalf("SafeBlock() before any sync state = %t, %v; want no safe head", ok, err)
 	}

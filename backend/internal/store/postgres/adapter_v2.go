@@ -209,7 +209,7 @@ func (adapter *Adapter) IngestV4Swap(ctx context.Context, event ledger.V4Swap) (
 	if event.TxFrom != nil {
 		sender := *event.TxFrom
 		if err := adapter.markOnce(dirtyMark{kind: markV4SwapPosition, chainID: event.ChainID, subject: event.PoolID, wallet: sender}, func() error {
-			if err := adapter.queries.MarkV4SwapPositionDirty(ctx, sqlc.MarkV4SwapPositionDirtyParams{ChainID: event.ChainID, PoolID: poolID[:], TxFrom: sender[:], Factory: adapter.factory[:]}); err != nil {
+			if err := adapter.queries.MarkV4SwapPositionDirty(ctx, sqlc.MarkV4SwapPositionDirtyParams{ChainID: event.ChainID, PoolID: poolID[:], TxFrom: sender[:], Factories: adapter.excludedFactories()}); err != nil {
 				return fmt.Errorf("mark V4 swap position dirty: %w", err)
 			}
 			return nil
