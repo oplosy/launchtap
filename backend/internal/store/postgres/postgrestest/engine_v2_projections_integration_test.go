@@ -262,6 +262,9 @@ func TestEngineV2Projections(t *testing.T) {
 	// The engine-1 projection schema cannot hold these rows, so the migration's Down refuses (after
 	// the candle, revenue, leaderboard and V4 swap migrations, which roll back freely).
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
+		t.Fatalf("roll back the indexer engine deployments: %v", err)
+	}
+	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {
 		t.Fatalf("roll back the indexer heartbeat: %v", err)
 	}
 	if _, err := migrations.Run(ctx, database.DB, migrations.CommandDown); err != nil {

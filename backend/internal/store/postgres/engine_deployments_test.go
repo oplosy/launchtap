@@ -13,7 +13,7 @@ func TestNewEngineDeployments(t *testing.T) {
 	v1 := EngineDeployment{DeploymentID: "chain-v1", EngineVersion: 1, Factory: common.HexToAddress("0xf1"), StartBlock: 100}
 	v2 := EngineDeployment{DeploymentID: "chain-v2", EngineVersion: 2, Factory: common.HexToAddress("0xf2"), StartBlock: 500}
 	row := func(engine EngineDeployment) sqlc.ListIndexerEngineDeploymentsRow {
-		return sqlc.ListIndexerEngineDeploymentsRow{EngineDeploymentID: engine.DeploymentID, EngineVersion: int32(engine.EngineVersion), Factory: engine.Factory.Bytes(), StartBlock: engine.StartBlock}
+		return sqlc.ListIndexerEngineDeploymentsRow{EngineDeploymentID: engine.DeploymentID, EngineVersion: int32(engine.EngineVersion), Factory: sqlc.Address(engine.Factory), StartBlock: engine.StartBlock}
 	}
 	at := func(block int64) *int64 { return &block }
 

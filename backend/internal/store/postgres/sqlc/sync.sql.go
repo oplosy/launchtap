@@ -95,7 +95,7 @@ type InsertIndexerEngineDeploymentParams struct {
 	DeploymentID       string
 	EngineDeploymentID string
 	EngineVersion      int32
-	Factory            []byte
+	Factory            Address
 	StartBlock         int64
 }
 
@@ -158,7 +158,7 @@ type ListIndexerEngineDeploymentsParams struct {
 type ListIndexerEngineDeploymentsRow struct {
 	EngineDeploymentID string
 	EngineVersion      int32
-	Factory            []byte
+	Factory            Address
 	StartBlock         int64
 }
 
