@@ -73,7 +73,15 @@ export function filesUnder(directory, predicate) {
   return result;
 }
 
-const coreRoutes = ["/", "/explore", "/create", "/analytics", "/docs", "/profile", "/rewards/leaderboard"];
+const coreRoutes = [
+  "/",
+  "/explore",
+  "/create",
+  "/analytics",
+  "/docs",
+  "/profile",
+  "/rewards/leaderboard",
+];
 // Mirrors WALLET_ROUTES in app/providers.tsx.
 const walletRoutePattern = /^\/(?:(?:create|profile)(?:[/?]|$)|token\/)/;
 
