@@ -79,12 +79,16 @@ test("focusing an input changes its border colour", async ({ page }, testInfo) =
   await expect.poll(border).not.toBe(before);
 });
 
-test("the engine is a read-only badge for the configured deployment", async ({ page }) => {
+test("the creator picks the launch engine and engine 1 is preselected", async ({ page }) => {
   await installRpc(page);
   await page.goto("/create");
   await expect(page.getByRole("textbox", { name: "Name" })).toBeVisible();
-  // The TASK6 fixture is an engine-1 deployment (Plan v2-C D7).
-  await expect(page.locator(".engine-badge")).toHaveText("Engine v1");
-  await expect(page.getByRole("group", { name: "Launch engine" })).toHaveCount(0);
-  await expect(page.locator("button[aria-pressed]", { hasText: /^V[12]$/ })).toHaveCount(0);
+  const choice = page.getByRole("group", { name: "Launch engine" });
+  await expect(choice.getByRole("button", { name: "Engine v1" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByText(/Uniswap v2 pair/)).toBeVisible();
+  // The TASK6 fixture deploys engine 1 only, so engine 2 is shown but cannot be picked.
+  await expect(choice.getByRole("button", { name: "Engine v2" })).toBeDisabled();
 });
