@@ -85,7 +85,6 @@ test("the creator picks the launch engine and engine 1 is preselected", async ({
   await expect(page.getByRole("textbox", { name: "Name" })).toBeVisible();
   const choice = page.getByRole("group", { name: "Launch engine" });
   await expect(choice.getByRole("button", { name: "V1" })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByText(/Uniswap v2 pair/)).toBeVisible();
   // The TASK6 fixture deploys engine 1 only, so engine 2 is shown but cannot be picked.
   await expect(choice.getByRole("button", { name: "V2" })).toBeDisabled();
 });

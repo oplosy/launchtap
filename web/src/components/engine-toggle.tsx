@@ -31,7 +31,7 @@ export function defaultEngine(available: readonly LaunchEngine[]): LaunchEngine 
 }
 
 /**
- * The launch engine choice on the create page. Engine 1 and engine 2 run side by side, and a
+ * The launch engine choice on the create page; each engine's graduation summary is its tooltip. Engine 1 and engine 2 run side by side, and a
  * token keeps its engine for its whole life; an engine without a deployment on this network is
  * shown but cannot be picked.
  */
@@ -44,7 +44,6 @@ export function EngineChoice({
   available: readonly LaunchEngine[];
   onChange: (engine: LaunchEngine) => void;
 }) {
-  const selected = ENGINES.find((engine) => engine.version === value) ?? ENGINES[0];
   return (
     <div className="engine-choice">
       <div className="ui-segment" role="group" aria-label="Launch engine">
@@ -56,7 +55,7 @@ export function EngineChoice({
               type="button"
               aria-pressed={engine.version === value}
               disabled={!enabled}
-              title={enabled ? undefined : "Not deployed on this network"}
+              title={enabled ? engine.summary : "Not deployed on this network"}
               onClick={() => onChange(engine.version)}
             >
               {engine.label}
@@ -64,7 +63,6 @@ export function EngineChoice({
           );
         })}
       </div>
-      <p className="engine-choice-summary">{selected?.summary}</p>
     </div>
   );
 }
