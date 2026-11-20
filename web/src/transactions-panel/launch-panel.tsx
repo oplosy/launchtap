@@ -6,7 +6,6 @@ import { parseDecimal } from "@/amounts";
 import type { Abi, TransactionReceipt } from "viem";
 import { launchProfileV2, requoteLaunch } from "@/launch-v2";
 import { browserAbis, type ReviewedDeployment } from "@/contracts/generated";
-import { engineDeployment } from "@/config/public";
 import { addressExplorerUrl } from "@/wallet/explorer";
 import { WalletConnectButton } from "@/wallet/connection-context";
 import {
@@ -22,7 +21,7 @@ import {
   DEFAULT_TTL,
   type Address,
   currentUnixSeconds,
-  ReadinessGate,
+  EngineDeploymentGate,
   TransactionProgress,
 } from "./shared";
 import { ReviewNotice, useReviewedWrite, WrongNetworkBanner } from "./reviewed-trade";
@@ -40,13 +39,14 @@ import { launchedToken } from "./launch-metadata";
 /** The launch form for one engine; the create page remounts it when the engine changes. */
 export function LaunchPanel({ engineVersion }: { engineVersion: 1 | 2 }) {
   return (
-    <ReadinessGate>
-      <LaunchPanelReady engineVersion={engineVersion} />
-    </ReadinessGate>
+    <EngineDeploymentGate engineVersion={engineVersion}>
+      {(deployment) => <LaunchPanelReady engineVersion={engineVersion} deployment={deployment} />}
+    </EngineDeploymentGate>
   );
 }
 
-function LaunchPanelReady({ engineVersion }: { engineVersion: 1 | 2 }) {
+type ReadyProps = { engineVersion: 1 | 2; deployment: ReviewedDeployment };
+function LaunchPanelReady({ engineVersion, deployment }: ReadyProps) {
   const write = useReviewedWrite("launch", null);
   const {
     account,
@@ -72,8 +72,7 @@ function LaunchPanelReady({ engineVersion }: { engineVersion: 1 | 2 }) {
   const [engineEnabled, setEngineEnabled] = useState<boolean | null>(null);
   // Engine 1 and engine 2 run side by side; the launch goes to the chosen engine's factory.
   // LaunchFactoryV2 has no per-engine switch; its launch reverts on its own pause, so the
-  // engine-enabled read is v1 only. CreateWorkspace offers only engines with a deployment.
-  const deployment = engineDeployment(configuration, engineVersion) as ReviewedDeployment;
+  // engine-enabled read is v1 only.
   const factoryAbi = (engineVersion === 2 ? browserAbis.factoryV2 : browserAbis.factory) as Abi;
   const [v2Profile, setV2Profile] = useState<ReturnType<typeof launchProfileV2> | null>(null);
   const v2Rules = v2Profile?.rules ?? null;
