@@ -67,20 +67,27 @@ func run() error {
 	metricsRegistry := metrics.NewRegistry(metrics.ComponentIndexer)
 	indexerMetrics := metrics.NewIndexer(metricsRegistry, health.Snapshot)
 	rpcConfig := chain.RPCConfig{Timeout: c.RPCTimeout, MaxRetries: c.RPCMaxRetries, RetryBackoff: c.RPCRetryBackoff, Observer: indexerMetrics}
+	otherEngines := func(ctx context.Context, client *chain.Client) error {
+		return verifyOtherEngines(ctx, client, c.DeploymentID, engines)
+	}
 	source, err := dialIndexerRPC(ctx, c.RPCURL, fallback, rpcConfig, c.ChainID, deployment, func(ctx context.Context, client *chain.Client) error {
 		if err := verifyFallbackRPC(ctx, client, c.ChainID, deployment); err != nil {
 			return err
 		}
-		return verifyOtherEngines(ctx, client, c.DeploymentID, engines)
-	})
+		return otherEngines(ctx, client)
+	}, otherEngines)
 	if err != nil {
 		return err
 	}
 	defer source.Close()
-	// The site deployment is checked by dialIndexerRPC or initializeIndexerResources; every other
-	// engine's bytecode and governance are checked here, still before the database opens.
-	if err := verifyOtherEngines(ctx, source, c.DeploymentID, engines); err != nil {
-		return err
+	// The site deployment is checked by dialIndexerRPC or initializeIndexerResources. With a
+	// fallback, dialIndexerRPC also checked every other engine on each provider it verified;
+	// without one, every other engine's bytecode and governance are checked here, still before
+	// the database opens.
+	if !fallback.Enabled() {
+		if err := otherEngines(ctx, source); err != nil {
+			return err
+		}
 	}
 	// With a fallback, dialIndexerRPC already ran the identity checks on the provider started on.
 	pool, owner, err := initializeIndexerResources(ctx, source, !fallback.Enabled(), c.ChainID, deployment,
@@ -336,8 +343,10 @@ func initializeIndexerResources(ctx context.Context, source chain.RuntimeVerifie
 
 // dialIndexerRPC dials the primary provider and, when configured, a fallback that must pass the
 // same chain-id, bytecode, governance and finality-tag checks before the indexer starts
-// (docs/specs/2026-11-17-rpc-failover-preflight.md).
-func dialIndexerRPC(ctx context.Context, primaryURL string, fallback config.RPCFallbackConfig, rpcConfig chain.RPCConfig, chainID uint64, deployment deployments.Deployment, verifyFallback func(context.Context, *chain.Client) error) (*chain.Client, error) {
+// (docs/specs/2026-11-17-rpc-failover-preflight.md). With a fallback, verifyEngines runs on a
+// reachable primary after its identity checks (verifyFallback covers the fallback's), so the
+// caller need not check the other engines again on the provider started on.
+func dialIndexerRPC(ctx context.Context, primaryURL string, fallback config.RPCFallbackConfig, rpcConfig chain.RPCConfig, chainID uint64, deployment deployments.Deployment, verifyFallback, verifyEngines func(context.Context, *chain.Client) error) (*chain.Client, error) {
 	primary, err := chain.Dial(ctx, primaryURL, rpcConfig)
 	if err != nil || !fallback.Enabled() {
 		return primary, err
@@ -355,7 +364,13 @@ func dialIndexerRPC(ctx context.Context, primaryURL string, fallback config.RPCF
 	// An unreachable primary starts the indexer on the fallback; a primary that answers with the
 	// wrong chain or bytecode is a misconfiguration and still refuses to start.
 	startOnFallback := false
-	if err := verifyPrimaryRPC(ctx, primary, chainID, deployment); err != nil {
+	verifyPrimary := func() error {
+		if err := verifyPrimaryRPC(ctx, primary, chainID, deployment); err != nil {
+			return err
+		}
+		return verifyEngines(ctx, primary)
+	}
+	if err := verifyPrimary(); err != nil {
 		if !chain.IsProviderUnavailable(err) {
 			primary.Close()
 			secondary.Close()
