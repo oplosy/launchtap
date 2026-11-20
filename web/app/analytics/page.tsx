@@ -96,7 +96,7 @@ export default function AnalyticsPage() {
         ) : (
           <span />
         )}
-        <Link className="analytics-link" href="/leaderboard">
+        <Link className="analytics-link" href="/rewards/leaderboard">
           View the leaderboard <span aria-hidden="true">→</span>
         </Link>
       </div>

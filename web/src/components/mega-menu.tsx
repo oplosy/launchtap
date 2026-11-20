@@ -9,7 +9,6 @@ export const NAV_LINKS: ReadonlyArray<{ href: string; label: string }> = [
   { href: "/explore", label: "Explore" },
   { href: "/forum", label: "Forum" },
   { href: "/rewards", label: "Rewards" },
-  { href: "/leaderboard", label: "Leaderboard" },
   { href: "/analytics", label: "Analytics" },
   { href: "/docs", label: "Docs" },
 ];
@@ -22,7 +21,7 @@ export const EXPLORE_LINKS: ReadonlyArray<{ href: string; label: string }> = [
 
 export const EXPLORE_RESOURCES: ReadonlyArray<{ href: string; label: string }> = [
   { href: "/explore?view=watchlist", label: "Watchlist" },
-  { href: "/leaderboard", label: "Leaderboard" },
+  { href: "/rewards/leaderboard", label: "Leaderboard" },
   { href: "/docs", label: "Docs" },
 ];
 

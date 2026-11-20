@@ -6,19 +6,11 @@ import { RewardsView } from "@/rewards/rewards-view";
 
 export const metadata: Metadata = { title: "Rewards" };
 
-/** How a creator earns, then what the signed-in account can claim. */
+/** The Rewards tab: how a creator earns, then what the signed-in account can claim. */
 export default function RewardsPage() {
   const configuration = publicConfiguration();
   return (
-    <div className="page-stack rewards-page">
-      <section className="page-hero">
-        <div>
-          <h1>Rewards.</h1>
-          <p className="hero-summary">
-            Launch a token and earn from every trade on it, for as long as people trade it.
-          </p>
-        </div>
-      </section>
+    <>
       <section className="rewards-how" aria-labelledby="rewards-how-title">
         <h2 id="rewards-how-title" className="sr-only">
           How creators earn
@@ -60,6 +52,6 @@ export default function RewardsPage() {
           description="Account access is not configured for this environment. Public launch data remains available."
         />
       )}
-    </div>
+    </>
   );
 }

@@ -23,7 +23,9 @@ export function LeaderboardWindowSelect({ active }: { active: LeaderboardWindow 
           const next = event.target.value as LeaderboardWindow;
           startTransition(() =>
             router.replace(
-              (next === "all" ? "/leaderboard" : `/leaderboard?window=${next}`) as never,
+              (next === "all"
+                ? "/rewards/leaderboard"
+                : `/rewards/leaderboard?window=${next}`) as never,
               { scroll: false },
             ),
           );

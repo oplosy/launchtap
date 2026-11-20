@@ -1,9 +1,9 @@
 /**
- * Leaderboard loader for the server-rendered /leaderboard route. Server-side only (the caller
- * passes the private API base). It throws on any failure instead of returning an "unavailable"
- * value: a thrown render is never cached, so Next keeps serving the last good page or data-cache
- * entry, and only a route that never rendered successfully falls through to
- * app/leaderboard/error.tsx.
+ * Leaderboard loader for the server-rendered /rewards/leaderboard route. Server-side only (the
+ * caller passes the private API base). It throws on any failure instead of returning an
+ * "unavailable" value: a thrown render is never cached, so Next keeps serving the last good page
+ * or data-cache entry, and only a route that never rendered successfully falls through to
+ * app/rewards/leaderboard/error.tsx.
  */
 import type { LeaderboardResponse } from "@/api/client";
 
