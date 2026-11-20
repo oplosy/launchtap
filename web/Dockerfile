@@ -31,5 +31,7 @@ COPY --from=build /app/scripts/validate-release.mjs ./scripts/validate-release.m
 COPY --from=build /app/scripts/container-preflight.mjs ./scripts/container-preflight.mjs
 COPY --from=build /app/public-config.json ./public-config.json
 COPY --from=build /app/src/contracts/generated.ts ./src/contracts/generated.ts
+# The preflight refuses a release without counsel-approved legal documents, so it must read them.
+COPY --from=build /app/src/legal/documents.json ./src/legal/documents.json
 USER node
 CMD ["node", "server.js"]

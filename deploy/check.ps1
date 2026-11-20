@@ -93,7 +93,9 @@ try {
     Test-ComposeConfig -SecretFile $composeSecret.FullName
     if ($Build) {
         Invoke-Docker @('build', '-t', $backendImage, "$repoRoot/backend")
-        Invoke-Docker @('build', '-t', $webImage, "$repoRoot/web")
+        # Public endpoints are build-time values; the CSP check below expects these two origins.
+        Invoke-Docker @('build', '-t', $webImage, '--build-arg', 'NEXT_PUBLIC_API_BASE_URL=https://api.example.invalid',
+            '--build-arg', 'NEXT_PUBLIC_RPC_URL=https://rpc.example.invalid', "$repoRoot/web")
     }
     Invoke-Docker @('network', 'create', $network) | Out-Null
     Invoke-Docker @('run', '-d', '--name', $db, '--network', $network,
@@ -146,7 +148,12 @@ try {
     $asset = [regex]::Match($html.Content, 'src="([^" ]+/_next/[^" ]+|/_next/[^" ]+)"').Groups[1].Value
     if (-not $asset) { throw 'Web HTML did not reference a compiled asset' }
     if ((Invoke-WebRequest "http://$webBinding$asset").StatusCode -ne 200) { throw 'Compiled asset is missing' }
-    if (-not $html.Headers['Content-Security-Policy']) { throw 'Web CSP header is missing' }
+    $csp = [string]$html.Headers['Content-Security-Policy']
+    if (-not $csp) { throw 'Web CSP header is missing' }
+    # The container runs without NEXT_PUBLIC_* in its environment: the built origins must still be allowed.
+    if ($csp -notmatch 'connect-src[^;]*https://api\.example\.invalid' -or $csp -notmatch 'connect-src[^;]*https://rpc\.example\.invalid') {
+        throw 'Web CSP does not allow the built API and RPC origins'
+    }
     $readyResponse = Invoke-WebRequest "http://$apiBinding/readyz" -SkipHttpErrorCheck
     if ($readyResponse.StatusCode -ne 503) { throw 'Unindexed database must not be ready' }
     # Caddy only forwards to api:8080, so a 404 here proves the public listener serves no metrics.
@@ -182,8 +189,10 @@ try {
     }
     if (-not $targetsUp) { throw 'Prometheus did not report both api and indexer targets up' }
 
-    & docker run --rm $webImage node scripts/container-preflight.mjs 2>$null | Out-Null
+    $preflightOutput = (& docker run --rm $webImage node scripts/container-preflight.mjs 2>&1 | Out-String)
     if ($LASTEXITCODE -eq 0) { throw 'Unconfigured validation image was accepted for production' }
+    # The rejection must come from the configuration, not from a file missing in the runtime image.
+    if ($preflightOutput -match 'unreadable') { throw 'Web runtime image is missing a preflight input' }
     Invoke-Docker @('run', '--rm', '-e', 'WEB_DOMAIN=web.example.invalid',
         '-e', 'API_DOMAIN=api.example.invalid', '-e', 'ACME_EMAIL=ops@example.invalid',
         '-v', "${PSScriptRoot}/Caddyfile:/etc/caddy/Caddyfile:ro", 'caddy:2.10.2-alpine',
