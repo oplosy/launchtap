@@ -806,6 +806,8 @@ export interface components {
              */
             funding_checked: number;
             snapshot: components["schemas"]["SnapshotDTO"];
+            /** @description The early deliveries or the transfers between early wallets exceeded the read cap; counts and clusters cover the earliest rows only. */
+            truncated: boolean;
             /** @description The early window had not ended at the snapshot block. */
             window_open: boolean;
             /** Format: int64 */

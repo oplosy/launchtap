@@ -307,6 +307,9 @@ type Querier interface {
 	// read each account's curve balance (creator_fee_balances.curve_eth_owed, mirroring the curve's
 	// creatorFeesOwed). LpFeeLocker fees are claimed from the locker, not the curve, so they are not
 	// a curve action here.
+	// Only tokens the wallets can have an action on are read: engine-1 tokens they created, and
+	// tokens where they hold an engine-2 curve balance or a refund credit (all indexed by account),
+	// never every token on the chain (Antigravity audit HIGH-2).
 	ListProfileActions(ctx context.Context, arg ListProfileActionsParams) ([]ListProfileActionsRow, error)
 	ListProtocolDaily(ctx context.Context, arg ListProtocolDailyParams) ([]ListProtocolDailyRow, error)
 	// ETH the contracts credit to the protocol, per engine, earned basis

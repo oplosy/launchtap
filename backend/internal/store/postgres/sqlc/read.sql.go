@@ -822,12 +822,14 @@ WHERE t.chain_id = $1 AND t.token_address = $2
   AND NOT token_holder_excluded(t.engine_version, tr.to_address, t.curve_address, t.lp_pair,
                                 t.locker, manager.pool_manager)
 ORDER BY tr.block_number, tr.transaction_index, tr.log_index
+LIMIT $4
 `
 
 type ListEarlyCurveDeliveriesParams struct {
 	ChainID       int64
 	TokenAddress  Address
 	WindowSeconds int32
+	RowLimit      int32
 }
 
 type ListEarlyCurveDeliveriesRow struct {
@@ -838,7 +840,12 @@ type ListEarlyCurveDeliveriesRow struct {
 // Curve deliveries (a Transfer from the curve is a buy output) within the early window of the
 // launch block's time, infrastructure recipients excluded.
 func (q *Queries) ListEarlyCurveDeliveries(ctx context.Context, arg ListEarlyCurveDeliveriesParams) ([]ListEarlyCurveDeliveriesRow, error) {
-	rows, err := q.db.Query(ctx, listEarlyCurveDeliveries, arg.ChainID, arg.TokenAddress, arg.WindowSeconds)
+	rows, err := q.db.Query(ctx, listEarlyCurveDeliveries,
+		arg.ChainID,
+		arg.TokenAddress,
+		arg.WindowSeconds,
+		arg.RowLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -2312,12 +2319,15 @@ WHERE t.chain_id = $1 AND t.token_address = $2
                                 t.locker, manager.pool_manager)
   AND NOT token_holder_excluded(t.engine_version, tr.to_address, t.curve_address, t.lp_pair,
                                 t.locker, manager.pool_manager)
+ORDER BY tr.block_number, tr.transaction_index, tr.log_index
+LIMIT $4
 `
 
 type ListTokenTransfersTouchingParams struct {
 	ChainID      int64
 	TokenAddress Address
 	Wallets      [][]byte
+	RowLimit     int32
 }
 
 type ListTokenTransfersTouchingRow struct {
@@ -2328,7 +2338,12 @@ type ListTokenTransfersTouchingRow struct {
 // Transfers of the token touching one of the given wallets, between two non-infrastructure
 // wallets.
 func (q *Queries) ListTokenTransfersTouching(ctx context.Context, arg ListTokenTransfersTouchingParams) ([]ListTokenTransfersTouchingRow, error) {
-	rows, err := q.db.Query(ctx, listTokenTransfersTouching, arg.ChainID, arg.TokenAddress, arg.Wallets)
+	rows, err := q.db.Query(ctx, listTokenTransfersTouching,
+		arg.ChainID,
+		arg.TokenAddress,
+		arg.Wallets,
+		arg.RowLimit,
+	)
 	if err != nil {
 		return nil, err
 	}

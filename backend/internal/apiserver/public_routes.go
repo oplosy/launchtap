@@ -341,6 +341,7 @@ type earlyBuyersBody struct {
 	ClusterCount     int               `json:"cluster_count"`
 	Clusters         []earlyClusterDTO `json:"clusters" doc:"At most 10 clusters, largest combined balance first."`
 	FundingChecked   int               `json:"funding_checked" doc:"Early wallets whose funding source has been checked; funding_source links cover only these."`
+	Truncated        bool              `json:"truncated" doc:"The early deliveries or the transfers between early wallets exceeded the read cap; counts and clusters cover the earliest rows only."`
 }
 type earlyBuyersOutput struct{ Body earlyBuyersBody }
 
@@ -356,7 +357,7 @@ func (r PublicRoutes) earlyBuyers(ctx context.Context, in *addressInput) (*early
 	if e != nil {
 		return nil, mapReadError(ctx, e)
 	}
-	body := earlyBuyersBody{Snapshot: snapDTO(v.Snapshot, v.Finality), WindowSeconds: earlybuyer.WindowSeconds, WindowOpen: v.WindowOpen, EarlyWalletCount: v.EarlyWalletCount, EarlyBalance: decimal(v.EarlyBalance), ClusterCount: v.ClusterCount, Clusters: make([]earlyClusterDTO, 0, len(v.Clusters)), FundingChecked: v.FundingChecked}
+	body := earlyBuyersBody{Snapshot: snapDTO(v.Snapshot, v.Finality), WindowSeconds: earlybuyer.WindowSeconds, WindowOpen: v.WindowOpen, EarlyWalletCount: v.EarlyWalletCount, EarlyBalance: decimal(v.EarlyBalance), ClusterCount: v.ClusterCount, Clusters: make([]earlyClusterDTO, 0, len(v.Clusters)), FundingChecked: v.FundingChecked, Truncated: v.Truncated}
 	for _, c := range v.Clusters {
 		dto := earlyClusterDTO{WalletCount: c.WalletCount, Balance: decimal(c.Balance), Links: append([]string{}, c.Links...), IncludesCreator: c.IncludesCreator, Wallets: make([]earlyWalletDTO, 0, len(c.Wallets))}
 		for _, w := range c.Wallets {

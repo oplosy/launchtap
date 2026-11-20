@@ -22,6 +22,11 @@ const (
 	// MaxClusters and MaxWalletsPerCluster bound the response; counts stay exact.
 	MaxClusters          = 10
 	MaxWalletsPerCluster = 20
+	// MaxDeliveries and MaxTransfers cap the rows one public read loads, earliest first: a token
+	// with more early deliveries or more transfers between its early wallets is grouped from the
+	// capped rows and reported as truncated (Antigravity audit MEDIUM-5).
+	MaxDeliveries = 2_000
+	MaxTransfers  = 10_000
 
 	LinkSameTransaction = "same_transaction"
 	LinkTokenTransfer   = "token_transfer"
@@ -87,8 +92,11 @@ type Report struct {
 	Result
 	// WindowOpen is true while the snapshot block is still inside the early window.
 	WindowOpen bool
-	Snapshot   pagination.Snapshot
-	Finality   string
+	// Truncated is true when MaxDeliveries or MaxTransfers cut the rows the groups were built
+	// from; counts then cover only the rows read.
+	Truncated bool
+	Snapshot  pagination.Snapshot
+	Finality  string
 }
 
 type Reader interface {
