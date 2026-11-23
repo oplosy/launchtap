@@ -16,6 +16,7 @@ function body(overrides: Partial<Body> = {}): Body {
     early_balance: tokens(200_000_000),
     cluster_count: 1,
     funding_checked: 0,
+    truncated: false,
     clusters: [
       {
         wallet_count: 3,
@@ -85,6 +86,13 @@ describe("early buyers view", () => {
     );
     expect(view?.groups).toEqual([]);
     expect(view?.emptyGroups).toBe("No linked early wallets found.");
+  });
+
+  it("says when the API capped the rows it grouped", () => {
+    const view = earlyBuyersView(body({ truncated: true }), supply);
+    expect(view?.summary).toMatch(
+      /Too many early trades to read them all; this covers the earliest\.$/,
+    );
   });
 
   it("handles a launch nobody bought into early", () => {

@@ -120,7 +120,7 @@ export function WalletView({ address }: { address: string }) {
           <div className="wallet-actions">
             <CopyAddress address={address} />
             <WalletShare address={address} />
-            <Link className="ui-button ui-button-quiet ui-button-sm" href="/leaderboard">
+            <Link className="ui-button ui-button-quiet ui-button-sm" href="/rewards/leaderboard">
               Leaderboard
             </Link>
           </div>

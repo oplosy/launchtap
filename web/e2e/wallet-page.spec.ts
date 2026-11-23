@@ -358,10 +358,17 @@ test("the leaderboard lists ranks", async ({ page }) => {
   });
   try {
     test.skip(!listening, "The fixture API port is already in use.");
+    // The old route redirects to the leaderboard tab of the rewards page.
     await page.goto("/leaderboard");
+    await expect(page).toHaveURL(/\/rewards\/leaderboard$/);
+    await expect(
+      page.getByRole("navigation", { name: "Rewards sections" }).getByRole("link", {
+        name: "Leaderboard",
+      }),
+    ).toHaveAttribute("aria-current", "page");
     const table = page.getByRole("table", { name: "Leaderboard" });
     await expect(table.getByRole("row")).toHaveCount(3);
-    await expect(table.getByRole("row").nth(1)).toContainText("1");
+    await expect(table.getByRole("row").nth(1)).toContainText("01");
     await expect(table.getByRole("row").nth(1)).toContainText("+1.5 ETH");
     await expect(table.getByRole("row").nth(2)).toContainText("−0.25 ETH");
     await expect(table.locator(`a[href="/wallet/${WALLET}"]`)).toBeVisible();
@@ -370,10 +377,15 @@ test("the leaderboard lists ranks", async ({ page }) => {
       fullPage: true,
       animations: "disabled",
     });
-    // Period tabs sit centred; ranks are end-aligned so their digits line up.
-    const tabs = page.getByRole("navigation", { name: "Leaderboard period" });
-    const box = (await tabs.boundingBox())!;
-    expect(Math.abs(box.x + box.width / 2 - page.viewportSize()!.width / 2)).toBeLessThanOrEqual(2);
+    // The period dropdown sits at the ranking's right edge and switches the window in the URL;
+    // ranks are end-aligned so their digits line up.
+    const period = page.getByRole("combobox", { name: "Period" });
+    const box = (await period.boundingBox())!;
+    const board = (await table.boundingBox())!;
+    expect(Math.abs(box.x + box.width - (board.x + board.width))).toBeLessThanOrEqual(1);
+    await period.selectOption("7d");
+    await expect(page).toHaveURL(/\/rewards\/leaderboard\?window=7d$/);
+    await expect(period).toHaveValue("7d");
     const rank = table.getByRole("row").nth(1).locator(":scope > *").first();
     expect(await rank.evaluate((node) => getComputedStyle(node).textAlign)).toMatch(
       /^(right|end)$/,

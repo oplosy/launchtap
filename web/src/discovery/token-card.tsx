@@ -72,19 +72,21 @@ export function TokenCard({
   );
   return (
     <article className="token-card" style={{ "--hue": addressHue(token.address) } as CSSProperties}>
-      <SafeImage
-        src={imageUrl}
-        alt={`${label} token`}
-        fallbackLabel="No artwork"
-        className="token-image"
-      />
+      {/* The frame clips the artwork so a grid tile can zoom it on hover; rows ignore it. */}
+      <div className="token-frame">
+        <SafeImage
+          src={imageUrl}
+          alt={`${label} token`}
+          fallbackLabel="No artwork"
+          className="token-image"
+        />
+      </div>
       <div className="token-identity">
         <h3>
           <Link href={`/token/${token.address}` as never}>{label}</Link>
         </h3>
         <p className="token-symbol">
           <span>{token.symbol || "—"}</span>
-          {token.phase === "graduated" ? <span className="token-phase">Graduated</span> : null}
         </p>
       </div>
       <dl className="token-metrics">

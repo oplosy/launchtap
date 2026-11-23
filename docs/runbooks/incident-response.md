@@ -52,7 +52,7 @@ Confirm or adjust them there before mainnet.
 | Web compromise: served JS that differs from the release build, a changed CSP header, or a DNS or CDN hijack | SEV1 | Usually none. The contracts are unaffected | Take the web app offline (`production-readiness.md` rollback). Tell users not to sign anything from the site. Approvals are exact-amount, but tell users to check them anyway. |
 | Leaked deployer, pause-signer or treasury key | SEV1 | Pause if the key is a pause signer and the signer set is below threshold | Rotate the Safe owner. The deployer holds no authority after setup (`noResidualDeployerAuthority`). |
 | API or indexer outage, or stale data | SEV2 | None | The web shows the site-wide stale-data notice by itself (`GET /v1/status`). Follow the rollback and health checks in `production-readiness.md`. |
-| Privy, RPC provider or Robinhood Chain outage | SEV2 | None | Status notice. The indexer fails over to `RPC_FALLBACK_URL` by itself; confirm it did (`RPCErrorRateHigh` clears). The browser RPC (`NEXT_PUBLIC_RPC_URL`) needs a web redeploy to change. |
+| Privy, RPC provider or Robinhood Chain outage | SEV2 | None | Status notice. The indexer fails over to `RPC_FALLBACK_URL` by itself; confirm it did (`RPCErrorRateHigh` clears). An indexer that logs `primary RPC failed the identity checks; staying on the fallback until restart` found the primary serving the wrong contracts: fix `RPC_URL`, then restart it. The browser RPC (`NEXT_PUBLIC_RPC_URL`) needs a web redeploy to change. |
 | Scam token, abusive comments, impersonation | SEV3 | None | Moderation CLI (`cmd/moderate`). A creator dumping their own tokens is market risk, not an incident. |
 
 Do not pause for price moves, a single token collapsing, or anything that is not a protocol or

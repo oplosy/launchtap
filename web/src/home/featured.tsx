@@ -11,7 +11,7 @@ import { TokenCard } from "@/discovery/token-card";
 import { ForumField } from "./forum-field";
 import { FIELD_POOL } from "./forum-field-model";
 
-/** Trending and Just graduated: three rows of five artwork cards. */
+/** Trending and Graduated: three rows of five artwork cards. */
 const CARD_SECTION_SIZE = 15;
 
 type Load<T> = { status: "loading" } | { status: "error" } | { status: "ready"; data: T };
@@ -54,7 +54,7 @@ function ListSkeleton() {
   );
 }
 
-/** Trending, Just graduated and From the forum, read from the public API. */
+/** Trending, Graduated and From the forum, read from the public API. */
 export function HomeFeed() {
   const configuration = publicConfiguration();
   const apiBaseUrl =
@@ -90,7 +90,7 @@ export function HomeFeed() {
   return (
     <>
       <Reveal>
-        <Section id="home-trending" title="Trending" viewAllHref="/explore?view=trending">
+        <Section id="home-trending" title="Trending" motif="sun" href="/explore?view=trending">
           {highlights.failed ? (
             <ErrorState
               title="Trending unavailable"
@@ -111,7 +111,12 @@ export function HomeFeed() {
       </Reveal>
 
       <Reveal>
-        <Section id="home-graduated" title="Just graduated" viewAllHref="/explore?view=graduated">
+        <Section
+          id="home-graduated"
+          title="Graduated"
+          motif="columns"
+          href="/explore?view=graduated"
+        >
           {graduated.state.status === "error" ? (
             <ErrorState
               title="Graduated tokens unavailable"
@@ -136,7 +141,7 @@ export function HomeFeed() {
       </Reveal>
 
       <Reveal>
-        <Section id="home-forum" title="From the forum" viewAllHref="/forum">
+        <Section id="home-forum" title="From the forum" motif="spiral" href="/forum">
           {forum.state.status === "error" ? (
             <ErrorState
               title="Forum unavailable"

@@ -149,9 +149,8 @@ type Querier interface {
 	GetProtocolDailyRefreshDay(ctx context.Context, arg GetProtocolDailyRefreshDayParams) (pgtype.Date, error)
 	GetProtocolStats(ctx context.Context, chainID int64) (GetProtocolStatsRow, error)
 	// No row when the comment is missing in this scope, hidden, or its author is banned. Every author
-	// has a social_users row (post creates it before inserting a comment). FOR SHARE locks the comment
-	// and the author row, so a report waits for an in-flight hide or ban and then re-checks the
-	// committed state; the later report insert cannot leave an open report on actioned content.
+	// has a social_users row (post creates it before inserting a comment). Callers take
+	// LockReportableComment first.
 	GetReportableComment(ctx context.Context, arg GetReportableCommentParams) (GetReportableCommentRow, error)
 	GetSocialUser(ctx context.Context, arg GetSocialUserParams) (GetSocialUserRow, error)
 	GetSyncState(ctx context.Context, arg GetSyncStateParams) (SyncState, error)
@@ -191,6 +190,7 @@ type Querier interface {
 	InsertFutureTreasuryConfiguration(ctx context.Context, arg InsertFutureTreasuryConfigurationParams) (int64, error)
 	InsertGraduation(ctx context.Context, arg InsertGraduationParams) (int64, error)
 	InsertGraduationV2(ctx context.Context, arg InsertGraduationV2Params) (int64, error)
+	InsertIndexerEngineDeployment(ctx context.Context, arg InsertIndexerEngineDeploymentParams) error
 	InsertLaunchFeeClaim(ctx context.Context, arg InsertLaunchFeeClaimParams) (int64, error)
 	InsertLaunchPauseEvent(ctx context.Context, arg InsertLaunchPauseEventParams) (int64, error)
 	// The top 100 of ListLeaderboardWindow (read.sql), ranked 1..n: the same window, aggregation,
@@ -262,6 +262,7 @@ type Querier interface {
 	// within 30 days, strictly older than the cursor position, newest first. Each watched token
 	// contributes at most page_size rows through its own ordered index scan.
 	ListInboxEvents(ctx context.Context, arg ListInboxEventsParams) ([]ListInboxEventsRow, error)
+	ListIndexerEngineDeployments(ctx context.Context, arg ListIndexerEngineDeploymentsParams) ([]ListIndexerEngineDeploymentsRow, error)
 	ListLaunchesAfter(ctx context.Context, arg ListLaunchesAfterParams) ([]ListLaunchesAfterRow, error)
 	// R4 at read time: the zero address, every curve or pair address, every engine-2 locker and the
 	// chain's V4 PoolManager are never ranked. The factory is never marked dirty, so it never has
@@ -305,6 +306,9 @@ type Querier interface {
 	// read each account's curve balance (creator_fee_balances.curve_eth_owed, mirroring the curve's
 	// creatorFeesOwed). LpFeeLocker fees are claimed from the locker, not the curve, so they are not
 	// a curve action here.
+	// Only tokens the wallets can have an action on are read: engine-1 tokens they created, and
+	// tokens where they hold an engine-2 curve balance or a refund credit (all indexed by account),
+	// never every token on the chain (Antigravity audit HIGH-2).
 	ListProfileActions(ctx context.Context, arg ListProfileActionsParams) ([]ListProfileActionsRow, error)
 	ListProtocolDaily(ctx context.Context, arg ListProtocolDailyParams) ([]ListProtocolDailyRow, error)
 	// ETH the contracts credit to the protocol, per engine, earned basis
@@ -378,6 +382,12 @@ type Querier interface {
 	// Serializes protocol aggregate refreshes of one chain, so a refresh reads the watermark only
 	// after any concurrent refresh (including a reorg's full rebuild) has committed.
 	LockProtocolAggregates(ctx context.Context, chainID int64) error
+	// Holds the comment and its author row FOR SHARE until commit through a SECURITY DEFINER function
+	// (migration 00043): a row lock needs UPDATE privilege, which the API role does not have on
+	// token_comments or social_users. Called right before GetReportableComment in the same
+	// transaction, so a report or vote waits for an in-flight hide or ban and the read then sees the
+	// committed state; the later report insert cannot leave an open report on actioned content.
+	LockReportableComment(ctx context.Context, arg LockReportableCommentParams) error
 	// Serializes per-subject social writes (rate limits, username changes). The key is built in SQL.
 	LockSocialSubject(ctx context.Context, arg LockSocialSubjectParams) error
 	// Holds the launch row FOR SHARE until commit through a SECURITY DEFINER function (migration

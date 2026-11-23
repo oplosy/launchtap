@@ -14,6 +14,7 @@ import { useWalletReadiness } from "@/wallet/readiness";
 import {
   acceptableImageFile,
   descriptionTooLong,
+  maxDescriptionBytes,
   hasValidImageSignature,
   safeSocialLink,
 } from "./image-file";
@@ -182,7 +183,7 @@ export function MetadataEditor({ token, onConflict }: Props) {
       !safeSocialLink("telegram", telegramUrl)
     ) {
       setError(
-        "Description must be at most 2,000 bytes, the X link must point at x.com or twitter.com, and the Telegram link at t.me or telegram.me.",
+        `Description must be at most ${maxDescriptionBytes.toLocaleString("en-US")} bytes, the X link must point at x.com or twitter.com, and the Telegram link at t.me or telegram.me.`,
       );
       return;
     }
@@ -281,7 +282,8 @@ export function MetadataEditor({ token, onConflict }: Props) {
               />
             </label>
             <p id="description-hint" className="ui-field-hint">
-              {new TextEncoder().encode(description).length.toLocaleString("en-US")}/2,000 bytes
+              {new TextEncoder().encode(description).length.toLocaleString("en-US")}/
+              {maxDescriptionBytes.toLocaleString("en-US")} bytes
             </p>
             <Input
               label="X URL"

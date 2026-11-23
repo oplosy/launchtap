@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 
 	"github.com/Contictus/launchtap/backend/internal/chain"
 	"github.com/Contictus/launchtap/backend/internal/ledger"
-	"github.com/ethereum/go-ethereum/common"
 )
 
 // stepHeads are the RPC's latest, safe and finalized blocks, checked for ordering.
@@ -245,53 +243,6 @@ func (e *Engine) readChunk(ctx context.Context, state State, latest ledger.Index
 		previous = &block
 	}
 	return stepChunk{from: from, to: to, blocks: blocks, tip: previous}, false, nil
-}
-
-// decodeChunk discovers the chunk's logs for the factory and every persisted token's emitters
-// and decodes them. Every log must belong to a block of the chunk.
-func (e *Engine) decodeChunk(ctx context.Context, chunk stepChunk, identities []TokenIdentity) ([]chain.DecodedLog, error) {
-	emitters := chain.Emitters{Factory: e.settings.Factory, Curves: chain.NewAddressSet(), Tokens: chain.NewAddressSet(), Pairs: chain.NewAddressSet(), Pools: make(map[common.Hash]common.Address)}
-	engineVersion := e.decoder.EngineVersion()
-	for _, identity := range identities {
-		// One deployment per chain (pre-flight B2), so every persisted token was launched by
-		// the decoder's engine.
-		if identity.EngineVersion != engineVersion {
-			return nil, fmt.Errorf("persisted token %s has engine version %d, deployment decodes engine %d", identity.Token.Hex(), identity.EngineVersion, engineVersion)
-		}
-		emitters.Curves[identity.Curve] = struct{}{}
-		emitters.Tokens[identity.Token] = struct{}{}
-		if engineVersion == 1 {
-			emitters.Pairs[identity.Pair] = struct{}{}
-		}
-		if identity.PoolID != nil {
-			emitters.Pools[*identity.PoolID] = identity.Token
-		}
-	}
-	result, err := e.discovery.Discover(ctx, uint64(chunk.from), uint64(chunk.to), emitters)
-	if err != nil {
-		// A provider outage or a failover switch retries the step like a head read; any other
-		// discovery error (a bad log, a failed pair check) still stops the indexer.
-		if chain.IsProviderUnavailable(err) || errors.Is(err, chain.ErrRPCSwitching) {
-			return nil, rpcFailure("discover logs", err)
-		}
-		return nil, err
-	}
-	decoded := make([]chain.DecodedLog, 0)
-	for _, log := range result.Logs {
-		if log.BlockNumber > math.MaxInt64 || log.TxIndex > math.MaxInt32 || log.Index > math.MaxInt32 || log.Removed {
-			return nil, errors.New("invalid log coordinates")
-		}
-		block, ok := chunk.blocks[int64(log.BlockNumber)]
-		if !ok || block.BlockHash != log.BlockHash {
-			return nil, ErrCanonicalMismatch
-		}
-		event, err := e.decoder.Decode(log, result.Emitters)
-		if err != nil {
-			return nil, err
-		}
-		decoded = append(decoded, event)
-	}
-	return decoded, nil
 }
 
 // resolvePromotions moves state.Safe and state.Finalized up to the RPC tags, capped at the

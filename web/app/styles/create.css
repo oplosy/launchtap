@@ -20,16 +20,18 @@
   font-size: 18px;
   line-height: 1;
 }
-/* Engine badge: read-only, the configured deployment decides the engine (Plan v2-C D7). */
-.engine-badge {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-pill);
-  padding: 4px 12px;
-  color: var(--text-2);
-  font-size: 12px;
-  font-weight: 500;
+/* Engine choice: engine 1 and engine 2 run side by side. */
+.engine-choice {
+  display: flex;
+}
+.engine-choice .ui-segment > button:disabled {
+  color: var(--text-3);
+  cursor: not-allowed;
+}
+@media (max-width: 640px) {
+  .create-page-toolbar {
+    flex-wrap: wrap;
+  }
 }
 
 .launch-panel {
@@ -63,26 +65,52 @@
   width: 100%;
 }
 @media (min-width: 1024px) {
-  /* 60/40: the form on the left, the larger-type preview and terms on the right. */
+  /*
+   * Form, a drawn column, then the larger-type preview and terms. The form and the preview each
+   * keep 85% of their old 60/40 widths; the column takes what that frees.
+   */
   .launch-main {
-    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    grid-template-columns: minmax(0, 2.55fr) minmax(0, 0.75fr) minmax(0, 1.7fr);
     align-items: start;
-    gap: clamp(48px, 6vw, 112px);
+    gap: clamp(24px, 3vw, 56px);
+  }
+  /*
+   * The form and the preview start and end level: the card's top meets the first section heading
+   * (below that section's 28px padding) and the last action ends level with the last field. Both
+   * columns stretch to the taller one; the form spreads its sections and the aside pushes its last
+   * action down, so either column may be the taller. The column art stretches to the same row.
+   */
+  .launch-main > .transaction-form {
+    align-self: stretch;
+    align-content: space-between;
   }
   .launch-aside {
-    position: sticky;
-    top: calc(var(--nav-height) + 24px);
-    gap: 28px;
+    display: flex;
+    flex-direction: column;
+    align-self: stretch;
+    gap: clamp(16px, 1.9vw, 28px);
+    margin-top: 28px;
+  }
+  .launch-aside > :last-child {
+    margin-top: auto;
   }
   .launch-aside .launch-preview-card {
     gap: 24px 28px;
     padding: 28px;
   }
+  /* The image square shrinks on narrower desktops so the aside still fits beside the form. */
   .launch-aside .launch-preview-image {
-    width: 144px;
-    height: 144px;
+    width: clamp(100px, 10vw, 144px);
+    height: clamp(100px, 10vw, 144px);
     border-radius: calc(var(--radius-container) - 4px);
     font-size: 44px;
+  }
+  .launch-aside .launch-image-slot-mark {
+    gap: 6px;
+    font-size: 13px;
+  }
+  .launch-aside .launch-image-slot-plus {
+    font-size: 36px;
   }
   .launch-aside .launch-preview-name {
     font-size: 32px;
@@ -102,6 +130,81 @@
   .launch-aside .launch-preview-card dd {
     margin-top: 4px;
     font-size: 18px;
+  }
+}
+
+/*
+ * The drawn Ionic column between the form and the preview, seen from the ground at three-quarters:
+ * wide screens only, decorative. Its steps reach into the gaps on either side.
+ */
+.launch-column-art {
+  display: none;
+}
+@media (min-width: 1024px) {
+  /* Takes the row's height without adding to it: the drawing is laid over the stretched cell. */
+  .launch-column-art {
+    position: relative;
+    display: block;
+    align-self: stretch;
+    color: color-mix(in srgb, var(--text-3) 50%, transparent);
+    pointer-events: none;
+  }
+  /*
+   * Overhangs the panels by the same amount above and below: the row starts 72px above the fields
+   * (section padding, heading, gap), so moving the drawing down by half of that centres it on them.
+   */
+  .launch-column-art svg {
+    position: absolute;
+    inset: calc((28px + 28px + 16px) / 2) auto calc((28px + 28px + 16px) / -2) 50%;
+    width: calc(100% + 2 * clamp(24px, 3vw, 56px));
+    max-width: none;
+    height: 100%;
+    overflow: visible;
+    transform: translateX(-50%);
+  }
+  .launch-column-art path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.1;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: launch-column-draw 2.4s var(--ease-out) forwards;
+  }
+  .launch-column-art path.fine {
+    stroke-width: 0.8;
+    opacity: 0.7;
+  }
+  .launch-column-art path.shade {
+    stroke-width: 0.8;
+    opacity: 0.45;
+  }
+  .launch-column-art path.hatch {
+    stroke-width: 0.7;
+    opacity: 0.35;
+    animation-delay: 0.9s;
+  }
+}
+/*
+ * Draws each stroke in, then drops the dash: with non-scaling strokes Chrome measures a normalised
+ * `pathLength` dash in screen space, so a single dash can stop short of a long path's end.
+ */
+@keyframes launch-column-draw {
+  99% {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .launch-column-art path {
+    animation: none;
+    stroke-dasharray: none;
   }
 }
 
@@ -138,22 +241,119 @@
 .launch-section:last-child {
   padding-bottom: 0;
 }
+/*
+ * A heading's info tip sits right beside it, centred on the line. Headings start in line with the
+ * field labels.
+ */
 .launch-section h2 {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
+  align-items: center;
+  gap: 8px;
+  padding-inline-start: 19px;
   font: var(--type-section);
+}
+/*
+ * Field labels start where the pill's curve flattens out, in line with the text inside the field
+ * (its 1px border plus 18px padding), not at the rounded tip.
+ */
+.launch-main .ui-field > label,
+.launch-main .ui-field > span:first-child {
+  padding-inline-start: 19px;
+}
+/* The description starts as one line, the height of the pill fields, and grows as it fills. */
+.launch-description.ui-textarea {
+  min-height: 44px;
+  padding-block: 9px;
 }
 .launch-field-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
-.launch-image-preview {
-  width: 88px;
-  height: 88px;
-  border-radius: var(--radius-avatar);
-  object-fit: cover;
+/*
+ * Image picker: the preview card's image square itself. Empty, it is a dashed square with a "+";
+ * filled, it shows the chosen image and a "Replace" veil on hover. The native input covers it.
+ */
+.launch-image-slot {
+  position: relative;
+  border: 1px dashed var(--hairline-bright);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+.launch-image-slot[data-filled] {
+  border-color: transparent;
+}
+.launch-image-slot:hover,
+.launch-image-slot:has(.launch-image-input:focus-visible) {
+  border-color: var(--text-2);
+}
+.launch-image-slot:has(.launch-image-input:focus-visible) {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+/* A chosen image needs no frame; the "Replace" veil marks it as clickable. */
+.launch-image-slot[data-filled]:hover {
+  border-color: transparent;
+}
+.launch-image-slot[data-invalid] {
+  border-color: var(--down);
+}
+.launch-image-input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.launch-image-slot-mark {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
+}
+.launch-image-slot-plus {
+  font-size: 22px;
+  font-weight: 300;
+  line-height: 1;
+}
+.launch-image-slot-replace {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 6px 0;
+  color: var(--text);
+  background: color-mix(in srgb, var(--canvas) 72%, transparent);
+  backdrop-filter: blur(6px);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.launch-image-slot:hover .launch-image-slot-replace,
+.launch-image-slot:has(.launch-image-input:focus-visible) .launch-image-slot-replace {
+  opacity: 1;
+}
+.launch-image-error {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+/* Below the wide layout the square is a small avatar circle: a larger target, and the "+" alone. */
+@media (max-width: 1023px) {
+  .launch-preview-image.launch-image-slot {
+    width: 72px;
+    height: 72px;
+  }
+  .launch-image-slot-mark > span:not(.launch-image-slot-plus) {
+    display: none;
+  }
 }
 .launch-main .transaction-confirmation h3 {
   font: var(--type-label);
@@ -166,7 +366,8 @@
   align-items: center;
   gap: 16px 20px;
   border-radius: var(--radius-container);
-  background: var(--fill);
+  /* Half a step off the canvas, like the token cards: present without standing out. */
+  background: color-mix(in srgb, var(--fill) 50%, var(--canvas));
   padding: 20px;
 }
 .launch-preview-image {

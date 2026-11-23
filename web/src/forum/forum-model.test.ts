@@ -5,6 +5,7 @@ import {
   communityLabel,
   forumTabHref,
   parseForumTab,
+  postScale,
   tokenHref,
 } from "./forum-model";
 
@@ -44,5 +45,19 @@ describe("forum model", () => {
     expect(
       appendForumPage([post("9"), post("8")], [post("8"), post("7")]).map((p) => p.id),
     ).toEqual(["9", "8", "7"]);
+  });
+});
+
+describe("postScale", () => {
+  it("sizes a post by its length in characters", () => {
+    expect(postScale("gm")).toBe("poster");
+    expect(postScale("x".repeat(48))).toBe("poster");
+    expect(postScale("x".repeat(49))).toBe("statement");
+    expect(postScale("x".repeat(140))).toBe("statement");
+    expect(postScale("x".repeat(141))).toBe("reading");
+  });
+
+  it("counts code points and ignores surrounding whitespace", () => {
+    expect(postScale(`  ${"🚀".repeat(48)}  `)).toBe("poster");
   });
 });

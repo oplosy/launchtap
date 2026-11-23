@@ -40,6 +40,18 @@ test("the launch form sits left of the token preview on a laptop", async ({ page
   // 60/40: the form column is wider and ends before the preview column starts.
   expect(form.x + form.width).toBeLessThanOrEqual(preview.x);
   expect(form.width).toBeGreaterThan(preview.width);
+  // The form and the preview start and end level: the card meets the first heading, and the last
+  // action ends with the last field.
+  const heading = (await page.getByRole("heading", { name: "Name and Symbol" }).boundingBox())!;
+  const lastField = (await page
+    .locator(".launch-main > .transaction-form .ui-field")
+    .last()
+    .boundingBox())!;
+  const lastAction = (await page.locator(".launch-aside > :last-child").boundingBox())!;
+  expect(Math.abs(preview.y - heading.y)).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(lastAction.y + lastAction.height - (lastField.y + lastField.height)),
+  ).toBeLessThanOrEqual(1);
   await page.screenshot({
     path: "test-results/screenshots/rebuild-create-wide.png",
     fullPage: true,
@@ -47,18 +59,21 @@ test("the launch form sits left of the token preview on a laptop", async ({ page
   });
 });
 
-test("the four sections appear in order", async ({ page }) => {
+test("the three sections appear in order, the image picker in the preview", async ({ page }) => {
   await installRpc(page);
   await page.goto("/create");
   const form = page.getByRole("region", { name: "Launch token" });
   await expect(page.getByRole("textbox", { name: "Name" })).toBeVisible();
   await expect(form.getByRole("heading", { level: 2 })).toHaveText([
-    "Image",
-    "Name and symbol",
+    "Name and Symbol",
     // The About heading (description and links) also carries its info tip's text.
     /^About/,
-    "Initial buy",
+    "Initial Buy",
   ]);
+  // The image is picked on the preview card's image square.
+  await expect(
+    page.getByRole("complementary", { name: "Token preview" }).getByLabel("Token image"),
+  ).toBeAttached();
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth))
     .toBe(0);
@@ -76,12 +91,12 @@ test("focusing an input changes its border colour", async ({ page }, testInfo) =
   await expect.poll(border).not.toBe(before);
 });
 
-test("the engine is a read-only badge for the configured deployment", async ({ page }) => {
+test("the creator picks the launch engine and engine 1 is preselected", async ({ page }) => {
   await installRpc(page);
   await page.goto("/create");
   await expect(page.getByRole("textbox", { name: "Name" })).toBeVisible();
-  // The TASK6 fixture is an engine-1 deployment (Plan v2-C D7).
-  await expect(page.locator(".engine-badge")).toHaveText("Engine v1");
-  await expect(page.getByRole("group", { name: "Launch engine" })).toHaveCount(0);
-  await expect(page.locator("button[aria-pressed]", { hasText: /^V[12]$/ })).toHaveCount(0);
+  const choice = page.getByRole("group", { name: "Launch engine" });
+  await expect(choice.getByRole("button", { name: "V1" })).toHaveAttribute("aria-pressed", "true");
+  // The TASK6 fixture deploys engine 1 only, so engine 2 is shown but cannot be picked.
+  await expect(choice.getByRole("button", { name: "V2" })).toBeDisabled();
 });

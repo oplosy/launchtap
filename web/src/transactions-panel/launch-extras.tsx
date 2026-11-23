@@ -51,7 +51,7 @@ export function useLaunchExtras(links: { xUrl: string; telegramUrl: string }) {
   const extras: LaunchExtras = { description, file, ...links };
   const wanted = hasLaunchExtras(extras);
   const descriptionError = descriptionTooLong(description)
-    ? `Keep the description within ${maxDescriptionBytes.toLocaleString("en-US")} bytes.`
+    ? `Max ${maxDescriptionBytes.toLocaleString("en-US")} bytes. Shorten the description.`
     : undefined;
 
   /** Validates before accepting: a rejected file clears the previous choice. */
@@ -127,7 +127,11 @@ export function useLaunchExtras(links: { xUrl: string; telegramUrl: string }) {
 
 export type LaunchExtrasState = ReturnType<typeof useLaunchExtras>;
 
-export function LaunchImageField({
+/**
+ * The token image picker, drawn as the preview card's image square: the native picker sits
+ * invisibly over it, so a click, a keyboard press or a dropped file all reach the real input.
+ */
+export function LaunchImageSlot({
   extras,
   onChange,
 }: {
@@ -135,13 +139,16 @@ export function LaunchImageField({
   onChange: () => void;
 }) {
   return (
-    <div className="ui-field launch-image-field">
-      <label htmlFor="launch-image-file">Token image</label>
+    <div
+      className="launch-preview-image launch-image-slot"
+      data-filled={extras.preview ? "" : undefined}
+      data-invalid={extras.fileError ? "" : undefined}
+    >
       <input
-        id="launch-image-file"
         className="launch-image-input"
         type="file"
         accept="image/png,image/jpeg,image/webp"
+        aria-label="Token image"
         aria-describedby="launch-image-hint"
         aria-invalid={extras.fileError ? "true" : undefined}
         onChange={(event) => {
@@ -149,20 +156,38 @@ export function LaunchImageField({
           void extras.chooseFile(event.target.files?.[0]);
         }}
       />
-      <p id="launch-image-hint" className="ui-field-hint">
+      {extras.preview ? (
+        <>
+          {/* A local object URL of the chosen file; SafeImage only accepts remote URLs. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={extras.preview} alt="Token image preview" />
+          <span className="launch-image-slot-replace" aria-hidden="true">
+            Replace
+          </span>
+        </>
+      ) : (
+        <span className="launch-image-slot-mark" aria-hidden="true">
+          <span className="launch-image-slot-plus">+</span>
+          <span>Add image</span>
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** The image slot's hint (for screen readers) and its error, under the preview's name. */
+export function LaunchImageNote({ extras }: { extras: LaunchExtrasState }) {
+  return (
+    <>
+      <p id="launch-image-hint" className="sr-only">
         Optional. PNG, JPEG, or WebP, up to 5 MiB. Uploaded after the launch confirms.
       </p>
       {extras.fileError ? (
-        <p className="ui-field-error" role="alert">
+        <p className="ui-field-error launch-image-error" role="alert">
           {extras.fileError}
         </p>
       ) : null}
-      {extras.preview ? (
-        // A local object URL of the chosen file; SafeImage only accepts remote URLs.
-        /* eslint-disable-next-line @next/next/no-img-element */
-        <img src={extras.preview} alt="Token image preview" className="launch-image-preview" />
-      ) : null}
-    </div>
+    </>
   );
 }
 
@@ -173,25 +198,31 @@ export function LaunchDescriptionField({
   extras: LaunchExtrasState;
   onChange: () => void;
 }) {
-  const bytes = new TextEncoder().encode(extras.description).length;
+  // No running count: a note appears only at the limit, an error past it.
+  const atLimit =
+    !extras.descriptionError &&
+    new TextEncoder().encode(extras.description).length === maxDescriptionBytes;
   return (
     <div className="ui-field">
       <label htmlFor="launch-description">Description</label>
       <textarea
         id="launch-description"
-        className={`ui-input ui-textarea ${extras.descriptionError ? "ui-input-error" : ""}`}
+        className={`ui-input ui-textarea launch-description ${extras.descriptionError ? "ui-input-error" : ""}`}
+        rows={1}
         value={extras.description}
         placeholder="Optional. What is this token about?"
-        aria-describedby="launch-description-hint"
+        aria-describedby={atLimit ? "launch-description-hint" : undefined}
         aria-invalid={extras.descriptionError ? "true" : undefined}
         onChange={(event) => {
           onChange();
           extras.setDescription(event.target.value);
         }}
       />
-      <p id="launch-description-hint" className="ui-field-hint">
-        {bytes.toLocaleString("en-US")}/{maxDescriptionBytes.toLocaleString("en-US")} bytes
-      </p>
+      {atLimit ? (
+        <p id="launch-description-hint" className="ui-field-hint">
+          Max {maxDescriptionBytes.toLocaleString("en-US")} bytes reached.
+        </p>
+      ) : null}
       {extras.descriptionError ? (
         <p className="ui-field-error" role="alert">
           {extras.descriptionError}

@@ -21,29 +21,32 @@ import {
   DEFAULT_TTL,
   type Address,
   currentUnixSeconds,
-  ReadinessGate,
+  EngineDeploymentGate,
   TransactionProgress,
 } from "./shared";
 import { ReviewNotice, useReviewedWrite, WrongNetworkBanner } from "./reviewed-trade";
-import { LaunchConfirmation, LaunchPreview, launchBlockers } from "./launch-views";
+import { LaunchColumnArt, LaunchConfirmation, LaunchPreview, launchBlockers } from "./launch-views";
 import {
   LaunchAttachStatus,
   LaunchDescriptionField,
-  LaunchImageField,
+  LaunchImageNote,
+  LaunchImageSlot,
   LaunchSignIn,
   useLaunchExtras,
 } from "./launch-extras";
 import { launchedToken } from "./launch-metadata";
 
-export function LaunchPanel() {
+/** The launch form for one engine; the create page remounts it when the engine changes. */
+export function LaunchPanel({ engineVersion }: { engineVersion: 1 | 2 }) {
   return (
-    <ReadinessGate>
-      <LaunchPanelReady />
-    </ReadinessGate>
+    <EngineDeploymentGate engineVersion={engineVersion}>
+      {(deployment) => <LaunchPanelReady engineVersion={engineVersion} deployment={deployment} />}
+    </EngineDeploymentGate>
   );
 }
 
-function LaunchPanelReady() {
+type ReadyProps = { engineVersion: 1 | 2; deployment: ReviewedDeployment };
+function LaunchPanelReady({ engineVersion, deployment }: ReadyProps) {
   const write = useReviewedWrite("launch", null);
   const {
     account,
@@ -67,10 +70,9 @@ function LaunchPanelReady() {
   const [launchesPaused, setLaunchesPaused] = useState<boolean | null>(null);
   const [tradingPaused, setTradingPaused] = useState<boolean | null>(null);
   const [engineEnabled, setEngineEnabled] = useState<boolean | null>(null);
-  const deployment = configuration.deployment as ReviewedDeployment;
-  // One deployment serves one engine (Plan v2-B B2). LaunchFactoryV2 has no per-engine switch;
-  // its launch reverts on its own pause, so the engine-enabled read is v1 only.
-  const engineVersion = deployment.engineVersion;
+  // Engine 1 and engine 2 run side by side; the launch goes to the chosen engine's factory.
+  // LaunchFactoryV2 has no per-engine switch; its launch reverts on its own pause, so the
+  // engine-enabled read is v1 only.
   const factoryAbi = (engineVersion === 2 ? browserAbis.factoryV2 : browserAbis.factory) as Abi;
   const [v2Profile, setV2Profile] = useState<ReturnType<typeof launchProfileV2> | null>(null);
   const v2Rules = v2Profile?.rules ?? null;
@@ -247,12 +249,8 @@ function LaunchPanelReady() {
           <div className="launch-layout">
             <div className="launch-main">
               <div className="transaction-form">
-                <section className="launch-section" aria-labelledby="launch-step-image">
-                  <h2 id="launch-step-image">Image</h2>
-                  <LaunchImageField extras={extras} onChange={() => write.closeReview()} />
-                </section>
                 <section className="launch-section" aria-labelledby="launch-step-name">
-                  <h2 id="launch-step-name">Name and symbol</h2>
+                  <h2 id="launch-step-name">Name and Symbol</h2>
                   <div className="launch-field-row">
                     <Input
                       label="Name"
@@ -301,7 +299,7 @@ function LaunchPanelReady() {
                   </div>
                 </section>
                 <section className="launch-section" aria-labelledby="launch-step-buy">
-                  <h2 id="launch-step-buy">Initial buy</h2>
+                  <h2 id="launch-step-buy">Initial Buy</h2>
                   <div className="launch-field-row">
                     <div className="ui-field">
                       <span>Paired asset</span>
@@ -339,10 +337,15 @@ function LaunchPanelReady() {
                   </div>
                 </section>
               </div>
-              {/* Right column on wide screens: live preview, terms and the launch action stay in view. */}
+              <LaunchColumnArt />
+              {/* Right column on wide screens: live preview, terms and the launch action. */}
               <div className="launch-aside">
                 <LaunchPreview
                   previewUrl={extras.preview}
+                  imageSlot={
+                    <LaunchImageSlot extras={extras} onChange={() => write.closeReview()} />
+                  }
+                  imageNote={<LaunchImageNote extras={extras} />}
                   name={name}
                   symbol={symbol}
                   launchFee={launchFee}

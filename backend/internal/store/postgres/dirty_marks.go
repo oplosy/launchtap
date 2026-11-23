@@ -82,7 +82,7 @@ func (adapter *Adapter) forgetDirtyMarks() {
 
 func (adapter *Adapter) markPositionDirty(ctx context.Context, chainID int64, wallet, token common.Address) error {
 	return adapter.markOnce(dirtyMark{kind: markPosition, chainID: chainID, subject: addressSubject(token), wallet: wallet}, func() error {
-		if err := adapter.queries.MarkPositionDirty(ctx, sqlc.MarkPositionDirtyParams{ChainID: chainID, Wallet: wallet[:], TokenAddress: token[:], Factory: adapter.factory[:]}); err != nil {
+		if err := adapter.queries.MarkPositionDirty(ctx, sqlc.MarkPositionDirtyParams{ChainID: chainID, Wallet: wallet[:], TokenAddress: token[:], Factories: adapter.excludedFactories()}); err != nil {
 			return fmt.Errorf("mark position dirty: %w", err)
 		}
 		return nil
@@ -121,7 +121,7 @@ func (adapter *Adapter) markTransferPositionsDirty(ctx context.Context, event le
 	case toDone:
 		return adapter.markPositionDirty(ctx, event.ChainID, event.From, event.Token)
 	}
-	if err := adapter.queries.MarkTransferPositionsDirty(ctx, sqlc.MarkTransferPositionsDirtyParams{ChainID: event.ChainID, TokenAddress: event.Token[:], FromAddress: event.From[:], ToAddress: event.To[:], Factory: adapter.factory[:]}); err != nil {
+	if err := adapter.queries.MarkTransferPositionsDirty(ctx, sqlc.MarkTransferPositionsDirtyParams{ChainID: event.ChainID, TokenAddress: event.Token[:], FromAddress: event.From[:], ToAddress: event.To[:], Factories: adapter.excludedFactories()}); err != nil {
 		return fmt.Errorf("mark transfer positions dirty: %w", err)
 	}
 	adapter.remember(from, to)

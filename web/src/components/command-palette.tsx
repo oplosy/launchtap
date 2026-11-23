@@ -6,6 +6,7 @@ import {
   ArrowRight,
   BookOpenText,
   ChartLineUp,
+  Coins,
   Compass,
   Desktop,
   MagnifyingGlass,
@@ -38,6 +39,7 @@ const PAGES = [
   { href: "/", label: "Explore", keywords: "home launches tokens", icon: <Compass /> },
   { href: "/create", label: "Create a launch", keywords: "new token launch", icon: <Plus /> },
   { href: "/analytics", label: "Analytics", keywords: "stats volume", icon: <ChartLineUp /> },
+  { href: "/rewards", label: "Rewards", keywords: "creator fees claims earn", icon: <Coins /> },
   { href: "/docs", label: "Docs", keywords: "help curve fees risk", icon: <BookOpenText /> },
   { href: "/profile", label: "Profile", keywords: "account wallet claims", icon: <UserCircle /> },
 ] as const;
@@ -189,7 +191,6 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
             }
           }}
         />
-        <kbd>Esc</kbd>
       </div>
       <div className="command-list" id={listId} role="listbox" aria-label="Results">
         {groups.map((group) => (
@@ -224,15 +225,6 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
         {!(searchable && searching) && commands.length === 0 ? (
           <p className="command-empty">Nothing matches “{term}”.</p>
         ) : null}
-      </div>
-      <div className="command-foot" aria-hidden="true">
-        <span>
-          <kbd>↑</kbd>
-          <kbd>↓</kbd> to move
-        </span>
-        <span>
-          <kbd>↵</kbd> to open
-        </span>
       </div>
     </dialog>
   );

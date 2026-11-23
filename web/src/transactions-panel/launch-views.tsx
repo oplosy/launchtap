@@ -1,9 +1,13 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { launchRulesV2 } from "@/launch-v2";
 import type { ReviewedWriteIntent } from "@/transactions";
 import { type Address, eth } from "./shared";
 import { ReviewActions, ReviewNotice, type ReviewedWrite } from "./reviewed-trade";
+
+/** Re-exported so the panel imports its views from one module. */
+export { LaunchColumnArt } from "./launch-column-art";
 
 /**
  * Reasons the launch (or its developer buy) cannot go through right now, read from the factory.
@@ -25,6 +29,8 @@ export function launchBlockers(
 
 export function LaunchPreview({
   previewUrl,
+  imageSlot,
+  imageNote,
   name,
   symbol,
   launchFee,
@@ -33,6 +39,10 @@ export function LaunchPreview({
 }: {
   /** A `blob:` URL of the chosen file; never a remote URL. */
   previewUrl: string | null;
+  /** Drawn in place of the static image square, e.g. the image picker. */
+  imageSlot?: ReactNode;
+  /** Shown under the name, across the card (the picker's hint and error). */
+  imageNote?: ReactNode;
   name: string;
   symbol: string;
   launchFee: bigint | null;
@@ -43,19 +53,22 @@ export function LaunchPreview({
   const v2 = v2Rules !== undefined;
   return (
     <aside className="launch-preview-card" aria-label="Token preview">
-      <div className="launch-preview-image">
-        {previewUrl ? (
-          // A local object URL of the file being uploaded; CSP allows blob: images.
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img src={previewUrl} alt="Token preview" />
-        ) : (
-          <span aria-hidden="true">◈</span>
-        )}
-      </div>
+      {imageSlot ?? (
+        <div className="launch-preview-image">
+          {previewUrl ? (
+            // A local object URL of the file being uploaded; CSP allows blob: images.
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={previewUrl} alt="Token preview" />
+          ) : (
+            <span aria-hidden="true">◈</span>
+          )}
+        </div>
+      )}
       <div className="launch-preview-identity">
         <p className="launch-preview-name">{name.trim() || "Your token"}</p>
         <p className="mono">{symbol.trim() || "ticker"}</p>
       </div>
+      {imageNote}
       <dl>
         <div>
           <dt>Launch fee</dt>
@@ -77,34 +90,54 @@ export function LaunchPreview({
           <dt>Graduation</dt>
           <dd>4.2 ETH</dd>
         </div>
+        {/* Both engines show the same eight facts with short values, so switching engines
+            never changes the card's height; the full wording is in each value's title. */}
         {v2 ? (
           <>
             <div>
               <dt>Anti-snipe tax</dt>
-              <dd>
-                {v2Rules
-                  ? `${v2Rules.taxStart}, decaying to 0 over ${v2Rules.taxWindow}`
-                  : "Unavailable"}
+              <dd
+                title={
+                  v2Rules
+                    ? `${v2Rules.taxStart}, decaying to 0 over ${v2Rules.taxWindow}`
+                    : undefined
+                }
+              >
+                {v2Rules ? `${v2Rules.taxStart} → 0` : "Unavailable"}
               </dd>
             </div>
             <div>
-              <dt>Pool fee</dt>
-              <dd>
-                {v2Rules
-                  ? `1% · ${v2Rules.lpCreatorShare} creator / ${v2Rules.lpProtocolShare} protocol`
-                  : "Unavailable"}
+              <dt>LP fee share</dt>
+              <dd
+                title={
+                  v2Rules
+                    ? `1% pool fee · ${v2Rules.lpCreatorShare} creator / ${v2Rules.lpProtocolShare} protocol`
+                    : undefined
+                }
+              >
+                {v2Rules ? v2Rules.lpCreatorShare : "Unavailable"}
               </dd>
             </div>
             <div>
               <dt>Liquidity</dt>
-              <dd>Uniswap V4 position, locked forever</dd>
+              <dd title="Uniswap V4 position, locked forever">Locked</dd>
             </div>
           </>
         ) : (
-          <div>
-            <dt>Liquidity</dt>
-            <dd>Initial LP burned</dd>
-          </div>
+          <>
+            <div>
+              <dt>Anti-snipe tax</dt>
+              <dd>None</dd>
+            </div>
+            <div>
+              <dt>LP fee share</dt>
+              <dd title="The initial LP is burned, so no one collects its fees">None</dd>
+            </div>
+            <div>
+              <dt>Liquidity</dt>
+              <dd title="Uniswap v2 pair, initial LP burned">Burned</dd>
+            </div>
+          </>
         )}
       </dl>
     </aside>

@@ -6,7 +6,7 @@
 
 export const maxImageBytes = 5 * 1024 * 1024;
 export const imageTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
-export const maxDescriptionBytes = 2000;
+export const maxDescriptionBytes = 500;
 
 export function safeHttps(value: string) {
   if (!value.trim()) return true;

@@ -33,19 +33,53 @@
   gap: 32px;
   min-width: 0;
 }
+/* The centred heading stands on a full-width hairline. */
 .page-section-head {
   display: grid;
   justify-items: center;
   gap: 8px;
+  border-bottom: 1px solid var(--hairline);
+  padding-bottom: 20px;
   text-align: center;
 }
-.view-all-link {
-  color: var(--text-2);
-  font: var(--type-label);
-  transition: color var(--dur-fast) linear;
+.page-section-head h2 {
+  font-size: clamp(28px, 2.6vw, 38px);
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: var(--tracking-page);
 }
-.view-all-link:hover {
-  color: var(--text);
+/* The motif draws itself in once, when its section is revealed; it is simply drawn otherwise. */
+.section-motif {
+  width: 56px;
+  height: 38px;
+  margin-bottom: 6px;
+  overflow: visible;
+  fill: none;
+  stroke: var(--text-2);
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.section-motif path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 1.4s var(--ease-out) 0.2s;
+}
+.reveal[data-reveal="pending"] .section-motif path {
+  stroke-dashoffset: 1;
+}
+/* A linked heading opens the section's full view; it softens on hover like the cards' figures. */
+.section-title-link {
+  color: inherit;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.section-title-link:hover {
+  color: var(--text-2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .section-motif path {
+    transition: none;
+  }
 }
 
 /* Scroll reveal (Reveal): only hidden while an observer will reveal it. */
@@ -134,6 +168,12 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+/* The global `svg { max-width: 100% }` resolves against a button that sizes to its content, which
+   collapses an icon to zero width; a button icon keeps its own size. */
+.ui-button svg {
+  flex-shrink: 0;
+  max-width: none;
 }
 .ui-button-sm {
   height: 32px;
@@ -224,8 +264,9 @@
   font-size: 16px;
   transition: border-color var(--dur-fast) linear;
 }
+/* Placeholders sit well back from typed text. */
 .ui-input::placeholder {
-  color: var(--text-3);
+  color: var(--placeholder);
 }
 .ui-input:hover:not(:disabled) {
   border-color: var(--hairline-bright);
@@ -343,12 +384,22 @@ select.ui-input {
 }
 textarea.ui-input,
 .ui-textarea {
-  border-radius: var(--radius-input);
+  /* Half the single-line field height: its corners match the pill fields' round ends. */
+  border-radius: 22px;
   height: auto;
   min-height: 96px;
-  padding: 12px 14px;
+  padding: 12px 18px;
   line-height: 1.5;
   resize: vertical;
+}
+/* Where the browser can size a field to its text, it grows with it and needs no drag handle. */
+@supports (field-sizing: content) {
+  textarea.ui-input,
+  .ui-textarea {
+    max-height: 320px;
+    field-sizing: content;
+    resize: none;
+  }
 }
 input[type="file"].ui-input {
   height: auto;

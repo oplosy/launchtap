@@ -90,6 +90,8 @@ sql:
             go_type: {type: "Address"}
           - column: "v4_pool_managers.pool_manager"
             go_type: {type: "Address"}
+          - column: "indexer_engine_deployments.factory"
+            go_type: {type: "Address"}
           - column: "v4_pool_initializations.hooks"
             go_type: {type: "Address"}
           - column: "*.currency0"

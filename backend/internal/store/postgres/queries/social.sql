@@ -101,10 +101,18 @@ WHERE c.chain_id = sqlc.arg(chain_id)
   AND c.hidden_at IS NULL
   AND u.banned_at IS NULL;
 
--- No row when the comment is missing in this scope, hidden, or its author is banned. Every author
--- has a social_users row (post creates it before inserting a comment). FOR SHARE locks the comment
--- and the author row, so a report waits for an in-flight hide or ban and then re-checks the
+-- name: LockReportableComment :exec
+-- Holds the comment and its author row FOR SHARE until commit through a SECURITY DEFINER function
+-- (migration 00043): a row lock needs UPDATE privilege, which the API role does not have on
+-- token_comments or social_users. Called right before GetReportableComment in the same
+-- transaction, so a report or vote waits for an in-flight hide or ban and the read then sees the
 -- committed state; the later report insert cannot leave an open report on actioned content.
+SELECT lock_reportable_comment(sqlc.arg(comment_id)::BIGINT, sqlc.arg(chain_id)::BIGINT,
+    sqlc.arg(deployment_id)::TEXT);
+
+-- No row when the comment is missing in this scope, hidden, or its author is banned. Every author
+-- has a social_users row (post creates it before inserting a comment). Callers take
+-- LockReportableComment first.
 -- name: GetReportableComment :one
 SELECT c.id, c.chain_id, c.deployment_id, c.token_address, c.privy_did AS author_did
 FROM token_comments AS c
@@ -114,8 +122,7 @@ WHERE c.id = sqlc.arg(comment_id)
   AND c.chain_id = sqlc.arg(chain_id)
   AND c.deployment_id = sqlc.arg(deployment_id)
   AND c.hidden_at IS NULL
-  AND u.banned_at IS NULL
-FOR SHARE OF c, u;
+  AND u.banned_at IS NULL;
 
 -- name: InsertReport :execrows
 INSERT INTO comment_reports (comment_id, chain_id, deployment_id, reporter_did, reason)

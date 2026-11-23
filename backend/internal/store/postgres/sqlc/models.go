@@ -206,6 +206,16 @@ type IndexedBlock struct {
 	FinalityStatus string
 }
 
+type IndexerEngineDeployment struct {
+	ChainID            int64
+	DeploymentID       string
+	EngineDeploymentID string
+	EngineVersion      int32
+	Factory            Address
+	StartBlock         int64
+	RecordedAt         pgtype.Timestamptz
+}
+
 type IndexerHeartbeat struct {
 	ChainID      int64
 	DeploymentID string

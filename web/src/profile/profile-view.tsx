@@ -1,13 +1,8 @@
 "use client";
-/* Profile state follows authenticated external data and is reset on provider changes. */
-/* eslint-disable react-hooks/set-state-in-effect */
 
-import { useIdentityToken, usePrivy } from "@privy-io/react-auth";
-import { useCallback, useContext, useEffect, useState } from "react";
-import { E2ESessionContext } from "@/e2e/session-context";
-import { ApiClient, type ProfileResponse } from "@/api/client";
-import { formatBaseUnits } from "@/amounts";
-import { CoinGeckoAttribution, UsdLine } from "@/market/usd-line";
+import Link from "next/link";
+import { useCallback } from "react";
+import { useAccountSession } from "@/account/use-account-session";
 import { publicConfiguration } from "@/config/public";
 import { Button, Badge, UnavailableState } from "@/components/primitives";
 import { useWalletReadiness } from "@/wallet/readiness";
@@ -15,27 +10,12 @@ import { WalletConnectButton } from "@/wallet/connection-context";
 import { shortAddress } from "@/token/address";
 import { PublicProfileForm } from "./public-profile-form";
 
-type ProfileAction = NonNullable<ProfileResponse["items"]>[number];
-
 export function ProfileView() {
   const configuration = publicConfiguration();
-  // Fixture build only: a browser test's fixed session stands in for Privy (src/e2e).
-  const testSession = useContext(E2ESessionContext);
-  const privy = usePrivy();
-  const { identityToken: privyIdentityToken } = useIdentityToken();
-  const authenticated = testSession ? true : privy.authenticated;
-  const ready = testSession ? true : privy.ready;
+  const { testSession, privy, authenticated, ready, getAccessToken, identityToken } =
+    useAccountSession();
   const { login, logout } = privy;
-  const privyGetAccessToken = privy.getAccessToken;
-  const getAccessToken = useCallback(
-    async () => (testSession ? testSession.accessToken : privyGetAccessToken()),
-    [privyGetAccessToken, testSession],
-  );
-  const identityToken = testSession ? testSession.identityToken : privyIdentityToken;
   const readiness = useWalletReadiness();
-  const [actions, setActions] = useState<ProfileAction[]>([]);
-  const [actionsLoading, setActionsLoading] = useState(false);
-  const [actionsError, setActionsError] = useState<string | null>(null);
   const userId = testSession ? testSession.userId : privy.user?.id;
   const email = testSession
     ? { address: testSession.email ?? undefined }
@@ -48,52 +28,6 @@ export function ProfileView() {
     const accessToken = await getAccessToken();
     return accessToken && identityToken ? { accessToken, identityToken } : null;
   }, [getAccessToken, identityToken]);
-  useEffect(() => {
-    let cancelled = false;
-    if (
-      !authenticated ||
-      !identityToken ||
-      configuration.status !== "ready" ||
-      !configuration.apiBaseUrl
-    ) {
-      setActions([]);
-      setActionsError(null);
-      return;
-    }
-    setActionsLoading(true);
-    setActionsError(null);
-    void getAccessToken()
-      .then((accessToken) => {
-        if (!accessToken) throw new Error("Access token unavailable");
-        return new ApiClient({ baseUrl: configuration.apiBaseUrl! }).getProfile({
-          accessToken,
-          identityToken,
-        });
-      })
-      .then((response) => {
-        if (!cancelled) setActions(response.items ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setActions([]);
-          setActionsError(
-            "Authoritative claim availability is unavailable. Open a token detail page to retry.",
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setActionsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    authenticated,
-    configuration.apiBaseUrl,
-    configuration.status,
-    getAccessToken,
-    identityToken,
-  ]);
   // A fixture build without Privy renders this view only for a test session.
   if (!testSession && !configuration.privyAppId)
     return (
@@ -200,54 +134,15 @@ export function ProfileView() {
       <section className="workspace-panel profile-claims" aria-labelledby="profile-claims-title">
         <div className="panel-head">
           <div>
-            <p className="panel-kicker">On-chain availability</p>
-            <h2 id="profile-claims-title">Claims and refunds</h2>
+            <p className="panel-kicker">Rewards</p>
+            <h2 id="profile-claims-title">Creator fees and refunds</h2>
           </div>
         </div>
-        <p>See creator fees and refunds available to your linked wallets.</p>
-        <CoinGeckoAttribution />
-        {actionsLoading ? <p role="status">Loading authoritative availability…</p> : null}
-        {actionsError ? <p className="discovery-notice">{actionsError}</p> : null}
-        {!actionsLoading && !actionsError && actions.length === 0 ? (
-          <p>No creator fees or pending refunds are currently available for the linked wallets.</p>
-        ) : null}
-        {actions.length ? (
-          <ul className="profile-action-list">
-            {actions.map((action) => (
-              <li key={action.token}>
-                <div>
-                  <a href={`/token/${action.token}`}>
-                    {action.name || action.symbol || action.token}
-                  </a>
-                  <span className="ui-field-hint">{action.phase} · snapshot-bound</span>
-                </div>
-                <div className="mono profile-action-values">
-                  <span>
-                    Creator fees: {formatEth(action.creator_fees)}{" "}
-                    <UsdLine wei={action.creator_fees} />
-                  </span>
-                  <span>
-                    Refund: {formatEth(action.refund)} <UsdLine wei={action.refund} />
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        {configuration.status !== "ready" || readiness.status !== "ready" ? (
-          <p className="discovery-notice">
-            Claims unavailable until a reviewed deployment and supported wallet are ready.
-          </p>
-        ) : null}
+        <p>
+          What your linked wallets can claim, across every token, is on the{" "}
+          <Link href="/rewards">Rewards page</Link>.
+        </p>
       </section>
     </div>
   );
-}
-
-function formatEth(value: string) {
-  try {
-    return `${formatBaseUnits(BigInt(value), 18, 6)} ETH`;
-  } catch {
-    return "Unavailable";
-  }
 }

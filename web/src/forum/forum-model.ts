@@ -11,7 +11,7 @@ export const FORUM_TAB_LABELS: Record<ForumTab, string> = {
   top: "Top",
 };
 export const FORUM_PAGE_SIZE = 20;
-export const BIGGEST_LAUNCHES = 10;
+export const BIGGEST_LAUNCHES = 20;
 
 /** Reads `?tab=`; anything unknown (or repeated) falls back to New. */
 export function parseForumTab(raw: string | string[] | undefined): ForumTab {
@@ -42,4 +42,14 @@ export function appendForumPage(
 ): ForumPost[] {
   const seen = new Set(current.map((post) => post.id));
   return [...current, ...page.filter((post) => !seen.has(post.id))];
+}
+
+/** Type scale of a post block: short posts read like a poster, long ones at reading size. */
+export type PostScale = "poster" | "statement" | "reading";
+
+export function postScale(body: string): PostScale {
+  const length = [...body.trim()].length;
+  if (length <= 48) return "poster";
+  if (length <= 140) return "statement";
+  return "reading";
 }

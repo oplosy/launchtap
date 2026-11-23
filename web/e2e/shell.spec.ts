@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const NAV = ["Explore", "Forum", "Leaderboard", "Analytics", "Docs"] as const;
+const NAV = ["Explore", "Forum", "Rewards", "Analytics", "Docs"] as const;
 
 test("desktop nav centres five links and the Explore mega menu is keyboard operable", async ({
   page,
@@ -69,7 +69,15 @@ test("mobile menu opens a sheet with the same links", async ({ page }) => {
 test("footer lists the site's links and no theme control", async ({ page }) => {
   await page.goto("/forum");
   const footer = page.getByRole("contentinfo");
-  for (const label of ["Explore", "Create", "Forum", "Leaderboard", "Analytics", "Docs"]) {
+  for (const label of [
+    "Explore",
+    "Create",
+    "Forum",
+    "Rewards",
+    "Leaderboard",
+    "Analytics",
+    "Docs",
+  ]) {
     // Links sit inside closed sections: present in the page, hidden until opened.
     await expect(
       footer.getByRole("link", { name: label, exact: true, includeHidden: true }),
@@ -173,7 +181,7 @@ test("an open footer section lists its links beside the label, one per row", asy
   await row.click();
   const label = (await row.locator("span").first().boundingBox())!;
   const links = footer.getByRole("navigation", { name: "Product" }).getByRole("link");
-  await expect(links).toHaveCount(3);
+  await expect(links).toHaveCount(4);
   const first = (await links.first().boundingBox())!;
   // Same row as the label, in the column to its right.
   expect(Math.abs(first.y + first.height / 2 - (label.y + label.height / 2))).toBeLessThanOrEqual(

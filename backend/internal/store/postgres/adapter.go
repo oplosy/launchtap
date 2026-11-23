@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/Contictus/launchtap/backend/internal/store/postgres/sqlc"
 	"github.com/ethereum/go-ethereum/common"
@@ -41,8 +42,9 @@ func (err *InvariantConflictError) Unwrap() error {
 type Adapter struct {
 	queries  *sqlc.Queries
 	beginner TransactionBeginner
-	// factory is excluded from wallet position tracking (R4). The zero value is already excluded.
-	factory common.Address
+	// factories are excluded from wallet position tracking (R4), one per launch engine the
+	// indexer ingests; the zero address is always excluded too (excludedFactories).
+	factories []common.Address
 	// marks remembers the dirty marks written in this transaction; nil marks every time
 	// (WithDirtyMarkDedupe).
 	marks map[dirtyMark]struct{}
@@ -53,12 +55,23 @@ func NewAdapter(db DBTX) *Adapter {
 	return &Adapter{queries: sqlc.New(db), beginner: beginner}
 }
 
-// WithFactory returns a copy of the adapter that excludes the configured factory from wallet
-// position dirty marking.
-func (adapter *Adapter) WithFactory(factory common.Address) *Adapter {
+// WithFactories returns a copy of the adapter that excludes the configured factories from
+// wallet position dirty marking.
+func (adapter *Adapter) WithFactories(factories []common.Address) *Adapter {
 	clone := *adapter
-	clone.factory = factory
+	clone.factories = slices.Clone(factories)
 	return &clone
+}
+
+// excludedFactories is the query parameter of every position dirty mark: the configured
+// factories plus the zero address, so the list is never empty.
+func (adapter *Adapter) excludedFactories() [][]byte {
+	excluded := make([][]byte, 0, len(adapter.factories)+1)
+	excluded = append(excluded, make([]byte, common.AddressLength))
+	for _, factory := range adapter.factories {
+		excluded = append(excluded, factory.Bytes())
+	}
+	return excluded
 }
 
 func invariantConflict(entity, key string, cause error) error {

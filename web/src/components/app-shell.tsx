@@ -22,7 +22,8 @@ import { RiskNotice } from "@/legal/risk-notice";
 import { SiteFooter } from "./site-footer";
 import { ThemeToggle } from "./theme-toggle";
 import { walletPath } from "@/portfolio/wallet-model";
-import { WalletConnectButton, useWalletConnection } from "@/wallet/connection-context";
+import { useWalletConnection } from "@/wallet/connection-context";
+import { AccountMenu } from "@/wallet/account-menu";
 import { NotificationBell } from "@/live/notifications";
 import { StaleDataBanner } from "@/live/stale-data-banner";
 
@@ -194,7 +195,7 @@ export function AppShell({
             >
               Create
             </Link>
-            <WalletConnectButton variant="primary" compact />
+            <AccountMenu />
             <button
               type="button"
               className="ui-icon-button navbar-menu-button"

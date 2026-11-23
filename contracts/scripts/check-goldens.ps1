@@ -325,7 +325,8 @@ try {
 
     $lockerAbiObject = Invoke-ForgeJson @("inspect", "LpFeeLocker", "abi", "--json")
     Assert-Callables $lockerAbiObject @(
-        "FACTORY()", "POOL_MANAGER()", "POSITION_MANAGER()", "claim(address)", "collect(address)",
+        "FACTORY()", "POOL_MANAGER()", "POSITION_MANAGER()", "claim(address)",
+        "claimTo(address,address)", "collect(address)",
         "onERC721Received(address,address,uint256,bytes)", "owed(address,address)",
         "positionOf(address)", "receive", "registerPosition(address,uint256)"
     ) "LpFeeLocker callable ABI must remain fixed and must not expose a position withdrawal path"

@@ -40,6 +40,15 @@ groups:
         annotations:
           summary: "more than 5% of chain RPC calls fail or time out"
 
+      # The indexer started on RPC_FALLBACK_URL and the primary (RPC_URL) then failed the
+      # deployment identity checks: failover has no second provider until RPC_URL is fixed and
+      # the indexer restarted (docs/runbooks/incident-response.md).
+      - alert: PrimaryRPCRejected
+        expr: launchpad_indexer_rpc_primary_rejected == 1
+        labels: {severity: ticket}
+        annotations:
+          summary: "the primary chain RPC failed the deployment identity checks; the indexer stays on the fallback"
+
       - alert: API5xxRateHigh
         expr: |
           (

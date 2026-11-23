@@ -127,5 +127,5 @@ func dialIndexerRPCWithVerifier(t *testing.T, primaryURL string, fallback config
 	t.Helper()
 	return dialIndexerRPC(context.Background(), primaryURL, fallback, chain.RPCConfig{Timeout: time.Second, RetryBackoff: time.Millisecond}, deployment.ChainID, deployment, func(ctx context.Context, client *chain.Client) error {
 		return verifyPrimaryRPC(ctx, client, deployment.ChainID, deployment)
-	})
+	}, func(context.Context, *chain.Client) error { return nil }, nil)
 }

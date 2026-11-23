@@ -3,7 +3,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { formatBaseUnits } from "@/amounts";
 import { chainClockOffset, remainingTaxSeconds } from "@/anti-snipe";
-import { publicConfiguration } from "@/config/public";
+import { engineDeployment, publicConfiguration } from "@/config/public";
+import type { ReviewedDeployment } from "@/contracts/generated";
 import { decodeTransactionError, type TransactionState } from "@/transactions";
 import { Badge, UnavailableState } from "@/components/primitives";
 import { SlidingIndicator } from "@/components/sliding-indicator";
@@ -210,6 +211,32 @@ export function ReadinessGate({ children }: { children: React.ReactNode }) {
       />
     );
   return <>{children}</>;
+}
+
+/**
+ * ReadinessGate for a launch form, which also needs an enabled deployment for its engine on this
+ * network: without one there is no factory to launch through, so it shows an unavailable state.
+ */
+export function EngineDeploymentGate({
+  engineVersion,
+  children,
+}: {
+  engineVersion: 1 | 2;
+  children: (deployment: ReviewedDeployment) => React.ReactNode;
+}) {
+  const deployment = engineDeployment(publicConfiguration(), engineVersion);
+  return (
+    <ReadinessGate>
+      {deployment ? (
+        children(deployment as ReviewedDeployment)
+      ) : (
+        <UnavailableState
+          title="Launches unavailable"
+          description="This engine has no enabled deployment on this network."
+        />
+      )}
+    </ReadinessGate>
+  );
 }
 
 /**

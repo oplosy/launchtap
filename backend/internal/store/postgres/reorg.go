@@ -63,7 +63,7 @@ func (adapter *Adapter) AffectedTokensAbove(ctx context.Context, chainID, ancest
 // ancestor, with excluded wallets (R4) already dropped. It must run before DeleteCanonicalAbove,
 // because a token launched above the ancestor loses its tokens row in the same recovery.
 func (adapter *Adapter) AffectedPositionPairsAbove(ctx context.Context, chainID, ancestor int64) ([]indexer.PositionPair, error) {
-	rows, err := adapter.queries.ListPositionPairsAbove(ctx, sqlc.ListPositionPairsAboveParams{ChainID: chainID, BlockNumber: ancestor, Factory: adapter.factory[:]})
+	rows, err := adapter.queries.ListPositionPairsAbove(ctx, sqlc.ListPositionPairsAboveParams{ChainID: chainID, BlockNumber: ancestor, Factories: adapter.excludedFactories()})
 	if err != nil {
 		return nil, fmt.Errorf("find affected position pairs: %w", err)
 	}

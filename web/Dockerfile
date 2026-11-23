@@ -6,12 +6,14 @@ RUN npm install --global npm@12.0.1 && npm ci
 COPY . .
 ARG NEXT_PUBLIC_PRIVY_APP_ID
 ARG NEXT_PUBLIC_DEPLOYMENT_ID
+ARG NEXT_PUBLIC_ENGINE_DEPLOYMENT_IDS
 ARG NEXT_PUBLIC_CHAIN_ID
 ARG NEXT_PUBLIC_API_BASE_URL
 ARG NEXT_PUBLIC_RPC_URL
 ARG NEXT_PUBLIC_WEB_ORIGIN
 ENV NEXT_PUBLIC_PRIVY_APP_ID=$NEXT_PUBLIC_PRIVY_APP_ID \
     NEXT_PUBLIC_DEPLOYMENT_ID=$NEXT_PUBLIC_DEPLOYMENT_ID \
+    NEXT_PUBLIC_ENGINE_DEPLOYMENT_IDS=$NEXT_PUBLIC_ENGINE_DEPLOYMENT_IDS \
     NEXT_PUBLIC_CHAIN_ID=$NEXT_PUBLIC_CHAIN_ID \
     NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
     NEXT_PUBLIC_RPC_URL=$NEXT_PUBLIC_RPC_URL \
@@ -29,5 +31,7 @@ COPY --from=build /app/scripts/validate-release.mjs ./scripts/validate-release.m
 COPY --from=build /app/scripts/container-preflight.mjs ./scripts/container-preflight.mjs
 COPY --from=build /app/public-config.json ./public-config.json
 COPY --from=build /app/src/contracts/generated.ts ./src/contracts/generated.ts
+# The preflight refuses a release without counsel-approved legal documents, so it must read them.
+COPY --from=build /app/src/legal/documents.json ./src/legal/documents.json
 USER node
 CMD ["node", "server.js"]

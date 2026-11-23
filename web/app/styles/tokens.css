@@ -10,6 +10,8 @@
   --text: #ffffff;
   --text-2: #a3a3a3;
   --text-3: #8a8a8a;
+  /* Placeholders: on black the eye reads grey as brighter, so dark sits further back. */
+  --placeholder: rgba(255, 255, 255, 0.24);
   --hairline: rgba(255, 255, 255, 0.08);
   --hairline-strong: rgba(255, 255, 255, 0.12);
   --hairline-bright: rgba(255, 255, 255, 0.24);
@@ -49,7 +51,8 @@
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out: cubic-bezier(0.6, 0, 0.4, 1);
   --font-ui: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-code: var(--font-mono), ui-monospace, monospace;
+  /* One typeface everywhere, figures included; code and numbers keep tabular figures. */
+  --font-code: var(--font-ui);
 }
 
 html[data-theme="light"] {
@@ -58,6 +61,7 @@ html[data-theme="light"] {
   --text: #0a0a0a;
   --text-2: #5c5c5c;
   --text-3: #6b6b6b;
+  --placeholder: rgba(107, 107, 107, 0.6);
   --hairline: rgba(0, 0, 0, 0.08);
   --hairline-strong: rgba(0, 0, 0, 0.12);
   --hairline-bright: rgba(0, 0, 0, 0.24);
@@ -78,6 +82,7 @@ html[data-theme="light"] {
     --text: #0a0a0a;
     --text-2: #5c5c5c;
     --text-3: #6b6b6b;
+    --placeholder: rgba(107, 107, 107, 0.6);
     --hairline: rgba(0, 0, 0, 0.08);
     --hairline-strong: rgba(0, 0, 0, 0.12);
     --hairline-bright: rgba(0, 0, 0, 0.24);

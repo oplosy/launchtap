@@ -32,6 +32,31 @@ contract EthRejectingClaimer {
         // forge-lint: disable-next-line(unused-return)
         locker.claim(token);
     }
+
+    function claimTo(ILpFeeLocker locker, address token, address recipient) external {
+        // forge-lint: disable-next-line(unused-return)
+        locker.claimTo(token, recipient);
+    }
+}
+
+/// @dev Tries to claim again from inside the ETH payout. The payout always reverts, so it never
+/// holds ETH.
+// forge-lint: disable-next-item(locked-ether)
+contract ReenteringRecipient {
+    ILpFeeLocker internal immutable LOCKER;
+    address internal immutable TOKEN;
+
+    // Test-only wiring to the locker under test; a zero address is never passed.
+    // forge-lint: disable-next-item(missing-zero-check)
+    constructor(ILpFeeLocker locker, address token) {
+        LOCKER = locker;
+        TOKEN = token;
+    }
+
+    receive() external payable {
+        // forge-lint: disable-next-line(unused-return)
+        LOCKER.claim(TOKEN);
+    }
 }
 
 // Tests ignore fee-call returns they read back separately, send ETH to fixed test routers,
@@ -187,6 +212,75 @@ contract LpFeeLockerTest is V4TestBase {
         vm.prank(TREASURY);
         (uint256 paidEth,) = locker.claim(address(token));
         assertGt(paidEth, 0);
+    }
+
+    function test_claimTo_paysRejectingAccountsBalancesElsewhere() public {
+        EthRejectingClaimer rejector = new EthRejectingClaimer();
+        curve.setFeeRecipient(address(rejector));
+        _buy(1 ether);
+        _sell(1_000_000e18);
+        locker.collect(address(token));
+        (uint256 owedEth, uint256 owedTokens) = locker.owed(address(token), address(rejector));
+        assertGt(owedEth, 0);
+        assertGt(owedTokens, 0);
+
+        vm.expectEmit(address(locker));
+        // An expectation for the claim below, not a log after an external call.
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit ILpFeeLocker.LpFeesClaimed(address(token), address(rejector), owedEth, owedTokens);
+        rejector.claimTo(locker, address(token), NEW_RECIPIENT);
+
+        assertEq(NEW_RECIPIENT.balance, owedEth);
+        assertEq(token.balanceOf(NEW_RECIPIENT), owedTokens);
+        (uint256 leftEth, uint256 leftTokens) = locker.owed(address(token), address(rejector));
+        assertEq(leftEth + leftTokens, 0);
+        (uint256 strangerEth, uint256 strangerTokens) = locker.owed(address(token), NEW_RECIPIENT);
+        assertEq(strangerEth + strangerTokens, 0);
+    }
+
+    function test_claimTo_paysOnlyTheCallersBalance() public {
+        _buy(1 ether);
+        locker.collect(address(token));
+        (uint256 creatorEth,) = locker.owed(address(token), CREATOR);
+        (uint256 protocolEth,) = locker.owed(address(token), TREASURY);
+
+        vm.prank(STRANGER);
+        (uint256 paidEth, uint256 paidTokens) = locker.claimTo(address(token), STRANGER);
+        assertEq(paidEth + paidTokens, 0);
+
+        vm.prank(CREATOR);
+        (paidEth,) = locker.claimTo(address(token), NEW_RECIPIENT);
+        assertEq(paidEth, creatorEth);
+        (uint256 stillOwed,) = locker.owed(address(token), TREASURY);
+        assertEq(stillOwed, protocolEth);
+    }
+
+    function test_claimTo_reenteringRecipientCannotClaimTwice() public {
+        ReenteringRecipient reenterer = new ReenteringRecipient(locker, address(token));
+        _buy(1 ether);
+        locker.collect(address(token));
+        (uint256 owedEth,) = locker.owed(address(token), CREATOR);
+
+        vm.prank(CREATOR);
+        vm.expectRevert(
+            abi.encodeWithSelector(ILpFeeLocker.EthTransferFailed.selector, address(reenterer))
+        );
+        locker.claimTo(address(token), address(reenterer));
+
+        (uint256 stillOwed,) = locker.owed(address(token), CREATOR);
+        assertEq(stillOwed, owedEth);
+    }
+
+    function test_claimTo_rejectsZeroAndLockerRecipients() public {
+        _buy(1 ether);
+        vm.startPrank(CREATOR);
+        vm.expectRevert(abi.encodeWithSelector(ILpFeeLocker.InvalidRecipient.selector, address(0)));
+        locker.claimTo(address(token), address(0));
+        vm.expectRevert(
+            abi.encodeWithSelector(ILpFeeLocker.InvalidRecipient.selector, address(locker))
+        );
+        locker.claimTo(address(token), address(locker));
+        vm.stopPrank();
     }
 
     function test_thirdPartyLiquidity_doesNotTouchLockerPosition() public {

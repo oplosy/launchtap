@@ -85,6 +85,32 @@ func (q *Queries) GetSyncState(ctx context.Context, arg GetSyncStateParams) (Syn
 	return i, err
 }
 
+const insertIndexerEngineDeployment = `-- name: InsertIndexerEngineDeployment :exec
+INSERT INTO indexer_engine_deployments (chain_id, deployment_id, engine_deployment_id, engine_version, factory, start_block)
+VALUES ($1, $2, $3, $4, $5, $6)
+`
+
+type InsertIndexerEngineDeploymentParams struct {
+	ChainID            int64
+	DeploymentID       string
+	EngineDeploymentID string
+	EngineVersion      int32
+	Factory            Address
+	StartBlock         int64
+}
+
+func (q *Queries) InsertIndexerEngineDeployment(ctx context.Context, arg InsertIndexerEngineDeploymentParams) error {
+	_, err := q.db.Exec(ctx, insertIndexerEngineDeployment,
+		arg.ChainID,
+		arg.DeploymentID,
+		arg.EngineDeploymentID,
+		arg.EngineVersion,
+		arg.Factory,
+		arg.StartBlock,
+	)
+	return err
+}
+
 const listForeignSyncDeployments = `-- name: ListForeignSyncDeployments :many
 SELECT deployment_id
 FROM sync_state
@@ -110,6 +136,50 @@ func (q *Queries) ListForeignSyncDeployments(ctx context.Context, arg ListForeig
 			return nil, err
 		}
 		items = append(items, deployment_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIndexerEngineDeployments = `-- name: ListIndexerEngineDeployments :many
+SELECT engine_deployment_id, engine_version, factory, start_block
+FROM indexer_engine_deployments
+WHERE chain_id = $1 AND deployment_id = $2
+ORDER BY engine_deployment_id
+`
+
+type ListIndexerEngineDeploymentsParams struct {
+	ChainID      int64
+	DeploymentID string
+}
+
+type ListIndexerEngineDeploymentsRow struct {
+	EngineDeploymentID string
+	EngineVersion      int32
+	Factory            Address
+	StartBlock         int64
+}
+
+func (q *Queries) ListIndexerEngineDeployments(ctx context.Context, arg ListIndexerEngineDeploymentsParams) ([]ListIndexerEngineDeploymentsRow, error) {
+	rows, err := q.db.Query(ctx, listIndexerEngineDeployments, arg.ChainID, arg.DeploymentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListIndexerEngineDeploymentsRow{}
+	for rows.Next() {
+		var i ListIndexerEngineDeploymentsRow
+		if err := rows.Scan(
+			&i.EngineDeploymentID,
+			&i.EngineVersion,
+			&i.Factory,
+			&i.StartBlock,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

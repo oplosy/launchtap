@@ -32,7 +32,13 @@ type WalletStackComponent = ComponentType<PropsWithChildren<{ openOnMount?: bool
 const loadWalletStack = () => import("@/wallet/wallet-stack");
 
 /** Routes whose content signs or reads wallet state and therefore needs the wallet stack. */
-const WALLET_ROUTES = [/^\/token\//, /^\/create(?:\/|$)/, /^\/profile(?:\/|$)/];
+const WALLET_ROUTES = [
+  /^\/token\//,
+  /^\/create(?:\/|$)/,
+  /^\/profile(?:\/|$)/,
+  // The Rewards tab only: its Leaderboard tab (/rewards/leaderboard) is a read-only route.
+  /^\/rewards\/?$/,
+];
 
 const WalletStackStatus = createContext({ required: false, ready: true });
 

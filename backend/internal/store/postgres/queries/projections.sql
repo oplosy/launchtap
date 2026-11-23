@@ -195,7 +195,7 @@ ON CONFLICT (chain_id, token_address) DO UPDATE SET generation=nextval('aggregat
 INSERT INTO position_dirty (chain_id, wallet, token_address, generation)
 SELECT sqlc.arg(chain_id)::bigint, sqlc.arg(wallet)::bytea, sqlc.arg(token_address)::bytea, nextval('position_dirty_generation_seq')
 WHERE sqlc.arg(wallet)::bytea <> decode(repeat('00', 20), 'hex')
-  AND sqlc.arg(wallet)::bytea <> sqlc.arg(factory)::bytea
+  AND sqlc.arg(wallet)::bytea <> ALL(sqlc.arg(factories)::bytea[])
   AND NOT EXISTS (
     SELECT 1 FROM tokens AS excluded
     WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.curve_address = sqlc.arg(wallet)::bytea
@@ -221,7 +221,7 @@ FROM (
     SELECT DISTINCT sqlc.arg(chain_id)::bigint AS chain_id, side.wallet, sqlc.arg(token_address)::bytea AS token_address
     FROM (VALUES (sqlc.arg(from_address)::bytea), (sqlc.arg(to_address)::bytea)) AS side(wallet)
     WHERE side.wallet <> decode(repeat('00', 20), 'hex')
-      AND side.wallet <> sqlc.arg(factory)::bytea
+      AND side.wallet <> ALL(sqlc.arg(factories)::bytea[])
       AND NOT EXISTS (
         SELECT 1 FROM tokens AS excluded
         WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.curve_address = side.wallet
@@ -249,7 +249,7 @@ FROM tokens AS token
 WHERE token.chain_id = sqlc.arg(chain_id)::bigint AND token.lp_pair = sqlc.arg(pair)::bytea
   AND sqlc.arg(tx_from)::bytea IS NOT NULL
   AND sqlc.arg(tx_from)::bytea <> decode(repeat('00', 20), 'hex')
-  AND sqlc.arg(tx_from)::bytea <> sqlc.arg(factory)::bytea
+  AND sqlc.arg(tx_from)::bytea <> ALL(sqlc.arg(factories)::bytea[])
   AND NOT EXISTS (
     SELECT 1 FROM tokens AS excluded
     WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.curve_address = sqlc.arg(tx_from)::bytea
@@ -271,7 +271,7 @@ JOIN tokens AS token ON token.chain_id = graduation.chain_id AND token.token_add
 LEFT JOIN v4_pool_managers AS manager ON manager.chain_id = graduation.chain_id
 WHERE graduation.chain_id = sqlc.arg(chain_id)::bigint AND graduation.pool_id = sqlc.arg(pool_id)::bytea
   AND sqlc.arg(tx_from)::bytea IS NOT NULL
-  AND sqlc.arg(tx_from)::bytea <> sqlc.arg(factory)::bytea
+  AND sqlc.arg(tx_from)::bytea <> ALL(sqlc.arg(factories)::bytea[])
   AND NOT token_holder_excluded(token.engine_version, sqlc.arg(tx_from)::bytea, token.curve_address,
                                 token.lp_pair, token.locker, manager.pool_manager)
 ON CONFLICT (chain_id, wallet, token_address) DO UPDATE SET generation = nextval('position_dirty_generation_seq');
@@ -898,7 +898,7 @@ WITH pairs AS (
         WHERE transfer.chain_id = sqlc.arg(chain_id)::bigint AND transfer.token_address = sqlc.arg(token_address)::bytea
     ) AS source
     WHERE source.wallet <> decode(repeat('00', 20), 'hex')
-      AND source.wallet <> sqlc.arg(factory)::bytea
+      AND source.wallet <> ALL(sqlc.arg(factories)::bytea[])
       AND NOT EXISTS (
         SELECT 1 FROM tokens AS excluded
         WHERE excluded.chain_id = sqlc.arg(chain_id)::bigint AND excluded.curve_address = source.wallet

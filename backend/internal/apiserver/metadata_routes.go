@@ -44,6 +44,9 @@ type MetadataRoutes struct {
 	Limiter  *SubjectLimiter
 }
 
+// maxDescriptionBytes caps a token description; the web form enforces the same limit.
+const maxDescriptionBytes = 500
+
 type metadataBody struct {
 	Description string `json:"description,omitempty"`
 	XURL        string `json:"x_url,omitempty"`
@@ -284,8 +287,8 @@ var socialLinkHosts = map[string]map[string]bool{
 }
 
 func validateMetadata(value metadataBody) error {
-	if !utf8.ValidString(value.Description) || len([]byte(value.Description)) > 2000 {
-		return apiProblem(http.StatusUnprocessableEntity, "invalid_metadata", "Description must be valid UTF-8 and at most 2000 bytes")
+	if !utf8.ValidString(value.Description) || len([]byte(value.Description)) > maxDescriptionBytes {
+		return apiProblem(http.StatusUnprocessableEntity, "invalid_metadata", "Description must be valid UTF-8 and at most 500 bytes")
 	}
 	if strings.ContainsFunc(value.Description, social.UnsafeTextRune) {
 		return apiProblem(http.StatusUnprocessableEntity, "invalid_metadata", "Description must not contain control or bidirectional override characters")

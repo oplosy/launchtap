@@ -1,9 +1,9 @@
 /**
- * Leaderboard loader for the server-rendered /leaderboard route. Server-side only (the caller
- * passes the private API base). It throws on any failure instead of returning an "unavailable"
- * value: a thrown render is never cached, so Next keeps serving the last good page or data-cache
- * entry, and only a route that never rendered successfully falls through to
- * app/leaderboard/error.tsx.
+ * Leaderboard loader for the server-rendered /rewards/leaderboard route. Server-side only (the
+ * caller passes the private API base). It throws on any failure instead of returning an
+ * "unavailable" value: a thrown render is never cached, so Next keeps serving the last good page
+ * or data-cache entry, and only a route that never rendered successfully falls through to
+ * app/rewards/leaderboard/error.tsx.
  */
 import type { LeaderboardResponse } from "@/api/client";
 
@@ -11,8 +11,8 @@ export const LEADERBOARD_WINDOWS = ["all", "7d", "30d"] as const;
 export type LeaderboardWindow = (typeof LEADERBOARD_WINDOWS)[number];
 export const LEADERBOARD_WINDOW_LABELS: Record<LeaderboardWindow, string> = {
   all: "All time",
-  "7d": "7d",
-  "30d": "30d",
+  "7d": "Last 7 days",
+  "30d": "Last 30 days",
 };
 
 /** Reads `?window=`; anything unknown (or repeated) falls back to all time. */

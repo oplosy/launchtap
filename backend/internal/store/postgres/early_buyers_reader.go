@@ -34,9 +34,13 @@ func (r MarketReader) ReadEarlyBuyers(ctx context.Context, q earlybuyer.Query) (
 		}
 		deliveryRows, err := a.queries.ListEarlyCurveDeliveries(ctx, sqlc.ListEarlyCurveDeliveriesParams{
 			ChainID: q.ChainID, TokenAddress: sqlc.Address(q.Token), WindowSeconds: earlybuyer.WindowSeconds,
+			RowLimit: earlybuyer.MaxDeliveries + 1,
 		})
 		if err != nil {
 			return err
+		}
+		if len(deliveryRows) > earlybuyer.MaxDeliveries {
+			deliveryRows, out.Truncated = deliveryRows[:earlybuyer.MaxDeliveries], true
 		}
 		in := earlybuyer.Input{Creator: common.Address(tokenRow.Creator), Balances: map[common.Address]*big.Int{}}
 		seen := map[common.Address]bool{}
@@ -52,9 +56,13 @@ func (r MarketReader) ReadEarlyBuyers(ctx context.Context, q earlybuyer.Query) (
 		if len(earlyWallets) > 0 {
 			transferRows, err := a.queries.ListTokenTransfersTouching(ctx, sqlc.ListTokenTransfersTouchingParams{
 				ChainID: q.ChainID, TokenAddress: sqlc.Address(q.Token), Wallets: earlyWallets,
+				RowLimit: earlybuyer.MaxTransfers + 1,
 			})
 			if err != nil {
 				return err
+			}
+			if len(transferRows) > earlybuyer.MaxTransfers {
+				transferRows, out.Truncated = transferRows[:earlybuyer.MaxTransfers], true
 			}
 			involved := append([][]byte(nil), earlyWallets...)
 			for _, row := range transferRows {

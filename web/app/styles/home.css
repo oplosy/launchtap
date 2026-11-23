@@ -1,33 +1,15 @@
-/* Home: centred hero, then card sections. */
+/*
+ * Home: the live strip, then card sections. The strip sits half a section gap above the first
+ * section; sections sit 1.1 section gaps apart, the same distance as the last one to the footer.
+ */
 .home {
-  gap: var(--section-gap);
+  gap: calc(var(--section-gap) / 2);
 }
-/* The live strip sits right under the nav; the hero keeps its own top padding below it. */
-.home > .live-strip:first-child + .home-hero {
-  margin-top: calc(-1 * var(--section-gap));
+.home .page-section {
+  padding-bottom: calc(var(--section-gap) / 2);
 }
-.home-hero {
-  display: grid;
-  justify-items: center;
-  gap: 24px;
-  padding: clamp(72px, 12vw, 160px) 0 0;
-  text-align: center;
-}
-.home-hero h1 {
-  max-width: 14ch;
-  font: var(--type-hero);
-  letter-spacing: var(--tracking-hero);
-}
-.home-hero-summary {
-  max-width: 44ch;
-  color: var(--text-2);
-}
-.home-hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 8px;
+.home > .reveal + .reveal {
+  margin-top: calc(var(--section-gap) * 0.1);
 }
 
 .home-posts {

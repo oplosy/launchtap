@@ -210,7 +210,7 @@ func newV2Engine(t *testing.T) (*Engine, *memoryStore, *recordingSink, *fixtureD
 	logs, emitters := loadV2Fixture(t, source.headers[1].Hash())
 	sink := &recordingSink{}
 	discovery := &fixtureDiscovery{logs: logs, emitters: emitters}
-	e.decoder, e.discovery, e.router = decoder, discovery, LedgerRouter{Sink: sink, ChainID: 1}
+	e.engines[0].Decoder, e.engines[0].Discovery, e.router = decoder, discovery, LedgerRouter{Sink: sink, ChainID: 1}
 	return e, store, sink, discovery, logs
 }
 

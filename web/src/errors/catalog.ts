@@ -63,7 +63,7 @@ export const apiMessages: Readonly<Record<string, string>> = {
   invalid_threshold: "Enter a trade size from 0.5 to 10,000 ETH.",
   // Token details and images
   invalid_metadata:
-    "Check the details: the description can be at most 2,000 bytes, the X link must point at x.com or twitter.com, and the Telegram link at t.me or telegram.me.",
+    "Check the details: the description can be at most 500 bytes, the X link must point at x.com or twitter.com, and the Telegram link at t.me or telegram.me.",
   invalid_image: "Use a PNG, JPEG or WebP image up to 5 MiB and 4096 x 4096 pixels.",
   image_type_mismatch:
     "The file's contents do not match its type. Export it again as PNG, JPEG or WebP.",

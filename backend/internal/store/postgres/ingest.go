@@ -138,7 +138,7 @@ func (adapter *Adapter) IngestPoolSwap(ctx context.Context, event ledger.PoolSwa
 	}
 	sender := *event.TxFrom
 	if err := adapter.markOnce(dirtyMark{kind: markPairSwapPosition, chainID: event.ChainID, subject: addressSubject(event.Pair), wallet: sender}, func() error {
-		if err := adapter.queries.MarkPoolSwapPositionDirty(ctx, sqlc.MarkPoolSwapPositionDirtyParams{ChainID: event.ChainID, Pair: event.Pair[:], TxFrom: sender[:], Factory: adapter.factory[:]}); err != nil {
+		if err := adapter.queries.MarkPoolSwapPositionDirty(ctx, sqlc.MarkPoolSwapPositionDirtyParams{ChainID: event.ChainID, Pair: event.Pair[:], TxFrom: sender[:], Factories: adapter.excludedFactories()}); err != nil {
 			return fmt.Errorf("mark pool swap position dirty: %w", err)
 		}
 		return nil

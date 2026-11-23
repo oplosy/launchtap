@@ -55,7 +55,8 @@ export function earlyBuyersView(body: Body, totalSupply: string): EarlyBuyersVie
     `${body.early_wallet_count} ${one ? "wallet" : "wallets"} got tokens from the curve in the ` +
     `first ${seconds} seconds and ${one ? "holds" : "hold"} ` +
     `${percentOfSupply(BigInt(body.early_balance), supply)} of the supply now.` +
-    (body.window_open ? ` The ${seconds} seconds have not passed yet.` : "");
+    (body.window_open ? ` The ${seconds} seconds have not passed yet.` : "") +
+    (body.truncated ? " Too many early trades to read them all; this covers the earliest." : "");
   const groups = clusters.map((cluster) => {
     const wallets = cluster.wallets ?? [];
     return {

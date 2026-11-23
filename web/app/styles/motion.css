@@ -149,22 +149,25 @@
   }
 }
 
-/* Notification panel (mounted through usePresence, so it can leave). */
-.notify-panel {
+/* Notification and account panels (mounted through usePresence, so they can leave). */
+.notify-panel,
+.account-panel {
   transform-origin: top right;
   transition:
     opacity 200ms var(--ease-out),
     scale 200ms var(--ease-out),
     translate 200ms var(--ease-out);
 }
-.notify-panel[data-state="closed"] {
+.notify-panel[data-state="closed"],
+.account-panel[data-state="closed"] {
   opacity: 0;
   scale: 0.97;
   translate: 0 -4px;
   pointer-events: none;
 }
 @starting-style {
-  .notify-panel[data-state="open"] {
+  .notify-panel[data-state="open"],
+  .account-panel[data-state="open"] {
     opacity: 0;
     scale: 0.97;
     translate: 0 -4px;

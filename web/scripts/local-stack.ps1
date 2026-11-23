@@ -1,7 +1,9 @@
 # Starts a persistent local demo stack: Anvil, PostgreSQL (Docker), the API, the indexer, seeded
 # launches, and the Next dev server on http://127.0.0.1:3417. Runs until Ctrl+C, then tears
 # everything down. Local only: Anvil's well-known dev accounts, no testnet/mainnet transaction.
-# Deployment and runtime wiring mirror scripts/anvil-task6-gate.ps1.
+# Deployment and runtime wiring mirror scripts/anvil-task6-gate.ps1 (engine 1) and
+# scripts/anvil-v2-gate.ps1 (engine 2): both engines run side by side on the one Anvil chain,
+# ingested by one indexer (docs/specs/2026-11-20-dual-engine-preflight.md).
 param(
     [int]$AnvilPort = 8545,
     [int]$PostgresPort = 55432,
@@ -20,6 +22,9 @@ $backendRoot = Join-Path $repoRoot "backend"
 $contractsRoot = Join-Path $repoRoot "contracts"
 $manifestPath = Join-Path $contractsRoot "deployments/.generated/local-stack.json"
 $deploymentId = "task6-anvil"
+$v2ManifestPath = Join-Path $contractsRoot "deployments/.generated/local-stack-v2.json"
+$v2PeripheryPath = [IO.Path]::ChangeExtension($v2ManifestPath, ".v4-periphery.json")
+$v2DeploymentId = "v2-anvil"
 # Anvil default accounts 0-5 (public, deterministic dev keys; never funded anywhere real).
 $accounts = @(
     "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
@@ -103,17 +108,20 @@ function Deadline { return [string]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 
 # Launches a token and returns its curve address. The return value is read with a static call
 # first; the launch then lands in the next block from the same factory nonce, so it matches.
-function New-Launch([string]$From, [string]$Name, [string]$Symbol, [decimal]$DevBuyEth) {
+# Engine 1's factory returns (token, curve, pair) and engine 2's (token, curve); the curve is
+# second in both.
+function New-Launch([string]$From, [string]$Name, [string]$Symbol, [decimal]$DevBuyEth, [string]$Factory = $factory, [int]$Engine = 1) {
     $devBuy = Cast @("to-wei", [string]$DevBuyEth)
-    $fee = Cast @("call", $factory, "launchFee()(uint256)", "--rpc-url", $rpcUrl)
+    $fee = Cast @("call", $Factory, "launchFee()(uint256)", "--rpc-url", $rpcUrl)
     $fee = ($fee -split "\s")[0]
     $value = [System.Numerics.BigInteger]::Parse($fee) + [System.Numerics.BigInteger]::Parse($devBuy)
-    $request = "($Name,$Symbol,1,$devBuy,0,$(Deadline))"
-    $signature = "launch((string,string,uint16,uint256,uint256,uint256))(address,address,address)"
-    $returned = Cast @("call", $factory, $signature, $request, "--value", [string]$value, "--from", $From, "--rpc-url", $rpcUrl)
+    $request = "($Name,$Symbol,$Engine,$devBuy,0,$(Deadline))"
+    $returns = if ($Engine -eq 2) { "(address,address)" } else { "(address,address,address)" }
+    $signature = "launch((string,string,uint16,uint256,uint256,uint256))$returns"
+    $returned = Cast @("call", $Factory, $signature, $request, "--value", [string]$value, "--from", $From, "--rpc-url", $rpcUrl)
     $curve = ($returned -split "\s+")[1]
     if ($curve -notmatch "^0x[0-9a-fA-F]{40}$") { throw "Could not read the curve address for $Symbol" }
-    Cast @("send", $factory, "launch((string,string,uint16,uint256,uint256,uint256))", $request, "--value", [string]$value, "--from", $From, "--unlocked", "--rpc-url", $rpcUrl) | Out-Null
+    Cast @("send", $Factory, "launch((string,string,uint16,uint256,uint256,uint256))", $request, "--value", [string]$value, "--from", $From, "--unlocked", "--rpc-url", $rpcUrl) | Out-Null
     return $curve
 }
 function Buy([string]$Curve, [string]$From, [decimal]$Eth) {
@@ -133,6 +141,7 @@ function Find-Foundry([string]$Name) {
 }
 $anvilPath = Find-Foundry "anvil"
 $castPath = Find-Foundry "cast"
+$forgePath = Find-Foundry "forge"
 $env:Path = "$(Split-Path -Parent $anvilPath)$([IO.Path]::PathSeparator)$env:Path"
 # A previous run stopped without its cleanup leaves this script's own container holding the port.
 & docker rm --force $postgresContainer 2>$null | Out-Null
@@ -146,7 +155,7 @@ New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
 $env:GOCACHE = Join-Path $backendRoot ".cache/task6-go-build"
 
 try {
-    if (Test-Path -LiteralPath $manifestPath) { Remove-Item -LiteralPath $manifestPath -Force }
+    foreach ($generated in @($manifestPath, $v2ManifestPath, $v2PeripheryPath)) { if (Test-Path -LiteralPath $generated) { Remove-Item -LiteralPath $generated -Force } }
     & docker rm --force $postgresContainer 2>$null | Out-Null
     Write-Host "Starting PostgreSQL..."
     Invoke-Checked "docker" @("run", "--name", $postgresContainer, "--detach", "--publish", "127.0.0.1:$PostgresPort`:5432", "--env", "POSTGRES_USER=postgres", "--env", "POSTGRES_PASSWORD=postgres", "--env", "POSTGRES_DB=postgres", $postgresImage) | Out-Null
@@ -179,6 +188,41 @@ try {
         if ($address -notmatch "^0x[0-9a-fA-F]{40}$") { throw "Deployment manifest has an invalid address: $address" }
     }
 
+    Write-Host "Deploying engine 2 (Uniswap V4 stack)..."
+    # The router and V4 periphery come from their own test-only Foundry profiles, as in the v2 gate.
+    $previousProfile = [Environment]::GetEnvironmentVariable("FOUNDRY_PROFILE", "Process")
+    Push-Location $contractsRoot
+    try {
+        foreach ($profile in @("v4", "router")) {
+            [Environment]::SetEnvironmentVariable("FOUNDRY_PROFILE", $profile, "Process")
+            Invoke-Checked $forgePath @("build", "--no-lint") | Out-Null
+        }
+    } finally {
+        [Environment]::SetEnvironmentVariable("FOUNDRY_PROFILE", $previousProfile, "Process")
+        Pop-Location
+    }
+    Invoke-Checked $powershellCommand @(
+        "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $contractsRoot "scripts/deploy-v2-local.ps1"),
+        "-RpcUrl", $rpcUrl, "-DeploymentId", $v2DeploymentId, "-Sender", $sender,
+        "-PauseAuthority", $accounts[1], "-Timelock", $accounts[2],
+        "-ProtocolTreasury", $accounts[3], "-OutputPath", $v2ManifestPath, "-WithRouter"
+    ) | Out-Null
+    $v2Manifest = Get-Content -Raw -LiteralPath $v2ManifestPath | ConvertFrom-Json
+    $v2Periphery = Get-Content -Raw -LiteralPath $v2PeripheryPath | ConvertFrom-Json
+    $v2Factory = [string]$v2Manifest.factory
+    $v2Addresses = [ordered]@{
+        FACTORY = $v2Factory
+        POOL_MANAGER = [string]$v2Manifest.poolManager
+        PERMIT2 = [string]$v2Manifest.permit2
+        HOOK = [string]$v2Manifest.hook
+        LOCKER = [string]$v2Manifest.locker
+        UNIVERSAL_ROUTER = [string]$v2Periphery.universalRouter
+        V4_QUOTER = [string]$v2Periphery.v4Quoter
+    }
+    foreach ($entry in $v2Addresses.GetEnumerator()) {
+        if ($entry.Value -notmatch "^0x[0-9a-fA-F]{40}$") { throw "Engine 2 deployment has an invalid $($entry.Key) address" }
+    }
+
     Write-Host "Migrating the database..."
     $env:DATABASE_URL = $databaseUrl
     Push-Location $backendRoot
@@ -194,9 +238,10 @@ try {
         INDEXER_CHUNK_SIZE = "100"; INDEXER_LOG_ADDRESS_BATCH_SIZE = "500"; INDEXER_POLL_INTERVAL = "500ms"
         RPC_TIMEOUT = "2s"; RPC_MAX_RETRIES = "2"; RPC_RETRY_BACKOFF = "50ms"; INDEXER_WORKER_ID = "local-indexer"
         INDEXER_CONFIRMATIONS = "0"; PRIVY_APP_ID = "task6-anvil"
+        ENGINE_DEPLOYMENT_IDS = "$deploymentId,$v2DeploymentId"
         # Test-only public key from the Anvil gate; no matching private key is used here.
         PRIVY_VERIFICATION_KEY = "-----BEGIN PUBLIC KEY-----`nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEtOOEaFeGAEoHOSkD0owE7VmvwjcI`n3lpjzKdfLSJaQvLUZnKvBdO3mWLsvulsCuB0PJCgycRbVvqZqyhN1txH4A==`n-----END PUBLIC KEY-----`n"
-        DEPLOYMENT_MANIFEST_PATH = $manifestPath
+        DEPLOYMENT_MANIFEST_PATH = "$manifestPath$([IO.Path]::PathSeparator)$v2ManifestPath"
     }
     Write-Host "Starting the API and indexer..."
     Start-Child (Join-Path $logRoot "api.exe") "" $backendRoot $runtimeEnv "api" | Out-Null
@@ -248,6 +293,13 @@ try {
             @{ Name = "Marble Fox"; Symbol = "MRBL"; Dev = 0.01; Buys = @(0.05, 0.12) },
             @{ Name = "Bright Anchor"; Symbol = "ANCHR"; Dev = 0.005; Buys = @(0.08) }
         )
+        # Engine 2 launches next to engine 1's, so Explore lists both engines together.
+        $v2Launches = @(
+            @{ Name = "Harbor Lights"; Symbol = "LIGHT"; Dev = 0.01; Buys = @(0.1, 0.2, 0.05) },
+            @{ Name = "Velour Finch"; Symbol = "FINCH"; Dev = 0.005; Buys = @(0.06, 0.04) },
+            @{ Name = "Quartz Tide"; Symbol = "QRTZ"; Dev = 0.01; Buys = @(0.3, 0.2); Graduate = $true },
+            @{ Name = "Ember Vale"; Symbol = "EMBER"; Dev = 0; Buys = @(0.25, 0.15); Graduate = $true }
+        )
         $index = 0
         $activeCurves = New-Object System.Collections.ArrayList
         foreach ($launch in $launches) {
@@ -270,19 +322,41 @@ try {
             }
             $index++
         }
+        foreach ($launch in $v2Launches) {
+            $creator = $accounts[$index % $accounts.Count]
+            $curve = New-Launch $creator $launch.Name $launch.Symbol ([decimal]$launch.Dev) $v2Factory 2
+            $traderIndex = $index
+            foreach ($eth in $launch.Buys) {
+                $traderIndex++
+                try { Buy $curve $accounts[$traderIndex % $accounts.Count] ([decimal]$eth) }
+                catch { Write-Warning "$($launch.Symbol) buy skipped: $($_.Exception.Message)" }
+            }
+            if ($launch.ContainsKey("Graduate")) {
+                try { Buy $curve $accounts[($index + 4) % $accounts.Count] ([decimal]200); Write-Host "  $($launch.Symbol) -> $curve (engine 2, graduated)" }
+                catch { Write-Warning "$($launch.Symbol) graduation buy did not land: $($_.Exception.Message)" }
+            } else {
+                Write-Host "  $($launch.Symbol) -> $curve (engine 2)"
+                [void]$activeCurves.Add($curve)
+            }
+            $index++
+        }
     }
 
     if (-not $NoSeed) {
         # The indexer has to have projected the launches before comments can reference them.
         for ($attempt = 0; $attempt -lt 60; $attempt++) {
             $count = (& docker exec $postgresContainer psql -U postgres -d $databaseName -Atc "SELECT count(*) FROM tokens" | Out-String).Trim()
-            if ($count -eq [string]$launches.Count) { break }
+            if ($count -eq [string]($launches.Count + $v2Launches.Count)) { break }
             Start-Sleep -Milliseconds 500
         }
         Write-Host "Seeding forum posts..."
         Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "local-stack-forum.sql") |
             & docker exec -i $postgresContainer psql -v ON_ERROR_STOP=1 -U postgres -d $databaseName | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Forum seed failed" }
+        Write-Host "Seeding a demo leaderboard..."
+        Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "local-stack-leaderboard.sql") |
+            & docker exec -i $postgresContainer psql -v ON_ERROR_STOP=1 -U postgres -d $databaseName | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Leaderboard seed failed" }
         Write-Host "Seeding token artwork..."
         $addresses = @(& docker exec $postgresContainer psql -U postgres -d $databaseName -Atc "SELECT '0x' || encode(token_address, 'hex') || ':' || symbol FROM tokens")
         & node (Join-Path $PSScriptRoot "local-stack-images.mjs") @addresses |
@@ -299,6 +373,7 @@ try {
         NEXT_PUBLIC_TASK6_ANVIL_WEB_URL = $webUrl; NEXT_PUBLIC_WEB_ORIGIN = $webUrl
         TASK6_ANVIL_RPC_URL = $rpcUrl; API_INTERNAL_BASE_URL = $apiUrl
     }
+    foreach ($entry in $v2Addresses.GetEnumerator()) { $webEnv["NEXT_PUBLIC_V2_ANVIL_$($entry.Key)"] = $entry.Value }
     $web = Start-Child $npmCommand "run dev -- --hostname 127.0.0.1 --port $WebPort" $webRoot $webEnv "web"
     Wait-Http $webUrl
     Write-Host ""
@@ -327,5 +402,5 @@ finally {
     Write-Host "Stopping the local stack..."
     for ($i = $children.Count - 1; $i -ge 0; $i--) { Stop-Tree $children[$i] }
     if ($postgresStarted) { & docker rm --force $postgresContainer 2>$null | Out-Null }
-    if (Test-Path -LiteralPath $manifestPath) { Remove-Item -LiteralPath $manifestPath -Force }
+    foreach ($generated in @($manifestPath, $v2ManifestPath, $v2PeripheryPath)) { if (Test-Path -LiteralPath $generated) { Remove-Item -LiteralPath $generated -Force } }
 }

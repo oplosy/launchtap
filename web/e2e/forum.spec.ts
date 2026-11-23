@@ -142,17 +142,18 @@ test("hot and top tabs rank communities from the URL", async ({ page }) => {
   expect(calls.posts).toEqual([]);
 });
 
-test("forum tabs are centred over the feed and a whole post card opens its token", async ({
+test("forum tabs run along the feed column and a whole post block opens its token", async ({
   page,
 }, testInfo) => {
   await installApi(page, { posts: [], communities: [] });
   await page.goto("/forum");
   const tabs = page.getByRole("navigation", { name: "Forum view" });
   await expect(tabs.getByRole("link", { name: "New" })).toBeVisible();
-  // Centred over the feed column (the launches rail sits beside it on wide screens).
+  // The tab rule spans the feed column from its left edge (the launches rail sits beside it).
   const box = (await tabs.boundingBox())!;
   const feed = (await page.getByRole("region", { name: "Forum posts" }).boundingBox())!;
-  expect(Math.abs(box.x + box.width / 2 - (feed.x + feed.width / 2))).toBeLessThanOrEqual(2);
+  expect(Math.abs(box.x - feed.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(box.width - feed.width)).toBeLessThanOrEqual(1);
   await page.screenshot({
     path: `test-results/screenshots/rebuild-forum-${testInfo.project.name}.png`,
     fullPage: true,

@@ -1,6 +1,7 @@
 import { ArrowSquareOut } from "@/components/icons";
 import { SafeExternalLink } from "@/components/primitives";
 import { publicConfiguration } from "@/config/public";
+import { DocsMarginalia } from "@/docs/docs-marginalia";
 import { DocsNav } from "@/docs/docs-nav";
 
 // Every number on this page mirrors the engine v1 launch parameters in
@@ -127,8 +128,7 @@ export default function DocsPage() {
               If a buy would go past the graduation target, the curve takes only the ETH needed to
               reach it and returns the rest in the same transaction. If that transfer fails (for
               example, a contract wallet that rejects ETH), the amount is credited to you and can be
-              claimed later under Claims and refunds on your profile. Failed sell payouts are
-              handled the same way.
+              claimed later on the Rewards page. Failed sell payouts are handled the same way.
             </p>
           </section>
 
@@ -244,8 +244,8 @@ export default function DocsPage() {
             <p>
               On a buy the fee is taken from the ETH you send before it reaches the curve; on a sell
               it is taken from the ETH the curve pays out. Creator fees collect in the token&apos;s
-              curve contract and the creator claims them under Claims and refunds on their profile.
-              Claims keep working while trading is paused and after graduation.
+              curve contract and the creator claims them from the Rewards page. Claims keep working
+              while trading is paused and after graduation.
             </p>
             <p>
               Quotes are informational until the contract simulation and signed transaction execute.
@@ -393,6 +393,7 @@ export default function DocsPage() {
             </p>
           </section>
         </article>
+        <DocsMarginalia sections={SECTIONS} />
       </div>
     </div>
   );

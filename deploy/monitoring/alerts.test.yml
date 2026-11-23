@@ -143,6 +143,22 @@ tests:
         alertname: RPCErrorRateHigh
         exp_alerts: []
 
+  # PrimaryRPCRejected
+  - name: PrimaryRPCRejected fires once the primary is rejected
+    interval: 1m
+    input_series:
+      - series: 'launchpad_indexer_rpc_primary_rejected{job="indexer"}'
+        values: "0 0 1 1 1"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: PrimaryRPCRejected
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: PrimaryRPCRejected
+        exp_alerts:
+          - exp_labels: {severity: ticket, job: indexer}
+            exp_annotations: {summary: "the primary chain RPC failed the deployment identity checks; the indexer stays on the fallback"}
+
   # API5xxRateHigh: 5% 5xx at 2 req/s versus the same share at 0.1 req/s
   - name: API5xxRateHigh fires at 5 percent 5xx and 2 req/s
     interval: 1m

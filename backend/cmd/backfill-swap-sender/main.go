@@ -77,8 +77,17 @@ func execute(ctx context.Context, args []string, getenv func(string) string) err
 	if err != nil {
 		return err
 	}
+	// Every engine's factory is excluded from positions, as in the indexer.
+	factories := make([]common.Address, 0, len(c.EngineDeploymentIDs))
+	for _, id := range c.EngineDeploymentIDs {
+		engine, err := registry.Resolve(c.ChainID, id, c.IndexerConfirmations)
+		if err != nil {
+			return fmt.Errorf("resolve engine deployment %q: %w", id, err)
+		}
+		factories = append(factories, engine.Factory)
+	}
 	if f.SeedPositions {
-		return seedPositions(ctx, c.DatabaseURL, int64(c.ChainID), deployment.Factory, f.DryRun)
+		return seedPositions(ctx, c.DatabaseURL, int64(c.ChainID), factories, f.DryRun)
 	}
 	source, err := chain.Dial(ctx, c.RPCURL, chain.RPCConfig{Timeout: c.RPCTimeout, MaxRetries: c.RPCMaxRetries, RetryBackoff: c.RPCRetryBackoff})
 	if err != nil {
@@ -97,7 +106,7 @@ func execute(ctx context.Context, args []string, getenv func(string) string) err
 
 	log := slog.Default()
 	d := swapbackfill.Deps{
-		Store:   swapbackfill.PostgresStore{Pool: pool, ChainID: int64(c.ChainID), Factory: deployment.Factory},
+		Store:   swapbackfill.PostgresStore{Pool: pool, ChainID: int64(c.ChainID), Factories: factories},
 		Senders: source,
 		Log:     log,
 		Sleep:   swapbackfill.RateSleeper(f.Rate),
@@ -133,13 +142,13 @@ func parseFlags(args []string) (flags, error) {
 
 // seedPositions queues every existing ledger (wallet, token) pair with one bounded statement per
 // token (excluding the zero address, the factory and every curve and pair). It is idempotent.
-func seedPositions(ctx context.Context, databaseURL string, chainID int64, factory common.Address, dryRun bool) error {
+func seedPositions(ctx context.Context, databaseURL string, chainID int64, factories []common.Address, dryRun bool) error {
 	pool, err := storepostgres.OpenPool(ctx, databaseURL, storepostgres.PoolOptions{MaxConns: storepostgres.MinimumPoolMaxConns})
 	if err != nil {
 		return fmt.Errorf("open database pool: %w", err)
 	}
 	defer pool.Close()
-	seed, err := storepostgres.NewAdapter(pool).WithFactory(factory).SeedPositionDirty(ctx, chainID, dryRun)
+	seed, err := storepostgres.NewAdapter(pool).WithFactories(factories).SeedPositionDirty(ctx, chainID, dryRun)
 	if err != nil {
 		return err
 	}

@@ -408,6 +408,10 @@
           "snapshot": {
             "$ref": "#/components/schemas/SnapshotDTO"
           },
+          "truncated": {
+            "description": "The early deliveries or the transfers between early wallets exceeded the read cap; counts and clusters cover the earliest rows only.",
+            "type": "boolean"
+          },
           "window_open": {
             "description": "The early window had not ended at the snapshot block.",
             "type": "boolean"
@@ -425,7 +429,8 @@
           "early_balance",
           "cluster_count",
           "clusters",
-          "funding_checked"
+          "funding_checked",
+          "truncated"
         ],
         "type": "object"
       },

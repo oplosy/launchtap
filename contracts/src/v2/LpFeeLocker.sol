@@ -95,23 +95,19 @@ contract LpFeeLocker is ILpFeeLocker, ReentrancyGuardTransient {
         nonReentrant
         returns (uint256 ethAmount, uint256 tokenAmount)
     {
-        _collect(token);
+        return _claim(token, msg.sender);
+    }
 
-        ethAmount = _ethOwed[token][msg.sender];
-        tokenAmount = _tokenOwed[token][msg.sender];
-        if (ethAmount == 0 && tokenAmount == 0) return (0, 0);
-
-        _ethOwed[token][msg.sender] = 0;
-        _tokenOwed[token][msg.sender] = 0;
-        // The prior external calls are the nonReentrant collect; payouts follow the event.
-        // forge-lint: disable-next-line(reentrancy-events)
-        emit LpFeesClaimed(token, msg.sender, ethAmount, tokenAmount);
-
-        if (tokenAmount != 0) IERC20(token).safeTransfer(msg.sender, tokenAmount);
-        if (ethAmount != 0) {
-            (bool success,) = payable(msg.sender).call{ value: ethAmount }("");
-            if (!success) revert EthTransferFailed(msg.sender);
+    /// @inheritdoc ILpFeeLocker
+    function claimTo(address token, address recipient)
+        external
+        nonReentrant
+        returns (uint256 ethAmount, uint256 tokenAmount)
+    {
+        if (recipient == address(0) || recipient == address(this)) {
+            revert InvalidRecipient(recipient);
         }
+        return _claim(token, recipient);
     }
 
     /// @inheritdoc ILpFeeLocker
@@ -126,6 +122,33 @@ contract LpFeeLocker is ILpFeeLocker, ReentrancyGuardTransient {
         returns (uint256 ethAmount, uint256 tokenAmount)
     {
         return (_ethOwed[token][account], _tokenOwed[token][account]);
+    }
+
+    /// @dev Collects, then pays the caller's balances to `recipient`. The event names the caller,
+    /// whose balance was paid, like the curve's `CreatorFeesClaimed` for `claimCreatorFeesTo`.
+    function _claim(address token, address recipient)
+        private
+        returns (uint256 ethAmount, uint256 tokenAmount)
+    {
+        _collect(token);
+
+        ethAmount = _ethOwed[token][msg.sender];
+        tokenAmount = _tokenOwed[token][msg.sender];
+        if (ethAmount == 0 && tokenAmount == 0) return (0, 0);
+
+        _ethOwed[token][msg.sender] = 0;
+        _tokenOwed[token][msg.sender] = 0;
+        // The prior external calls are the nonReentrant collect; payouts follow the event.
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit LpFeesClaimed(token, msg.sender, ethAmount, tokenAmount);
+
+        if (tokenAmount != 0) IERC20(token).safeTransfer(recipient, tokenAmount);
+        if (ethAmount != 0) {
+            // The amount is the caller's own credited balance; only the caller picks where it goes.
+            // forge-lint: disable-next-line(arbitrary-send-eth)
+            (bool success,) = payable(recipient).call{ value: ethAmount }("");
+            if (!success) revert EthTransferFailed(recipient);
+        }
     }
 
     /// @dev Collected amounts are measured as this contract's balance change across the

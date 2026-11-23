@@ -88,6 +88,9 @@
   border-bottom: 1px solid var(--hairline);
   padding: 12px 0;
 }
+.token-frame {
+  display: contents;
+}
 .token-image {
   width: 44px;
   height: 44px;
@@ -138,6 +141,13 @@ html[data-theme="light"] .ui-image-fallback {
 .token-card:hover .token-identity h3 a {
   color: var(--text-2);
 }
+/* A grid tile's figures soften with its title on hover. */
+.token-list[data-layout="grid"] .token-metrics dd {
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.token-list[data-layout="grid"] > .token-card:hover .token-metrics dd {
+  color: var(--text-2);
+}
 .token-card a:focus-visible {
   outline: none;
 }
@@ -158,10 +168,6 @@ html[data-theme="light"] .ui-image-fallback {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.token-phase {
-  flex: none;
-  color: var(--text-2);
 }
 .token-metrics {
   display: grid;
@@ -253,64 +259,155 @@ html[data-theme="light"] .ui-image-fallback {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+/*
+ * A tile is one box: the artwork runs edge to edge across its top, the caption sits inside below
+ * it on a faint fill (halfway between the canvas and the usual fill), and the box's rounded corners
+ * clip both. Hover deepens it to the usual fill.
+ */
 .token-list[data-layout="grid"] > .token-card {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto;
   align-items: start;
   gap: 12px 8px;
   min-height: 0;
+  overflow: hidden;
   border-bottom: 0;
-  padding: 0;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--fill) 50%, var(--canvas));
+  padding: 0 0 16px;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.token-list[data-layout="grid"] > .token-card:hover {
+  background: var(--fill);
 }
 .token-list[data-layout="grid"] .token-image {
   grid-column: 1 / -1;
   width: 100%;
   height: auto;
   aspect-ratio: 1;
-  /* A card's artwork is the card itself, so it keeps a soft square, not the avatar circle. */
-  border-radius: 8px;
-  transition: opacity var(--dur-base) var(--ease-out);
+  /* The box clips the artwork's corners; the artwork itself stays square-edged. */
+  border-radius: 0;
 }
 .token-list[data-layout="grid"] .token-image .ui-image-fallback-letter {
   font-size: 48px;
 }
-.token-list[data-layout="grid"] > .token-card:hover .token-image {
-  opacity: 0.88;
+/*
+ * Hover: the whole card (artwork and caption) grows a little outward, above its neighbours, while
+ * the artwork zooms slightly inside its clipped frame.
+ */
+.token-list[data-layout="grid"] .token-frame {
+  display: block;
+  grid-column: 1 / -1;
+  overflow: hidden;
+}
+.token-list[data-layout="grid"] .token-frame > img.token-image {
+  display: block;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .token-list[data-layout="grid"] > .token-card {
+    transition:
+      transform 0.4s var(--ease-out),
+      background-color var(--dur-fast) var(--ease-out);
+  }
+  .token-list[data-layout="grid"] .token-frame > .token-image {
+    transition: transform 0.4s var(--ease-out);
+  }
+  .token-list[data-layout="grid"] > .token-card:hover {
+    z-index: 1;
+    transform: scale(1.03);
+  }
+  .token-list[data-layout="grid"] > .token-card:hover .token-frame > .token-image {
+    transform: scale(1.05);
+  }
 }
 .token-list[data-layout="grid"] .token-metrics {
   grid-column: 1 / -1;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .token-list[data-layout="grid"] .token-metrics > div {
-  justify-items: start;
+  justify-items: center;
+  text-align: center;
 }
 .token-list[data-layout="grid"] .token-metrics > div:nth-child(n + 3) {
   display: none;
 }
 .token-list[data-layout="grid"] .token-metrics dd {
-  text-align: start;
+  text-align: center;
 }
-/* Card text reads at a size that holds its own next to the artwork. */
+/*
+ * Card caption, centred under the artwork in the one UI typeface: the name, the ticker in spaced
+ * capitals, then a hairline and the two figures split by a vertical rule.
+ */
+.token-list[data-layout="grid"] .token-identity {
+  grid-column: 1 / -1;
+  padding: 2px 16px 0;
+  text-align: center;
+}
 .token-list[data-layout="grid"] .token-identity h3 {
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 26px;
-  letter-spacing: -0.01em;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 28px;
+  letter-spacing: var(--tracking-page);
 }
 .token-list[data-layout="grid"] .token-symbol {
-  font-size: 14px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.token-list[data-layout="grid"] .token-metrics {
+  gap: 0;
+  margin-inline: 16px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 12px;
+}
+.token-list[data-layout="grid"] .token-metrics > div {
+  padding-inline: 8px;
+}
+.token-list[data-layout="grid"] .token-metrics > div + div {
+  border-left: 1px solid var(--hairline);
 }
 .token-list[data-layout="grid"] .token-metrics dt {
-  font-size: 13px;
+  font-size: 12px;
   line-height: 18px;
 }
 .token-list[data-layout="grid"] .token-metrics dd {
-  font-size: 15px;
+  margin-top: 2px;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 500;
   line-height: 22px;
+  letter-spacing: -0.01em;
 }
+/* The star sits on the artwork's top-right corner, on a veil so it reads over any image. */
 .token-list[data-layout="grid"] .star-button {
-  grid-row: 2;
-  grid-column: 2;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--canvas) 72%, transparent);
+  backdrop-filter: blur(6px);
+}
+/* Two narrow tiles per row on phones: a smaller name, and the figures stacked without the rule. */
+@media (max-width: 560px) {
+  .token-list[data-layout="grid"] .token-identity h3 {
+    font-size: 17px;
+    line-height: 26px;
+  }
+  .token-list[data-layout="grid"] .token-metrics {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .token-list[data-layout="grid"] .token-metrics > div + div {
+    border-left: 0;
+  }
+  .token-list[data-layout="grid"] .token-metrics dd {
+    font-size: 14px;
+    line-height: 20px;
+  }
 }
 
 @media (max-width: 720px) {

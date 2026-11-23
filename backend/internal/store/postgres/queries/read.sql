@@ -942,7 +942,8 @@ WHERE t.chain_id = sqlc.arg(chain_id) AND t.token_address = sqlc.arg(token_addre
   AND tr.block_time <= t.launch_block_time + make_interval(secs => sqlc.arg(window_seconds)::integer)
   AND NOT token_holder_excluded(t.engine_version, tr.to_address, t.curve_address, t.lp_pair,
                                 t.locker, manager.pool_manager)
-ORDER BY tr.block_number, tr.transaction_index, tr.log_index;
+ORDER BY tr.block_number, tr.transaction_index, tr.log_index
+LIMIT sqlc.arg(row_limit);
 
 -- Transfers of the token touching one of the given wallets, between two non-infrastructure
 -- wallets.
@@ -957,7 +958,9 @@ WHERE t.chain_id = sqlc.arg(chain_id) AND t.token_address = sqlc.arg(token_addre
   AND NOT token_holder_excluded(t.engine_version, tr.from_address, t.curve_address, t.lp_pair,
                                 t.locker, manager.pool_manager)
   AND NOT token_holder_excluded(t.engine_version, tr.to_address, t.curve_address, t.lp_pair,
-                                t.locker, manager.pool_manager);
+                                t.locker, manager.pool_manager)
+ORDER BY tr.block_number, tr.transaction_index, tr.log_index
+LIMIT sqlc.arg(row_limit);
 
 -- name: ListHolderBalancesFor :many
 SELECT holder_address, balance

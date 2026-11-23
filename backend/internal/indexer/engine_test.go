@@ -859,7 +859,7 @@ func newSwapEngine(t *testing.T, senders SenderSource, hashes ...common.Hash) (*
 	t.Helper()
 	e, _, source := newTestEngine(t)
 	router := &capturingRouter{}
-	e.discovery = swapDiscovery{source: source, pair: common.HexToAddress("0xbeef"), hashes: hashes}
+	e.engines[0].Discovery = swapDiscovery{source: source, pair: common.HexToAddress("0xbeef"), hashes: hashes}
 	e.router = router
 	e.settings.Senders = senders
 	fake, _ := senders.(*fakeSenders)
@@ -1014,7 +1014,7 @@ func TestDiscoveryProviderFailuresAreRetryableRPCFailures(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			e, _, _ := newTestEngine(t)
-			e.discovery = failingDiscovery{err: test.err}
+			e.engines[0].Discovery = failingDiscovery{err: test.err}
 			_, err := e.Step(t.Context())
 			if err == nil || !errors.Is(err, test.err) {
 				t.Fatalf("Step() error = %v, want it to wrap %v", err, test.err)

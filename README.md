@@ -487,6 +487,7 @@ requires `DATABASE_URL`.
 | -------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `CHAIN_ID`                       | `31337` in example                 | Required positive decimal chain ID; must match selected manifest                                    |
 | `DEPLOYMENT_ID`                  | `anvil-local` in example           | Required lower-case manifest identifier; must match the chain's reviewed deployment                 |
+| `ENGINE_DEPLOYMENT_IDS`          | Blank (`DEPLOYMENT_ID` alone)      | Comma-separated engine manifests the indexer ingests side by side; includes `DEPLOYMENT_ID`, one per engine |
 | `RPC_URL`                        | `http://127.0.0.1:8545` in example | Required HTTP(S) JSON-RPC endpoint; use an approved endpoint for hosted services                    |
 | `DATABASE_URL`                   | Local PostgreSQL URL in example    | Required `postgres://` or `postgresql://` URL; secret in hosted environments                        |
 | `DATABASE_PASSWORD_FILE`         | Unset                              | Optional file holding the password for a password-less `DATABASE_URL` (one Docker secret per role); `DATABASE_PASSWORD` may hold it directly instead, never both |
@@ -521,7 +522,8 @@ requires `DATABASE_URL`.
 | `FUNDING_RPC_URL`                | Blank                              | `cmd/funding` only; archive RPC with `debug_traceBlockByNumber` (callTracer); a secret              |
 
 Both API and indexer also accept `DEPLOYMENT_MANIFEST_PATH` as an optional overlay to select an
-explicit generated manifest; it is not part of `.env.example`. The E2E harness supplies its
+explicit generated manifest, or several joined by the OS path-list separator when a local chain
+runs both engines; it is not part of `.env.example`. The E2E harness supplies its
 temporary manifest through this setting. The `.env.example` values identify the local Anvil
 shape; they do not start services or create a deployment. In particular, API startup requires
 Privy configuration and a resolvable manifest. For Anvil's actual ephemeral addresses and keys,
@@ -538,6 +540,7 @@ exposed by the release workflow, not one of the five browser runtime values.
 | --------------------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `NEXT_PUBLIC_PRIVY_APP_ID`  | Yes                             | Public ID of the reviewed Privy app; never put the verification key here                                         |
 | `NEXT_PUBLIC_DEPLOYMENT_ID` | Yes                             | Exact enabled deployment ID from generated reviewed contract configuration                                       |
+| `NEXT_PUBLIC_ENGINE_DEPLOYMENT_IDS` | No                      | Comma-separated engine deployments offered side by side; includes the deployment above, one per engine           |
 | `NEXT_PUBLIC_CHAIN_ID`      | Yes                             | Positive decimal chain ID matching that manifest exactly                                                         |
 | `NEXT_PUBLIC_API_BASE_URL`  | Yes                             | Public API base URL; HTTPS except localhost; no credentials, query, or fragment                                  |
 | `NEXT_PUBLIC_RPC_URL`       | Yes                             | Public RPC URL; HTTPS except localhost; no credentials, query, or fragment                                       |

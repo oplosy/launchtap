@@ -23,6 +23,7 @@ type Indexer struct {
 	reconcileDiff prometheus.Gauge
 	reconcileSeen prometheus.Gauge
 	reconcileLast prometheus.Gauge
+	primaryReject prometheus.Gauge
 }
 
 var (
@@ -83,9 +84,13 @@ func NewIndexer(reg prometheus.Registerer, snapshot func() indexer.Health) *Inde
 			Name: "launchpad_indexer_reconciliation_last_success_timestamp_seconds",
 			Help: "Unix time of the last reconciliation pass that completed its comparison (ok, drift or idle).",
 		}),
+		primaryReject: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "launchpad_indexer_rpc_primary_rejected",
+			Help: "1 once the primary RPC failed the identity checks before a switch back; the indexer stays on the fallback until restart.",
+		}),
 	}
 	reg.MustRegister(m.rpc, m.recomputed, m.notification, m.positionFail, m.senderMiss, m.backfilled, m.backfillFail, m.backfillWait,
-		m.reconcileRun, m.reconcileDiff, m.reconcileSeen, m.reconcileLast)
+		m.reconcileRun, m.reconcileDiff, m.reconcileSeen, m.reconcileLast, m.primaryReject)
 	reg.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "launchpad_aggregation_position_dirty_backlog",
 		Help: "Pending wallet position recomputations (position_dirty rows for the chain).",
@@ -182,6 +187,12 @@ func (m *Indexer) Reconciled(result reconcile.Result) {
 	case reconcile.OutcomeIdle:
 		m.reconcileLast.SetToCurrentTime()
 	}
+}
+
+// PrimaryRPCRejected records that the primary RPC failed the identity checks before a switch
+// back (chain.FailoverConfig.OnPrimaryRejected).
+func (m *Indexer) PrimaryRPCRejected() {
+	m.primaryReject.Set(1)
 }
 
 // Notified counts one NOTIFY outcome. Unknown channels are ignored.
