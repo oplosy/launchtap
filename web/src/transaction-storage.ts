@@ -1,8 +1,9 @@
 import type { TransactionStatus } from "./transactions";
 
 // "v2-creator": the engine-2 creator panel (fee recipient changes and the LP fee locker claim).
+// "stock-convert": a stock token ⇄ ETH conversion through the Universal Router (stock routing).
 export type PersistedTransactionAction =
-  "launch" | "trade" | "claim" | "refund" | "approval" | "v2-creator";
+  "launch" | "trade" | "claim" | "refund" | "approval" | "v2-creator" | "stock-convert";
 export type PersistedTransactionStatus = Extract<
   TransactionStatus,
   | "submitted"
@@ -44,6 +45,7 @@ const actions = new Set<PersistedTransactionAction>([
   "refund",
   "approval",
   "v2-creator",
+  "stock-convert",
 ]);
 const statuses = new Set<PersistedTransactionStatus>([
   "submitted",

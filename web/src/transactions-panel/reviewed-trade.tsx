@@ -295,12 +295,13 @@ export function useReviewedWrite(
 
 export type ReviewedWrite = ReturnType<typeof useReviewedWrite>;
 
+type TradeKind = Extract<PersistedTransactionAction, "trade" | "stock-convert">;
 /**
  * Shared state of the curve, V2 router and V4 router trade panels on top of `useReviewedWrite`:
  * side, amount, slippage and the persisted allowance transaction. The panels keep what differs:
  * the quote source, the intent they build, balance and allowance preflight, and the details.
  */
-export function useReviewedTrade(tokenAddress: Address | null, enabled = true) {
+export function useReviewedTrade(tokenAddress: Address | null, enabled = true, action?: TradeKind) {
   const configuration = publicConfiguration();
   const account = useAccount();
   const approvalTransaction = usePersistedTransactionState(
@@ -311,7 +312,7 @@ export function useReviewedTrade(tokenAddress: Address | null, enabled = true) {
     configuration.apiBaseUrl,
     enabled,
   );
-  const write = useReviewedWrite("trade", tokenAddress, enabled, approvalTransaction);
+  const write = useReviewedWrite(action ?? "trade", tokenAddress, enabled, approvalTransaction);
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [input, setInput] = useState("");
   const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);

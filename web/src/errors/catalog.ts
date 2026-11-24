@@ -232,6 +232,8 @@ export const contractMessages: Readonly<Record<string, string>> = {
   ERC20InsufficientBalance: "The selected wallet does not have enough tokens for this action.",
   InsufficientBalance: "The selected wallet does not have enough ETH for this action.",
   InsufficientETHBalance: "The selected wallet does not have enough ETH for this action.",
+  StockRoutePriceImpactTooHigh:
+    "Price impact is above 15% on this route. Convert a smaller amount.",
   ERC20InvalidReceiver: "Tokens cannot be sent to that address.",
   ERC20InvalidSender: "Tokens cannot be sent from that address.",
   ERC20InvalidApprover: "That address cannot approve tokens.",

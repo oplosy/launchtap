@@ -19,7 +19,7 @@ import {
   Skeleton,
 } from "@/components/primitives";
 import { SlidingIndicator } from "@/components/sliding-indicator";
-import { TradingPanel } from "@/transactions-panel";
+import { StockConvertPanel, TradingPanel } from "@/transactions-panel";
 import type { CandleChartPoint } from "./chart-data";
 import { MarketChart } from "./market-chart";
 import {
@@ -310,6 +310,7 @@ export function TradeSheet({
           spotPriceWei: token.spot_price_eth,
         }}
       />
+      <StockConvertPanel />
       <p className="token-aside-note">
         Non-custodial. Signing and execution stay in your selected wallet.
       </p>

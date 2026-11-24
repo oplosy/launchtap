@@ -541,6 +541,7 @@ exposed by the release workflow, not one of the five browser runtime values.
 | `NEXT_PUBLIC_PRIVY_APP_ID`  | Yes                             | Public ID of the reviewed Privy app; never put the verification key here                                         |
 | `NEXT_PUBLIC_DEPLOYMENT_ID` | Yes                             | Exact enabled deployment ID from generated reviewed contract configuration                                       |
 | `NEXT_PUBLIC_ENGINE_DEPLOYMENT_IDS` | No                      | Comma-separated engine deployments offered side by side; includes the deployment above, one per engine           |
+| `NEXT_PUBLIC_STOCK_ROUTING` | No                              | `1` shows the stock token ⇄ ETH conversion panel on Robinhood Chain mainnet; off until the legal opinion        |
 | `NEXT_PUBLIC_CHAIN_ID`      | Yes                             | Positive decimal chain ID matching that manifest exactly                                                         |
 | `NEXT_PUBLIC_API_BASE_URL`  | Yes                             | Public API base URL; HTTPS except localhost; no credentials, query, or fragment                                  |
 | `NEXT_PUBLIC_RPC_URL`       | Yes                             | Public RPC URL; HTTPS except localhost; no credentials, query, or fragment                                       |

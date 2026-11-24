@@ -5289,6 +5289,74 @@ export const browserAbis = {
   "v4Quoter": [
     {
       "type": "function",
+      "name": "quoteExactInput",
+      "inputs": [
+        {
+          "name": "params",
+          "type": "tuple",
+          "internalType": "struct IV4Quoter.QuoteExactParams",
+          "components": [
+            {
+              "name": "exactCurrency",
+              "type": "address",
+              "internalType": "Currency"
+            },
+            {
+              "name": "path",
+              "type": "tuple[]",
+              "internalType": "struct PathKey[]",
+              "components": [
+                {
+                  "name": "intermediateCurrency",
+                  "type": "address",
+                  "internalType": "Currency"
+                },
+                {
+                  "name": "fee",
+                  "type": "uint24",
+                  "internalType": "uint24"
+                },
+                {
+                  "name": "tickSpacing",
+                  "type": "int24",
+                  "internalType": "int24"
+                },
+                {
+                  "name": "hooks",
+                  "type": "address",
+                  "internalType": "contract IHooks"
+                },
+                {
+                  "name": "hookData",
+                  "type": "bytes",
+                  "internalType": "bytes"
+                }
+              ]
+            },
+            {
+              "name": "exactAmount",
+              "type": "uint128",
+              "internalType": "uint128"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "name": "amountOut",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "gasEstimate",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
       "name": "quoteExactInputSingle",
       "stateMutability": "nonpayable",
       "inputs": [
