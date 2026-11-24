@@ -5,6 +5,7 @@ import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import { DeployLaunchpadV2 } from "../../script/DeployLaunchpadV2.s.sol";
 import { DeploymentValidation } from "../../script/deployment/DeploymentValidation.sol";
 import { LaunchFactoryV2 } from "../../src/v2/LaunchFactoryV2.sol";
+import { LaunchTypesV2 } from "../../src/v2/types/LaunchTypesV2.sol";
 import { V4TestBase } from "./utils/V4TestBase.sol";
 
 /// @dev Runs the deployment step after the record is chosen, against a locally built v4 stack.
@@ -82,6 +83,10 @@ contract DeployLaunchpadV2Test is V4TestBase {
         assertEq(factory.timelock(), TIMELOCK);
         assertEq(factory.pauseAuthority(), PAUSE_AUTHORITY);
         assertEq(uint160(result.hook) & Hooks.ALL_HOOK_MASK, uint160(Hooks.BEFORE_INITIALIZE_FLAG));
+
+        LaunchTypesV2.FactoryDefaultsV2 memory defaults = factory.futureDefaults();
+        assertEq(defaults.parameters.protocolShareBps, 3000);
+        assertEq(defaults.lpCreatorShareBps, 7000);
     }
 }
 // forge-lint: disable-end(unused-return)

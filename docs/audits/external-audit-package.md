@@ -68,7 +68,7 @@ non-blank, non-comment lines.
   initializes the curve, and optionally runs the developer buy through `BondingCurveV2.buyFor`.
   The developer buy is exempt from the anti-snipe tax and capped at 1 % of supply.
 - **Trade:** `BondingCurveV2.buy` / `sell`. The anti-snipe tax (`AntiSnipe.taxBps`) is the
-  outermost layer on buys. The 1 % trade fee is split 50/50 between protocol and creator.
+  outermost layer on buys. The 1 % trade fee is split 30/70 between protocol and creator.
   Fees, the tax and failed ETH sends land in pull-claim buckets.
   `_assertAccountingInvariant` runs after every state change.
 - **Graduation:** `BondingCurveV2._graduate`, inside the final buy. It marks the token graduated,
@@ -204,9 +204,9 @@ Default parameters:
 | Supply | 1,000,000,000, of which 800M on the curve and 200M for LP |
 | Graduation | 4.2 ETH |
 | Initial virtual reserves | 1.4 ETH |
-| Trade fee | 1 %, split 50/50 |
+| Trade fee | 1 %, split 30 % protocol / 70 % creator |
 | Anti-snipe | 50 % over 60 s |
-| LP creator share | 50 % |
+| LP creator share | 70 % |
 | Launch fee | 0.0005 ETH |
 
 ## 9. Request for quote

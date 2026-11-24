@@ -41,10 +41,11 @@ contract DeployLaunchpadV2 is Script {
     uint256 private constant INITIAL_VIRTUAL_ETH = 1.4 ether;
     uint256 private constant INITIAL_VIRTUAL_TOKEN = 1_066_666_666_666_666_666_666_666_667;
     uint16 private constant TRADE_FEE_BPS = 100;
-    uint16 private constant PROTOCOL_SHARE_BPS = 5000;
+    // Creator keeps 70% of the 1% curve fee and 70% of the locked position's LP fees.
+    uint16 private constant PROTOCOL_SHARE_BPS = 3000;
     uint16 private constant SNIPE_START_BPS = 5000;
     uint32 private constant SNIPE_DURATION = 60;
-    uint16 private constant LP_CREATOR_SHARE_BPS = 5000;
+    uint16 private constant LP_CREATOR_SHARE_BPS = 7000;
     uint256 private constant LAUNCH_FEE = 0.0005 ether;
 
     struct V4Dependencies {
@@ -202,6 +203,11 @@ contract DeployLaunchpadV2 is Script {
         );
         require(address(factory.PERMIT2()) == result.permit2, "permit2 mismatch");
         require(factory.launchFee() == LAUNCH_FEE, "launch fee mismatch");
+        LaunchTypesV2.FactoryDefaultsV2 memory defaults = factory.futureDefaults();
+        require(
+            defaults.parameters.protocolShareBps == PROTOCOL_SHARE_BPS, "protocol share mismatch"
+        );
+        require(defaults.lpCreatorShareBps == LP_CREATOR_SHARE_BPS, "LP creator share mismatch");
     }
 
     function _defaults() private pure returns (LaunchTypesV2.FactoryDefaultsV2 memory) {

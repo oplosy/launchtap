@@ -113,7 +113,7 @@ or future launches must use them. The factory snapshots the actual selected valu
 | Initial virtual ETH           |                                 1.4 ETH | Curve pricing reserve; not launch-owned ETH             |
 | Initial virtual token reserve | 1,066,666,666.666666666666666667 tokens | Rounded upward to satisfy the exact boundary condition  |
 | Launch fee                    |                              0.0005 ETH | Accrues to the protocol treasury for pull-claim         |
-| Curve trade fee               |                                   1.00% | Split equally: 0.50% protocol and 0.50% creator         |
+| Curve trade fee               |                                   1.00% | Split 0.30% protocol and 0.70% creator                  |
 | Post-graduation trade fee     |                       0% from Launchpad | Vanilla Uniswap v2 trading; no Launchpad fee hook in v1 |
 | Snipe tax                     |                                    None | No time-based launch tax in v1                          |
 

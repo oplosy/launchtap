@@ -230,7 +230,7 @@ export default function DocsPage() {
               </div>
               <div>
                 <dt>Fee split</dt>
-                <dd>0.5% to the creator · 0.5% to the protocol</dd>
+                <dd>0.7% to the creator · 0.3% to the protocol</dd>
               </div>
               <div>
                 <dt>After graduation</dt>
@@ -279,7 +279,7 @@ export default function DocsPage() {
               <div>
                 <dt>Pool fee split</dt>
                 <dd>
-                  50% to the creator&apos;s fee recipient · 50% to the protocol by default; the
+                  70% to the creator&apos;s fee recipient · 30% to the protocol by default; the
                   create page shows the exact split
                 </dd>
               </div>
