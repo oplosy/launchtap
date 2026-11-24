@@ -126,12 +126,14 @@ requested by the market: an anti-snipe window and a creator-controlled fee recip
 ## 5. Fees and recipients
 
 ### 5.1 Curve phase
-Unchanged from v1: trade fee 1%, split 0.50% protocol / 0.50% creator, pull-claimed. The
+Unchanged from v1: trade fee 1%, split 0.30% protocol / 0.70% creator (deployment default since
+2026-11-24; was 0.50% / 0.50%), pull-claimed. The
 anti-snipe tax is additional and goes only to the protocol.
 
 ### 5.2 Pool phase
 - The pool's static LP fee is 1% (fee `10000`).
-- The locker's position earns LP fees in both currencies. Split 50% creator / 50% protocol,
+- The locker's position earns LP fees in both currencies. Split 70% creator / 30% protocol
+  (deployment default since 2026-11-24; was 50/50),
   snapshotted at launch (`lpCreatorShareBps`), future default timelock-configurable.
 - Anyone may add liquidity to the pool afterwards and earns its pro-rata share of fees; the
   locker's share of fees shrinks accordingly. The UI states this.

@@ -103,6 +103,7 @@ contract DeploymentTest is Test {
     uint256 private constant INITIAL_VIRTUAL_ETH = 1.4 ether;
     uint256 private constant INITIAL_VIRTUAL_TOKEN = 1_066_666_666_666_666_666_666_666_667;
     uint256 private constant EXPECTED_LAUNCH_FEE = 0.0005 ether;
+    uint16 private constant EXPECTED_PROTOCOL_SHARE_BPS = 3000;
     uint16 private constant TRADE_FEE_BPS = 100;
     uint16 private constant PROTOCOL_SHARE_BPS = 5000;
     address private constant LP_BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
@@ -135,6 +136,7 @@ contract DeploymentTest is Test {
         LaunchTypes.FactoryDefaults memory defaults =
             deployment.defaults(address(weth), address(uniswapFactory));
         assertEq(defaults.launchFee, EXPECTED_LAUNCH_FEE);
+        assertEq(defaults.parameters.protocolShareBps, EXPECTED_PROTOCOL_SHARE_BPS);
 
         LaunchFactory factory = _factoryWithDefaults(address(implementation), defaults);
         assertEq(factory.launchFee(), EXPECTED_LAUNCH_FEE);
@@ -160,6 +162,12 @@ contract DeploymentTest is Test {
         LaunchFactory zeroFeeFactory = _factoryWithDefaults(address(implementation), defaults);
         vm.expectRevert(bytes("launch fee mismatch"));
         deployment.assertDeployment(result, zeroFeeFactory);
+
+        defaults.launchFee = EXPECTED_LAUNCH_FEE;
+        defaults.parameters.protocolShareBps = 5000;
+        LaunchFactory evenSplitFactory = _factoryWithDefaults(address(implementation), defaults);
+        vm.expectRevert(bytes("protocol share mismatch"));
+        deployment.assertDeployment(result, evenSplitFactory);
     }
 
     function testAnvilStackDeploysLaunchpadAndGraduatesThroughLocalPair() external {

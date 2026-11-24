@@ -19,7 +19,8 @@ contract DeployLaunchpad is Script {
     uint256 private constant INITIAL_VIRTUAL_ETH = 1.4 ether;
     uint256 private constant INITIAL_VIRTUAL_TOKEN = 1_066_666_666_666_666_666_666_666_667;
     uint16 private constant TRADE_FEE_BPS = 100;
-    uint16 private constant PROTOCOL_SHARE_BPS = 5000;
+    // Creator keeps 70% of the 1% curve fee (0.70%); protocol keeps 30% (0.30%).
+    uint16 private constant PROTOCOL_SHARE_BPS = 3000;
     uint256 private constant LAUNCH_FEE = 0.0005 ether;
 
     struct DeploymentResult {
@@ -128,6 +129,10 @@ contract DeployLaunchpad is Script {
         require(factory.weth() == result.weth, "WETH mismatch");
         require(factory.uniswapFactory() == result.uniswapFactory, "factory mismatch");
         require(factory.launchFee() == LAUNCH_FEE, "launch fee mismatch");
+        require(
+            factory.futureDefaults().parameters.protocolShareBps == PROTOCOL_SHARE_BPS,
+            "protocol share mismatch"
+        );
         require(factory.pauseAuthority() != result.deployer, "deployer retains pause authority");
         require(factory.timelock() != result.deployer, "deployer retains timelock authority");
     }
