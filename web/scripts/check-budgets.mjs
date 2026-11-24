@@ -140,6 +140,8 @@ function reviewedAddressAllowlist() {
   const candidates = [
     path.resolve(process.cwd(), "src/contracts/generated.ts"),
     path.resolve(process.cwd(), "../contracts/deployments/config/robinhood-mainnet.json"),
+    // The reviewed stock-token registry; assertRegistry checks every entry at load.
+    path.resolve(process.cwd(), "src/stock-routing.ts"),
   ];
   for (const filename of candidates) {
     if (!fs.existsSync(filename)) continue;
