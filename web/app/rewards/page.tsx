@@ -25,8 +25,8 @@ export default function RewardsPage() {
             <span className="rewards-step-index">02</span>
             <h3>Earn on every trade</h3>
             <p>
-              70% of the 1% curve fee, 0.7% of every buy and sell, goes to the creator. On engine
-              v2 tokens the creator also takes 70% of the Uniswap pool fee after graduation.
+              70% of the 1% curve fee, 0.7% of every buy and sell, goes to the creator. On engine v2
+              tokens the creator also takes 70% of the Uniswap pool fee after graduation.
             </p>
           </li>
           <li>
