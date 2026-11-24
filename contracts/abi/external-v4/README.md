@@ -7,7 +7,7 @@ copies them without an allowlist.
 | File | Entries | Source revision |
 |------|---------|-----------------|
 | `Permit2.json` | `approve`, `allowance`, `AllowanceExpired`, `InsufficientAllowance` | `IAllowanceTransfer` from `lib/v4-periphery/lib/permit2` (canonical Permit2, unchanged across revisions) |
-| `V4Quoter.json` | `quoteExactInputSingle`, `UnexpectedRevertBytes`, `NotEnoughLiquidity` | `IV4Quoter` in `lib/v4-periphery` (`QuoteExactSingleParams` is the same in the deployed v4 periphery) |
+| `V4Quoter.json` | `quoteExactInput`, `quoteExactInputSingle`, `UnexpectedRevertBytes`, `NotEnoughLiquidity` | `IV4Quoter` in `lib/v4-periphery` (`QuoteExactSingleParams` and `QuoteExactParams` are the same in the deployed v4 periphery; `quoteExactInput` serves stock routing) |
 | `UniversalRouter.json` | `execute(bytes,bytes[],uint256)` and its revert errors | Universal Router v2.1.2 (`Uniswap/universal-router` release/2.1.x, v4-periphery `545a5d2a`), the reviewed record in `deployments/config/robinhood-mainnet-v4.json` |
 
 The `V4_SWAP` input encoding itself lives in `web/src/v4-swap.ts`, which names the router

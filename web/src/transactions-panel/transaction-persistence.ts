@@ -208,10 +208,11 @@ export function usePersistedTransactionState(
       !ready ||
       !state.hash ||
       !apiBaseUrl ||
-      // Approvals and the engine-2 creator writes have no canonical event to observe; they
-      // settle on the receipt alone.
+      // Approvals, the engine-2 creator writes and stock conversions have no canonical event to
+      // observe; they settle on the receipt alone.
       action === "approval" ||
       action === "v2-creator" ||
+      action === "stock-convert" ||
       state.status === "finalized" ||
       state.status === "receipt-reverted" ||
       state.status === "reverted"
