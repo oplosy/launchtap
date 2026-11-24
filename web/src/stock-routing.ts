@@ -67,6 +67,14 @@ export type PathKey = {
 
 export type StockDirection = "stock-to-eth" | "eth-to-stock";
 
+/** A route quote, tagged with the input it was read for. */
+export type ConversionQuote = {
+  direction: StockDirection;
+  amountIn: bigint;
+  amountOut: bigint;
+  impactBps: bigint;
+};
+
 /** The exact-input path for a conversion: the input currency and the hops that follow it. */
 export function stockPath(
   asset: StockAsset,

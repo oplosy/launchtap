@@ -1,5 +1,6 @@
 import { decodeAbiParameters } from "viem";
 import { describe, expect, it } from "vitest";
+import { decodeTransactionError } from "./transactions";
 import { NATIVE_ETH } from "./v4-swap";
 import {
   STOCK_ASSETS,
@@ -181,6 +182,14 @@ describe("price impact", () => {
     expect(impactLevel(301n)).toBe("warn");
     expect(impactLevel(1500n)).toBe("warn");
     expect(impactLevel(1501n)).toBe("block");
+  });
+});
+
+describe("price impact errors", () => {
+  it("decodes the requote refusal into its own sentence", () => {
+    expect(decodeTransactionError(new Error("StockRoutePriceImpactTooHigh")).message).toBe(
+      "Price impact is above 15% on this route. Convert a smaller amount.",
+    );
   });
 });
 

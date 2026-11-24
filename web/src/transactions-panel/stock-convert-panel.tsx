@@ -14,6 +14,7 @@ import {
   referenceInput,
   stockPath,
   stockRoutingEnabled,
+  type ConversionQuote,
   type StockAsset,
   type StockDirection,
 } from "@/stock-routing";
@@ -96,8 +97,6 @@ function StockConvertSection({ addresses }: { addresses: V4Addresses }) {
   );
 }
 
-type ConversionQuote = { amountOut: bigint; impactBps: bigint };
-
 /** "buy" spends ETH for the stock token; "sell" spends the stock token for ETH. */
 const directionOf = (value: "buy" | "sell"): StockDirection =>
   value === "buy" ? "eth-to-stock" : "stock-to-eth";
@@ -121,7 +120,7 @@ function StockConvertForm({ asset, addresses }: { asset: StockAsset; addresses: 
   } = trade;
   const router = addresses.universalRouter;
   const routerExplorer = addressExplorerUrl(configuration, router);
-  const [quote, setQuote] = useState<ConversionQuote | null>(null);
+  const [storedQuote, setQuote] = useState<ConversionQuote | null>(null);
   const [reviewInput, setReviewInput] = useState<bigint | null>(null);
 
   const quoteExactIn = useCallback(
@@ -139,6 +138,8 @@ function StockConvertForm({ asset, addresses }: { asset: StockAsset; addresses: 
       const referenceIn = referenceInput(amountIn);
       const [amountOut, referenceOut] = await Promise.all([read(amountIn), read(referenceIn)]);
       return {
+        direction,
+        amountIn,
         amountOut,
         impactBps: priceImpactBps({ amountIn, amountOut, referenceIn, referenceOut }),
       };
@@ -164,6 +165,13 @@ function StockConvertForm({ asset, addresses }: { asset: StockAsset; addresses: 
     };
   }, [inputUnits, publicClient, quoteExactIn, side]);
 
+  // A quote read for an earlier or cleared amount is never shown next to the current one.
+  const quote =
+    storedQuote !== null &&
+    storedQuote.amountIn === inputUnits &&
+    storedQuote.direction === directionOf(side)
+      ? storedQuote
+      : null;
   const level = quote ? impactLevel(quote.impactBps) : null;
   const minimum =
     quote !== null && slippageBps !== null ? minimumOutput(quote.amountOut, slippageBps) : null;
@@ -235,11 +243,7 @@ function StockConvertForm({ asset, addresses }: { asset: StockAsset; addresses: 
     } catch (cause) {
       if (!review.current()) return;
       trade.closeReview(false);
-      trade.setReviewNotice(
-        cause instanceof Error && cause.message === "StockRoutePriceImpactTooHigh"
-          ? "Price impact is above 15% on this route. Convert a smaller amount."
-          : decodeTransactionError(cause).message,
-      );
+      trade.setReviewNotice(decodeTransactionError(cause).message);
     }
   };
 
